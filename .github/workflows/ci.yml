@@ -1,0 +1,56 @@
+# Every pull request and every push to main: vet, tests (with the race
+# detector), lint, and the license rule of the core repository: every
+# dependency is permissive (MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC,
+# 0BSD), checked on the dependencies the binary actually links.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test -race -count=1 ./...
+      - name: fuzz the cleaning function briefly
+        run: go test -run='^$' -fuzz=FuzzCleanedTextIsTerminalSafe -fuzztime=20s ./internal/clean/
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: go-licenses
+        run: |
+          go install github.com/google/go-licenses/v2@v2.0.1
+          go-licenses check ./cmd/... --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,0BSD
