@@ -1,0 +1,121 @@
+# A tag v* is published only after the whole CI (vet, race tests, lint,
+# licenses) passed on it. Three jobs, so only the last one holds a token that
+# may write, and it runs no code from the repository:
+#   ci      -> the CI workflow, read-only
+#   build   -> macOS (arm64, amd64) and Linux (amd64, arm64), static
+#              (CGO_ENABLED=0), no local paths (-trimpath), read-only
+#   publish -> attaches exactly these four archives and checksums.txt to a
+#              GitHub release for the tag, if the tag still names the commit
+#              that was checked
+# The tag reaches a shell only through an environment variable, never pasted
+# into the script, and must look like a version. Build output goes to fresh
+# directories outside the checkout, so no file committed to the repository
+# can ride along into a release.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: check the tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          case "$TAG" in
+            v[0-9]*) ;;
+            *) echo "tag $TAG is no version" >&2; exit 1 ;;
+          esac
+          if printf '%s' "$TAG" | LC_ALL=C grep -q '[^A-Za-z0-9.+-]'; then
+            echo "tag $TAG carries characters a version does not have" >&2
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: build
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -eu
+          work="$RUNNER_TEMP/lalabase-build"
+          dist="$RUNNER_TEMP/lalabase-dist"
+          rm -rf "$work" "$dist"
+          mkdir -p "$work" "$dist"
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+            os="${target%/*}"; arch="${target#*/}"
+            name="lalabase_${VERSION}_${os}_${arch}"
+            mkdir "$work/$name"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
+              -ldflags "-s -w -X main.version=${VERSION}" -o "$work/$name/lalabase" ./cmd/lalabase
+            cp LICENSE README.md "$work/$name/"
+            tar -C "$work" -czf "$dist/$name.tar.gz" "$name"
+          done
+          (cd "$dist" && sha256sum -- *.tar.gz > checksums.txt)
+          ls -l "$dist"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: |
+            ${{ runner.temp }}/lalabase-dist/lalabase_${{ github.ref_name }}_darwin_arm64.tar.gz
+            ${{ runner.temp }}/lalabase-dist/lalabase_${{ github.ref_name }}_darwin_amd64.tar.gz
+            ${{ runner.temp }}/lalabase-dist/lalabase_${{ github.ref_name }}_linux_amd64.tar.gz
+            ${{ runner.temp }}/lalabase-dist/lalabase_${{ github.ref_name }}_linux_arm64.tar.gz
+            ${{ runner.temp }}/lalabase-dist/checksums.txt
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: ${{ runner.temp }}/release
+      - name: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          DIR: ${{ runner.temp }}/release
+        run: |
+          set -euo pipefail
+          cd "$DIR"
+          # Exactly the expected files, nothing else, and the checksums still match.
+          files=(
+            "lalabase_${TAG}_darwin_arm64.tar.gz"
+            "lalabase_${TAG}_darwin_amd64.tar.gz"
+            "lalabase_${TAG}_linux_amd64.tar.gz"
+            "lalabase_${TAG}_linux_arm64.tar.gz"
+            checksums.txt
+          )
+          expected=$(printf '%s\n' "${files[@]}" | sort)
+          present=$(find . -mindepth 1 -maxdepth 1 -printf '%P\n' | sort)
+          if [ "$present" != "$expected" ]; then
+            echo "unexpected release files:" >&2
+            echo "$present" >&2
+            exit 1
+          fi
+          sha256sum --check --strict checksums.txt
+          # The tag must still name the commit this run checked and built.
+          tagged=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
+          if [ "$tagged" != "$GITHUB_SHA" ]; then
+            echo "tag $TAG now names $tagged, this run built $GITHUB_SHA" >&2
+            exit 1
+          fi
+          gh release create "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes
