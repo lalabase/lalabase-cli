@@ -34,3 +34,29 @@ func TestNoArgumentsShowsUsageForNow(t *testing.T) {
 		t.Fatalf("exit %d, want 2", code)
 	}
 }
+
+func TestHelpSucceedsAndPrintsUsage(t *testing.T) {
+	for _, args := range [][]string{{"help"}, {"--help"}, {"-h"}} {
+		var out, errOut bytes.Buffer
+		if code := run(args, &out, &errOut); code != 0 {
+			t.Fatalf("%v: exit %d", args, code)
+		}
+		if !strings.Contains(out.String(), "Usage") {
+			t.Fatalf("%v: no usage on stdout: %q", args, out.String())
+		}
+	}
+}
+
+// The release stamps the tag with -ldflags "-X main.version=..."; that value
+// wins over everything the build info says.
+func TestAStampedVersionWins(t *testing.T) {
+	saved := version
+	t.Cleanup(func() { version = saved })
+	version = "v9.9.9"
+
+	var out, errOut bytes.Buffer
+	run([]string{"version"}, &out, &errOut)
+	if out.String() != "lalabase v9.9.9\n" {
+		t.Fatalf("got %q", out.String())
+	}
+}

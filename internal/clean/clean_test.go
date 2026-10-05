@@ -80,7 +80,9 @@ func TestHostileTextLosesEveryDangerousCharacter(t *testing.T) {
 }
 
 // Go strings may carry bytes that are no UTF-8 at all; Python never sees
-// those. A lone 0x9b byte is CSI on an 8-bit terminal.
+// those. They become U+FFFD, so what reaches the terminal is always valid
+// UTF-8. This is no protection for an 8-bit terminal: ordinary letters carry
+// bytes in the C1 range once encoded (see the package comment).
 func TestInvalidBytesBecomeTheReplacementCharacter(t *testing.T) {
 	cases := map[string]string{
 		"a\x9bb":     "a\ufffdb",
@@ -93,6 +95,44 @@ func TestInvalidBytesBecomeTheReplacementCharacter(t *testing.T) {
 			t.Errorf("Text(%q) = %q, want %q", in, got, want)
 		}
 		assertTerminalSafe(t, in, Text(in), false)
+	}
+}
+
+// The three format characters that may stay, written out here instead of
+// asked from the code under test: a fourth one added to keepFormat must turn
+// these tests red, not pass because the test consults the same list.
+var allowedFormat = map[rune]bool{0x200c: true, 0x200d: true, 0x00ad: true}
+
+// Every code point, one by one, against the rule the package documents. This
+// covers what the 22 golden cases cannot: a format character nobody thought
+// of, and any difference between Go's and Python's Unicode tables.
+func TestEveryCodePointFollowsTheRule(t *testing.T) {
+	for r := rune(0); r <= unicode.MaxRune; r++ {
+		if r >= 0xd800 && r <= 0xdfff {
+			continue // surrogates are no runes of their own in UTF-8
+		}
+		in := string(r)
+		var want, wantInline string
+		switch {
+		case r == '\t':
+			want, wantInline = "\t", " "
+		case r == '\n' || r == 0x2028 || r == 0x2029:
+			want, wantInline = "\n", " "
+		case r == '\r':
+			want, wantInline = " ", " "
+		case r <= 0x1f || (r >= 0x7f && r <= 0x9f):
+			want, wantInline = " ", " "
+		case unicode.Is(unicode.Cf, r) && !allowedFormat[r]:
+			want, wantInline = "", ""
+		default:
+			want, wantInline = in, in
+		}
+		if got := Text(in); got != want {
+			t.Fatalf("Text(%U) = %q, want %q", r, got, want)
+		}
+		if got := Inline(in); got != wantInline {
+			t.Fatalf("Inline(%U) = %q, want %q", r, got, wantInline)
+		}
 	}
 }
 
@@ -116,7 +156,7 @@ func assertTerminalSafe(t testing.TB, in, out string, inline bool) {
 		switch {
 		case r >= 0x80 && r <= 0x9f:
 			t.Fatalf("output of %q carries C1 control %U: %q", in, r, out)
-		case unicode.Is(unicode.Cf, r) && !keepFormat(r):
+		case unicode.Is(unicode.Cf, r) && !allowedFormat[r]:
 			t.Fatalf("output of %q carries format character %U: %q", in, r, out)
 		case inline && (r == '\t' || r == '\n' || r == '\r'):
 			t.Fatalf("inline output of %q carries %q: %q", in, r, out)

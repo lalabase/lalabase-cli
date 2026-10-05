@@ -6,6 +6,11 @@
 // (OSC 8) or overwrites lines with a forged message. Every foreign field passes
 // through Text or Inline before it reaches the screen, in every mode.
 //
+// The output is valid UTF-8 for a UTF-8 terminal. An 8-bit terminal that reads
+// C1 controls from single bytes is out of reach of any cleaning: ordinary
+// letters carry such bytes once encoded ("\u00db" is c3 9b, and 9b is CSI
+// there). The output layer refuses a locale that is not UTF-8 instead.
+//
 // A port of clean() in bin/lala of the core repository; the test cases there
 // are the golden file of this package.
 package clean
@@ -54,8 +59,8 @@ func clean(s string, inline bool) string {
 	for i := 0; i < len(s); {
 		r, size := utf8.DecodeRuneInString(s[i:])
 		i += size
-		// An invalid byte decodes as RuneError and is written as U+FFFD: a lone
-		// 0x9b byte would be CSI on an 8-bit terminal.
+		// An invalid byte decodes as RuneError and is written as U+FFFD, so the
+		// output is always valid UTF-8.
 		if r == '\u2028' || r == '\u2029' {
 			r = '\n'
 		}
