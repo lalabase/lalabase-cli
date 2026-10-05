@@ -32,6 +32,12 @@ linters:
     rules:
       - path: _test\.go
         linters: [gosec]
+      # The update tool reads and writes the paths the developer passes on its
+      # command line; that is its job. It refuses links and replaces files
+      # through rename (tools/update-contract/main.go, checkTargets).
+      - path: tools/update-contract/
+        linters: [gosec]
+        text: "G304|G703"
 
 formatters:
   enable:

@@ -12,9 +12,12 @@ on:
   workflow_dispatch:
   workflow_call:
 
+# One group per workflow, trigger and ref: a manual run on a tag shares no
+# group with the release's call of this workflow (there github.workflow is
+# "release"), and only a pull request cancels its own superseded run.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

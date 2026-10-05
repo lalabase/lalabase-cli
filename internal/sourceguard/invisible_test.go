@@ -47,22 +47,28 @@ func TestTextFilesCarryNoInvisibleCharacters(t *testing.T) {
 	}
 }
 
-// scan returns one message per invisible character in a text file. A file
-// with a NUL byte or invalid UTF-8 is no text file and is skipped.
+// scan returns one message per invisible character in a text file, and one
+// per byte that is no UTF-8. Only a NUL byte makes a file binary and skips it:
+// an invalid byte in a script or a config does not stop the shell or the
+// parser from reading the file, so it must not stop this check either.
 func scan(name string, data []byte) []string {
-	if bytes.IndexByte(data, 0) >= 0 || !utf8.Valid(data) {
+	if bytes.IndexByte(data, 0) >= 0 {
 		return nil
 	}
 	var findings []string
 	line := 1
-	for _, r := range string(data) {
+	for i := 0; i < len(data); {
+		r, size := utf8.DecodeRune(data[i:])
 		switch {
+		case r == utf8.RuneError && size == 1:
+			findings = append(findings, fmt.Sprintf("%s:%d carries byte %#x, which is no UTF-8", name, line, data[i]))
 		case r == '\n':
 			line++
 		case r == '\t':
 		case unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) || r == utf8.RuneError:
 			findings = append(findings, fmt.Sprintf("%s:%d carries %U literally; write it as an escape", name, line, r))
 		}
+		i += size
 	}
 	return findings
 }
@@ -78,6 +84,31 @@ func TestTheScanReportsPlantedCharacters(t *testing.T) {
 	}
 	if got := scan("escaped.go", []byte("package x\n\tvar s = \"\\u202e\"\n")); len(got) != 0 {
 		t.Errorf("an escape was reported: %v", got)
+	}
+}
+
+// An invalid byte must not switch the check off for the rest of a file: a
+// shell script with 0xff in a comment still runs, and a bidi override further
+// down would hide behind it. The bad encoding is a finding of its own, and
+// the rest of the file is still read.
+func TestAnInvalidByteDoesNotHideTheRestOfTheFile(t *testing.T) {
+	data := []byte("#!/bin/sh\n# caf\xff\necho \"a" + string(rune(0x202e)) + "b\"\n")
+	got := scan("script.sh", data)
+	if len(got) != 2 {
+		t.Fatalf("want a finding for the invalid byte and one for U+202E, got %v", got)
+	}
+	if !strings.HasPrefix(got[0], "script.sh:2 ") || !strings.Contains(got[0], "UTF-8") {
+		t.Errorf("first finding: %q", got[0])
+	}
+	if !strings.HasPrefix(got[1], "script.sh:3 ") || !strings.Contains(got[1], "U+202E") {
+		t.Errorf("second finding: %q", got[1])
+	}
+}
+
+// Only a NUL byte makes a file binary.
+func TestAFileWithANulByteIsBinary(t *testing.T) {
+	if got := scan("image.png", []byte("PNG\x00\xff"+string(rune(0x202e)))); len(got) != 0 {
+		t.Errorf("a binary file was scanned: %v", got)
 	}
 }
 

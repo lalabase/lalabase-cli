@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -96,20 +97,25 @@ func TestThePayloadMatchesItsChecksum(t *testing.T) {
 }
 
 // The binary must not carry the contract: this package embeds it and is
-// meant for tests only.
+// meant for tests only. Checked for every release target, because a file
+// built only for one platform can import it unseen on the others.
 func TestTheBinaryDoesNotImportThisPackage(t *testing.T) {
-	cmd := exec.CommandContext(context.Background(), "go", "list", "-deps", "github.com/gboyke/lalabase-cli/cmd/...")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("go list: %v", err)
-	}
-	deps := strings.Fields(string(out))
-	if len(deps) < 5 {
-		t.Fatalf("go list returned %d packages; the check is broken", len(deps))
-	}
-	for _, dep := range deps {
-		if dep == "github.com/gboyke/lalabase-cli/internal/contract" {
-			t.Fatal("a command imports internal/contract, so the binary embeds the contract file")
+	for _, target := range []string{"darwin/arm64", "darwin/amd64", "linux/amd64", "linux/arm64"} {
+		goos, goarch, _ := strings.Cut(target, "/")
+		cmd := exec.CommandContext(context.Background(), "go", "list", "-deps", "github.com/gboyke/lalabase-cli/cmd/...")
+		cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("%s: go list: %v", target, err)
+		}
+		deps := strings.Fields(string(out))
+		if len(deps) < 5 {
+			t.Fatalf("%s: go list returned %d packages; the check is broken", target, len(deps))
+		}
+		for _, dep := range deps {
+			if dep == "github.com/gboyke/lalabase-cli/internal/contract" {
+				t.Fatalf("%s: a command imports internal/contract, so that binary embeds the contract file", target)
+			}
 		}
 	}
 }
