@@ -1,9 +1,9 @@
 package sourceguard
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,11 +26,7 @@ func TestTextFilesCarryNoInvisibleCharacters(t *testing.T) {
 	seen := map[string]bool{}
 	for _, rel := range trackedFiles(t, root) {
 		seen[filepath.ToSlash(filepath.Dir(rel))] = true
-		data, err := os.ReadFile(filepath.Join(root, rel))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, finding := range scan(rel, data) {
+		for _, finding := range checkFile(root, rel) {
 			t.Error(finding)
 		}
 	}
@@ -47,14 +43,38 @@ func TestTextFilesCarryNoInvisibleCharacters(t *testing.T) {
 	}
 }
 
-// scan returns one message per invisible character in a text file, and one
-// per byte that is no UTF-8. Only a NUL byte makes a file binary and skips it:
-// an invalid byte in a script or a config does not stop the shell or the
-// parser from reading the file, so it must not stop this check either.
-func scan(name string, data []byte) []string {
-	if bytes.IndexByte(data, 0) >= 0 {
+// binaryFiles are the tracked files that may hold any byte, by path. Empty:
+// the repository has no binary file. A NUL byte anywhere else is a finding
+// (it is a control character), because a shell still runs such a file and a
+// diff shows it as binary, so nobody reads it in review.
+var binaryFiles = map[string]bool{}
+
+// checkFile checks one tracked file: it must be no symbolic link (a tool that
+// writes into the repository would write through it), and unless it is on
+// binaryFiles, every byte is read by scan.
+func checkFile(root, rel string) []string {
+	path := filepath.Join(root, rel)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return []string{fmt.Sprintf("%s: %v", rel, err)}
+	}
+	if info.Mode()&fs.ModeSymlink != 0 {
+		return []string{fmt.Sprintf("%s is a symbolic link; the repository holds no links", rel)}
+	}
+	if binaryFiles[filepath.ToSlash(rel)] {
 		return nil
 	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return []string{fmt.Sprintf("%s: %v", rel, err)}
+	}
+	return scan(rel, data)
+}
+
+// scan returns one message per invisible or control character in a file, NUL
+// included, and one per byte that is no UTF-8. Nothing switches it off for
+// the rest of a file.
+func scan(name string, data []byte) []string {
 	var findings []string
 	line := 1
 	for i := 0; i < len(data); {
@@ -105,10 +125,27 @@ func TestAnInvalidByteDoesNotHideTheRestOfTheFile(t *testing.T) {
 	}
 }
 
-// Only a NUL byte makes a file binary.
-func TestAFileWithANulByteIsBinary(t *testing.T) {
-	if got := scan("image.png", []byte("PNG\x00\xff"+string(rune(0x202e)))); len(got) != 0 {
-		t.Errorf("a binary file was scanned: %v", got)
+// A NUL byte does not make a file binary here: a shell script with one in a
+// comment still runs, and GitHub then shows the whole file as binary, so a
+// reviewer cannot read it at all. The repository has no binary file; one
+// that is needed later goes on binaryFiles by its path.
+func TestANulByteIsAFindingAndTheRestIsStillRead(t *testing.T) {
+	data := []byte("#!/bin/sh\n# x\x00y\necho \"a" + string(rune(0x202e)) + "b\"\n")
+	got := scan("script.sh", data)
+	if len(got) != 2 || !strings.HasPrefix(got[0], "script.sh:2 ") || !strings.HasPrefix(got[1], "script.sh:3 ") {
+		t.Fatalf("want a finding for the NUL byte and one for U+202E, got %v", got)
+	}
+}
+
+// A tracked symbolic link is a finding: a tool that writes into the
+// repository would write through it to wherever it points.
+func TestATrackedLinkIsAFinding(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Symlink(t.TempDir(), filepath.Join(dir, "testdata")); err != nil {
+		t.Fatal(err)
+	}
+	if got := checkFile(dir, "testdata"); len(got) != 1 || !strings.Contains(got[0], "link") {
+		t.Fatalf("want one finding for the link, got %v", got)
 	}
 }
 

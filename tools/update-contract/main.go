@@ -5,8 +5,10 @@
 //
 // It reads the file through `git show <ref>:<path>`, so the copy is exactly
 // what that commit holds, not whatever the working tree happens to contain.
-// The contract and SOURCE.json are replaced together or not at all, and a
-// target that is a symbolic link is refused rather than followed.
+// The target is always internal/contract/testdata of the module it runs in;
+// a symbolic link on that path, or as one of the two files, is refused
+// rather than followed. The contract and SOURCE.json are replaced together or
+// not at all.
 package main
 
 import (
@@ -27,20 +29,29 @@ import (
 
 const (
 	corePath     = "spec/fixtures/mcp_contract.json"
+	targetDir    = "internal/contract/testdata"
 	contractFile = "mcp_contract.json"
 	sourceFile   = "SOURCE.json"
+	modulePath   = "github.com/gboyke/lalabase-cli"
 )
+
+// rename is os.Rename; tests replace it to make one rename fail.
+var rename = os.Rename
 
 func main() {
 	core := flag.String("core", "", "path to a checkout of lalabase/lalabase")
 	ref := flag.String("ref", "origin/main", "commit or ref to copy from")
-	out := flag.String("out", "internal/contract/testdata", "target directory")
 	flag.Parse()
 	if *core == "" {
 		fmt.Fprintln(os.Stderr, "update-contract: pass -core <path to a checkout of lalabase/lalabase>")
 		os.Exit(2)
 	}
-	summary, err := update(context.Background(), *core, *ref, *out)
+	root, err := findModuleRoot()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "update-contract: %v\n", err)
+		os.Exit(1)
+	}
+	summary, err := update(context.Background(), *core, *ref, root)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "update-contract: %v\n", err)
 		os.Exit(1)
@@ -48,9 +59,36 @@ func main() {
 	fmt.Println(summary)
 }
 
-// update copies the contract at ref from the core checkout into out and
-// writes SOURCE.json beside it.
-func update(ctx context.Context, core, ref, out string) (string, error) {
+// findModuleRoot walks up from the working directory to the go.mod of this
+// module.
+func findModuleRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+		if err == nil {
+			if !strings.HasPrefix(string(data), "module "+modulePath+"\n") {
+				return "", fmt.Errorf("%s/go.mod is not the module %s", dir, modulePath)
+			}
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", errors.New("run it inside the lalabase-cli repository")
+		}
+		dir = parent
+	}
+}
+
+// update copies the contract at ref from the core checkout into the target
+// directory under root and writes SOURCE.json beside it.
+func update(ctx context.Context, core, ref, root string) (string, error) {
+	out, err := targetPath(root)
+	if err != nil {
+		return "", err
+	}
 	if err := checkTargets(out); err != nil {
 		return "", err
 	}
@@ -134,16 +172,28 @@ func describe(raw []byte, commit string) (map[string]string, error) {
 	}, nil
 }
 
-// checkTargets refuses a target directory or a target file that is a link: a
-// write through it would land outside the repository.
+// targetPath returns root/internal/contract/testdata after checking every
+// part below root: each must be a plain directory, never a link, since a
+// write through a link would land outside the repository. Above root nothing
+// is checked; where the checkout itself lives is the developer's choice.
+func targetPath(root string) (string, error) {
+	path := root
+	for _, part := range strings.Split(targetDir, "/") {
+		path = filepath.Join(path, part)
+		info, err := os.Lstat(path)
+		if err != nil {
+			return "", err
+		}
+		if info.Mode()&fs.ModeSymlink != 0 || !info.IsDir() {
+			return "", fmt.Errorf("%s is no plain directory; refusing to write through it", path)
+		}
+	}
+	return path, nil
+}
+
+// checkTargets refuses a target file that is a link or anything but a
+// regular file.
 func checkTargets(out string) error {
-	info, err := os.Lstat(out)
-	if err != nil {
-		return err
-	}
-	if info.Mode()&fs.ModeSymlink != 0 || !info.IsDir() {
-		return fmt.Errorf("%s is no plain directory", out)
-	}
 	for _, name := range []string{contractFile, sourceFile} {
 		info, err := os.Lstat(filepath.Join(out, name))
 		if errors.Is(err, fs.ErrNotExist) {
@@ -175,22 +225,41 @@ func replacePair(out string, contract, source []byte) (err error) {
 	}
 	defer func() { _ = os.Remove(tmpSource) }()
 
+	// Only a missing file means "no old contract". Any other read error stops
+	// here, before anything is replaced: that contract could not be put back.
 	contractPath := filepath.Join(out, contractFile)
 	old, readErr := os.ReadFile(contractPath)
 	hadOld := readErr == nil
+	if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) {
+		return fmt.Errorf("reading the current contract: %w", readErr)
+	}
 
-	if err := os.Rename(tmpContract, contractPath); err != nil {
+	if err := rename(tmpContract, contractPath); err != nil {
 		return err
 	}
-	if err := os.Rename(tmpSource, filepath.Join(out, sourceFile)); err != nil {
-		if hadOld {
-			if restore, werr := writeTemp(out, old); werr == nil {
-				_ = os.Rename(restore, contractPath)
-			}
-		} else {
-			_ = os.Remove(contractPath)
+	if err := rename(tmpSource, filepath.Join(out, sourceFile)); err != nil {
+		if rerr := restoreContract(out, contractPath, old, hadOld); rerr != nil {
+			return fmt.Errorf("writing %s failed (%w), and the old contract could not be put back (%w): %s now holds the new contract without a matching %s",
+				sourceFile, err, rerr, contractPath, sourceFile)
 		}
-		return fmt.Errorf("writing %s failed, contract restored: %w", sourceFile, err)
+		return fmt.Errorf("writing %s failed, old contract restored: %w", sourceFile, err)
+	}
+	return nil
+}
+
+// restoreContract undoes the first rename: the old contract back in place, or
+// the new one removed when there was none.
+func restoreContract(out, contractPath string, old []byte, hadOld bool) error {
+	if !hadOld {
+		return os.Remove(contractPath)
+	}
+	tmp, err := writeTemp(out, old)
+	if err != nil {
+		return err
+	}
+	if err := rename(tmp, contractPath); err != nil {
+		_ = os.Remove(tmp)
+		return err
 	}
 	return nil
 }
