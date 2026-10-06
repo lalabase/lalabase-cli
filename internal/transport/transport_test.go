@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -103,6 +104,8 @@ func TestA429CarriesTheTimeTheWindowOpensAgain(t *testing.T) {
 		{"nothing said", nil, fixedNow.Add(5 * time.Second)},
 		{"garbage", map[string]string{"RateLimit-Reset": "soon"}, fixedNow.Add(5 * time.Second)},
 		{"absurd retry-after", map[string]string{"Retry-After": "99999999999"}, fixedNow.Add(5 * time.Minute)},
+		{"retry-after that overflows a duration", map[string]string{"Retry-After": "9223372037"}, fixedNow.Add(5 * time.Minute)},
+		{"reset seconds that overflow a duration", map[string]string{"RateLimit-Reset": "9223372037"}, fixedNow.Add(5 * time.Minute)},
 		{"reset far in the future", map[string]string{"RateLimit-Reset": strconv.FormatInt(fixedNow.Add(30*24*time.Hour).Unix(), 10)}, fixedNow.Add(5 * time.Minute)},
 	}
 	for _, tc := range cases {
@@ -216,8 +219,8 @@ func TestAConnectionThatBreaksIsTemporary(t *testing.T) {
 		conn, _, _ := hj.Hijack()
 		_ = conn.Close()
 	})
-	if got := clientAt(t, srv.URL).Get(context.Background(), "/api/v1/me"); got.Class != Temporary || got.Err == nil {
-		t.Fatalf("got %v %v", got.Class, got.Err)
+	if got := clientAt(t, srv.URL).Get(context.Background(), "/api/v1/me"); got.Class != Temporary || got.Err == nil || !got.Sent {
+		t.Fatalf("got %v %v sent=%v", got.Class, got.Err, got.Sent)
 	}
 
 	// Nothing listens: connection refused.
@@ -398,8 +401,8 @@ func TestToolsListStopsAfterAPageLimit(t *testing.T) {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":` + string(req.ID) + `,"result":{"tools":[],"nextCursor":"again"}}`))
 	})
-	if _, ans := clientAt(t, srv.URL).ListTools(context.Background()); ans.Class != Protocol {
-		t.Fatalf("got %v", ans.Class)
+	if _, ans := clientAt(t, srv.URL).ListTools(context.Background()); ans.Class != Protocol || !ans.Sent || ans.Status != 200 {
+		t.Fatalf("got %v sent=%v status=%d", ans.Class, ans.Sent, ans.Status)
 	}
 }
 
@@ -533,5 +536,126 @@ func TestAReasonOnlyNamesARefusal(t *testing.T) {
 	})
 	if got := clientAt(t, srv.URL).CallTool(context.Background(), Call{Tool: "get_ticket"}); got.Class != NoAccess || got.Reason != "" {
 		t.Fatalf("got %v %q", got.Class, got.Reason)
+	}
+}
+
+// HTTP/2 can return from a canceled request before the whole body is
+// written. Once the headers are out, the server may act on the request, so it
+// counts as sent: a write is then reloaded, not sent again.
+func TestAnHTTP2RequestCanceledMidBodyCountsAsSent(t *testing.T) {
+	for i := range 20 {
+		readFirst := make(chan struct{})
+		release := make(chan struct{})
+		srv := httptest.NewUnstartedServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			if r.ProtoMajor != 2 {
+				t.Errorf("protocol %s", r.Proto)
+			}
+			one := make([]byte, 1)
+			_, _ = r.Body.Read(one)
+			close(readFirst)
+			<-release
+		}))
+		srv.EnableHTTP2 = true
+		srv.StartTLS()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() { <-readFirst; cancel() }()
+		big := strings.Repeat("x", 8<<20)
+		got := clientAt(t, srv.URL, WithTransport(srv.Client().Transport)).CallTool(ctx, Call{Tool: "post_comment", Args: map[string]any{"body": big}})
+		close(release)
+		srv.Close()
+		if got.Class != Canceled || !got.Sent {
+			t.Fatalf("run %d: got %v sent=%v", i, got.Class, got.Sent)
+		}
+	}
+}
+
+// A server that only speaks an outdated TLS version will not change its mind
+// on a retry: a protocol error, not a temporary one.
+func TestAnIncompatibleTLSVersionIsAProtocolError(t *testing.T) {
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) }))
+	srv.TLS = &tls.Config{MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS11} //nolint:gosec // the outdated server under test
+	srv.StartTLS()
+	defer srv.Close()
+	got := clientAt(t, srv.URL, WithTransport(srv.Client().Transport)).Get(context.Background(), "/api/v1/me")
+	if got.Class != Protocol {
+		t.Fatalf("got %v %q (%v)", got.Class, got.Message, got.Err)
+	}
+}
+
+// A machine code means an error, whether or not isError is set; a code next
+// to a kind, or a kind the client does not know, is a refusal. None of them
+// may turn into "not found", which would drop the entry.
+func TestContradictoryMachineFieldsAreARefusal(t *testing.T) {
+	cases := map[string]string{
+		"code without isError":    `"_meta":{"lalabase/code":"quota"}`,
+		"code next to kind":       `"_meta":{"lalabase/kind":"empty","lalabase/code":"quota"}`,
+		"known code next to kind": `"_meta":{"lalabase/kind":"empty","lalabase/code":"not_found"}`,
+		"unknown kind":            `"_meta":{"lalabase/kind":"partial"}`,
+	}
+	for name, meta := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv := rpcServer(t, func(id json.RawMessage) string {
+				return `{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"content":[{"type":"text","text":"new refusal"}],` + meta + `}}`
+			})
+			got := clientAt(t, srv.URL).CallTool(context.Background(), Call{Tool: "get_ticket", OneRecord: true, Args: map[string]any{"ticket_id": "t-1"}})
+			if got.Class != Refused {
+				t.Fatalf("got %v", got.Class)
+			}
+		})
+	}
+	// A known code without isError keeps its meaning.
+	srv := rpcServer(t, func(id json.RawMessage) string {
+		return `{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"content":[{"type":"text","text":"x"}],"_meta":{"lalabase/code":"read_only"}}}`
+	})
+	if got := clientAt(t, srv.URL).CallTool(context.Background(), Call{Tool: "post_comment"}); got.Class != ReadOnly {
+		t.Fatalf("read_only without isError: got %v", got.Class)
+	}
+}
+
+// The older server answered "not found" with the address it had normalised:
+// "#187" and " 187 " became 187, an id lost its outer spaces.
+func TestALegacyNotFoundUsesTheServersNormalisedAddress(t *testing.T) {
+	answer := func(text string) *httptest.Server {
+		return rpcServer(t, func(id json.RawMessage) string {
+			b, _ := json.Marshal(text)
+			return `{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"content":[{"type":"text","text":` + string(b) + `}]}}`
+		})
+	}
+	cases := []struct {
+		args map[string]any
+		text string
+	}{
+		{map[string]any{"number": "#187"}, "No ticket found for number 187."},
+		{map[string]any{"number": " 187 "}, "No ticket found for number 187."},
+		{map[string]any{"number": "0187"}, "No ticket found for number 187."},
+		{map[string]any{"ticket_id": " t-1 "}, "No ticket found for t-1."},
+	}
+	for _, tc := range cases {
+		call := Call{Tool: "get_ticket", OneRecord: true, Args: tc.args}
+		if got := clientAt(t, answer(tc.text).URL).CallTool(context.Background(), call); got.Class != NotFound {
+			t.Errorf("%v: got %v", tc.args, got.Class)
+		}
+	}
+}
+
+// A catalogue of three valid pages is read whole; the page limit only stops
+// a server that never ends.
+func TestToolsListReadsThreePages(t *testing.T) {
+	srv := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     json.RawMessage `json:"id"`
+			Params struct {
+				Cursor string `json:"cursor"`
+			} `json:"params"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		next := map[string]string{"": "p2", "p2": "p3", "p3": ""}[req.Params.Cursor]
+		name := map[string]string{"": "a", "p2": "b", "p3": "c"}[req.Params.Cursor]
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":` + string(req.ID) + `,"result":{"tools":[{"name":"` + name + `"}],"nextCursor":"` + next + `"}}`))
+	})
+	tools, ans := clientAt(t, srv.URL).ListTools(context.Background())
+	if ans.Class != Object || len(tools) != 3 {
+		t.Fatalf("%v %d tools", ans.Class, len(tools))
 	}
 }

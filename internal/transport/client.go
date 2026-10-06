@@ -218,7 +218,12 @@ func (c *Client) send(ctx context.Context, method string, target *url.URL, body 
 	}
 
 	var sent atomic.Bool
+	// Sent from the moment the headers are written: with HTTP/2 a canceled
+	// request can end before WroteRequest, while the server already reads it.
+	// Counting too early is the safe side; a write is then reloaded, not
+	// sent again.
 	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		WroteHeaders: func() { sent.Store(true) },
 		WroteRequest: func(httptrace.WroteRequestInfo) { sent.Store(true) },
 	}))
 
@@ -252,7 +257,10 @@ func failure(ctx context.Context, err error, sent bool, msg string) Answer {
 		hostname  x509.HostnameError
 		invalid   x509.CertificateInvalidError
 		header    tls.RecordHeaderError
+		alert     tls.AlertError
+		netErr    net.Error
 	)
+	timeout := errors.As(err, &netErr) && netErr.Timeout()
 	switch {
 	case errors.Is(err, context.Canceled) && errors.Is(ctx.Err(), context.Canceled):
 		return Answer{Class: Canceled, Message: "canceled", Err: err, Sent: sent}
@@ -260,6 +268,10 @@ func failure(ctx context.Context, err error, sent bool, msg string) Answer {
 		return Answer{Class: Protocol, Message: "the server's certificate does not check out: " + err.Error(), Err: err, Sent: sent}
 	case errors.As(err, &header), strings.Contains(err.Error(), "server gave HTTP response to HTTPS client"):
 		return Answer{Class: Protocol, Message: "the server answers plain HTTP at an https address", Err: err, Sent: sent}
+	// A handshake the two sides cannot agree on (protocol version, cipher,
+	// an alert from the server) stays so on every retry.
+	case errors.As(err, &alert), !timeout && strings.Contains(err.Error(), "tls: "):
+		return Answer{Class: Protocol, Message: "no TLS connection could be agreed with the server: " + err.Error(), Err: err, Sent: sent}
 	case strings.Contains(err.Error(), "invalid header field"):
 		return Answer{Class: Protocol, Message: "the request could not be built: " + err.Error(), Err: err, Sent: sent}
 	}
@@ -326,18 +338,24 @@ func apiError(body []byte) string {
 func (c *Client) retryAt(header http.Header) time.Time {
 	now := c.now()
 	at := now.Add(defaultRetryPause)
+	// Seconds are bounded before they become a duration: a value near the
+	// int64 limit would overflow into the past and mean "no pause".
+	seconds := func(s int64) time.Time {
+		limit := int64(maxRetryPause / time.Second)
+		return now.Add(time.Duration(min(max(s, 0), limit)) * time.Second)
+	}
 	if v := header.Get("Retry-After"); v != "" {
 		if s, err := strconv.ParseInt(v, 10, 64); err == nil {
-			at = now.Add(time.Duration(s) * time.Second)
+			at = seconds(s)
 		} else if d, err := http.ParseTime(v); err == nil {
 			at = d
 		}
 	} else if v := header.Get("RateLimit-Reset"); v != "" {
 		if s, err := strconv.ParseInt(v, 10, 64); err == nil {
-			if s > 1e9 {
+			if s > 1e9 && s < 1e11 {
 				at = time.Unix(s, 0).UTC()
 			} else {
-				at = now.Add(time.Duration(s) * time.Second)
+				at = seconds(s)
 			}
 		}
 	}

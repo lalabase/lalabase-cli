@@ -30,21 +30,31 @@ func TestTheDecisionsForAnAnswerToARead(t *testing.T) {
 	}
 }
 
-// A write that is refused as "not found" or "no access" says something about
-// the write, not about the record: a person who may read a ticket but not
-// comment on it keeps seeing the ticket.
-func TestAnAnswerToAWriteNeverRemovesTheRecord(t *testing.T) {
-	for class := transport.Object; class <= transport.Canceled; class++ {
-		got := Decide(class, Write)
-		if got == Remove {
-			t.Errorf("%v of a write removes the record", class)
-		}
-		if class != transport.NotFound && class != transport.NoAccess && got != Decide(class, Read) {
-			t.Errorf("%v: a write decides %v, a read %v", class, got, Decide(class, Read))
-		}
+// The answer to a write decides nothing about the record it touched: a
+// refused write ("not found", "no access") keeps the record, a successful one
+// keeps it too and asks for a reload, because a write answers with a part (a
+// read state) or another object (the new comment), never the whole record.
+func TestTheDecisionsForAnAnswerToAWrite(t *testing.T) {
+	want := map[transport.Class]Decision{
+		transport.Object:          Reload,
+		transport.NotFound:        KeepShowMessage,
+		transport.NoAccess:        KeepShowMessage,
+		transport.Temporary:       KeepStale,
+		transport.ReadOnly:        KeepShowMessage,
+		transport.Refused:         KeepShowMessage,
+		transport.InvalidInput:    KeepShowMessage,
+		transport.Unauthenticated: KeepShowMessage,
+		transport.Protocol:        KeepShowMessage,
+		transport.Canceled:        Drop,
 	}
-	if got := Decide(transport.NotFound, Write); got != KeepShowMessage {
-		t.Errorf("not found on a write: %v", got)
+	for class := transport.Object; class <= transport.Canceled; class++ {
+		d, ok := want[class]
+		if !ok {
+			t.Fatalf("class %v has no decision in this table", class)
+		}
+		if got := Decide(class, Write); got != d {
+			t.Errorf("%v: got %v, want %v", class, got, d)
+		}
 	}
 }
 
@@ -61,7 +71,7 @@ func TestAnUnknownClassKeepsTheEntry(t *testing.T) {
 
 // A failed refresh never counts as a successful one: only Replace refreshes.
 func TestOnlyReplaceRefreshes(t *testing.T) {
-	for _, d := range []Decision{Replace, Remove, KeepStale, KeepShowMessage, Drop} {
+	for _, d := range []Decision{Replace, Remove, KeepStale, KeepShowMessage, Drop, Reload} {
 		if got := d.Refreshed(); got != (d == Replace) {
 			t.Errorf("%v.Refreshed() = %v", d, got)
 		}

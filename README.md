@@ -46,9 +46,11 @@ go-licenses check ./cmd/... --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3
   certificate that does not check out is a protocol error (never retried), and
   redirects are not followed. `Sent` says whether a request left the client, so
   a write with an unclear outcome is reloaded, not sent again.
-* **Writes** need the idempotency key of the person's action; an adapter
-  refuses a write without one before sending. An answer to a write never makes
-  the cache drop the record.
+* **Writes** need the idempotency key of the person's action (8 to 128
+  letters, digits or `._:-`, a form the server keeps unchanged); an adapter
+  refuses a write without one before sending. An answer to a write never
+  replaces or drops the record: a refused write keeps it, a successful one
+  keeps it and asks for a reload.
 * **Adapters** (`internal/api`): one per tool and REST reader, each with a
   `Spec` naming the arguments it sends and the fields it needs back (present
   and not null; a field that may be null is marked `?`). The same

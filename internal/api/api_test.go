@@ -153,11 +153,11 @@ func TestNotificationsReadsTheRecordedInbox(t *testing.T) {
 
 func TestMarkNotificationReadSendsItsKey(t *testing.T) {
 	api, sent := replayCase(t, "mark_notification_read", "ok")
-	state, ans := api.MarkNotificationRead(context.Background(), unread, "key-1")
+	state, ans := api.MarkNotificationRead(context.Background(), unread, "key-0001")
 	if !ans.OK() || state.State != "read" || state.ReadAt == nil {
 		t.Fatalf("%v %+v", ans.Class, state)
 	}
-	if (*sent)["idempotency_key"] != "key-1" || (*sent)["notification_id"] != unread {
+	if (*sent)["idempotency_key"] != "key-0001" || (*sent)["notification_id"] != unread {
 		t.Fatalf("sent %v", *sent)
 	}
 	assertSentDeclared(t, MarkReadSpec, *sent)
@@ -165,7 +165,7 @@ func TestMarkNotificationReadSendsItsKey(t *testing.T) {
 
 func TestMarkingAMissingNotificationIsNotFound(t *testing.T) {
 	api, _ := replayCase(t, "mark_notification_read", "empty")
-	if _, ans := api.MarkNotificationRead(context.Background(), missing, "key-2"); ans.Class != transport.NotFound {
+	if _, ans := api.MarkNotificationRead(context.Background(), missing, "key-0002"); ans.Class != transport.NotFound {
 		t.Fatalf("got %v", ans.Class)
 	}
 }
@@ -209,11 +209,11 @@ func TestAMissingTicketIsNotFound(t *testing.T) {
 
 func TestPostCommentSendsBodyAndKey(t *testing.T) {
 	api, sent := replayCase(t, "post_comment", "ok")
-	comment, ans := api.PostComment(context.Background(), website, login, "Behoben in 2.4.1.", "key-3")
+	comment, ans := api.PostComment(context.Background(), website, login, "Behoben in 2.4.1.", "key-0003")
 	if !ans.OK() || comment.BodyText != "Behoben in 2.4.1." || comment.TicketID != login {
 		t.Fatalf("%v %+v", ans.Class, comment)
 	}
-	if (*sent)["idempotency_key"] != "key-3" || (*sent)["body"] != "Behoben in 2.4.1." {
+	if (*sent)["idempotency_key"] != "key-0003" || (*sent)["body"] != "Behoben in 2.4.1." {
 		t.Fatalf("sent %v", *sent)
 	}
 	assertSentDeclared(t, CommentSpec, *sent)
@@ -310,10 +310,10 @@ func TestAnOlderServersNotFoundIsRecognisedByEveryOneRecordAdapter(t *testing.T)
 	if _, ans := replayOlder(t, "get_ticket", "empty").Ticket(ctx, website, missing); ans.Class != transport.NotFound {
 		t.Errorf("Ticket: got %v %q", ans.Class, ans.Message)
 	}
-	if _, ans := replayOlder(t, "post_comment", "empty").PostComment(ctx, website, missing, "Hallo", "key-4"); ans.Class != transport.NotFound {
+	if _, ans := replayOlder(t, "post_comment", "empty").PostComment(ctx, website, missing, "Hallo", "key-0004"); ans.Class != transport.NotFound {
 		t.Errorf("PostComment: got %v %q", ans.Class, ans.Message)
 	}
-	if _, ans := replayOlder(t, "mark_notification_read", "empty").MarkNotificationRead(ctx, missing, "key-5"); ans.Class != transport.NotFound {
+	if _, ans := replayOlder(t, "mark_notification_read", "empty").MarkNotificationRead(ctx, missing, "key-0005"); ans.Class != transport.NotFound {
 		t.Errorf("MarkNotificationRead: got %v %q", ans.Class, ans.Message)
 	}
 	// The recorded "by number" case found the ticket; an older server's
@@ -378,5 +378,98 @@ func TestAnInboxOfNullsIsAProtocolError(t *testing.T) {
 	_, ans := New(c).Notifications(context.Background(), NotificationQuery{})
 	if ans.Class != transport.Protocol || !strings.Contains(ans.Message, "data[0].id") || !strings.Contains(ans.Message, "data[0].ticket.id") {
 		t.Fatalf("got %v %q", ans.Class, ans.Message)
+	}
+}
+
+// A key the server would treat as none (blank after strip) or that no
+// client of ours makes is refused before sending: the server would write
+// without remembering the key, and a retry would write again.
+func TestAnIdempotencyKeyOfTheWrongFormIsRefusedBeforeSending(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits++ }))
+	defer srv.Close()
+	c, _ := transport.New(srv.URL, "lalab_pat_test")
+	api := New(c)
+	for _, key := range []string{" \t\n", "short", "key with spaces", " key-0001", strings.Repeat("k", 129), "key-0001\x00"} {
+		if _, ans := api.PostComment(context.Background(), website, login, "Hallo", key); ans.Class != transport.InvalidInput {
+			t.Errorf("PostComment with %q: got %v", key, ans.Class)
+		}
+		if _, ans := api.MarkNotificationRead(context.Background(), unread, key); ans.Class != transport.InvalidInput {
+			t.Errorf("MarkNotificationRead with %q: got %v", key, ans.Class)
+		}
+	}
+	if hits != 0 {
+		t.Fatalf("%d requests sent", hits)
+	}
+}
+
+// replayText serves one tool answer with the given text and the machine field.
+func replayText(t *testing.T, text string) *API {
+	t.Helper()
+	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{
+		"content": []map[string]any{{"type": "text", "text": text}}, "_meta": map[string]any{"lalabase/kind": "ok"},
+	}})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	t.Cleanup(srv.Close)
+	c, _ := transport.New(srv.URL, "lalab_pat_test")
+	return New(c)
+}
+
+// recordedText is the text of a recorded tool answer, changed by edit.
+func recordedText(t *testing.T, tool string, edit func(map[string]any)) string {
+	t.Helper()
+	file, err := contract.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Result struct {
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"result"`
+	}
+	_ = json.Unmarshal(file.Contract.MCP.Calls[tool]["ok"].Response.Body, &body)
+	var payload map[string]any
+	_ = json.Unmarshal([]byte(body.Result.Content[0].Text), &payload)
+	edit(payload)
+	out, _ := json.Marshal(payload)
+	return string(out)
+}
+
+// A deleted user is filtered out of the server's lookups: its id stays, its
+// name becomes null (Tickets::Serializer, Notifications::Serializer). One
+// such row must not make the whole ticket or inbox page unreadable.
+func TestADeletedUserDoesNotBreakTheTicketOrTheInbox(t *testing.T) {
+	text := recordedText(t, "get_ticket", func(p map[string]any) {
+		p["creator"].(map[string]any)["name"] = nil
+		p["posts"].([]any)[0].(map[string]any)["author"].(map[string]any)["name"] = nil
+	})
+	ticket, ans := replayText(t, text).Ticket(context.Background(), website, login)
+	if !ans.OK() || ticket.Creator == nil || ticket.Creator.Name != "" || ticket.Posts[0].Author == nil || ticket.Posts[0].Author.ID == "" {
+		t.Fatalf("ticket: %v %q %+v", ans.Class, ans.Message, ticket)
+	}
+
+	text = recordedText(t, "list_notifications", func(p map[string]any) {
+		row := p["data"].([]any)[0].(map[string]any)
+		row["actor"].(map[string]any)["name"] = nil
+		row["project"] = map[string]any{"id": "p-gone", "name": nil}
+	})
+	if _, ans := replayText(t, text).Notifications(context.Background(), NotificationQuery{}); !ans.OK() {
+		t.Fatalf("inbox: %v %q", ans.Class, ans.Message)
+	}
+
+	text = recordedText(t, "post_comment", func(p map[string]any) { p["author"].(map[string]any)["name"] = nil })
+	if _, ans := replayText(t, text).PostComment(context.Background(), website, login, "x", "key-0009"); !ans.OK() {
+		t.Fatalf("comment: %v %q", ans.Class, ans.Message)
+	}
+}
+
+// Turning an answer into a protocol error keeps what the transport knew: a
+// write that reached the server stays "sent", so it is reloaded, not resent.
+func TestAProtocolErrorKeepsSentAndStatus(t *testing.T) {
+	_, ans := replayText(t, `{}`).PostComment(context.Background(), website, login, "x", "key-0010")
+	if ans.Class != transport.Protocol || !ans.Sent || ans.Status != 200 {
+		t.Fatalf("got %v sent=%v status=%d", ans.Class, ans.Sent, ans.Status)
 	}
 }

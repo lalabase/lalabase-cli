@@ -23,6 +23,11 @@ const (
 	// Drop: the client gave up on the request itself; the answer says nothing
 	// about the record and is thrown away, the entry stays as it was.
 	Drop
+	// Reload: a write succeeded. Its answer is a part of the record (a read
+	// state) or another object (the new comment), so it replaces nothing;
+	// the entry stays and is loaded again (plan, Cache: after a successful
+	// write the affected detail, list and counters reload).
+	Reload
 )
 
 // Op says whether the answer came from reading the entry or from a write on
@@ -46,6 +51,8 @@ func (d Decision) String() string {
 		return "keep_show_message"
 	case Drop:
 		return "drop"
+	case Reload:
+		return "reload"
 	}
 	return "unknown"
 }
@@ -64,6 +71,9 @@ func (d Decision) Refreshed() bool { return d == Replace }
 func Decide(class transport.Class, op Op) Decision {
 	switch class {
 	case transport.Object:
+		if op == Write {
+			return Reload
+		}
 		return Replace
 	case transport.NotFound, transport.NoAccess:
 		if op == Write {

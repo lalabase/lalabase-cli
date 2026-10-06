@@ -200,3 +200,28 @@ func TestFeaturesNameTheArgumentsTheirAdaptersSend(t *testing.T) {
 		}
 	}
 }
+
+// Every argument a feature sends, removed from its tool's schema one at a
+// time, switches that feature off: idempotency_key as much as ticket_id.
+func TestEveryArgumentOfEveryFeatureIsChecked(t *testing.T) {
+	for _, f := range All {
+		if f.Since != "" {
+			continue
+		}
+		for _, arg := range append(slices.Clone(f.Spec.Args), f.ExtraArgs...) {
+			tools, _ := contractTools(t)
+			for i, tool := range tools {
+				if tool.Name != f.Spec.Tool {
+					continue
+				}
+				var schema map[string]any
+				_ = json.Unmarshal(tool.InputSchema, &schema)
+				delete(schema["properties"].(map[string]any), arg)
+				tools[i].InputSchema, _ = json.Marshal(schema)
+			}
+			if Detect(contractServer, tools).Enabled[f.Name] {
+				t.Errorf("%s stayed on without %s", f.Name, arg)
+			}
+		}
+	}
+}

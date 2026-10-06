@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -87,17 +88,34 @@ func legacyNotFound(call Call) []string {
 	switch call.Tool {
 	case "get_ticket", "post_comment":
 		if id, ok := call.Args["ticket_id"].(string); ok {
-			texts = append(texts, "No ticket found for "+id+".")
+			texts = append(texts, "No ticket found for "+strings.TrimSpace(id)+".")
 		}
-		if n, ok := call.Args["number"].(string); ok {
-			texts = append(texts, "No ticket found for number "+n+".")
+		if n, ok := ticketNumber(call.Args["number"]); ok {
+			texts = append(texts, "No ticket found for number "+strconv.Itoa(n)+".")
 		}
 	case "mark_notification_read":
 		if id, ok := call.Args["notification_id"].(string); ok {
-			texts = append(texts, "No notification found for "+id+".")
+			texts = append(texts, "No notification found for "+strings.TrimSpace(id)+".")
 		}
 	}
 	return texts
+}
+
+// ticketNumber reads a ticket number the way the server did (TicketNumber
+// in the core): spaces and one leading "#" go, the rest is a positive
+// integer. The server's sentence names that integer, so "#187" and "0187"
+// both come back as 187.
+func ticketNumber(v any) (int, bool) {
+	text, ok := v.(string)
+	if !ok {
+		return 0, false
+	}
+	text = strings.TrimPrefix(strings.TrimSpace(text), "#")
+	n, err := strconv.Atoi(text)
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
 }
 
 // Initialize asks the server who it is.
@@ -146,7 +164,7 @@ func (c *Client) ListTools(ctx context.Context) ([]Tool, Answer) {
 		}
 		cursor = page.NextCursor
 	}
-	return nil, Answer{Class: Protocol, Message: "tools/list did not end"}
+	return nil, Answer{Class: Protocol, Status: http.StatusOK, Message: "tools/list did not end", Sent: true}
 }
 
 // CallTool runs one tool and classifies its answer.
@@ -187,7 +205,12 @@ func (c *Client) CallTool(ctx context.Context, call Call) Answer {
 	out := Answer{Status: ans.Status, Code: code, Sent: true}
 
 	switch {
-	case body.IsError && code != "":
+	// A machine code means an error, with or without isError. A code next to
+	// a kind, or a kind the client does not know, contradicts itself and is a
+	// refusal: nothing a server says unclearly may drop a cached entry.
+	case code != "" && kind != "", kind != "" && kind != "ok" && kind != "empty":
+		out.Class, out.Message = Refused, text
+	case code != "":
 		out.Class, out.Message = Refused, text
 		if class, ok := codeClasses[code]; ok {
 			out.Class = class

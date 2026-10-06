@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -53,15 +54,25 @@ func decode(spec Spec, ans transport.Answer, out any) transport.Answer {
 	return ans
 }
 
+// protocol turns an answer into a protocol error and keeps what the
+// transport knew about it: a write that reached the server stays sent.
 func protocol(ans transport.Answer, msg string, err error) transport.Answer {
-	return transport.Answer{Class: transport.Protocol, Status: ans.Status, Message: msg, Err: err}
+	return transport.Answer{Class: transport.Protocol, Status: ans.Status, Message: msg, Err: err, Sent: ans.Sent}
 }
 
-// missingKey refuses a write without an idempotency key before anything is
-// sent: every write carries the key of the person's action, so a retry after
-// a lost answer cannot write twice (plan, Writes).
-func missingKey(spec Spec) transport.Answer {
-	return transport.Answer{Class: transport.InvalidInput, Message: spec.Name + ": a write needs an idempotency key"}
+// keyForm is what an idempotency key of this client looks like. The server
+// strips a key and treats a blank one as none, writing without remembering
+// it; a key of this form survives that unchanged.
+var keyForm = regexp.MustCompile(`^[A-Za-z0-9._:-]{8,128}$`)
+
+// checkKey refuses a write without a usable idempotency key before anything
+// is sent: every write carries the key of the person's action, so a retry
+// after a lost answer cannot write twice (plan, Writes).
+func checkKey(spec Spec, key string) (transport.Answer, bool) {
+	if keyForm.MatchString(key) {
+		return transport.Answer{}, true
+	}
+	return transport.Answer{Class: transport.InvalidInput, Message: spec.Name + ": a write needs an idempotency key of 8 to 128 letters, digits or ._:-"}, false
 }
 
 // setString and setInt add an argument only when it carries a value, so an
@@ -87,7 +98,7 @@ var NotificationsSpec = Spec{
 		"data[].id", "data[].read", "data[].message", "data[].event_type", "data[].last_event_at",
 		"data[].organisation.id", "data[].organisation.name",
 		"data[].ticket?.id", "data[].ticket?.number", "data[].ticket?.title", "data[].ticket?.project_id",
-		"data[].project?.id", "data[].project?.name", "data[].actor?.name",
+		"data[].project?.id", "data[].project?.name?", "data[].actor?.id", "data[].actor?.name?",
 		"meta.page", "meta.per_page", "meta.total", "meta.unread_total",
 		"meta.by_organisation[].id", "meta.by_organisation[].name", "meta.by_organisation[].unread",
 	},
@@ -100,6 +111,9 @@ type NotificationQuery struct {
 	ProjectID string
 }
 
+// Ref is a person, project or organisation by id and name. The name is
+// empty for a deleted user or project: the server keeps the id and answers
+// the name with null.
 type Ref struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -167,8 +181,8 @@ type NotificationState struct {
 // MarkNotificationRead is a write: key is the idempotency key of the
 // person's action, the same on every retry of that action.
 func (a *API) MarkNotificationRead(ctx context.Context, id, key string) (NotificationState, transport.Answer) {
-	if key == "" {
-		return NotificationState{}, missingKey(MarkReadSpec)
+	if ans, ok := checkKey(MarkReadSpec, key); !ok {
+		return NotificationState{}, ans
 	}
 	args := map[string]any{"notification_id": id, "idempotency_key": key}
 	var state NotificationState
@@ -230,9 +244,9 @@ var TicketSpec = Spec{
 	OneRecord: true,
 	Required: []string{
 		"id", "number", "title", "status?", "description_text?", "updated_at",
-		"assignees[].id", "assignees[].name", "creator?.name",
+		"assignees[].id", "assignees[].name", "creator?.id", "creator?.name?",
 		"project.id", "project.name",
-		"posts[].id", "posts[].author?.name", "posts[].body_text", "posts[].is_private", "posts[].created_at",
+		"posts[].id", "posts[].author?.id", "posts[].author?.name?", "posts[].body_text", "posts[].is_private", "posts[].created_at",
 		"posts_total", "posts_truncated", "attachments[].filename", "attachments_total",
 	},
 }
@@ -282,7 +296,7 @@ var CommentSpec = Spec{
 	Name: "post_comment", Tool: "post_comment",
 	Args:      []string{"project_id", "ticket_id", "body", "idempotency_key"},
 	OneRecord: true,
-	Required:  []string{"id", "ticket_id", "author?.name", "body_text", "is_private", "created_at"},
+	Required:  []string{"id", "ticket_id", "author?.id", "author?.name?", "body_text", "is_private", "created_at"},
 }
 
 type Comment struct {
@@ -296,8 +310,8 @@ type Comment struct {
 
 // PostComment is a write: key is the idempotency key of the person's action.
 func (a *API) PostComment(ctx context.Context, projectID, ticketID, body, key string) (Comment, transport.Answer) {
-	if key == "" {
-		return Comment{}, missingKey(CommentSpec)
+	if ans, ok := checkKey(CommentSpec, key); !ok {
+		return Comment{}, ans
 	}
 	args := map[string]any{"project_id": projectID, "ticket_id": ticketID, "body": body, "idempotency_key": key}
 	var c Comment
