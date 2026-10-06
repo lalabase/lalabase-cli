@@ -9,7 +9,8 @@
 // The output is valid UTF-8 for a UTF-8 terminal. An 8-bit terminal that reads
 // C1 controls from single bytes is out of reach of any cleaning: ordinary
 // letters carry such bytes once encoded ("\u00db" is c3 9b, and 9b is CSI
-// there). The output layer refuses a locale that is not UTF-8 instead.
+// there). The interface (C1) and the agent commands (C4) will refuse a
+// locale that is not UTF-8 instead; C0 does not check the locale yet.
 //
 // A port of clean() in bin/lala of the core repository; the test cases there
 // are the golden file of this package.

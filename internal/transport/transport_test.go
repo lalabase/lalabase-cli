@@ -105,6 +105,8 @@ func TestA429CarriesTheTimeTheWindowOpensAgain(t *testing.T) {
 		{"reset as seconds", map[string]string{"RateLimit-Reset": "17"}, fixedNow.Add(17 * time.Second)},
 		{"retry-after seconds", map[string]string{"Retry-After": "9"}, fixedNow.Add(9 * time.Second)},
 		{"retry-after first", map[string]string{"Retry-After": "3", "RateLimit-Reset": "50"}, fixedNow.Add(3 * time.Second)},
+		{"retry-after as a date", map[string]string{"Retry-After": fixedNow.Add(90 * time.Second).Format(http.TimeFormat)}, fixedNow.Add(90 * time.Second)},
+		{"retry-after as a past date", map[string]string{"Retry-After": fixedNow.Add(-90 * time.Second).Format(http.TimeFormat)}, fixedNow},
 		{"nothing said", nil, fixedNow.Add(5 * time.Second)},
 		{"garbage", map[string]string{"RateLimit-Reset": "soon"}, fixedNow.Add(5 * time.Second)},
 		{"absurd retry-after", map[string]string{"Retry-After": "99999999999"}, fixedNow.Add(5 * time.Minute)},
@@ -781,6 +783,93 @@ func TestA429WithABrokenBodyKeepsItsWindow(t *testing.T) {
 	} {
 		if got.Class != Temporary || got.Status != 429 || !got.RetryAt.Equal(fixedNow.Add(60*time.Second)) {
 			t.Fatalf("got %v status %d retry %v", got.Class, got.Status, got.RetryAt)
+		}
+	}
+}
+
+// Every 429 whose headers arrived carries its window, whatever became of the
+// rest of the answer: a body too large, or the caller leaving while it was
+// read. The class stays what happened (no retry after a cancel), the window
+// is still the server's.
+func TestEvery429KeepsItsWindow(t *testing.T) {
+	want := fixedNow.Add(60 * time.Second)
+	t.Run("body too large", func(t *testing.T) {
+		srv := serve(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Retry-After", "60")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(strings.Repeat("x", 2048)))
+		})
+		for _, got := range []Answer{
+			clientAt(t, srv.URL, WithMaxBody(1024)).Get(context.Background(), "/api/v1/me"),
+			clientAt(t, srv.URL, WithMaxBody(1024)).CallTool(context.Background(), Call{Tool: "get_ticket"}),
+		} {
+			if got.Class != Protocol || got.Status != 429 || !got.RetryAt.Equal(want) {
+				t.Fatalf("got %v status %d retry %v", got.Class, got.Status, got.RetryAt)
+			}
+			// The window adds to the answer, it does not change it.
+			if !got.Sent || got.Err == nil {
+				t.Fatalf("sent %v, err %v", got.Sent, got.Err)
+			}
+		}
+	})
+	t.Run("canceled while the body is read", func(t *testing.T) {
+		headersSent := make(chan struct{})
+		release := make(chan struct{})
+		srv := serve(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Retry-After", "60")
+			w.Header().Set("Content-Length", "100")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte("Zu vi"))
+			w.(http.Flusher).Flush()
+			headersSent <- struct{}{}
+			<-release
+		})
+		t.Cleanup(func() { close(release) })
+		for _, call := range []func(ctx context.Context, c *Client) Answer{
+			func(ctx context.Context, c *Client) Answer { return c.Get(ctx, "/api/v1/me") },
+			func(ctx context.Context, c *Client) Answer { return c.CallTool(ctx, Call{Tool: "get_ticket"}) },
+		} {
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan Answer, 1)
+			go func() { done <- call(ctx, clientAt(t, srv.URL)) }()
+			select {
+			case <-headersSent:
+			case <-time.After(2 * time.Second):
+				t.Fatal("the server never sent its headers")
+			}
+			time.Sleep(20 * time.Millisecond) // the client is now in the body
+			cancel()
+			select {
+			case got := <-done:
+				if got.Class != Canceled || got.Status != 429 || !got.RetryAt.Equal(want) {
+					t.Fatalf("got %v status %d retry %v", got.Class, got.Status, got.RetryAt)
+				}
+				if !got.Sent || got.Err == nil {
+					t.Fatalf("sent %v, err %v", got.Sent, got.Err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("the canceled request did not return")
+			}
+		}
+	})
+}
+
+// Only a 429 carries a window: another status with a Retry-After header, its
+// body broken off or too large, has none (the queue would pause on it).
+func TestOnlyA429CarriesAWindow(t *testing.T) {
+	for _, status := range []int{http.StatusServiceUnavailable, http.StatusOK} {
+		srv := serve(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Retry-After", "60")
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(strings.Repeat("x", 2048)))
+		})
+		for _, got := range []Answer{
+			clientAt(t, srv.URL, WithMaxBody(1024)).Get(context.Background(), "/api/v1/me"),
+			clientAt(t, srv.URL, WithMaxBody(1024)).CallTool(context.Background(), Call{Tool: "get_ticket"}),
+		} {
+			if !got.RetryAt.IsZero() {
+				t.Fatalf("status %d: retry %v", status, got.RetryAt)
+			}
 		}
 	}
 }

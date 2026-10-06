@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -15,9 +17,11 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/creack/pty"
 
 	"github.com/gboyke/lalabase-cli/internal/contract"
 	"github.com/gboyke/lalabase-cli/internal/profile"
+	"github.com/gboyke/lalabase-cli/internal/transport"
 )
 
 const (
@@ -144,8 +148,8 @@ func TestImportSavesTheChosenEntryAsTheDefaultProfile(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("config mode %v %v", info.Mode(), err)
 	}
-	if !strings.Contains(h.out.String(), "Anna Albers") || strings.Contains(h.out.String()+h.err.String(), writeToken) {
-		t.Fatalf("output shows the whole token or not the owner:\n%s", h.out.String())
+	if !strings.Contains(h.err.String(), "Anna Albers") || strings.Contains(h.out.String()+h.err.String(), writeToken) {
+		t.Fatalf("output shows the whole token or not the owner:\n%s", h.err.String())
 	}
 }
 
@@ -175,8 +179,8 @@ func TestImportListsWhatCannotBeImportedButOffersOnlyTheRest(t *testing.T) {
 	if code := h.run("2\n", true, "auth", "import"); code != 1 {
 		t.Fatalf("an entry that cannot be imported was offered: exit %d", code)
 	}
-	if !strings.Contains(h.out.String(), "lalabase-local") || !strings.Contains(h.out.String(), "local program") {
-		t.Fatalf("the stdio entry is not listed with its reason:\n%s", h.out.String())
+	if !strings.Contains(h.err.String(), "lalabase-local") || !strings.Contains(h.err.String(), "local program") {
+		t.Fatalf("the stdio entry is not listed with its reason:\n%s", h.err.String())
 	}
 }
 
@@ -202,8 +206,8 @@ func TestImportAsAgentWarnsAboutAWritingToken(t *testing.T) {
 	if code := h.run("1\nn\n", true, "auth", "import", "--agent"); code != 1 {
 		t.Fatalf("declined: exit %d", code)
 	}
-	if !strings.Contains(h.out.String(), "read-only") {
-		t.Fatalf("no warning:\n%s", h.out.String())
+	if !strings.Contains(h.err.String(), "read-only") {
+		t.Fatalf("no warning:\n%s", h.err.String())
 	}
 	if _, err := os.Stat(h.configPath()); err == nil {
 		t.Fatal("saved although declined")
@@ -239,8 +243,8 @@ func TestReplacingAProfileDropsItsWriteReleaseAndSaysSo(t *testing.T) {
 	if code := h.run("1\ny\n", true, "auth", "import", "--agent"); code != 0 {
 		t.Fatalf("replaced: exit %d %s", code, h.err.String())
 	}
-	if !strings.Contains(h.out.String(), "allow_write") {
-		t.Fatalf("the dropped release was not mentioned:\n%s", h.out.String())
+	if !strings.Contains(h.err.String(), "allow_write") {
+		t.Fatalf("the dropped release was not mentioned:\n%s", h.err.String())
 	}
 	if entry := h.config(t).Profiles["agent"]; entry.Token != readToken || entry.AllowWrite {
 		t.Fatalf("saved %+v", entry)
@@ -337,8 +341,8 @@ func TestTheAgentProfileIsTreatedAsTheAgentsWithoutTheFlag(t *testing.T) {
 	srv := fakeServer(t, "Anna Albers")
 	h := newHarness(t)
 	h.claudeConfig(t, httpEntry("lalabase", srv.URL, writeToken))
-	if code := h.run("1\nn\n", true, "auth", "import", "--profile", "agent"); code != 1 || !strings.Contains(h.out.String(), "read-only") {
-		t.Fatalf("import --profile agent: exit %d\n%s", code, h.out.String())
+	if code := h.run("1\nn\n", true, "auth", "import", "--profile", "agent"); code != 1 || !strings.Contains(h.err.String(), "read-only") {
+		t.Fatalf("import --profile agent: exit %d\n%s", code, h.err.String())
 	}
 
 	saveProfiles(t, h, srv, writeToken)
@@ -353,8 +357,8 @@ func TestImportAsAgentWarnsWhenTheServerDoesNotSay(t *testing.T) {
 	srv := fakeServer(t, "Anna Albers")
 	h := newHarness(t)
 	h.claudeConfig(t, httpEntry("lalabase", srv.URL, oldToken))
-	if code := h.run("1\nn\n", true, "auth", "import", "--agent"); code != 1 || !strings.Contains(h.out.String(), "read-only") {
-		t.Fatalf("exit %d\n%s", code, h.out.String())
+	if code := h.run("1\nn\n", true, "auth", "import", "--agent"); code != 1 || !strings.Contains(h.err.String(), "read-only") {
+		t.Fatalf("exit %d\n%s", code, h.err.String())
 	}
 }
 
@@ -368,8 +372,10 @@ func TestImportMarksEntriesFromTheCurrentDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.run("", false, "auth", "import")
-	if !strings.Contains(h.out.String(), "not approved in Claude Code") {
-		t.Fatalf("no mark:\n%s", h.out.String())
+	for _, want := range []string{"check the address", "approval entry in ~/.claude.json: none.", "Effective Claude Code settings were not checked."} {
+		if !strings.Contains(h.err.String(), want) {
+			t.Fatalf("lacks %q:\n%s", want, h.err.String())
+		}
 	}
 }
 
@@ -570,5 +576,185 @@ func TestStatusHoldsTheNextProfileBackAfterA429(t *testing.T) {
 	defer mu.Unlock()
 	if len(times) < 3 || times[2].Sub(times[1]) < 900*time.Millisecond {
 		t.Fatalf("the next profile did not wait for the window: %v", times)
+	}
+}
+
+// The list and the questions go to stderr, the result to stdout: with stdout
+// in a file, the person still sees what is asked.
+func TestImportAsksOnStderr(t *testing.T) {
+	srv := fakeServer(t, "Anna Albers")
+	h := newHarness(t)
+	h.claudeConfig(t, httpEntry("lalabase", srv.URL, writeToken))
+	if code := h.run("1\n", true, "auth", "import"); code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, h.out.String(), h.err.String())
+	}
+	for _, want := range []string{"Lalabase servers", srv.URL, "Which one?", "Anna Albers"} {
+		if !strings.Contains(h.err.String(), want) || strings.Contains(h.out.String(), want) {
+			t.Errorf("%q not on stderr alone:\nstdout:\n%s\nstderr:\n%s", want, h.out.String(), h.err.String())
+		}
+	}
+	if !strings.Contains(h.out.String(), "Saved profile") {
+		t.Fatalf("the result is not on stdout:\n%s", h.out.String())
+	}
+}
+
+// An answer is at most 64 bytes (a number or a yes, with room to spare);
+// one more and it is none.
+func TestAnAnswerHasALimitToTheByte(t *testing.T) {
+	ask := func(line string) string {
+		return asker{in: bufio.NewReader(strings.NewReader(line + "\n")), out: io.Discard}.ask("? ")
+	}
+	exact := strings.Repeat("7", 64)
+	if got := ask(exact); got != exact {
+		t.Fatalf("an answer of 64 bytes: got %q", got)
+	}
+	if got := ask(exact + "7"); got != "" {
+		t.Fatalf("an answer of 65 bytes: got %q", got)
+	}
+}
+
+func TestYesTakesAnyCase(t *testing.T) {
+	for answer, want := range map[string]bool{"y": true, "Y": true, "yes": true, "YES": true, "Yes": true, "n": false, "": false, "yess": false, "ja": false} {
+		a := asker{in: bufio.NewReader(strings.NewReader(answer + "\n")), out: io.Discard}
+		if got := a.yes("?"); got != want {
+			t.Errorf("%q: got %v", answer, got)
+		}
+	}
+}
+
+// A real terminal is one: a pseudo-terminal, as a terminal window opens.
+func TestATerminalIsATerminal(t *testing.T) {
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		// On the CI a skip would pass without testing anything.
+		if os.Getenv("CI") != "" {
+			t.Fatalf("no pseudo-terminal: %v", err)
+		}
+		t.Skipf("no pseudo-terminal here: %v", err)
+	}
+	defer func() { _ = ptmx.Close(); _ = tty.Close() }()
+	if !isTerminal(tty) {
+		t.Fatal("a pseudo-terminal not taken for a terminal")
+	}
+}
+
+// auth's requests are reads: a 503 after sending is retried.
+func TestStatusRetriesAReadAfterA503(t *testing.T) {
+	srv := fakeServer(t, "Anna Albers")
+	var calls atomic.Int32
+	flaky := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		srv.Config.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(flaky.Close)
+	h := newHarness(t)
+	saveProfiles(t, h, flaky, readToken)
+	if code := h.run("", false, "auth", "status"); code != 0 {
+		t.Fatalf("exit %d: %s %s", code, h.out.String(), h.err.String())
+	}
+}
+
+// When the command's own limit ends inside a rate-limit pause, it says so,
+// and does not promise to go on.
+func TestAPauseLongerThanTheCommandIsExplained(t *testing.T) {
+	old := requestTimeout
+	requestTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { requestTimeout = old })
+	var calls atomic.Int32
+	limited := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Retry-After", "60")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(limited.Close)
+	h := newHarness(t)
+	h.claudeConfig(t, httpEntry("lalabase", limited.URL, writeToken))
+	if code := h.run("1\n", true, "auth", "import"); code != 1 {
+		t.Fatalf("exit %d\n%s", code, h.err.String())
+	}
+	errText := h.err.String()
+	for _, want := range []string{"Rate limit: waiting until", "gave up waiting", "after this command's 300ms limit", "Nothing saved"} {
+		if !strings.Contains(errText, want) {
+			t.Errorf("lacks %q:\n%s", want, errText)
+		}
+	}
+	for _, wrong := range []string{"continuing", "before it was sent"} {
+		if strings.Contains(errText, wrong) {
+			t.Errorf("says %q:\n%s", wrong, errText)
+		}
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("%d requests, want 1", calls.Load())
+	}
+}
+
+// A pause into the next day names the day; every pause says how long.
+func TestWhenAPauseEnds(t *testing.T) {
+	now := time.Date(2026, 10, 6, 23, 59, 50, 0, time.Local)
+	if got := when(now.Add(60*time.Second), now); got != "2026-10-07 00:00:50 (in 60 s)" {
+		t.Fatalf("over midnight: %q", got)
+	}
+	if got := when(now.Add(-time.Hour).Add(30*time.Second), now.Add(-time.Hour)); got != "23:00:20 (in 30 s)" {
+		t.Fatalf("same day: %q", got)
+	}
+	// Rounded, not cut: 1.6 s is 2 s.
+	if got := when(now.Add(-time.Hour).Add(1600*time.Millisecond), now.Add(-time.Hour)); !strings.HasSuffix(got, "(in 2 s)") {
+		t.Fatalf("rounding: %q", got)
+	}
+}
+
+// Why a request brought no answer: the server refused it, the command's
+// limit ended (in a pause or not), or it was canceled.
+func TestWhyARequestFailed(t *testing.T) {
+	r := &requests{now: time.Now, until: time.Now().Add(-time.Minute)}
+	expired, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	canceled, stop := context.WithCancel(context.Background())
+	stop()
+	cases := []struct {
+		ctx  context.Context
+		ans  transport.Answer
+		want string
+	}{
+		{context.Background(), transport.Answer{Class: transport.Unauthenticated, Message: "no"}, "the server did not accept the token (unauthenticated): no"},
+		{expired, transport.Answer{Class: transport.Canceled, Message: "canceled before it was sent"}, "the token could not be checked: no answer within 30s"},
+		// A pause that is over is no reason any more.
+		{expired, transport.Answer{Class: transport.Temporary, Message: "no answer from the server"}, "the token could not be checked: no answer within 30s"},
+		{canceled, transport.Answer{Class: transport.Canceled, Message: "canceled before it was sent"}, "the token could not be checked: canceled"},
+		{context.Background(), transport.Answer{Class: transport.Temporary, Message: "boom"}, "the token could not be checked (temporary): boom"},
+	}
+	for _, tc := range cases {
+		if got := r.tokenFailed(tc.ctx, tc.ans); got != tc.want {
+			t.Errorf("%v: got %q, want %q", tc.ans.Class, got, tc.want)
+		}
+	}
+}
+
+// Foreign text from the server is cleaned on every way to the terminal, the
+// MCP failures of auth status included.
+func TestStatusCleansTheServersErrorText(t *testing.T) {
+	srv := fakeServer(t, "Anna Albers")
+	hostile := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/mcp" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("down \x1b]8;;https://evil.example\x07click\x1b]8;;\x07"))
+			return
+		}
+		srv.Config.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(hostile.Close)
+	h := newHarness(t)
+	saveProfiles(t, h, hostile, readToken)
+	if code := h.run("", false, "--profile", "default", "auth", "status"); code != 1 {
+		t.Fatalf("exit %d: %s %s", code, h.out.String(), h.err.String())
+	}
+	if !strings.Contains(h.out.String(), "MCP:") {
+		t.Fatalf("the MCP failure is not shown:\n%s", h.out.String())
+	}
+	if strings.ContainsRune(h.out.String()+h.err.String(), 0x1b) || strings.ContainsRune(h.out.String()+h.err.String(), 0x07) {
+		t.Fatalf("a control character reached the terminal:\n%q", h.out.String())
 	}
 }

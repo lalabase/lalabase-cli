@@ -10,15 +10,35 @@
 package safefile
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 )
 
 // ReadRegular reads path if it is a regular file of at most max bytes. A
 // missing file reports fs.ErrNotExist. info describes the opened file.
 func ReadRegular(path string, maxBytes int64) ([]byte, fs.FileInfo, error) {
-	f, err := openNoBlock(path)
+	return read(path, maxBytes, true)
+}
+
+// ReadRegularNoLink is ReadRegular for a file that must not be a link: a link
+// in its place is refused, not followed (ErrLink).
+func ReadRegularNoLink(path string, maxBytes int64) ([]byte, fs.FileInfo, error) {
+	return read(path, maxBytes, false)
+}
+
+// ErrLink: the path is a link where none may be.
+var ErrLink = errors.New("is a link")
+
+func read(path string, maxBytes int64, follow bool) ([]byte, fs.FileInfo, error) {
+	f, err := openNoBlock(path, follow)
+	if err != nil && !follow {
+		if info, lerr := os.Lstat(path); lerr == nil && info.Mode()&fs.ModeSymlink != 0 {
+			return nil, nil, fmt.Errorf("%s %w", path, ErrLink)
+		}
+	}
 	if err != nil {
 		return nil, nil, err
 	}

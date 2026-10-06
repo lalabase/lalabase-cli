@@ -248,18 +248,24 @@ func (c *Client) send(ctx context.Context, method string, target *url.URL, body 
 	if err != nil {
 		ans := failure(ctx, err, true, true, "the answer broke off")
 		ans.Status = resp.StatusCode
-		// The headers arrived: a 429 keeps its window, or the queue would
-		// retry at once into it.
-		if resp.StatusCode == http.StatusTooManyRequests && ans.Class == Temporary {
-			ans.RetryAt = c.retryAt(resp.Header)
-		}
-		return resp.StatusCode, resp.Header, nil, ans, false
+		return resp.StatusCode, resp.Header, nil, c.window(ans, resp.Header), false
 	}
 	if int64(len(data)) > c.maxBody {
 		err := fmt.Errorf("answer larger than %d bytes", c.maxBody)
-		return resp.StatusCode, resp.Header, nil, Answer{Class: Protocol, Status: resp.StatusCode, Message: err.Error(), Err: err, Sent: true}, false
+		ans := Answer{Class: Protocol, Status: resp.StatusCode, Message: err.Error(), Err: err, Sent: true}
+		return resp.StatusCode, resp.Header, nil, c.window(ans, resp.Header), false
 	}
 	return resp.StatusCode, resp.Header, data, Answer{}, true
+}
+
+// window gives an answer whose headers said 429 the server's window, whatever
+// became of the rest of it (a body that broke off or was too large, a caller
+// that left): the window is closed all the same, and the queue pauses on it.
+func (c *Client) window(ans Answer, header http.Header) Answer {
+	if ans.Status == http.StatusTooManyRequests {
+		ans.RetryAt = c.retryAt(header)
+	}
+	return ans
 }
 
 // failure classifies a request that brought no usable answer. The client's

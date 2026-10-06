@@ -40,9 +40,12 @@ type Entry struct {
 	// Problem says why the entry cannot be imported; empty when it can.
 	Problem string
 	// Note is shown with the entry: for the project scope, that it comes from
-	// the current directory's .mcp.json (a cloned repository's, perhaps) and
-	// whether Claude Code was allowed to use it.
+	// the current directory's .mcp.json (a cloned repository's, perhaps).
 	Note string
+	// Approval is shown with a project entry: what ~/.claude.json records for
+	// it, and only that. Claude Code's effective settings (its settings files,
+	// managed settings) may decide otherwise; they are not read.
+	Approval string
 }
 
 // Limits on what is read. Claude Code's own file keeps a history and can
@@ -112,14 +115,15 @@ func Find(home, cwd string) (entries []Entry, errs []error) {
 		approval = claude.Projects[real]
 	}
 	for _, e := range collect("project", projectFile, project.MCPServers) {
-		state := "not approved in Claude Code"
+		state := "none"
 		switch {
 		case slices.Contains(approval.DisabledMcpjsonServers, e.Name):
-			state = "rejected in Claude Code"
+			state = "rejected"
 		case approval.EnableAllProjectMcpServers || slices.Contains(approval.EnabledMcpjsonServers, e.Name):
-			state = "approved in Claude Code"
+			state = "approved"
 		}
-		e.Note = "from .mcp.json in this directory, " + state
+		e.Note = "from .mcp.json in this directory (a cloned repository's, perhaps): check the address"
+		e.Approval = "approval entry in ~/.claude.json: " + state + ". Effective Claude Code settings were not checked."
 		entries = append(entries, e)
 	}
 	return entries, errs

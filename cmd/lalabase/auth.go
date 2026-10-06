@@ -9,6 +9,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/api"
@@ -20,8 +21,9 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/transport"
 )
 
-// requestTimeout bounds the few requests auth makes.
-const requestTimeout = 30 * time.Second
+// requestTimeout bounds the requests for one profile, waiting in a
+// rate-limit pause included (tests shorten it).
+var requestTimeout = 30 * time.Second
 
 // errChangedMeanwhile: the profile is no longer what the person was asked
 // about.
@@ -73,26 +75,73 @@ func (a asker) yes(question string) bool {
 	return answer == "y" || answer == "yes"
 }
 
-// newQueue: auth's requests go through the queue like every other request,
-// so a 429 holds back what follows instead of running into the window.
-func newQueue(env Env) *queue.Queue {
-	return queue.New(queue.WithOnPause(func(until time.Time) {
-		fmt.Fprintf(env.Stderr, "The server asks to wait; continuing at %s.\n", until.Local().Format("15:04:05"))
+// requests runs auth's requests through one queue like every other request,
+// so a 429 holds back what follows instead of running into the window. It
+// keeps the last pause it was told of, to explain a limit that ran out in it.
+type requests struct {
+	q     *queue.Queue
+	now   func() time.Time
+	mu    sync.Mutex
+	until time.Time
+}
+
+func newRequests(env Env) *requests {
+	r := &requests{now: time.Now}
+	r.q = queue.New(queue.WithOnPause(func(until time.Time) {
+		r.mu.Lock()
+		r.until = until
+		r.mu.Unlock()
+		fmt.Fprintf(env.Stderr, "Rate limit: waiting until %s.\n", when(until, r.now()))
 	}))
+	return r
 }
 
-// through runs one of the person's reads through the queue.
-func through(ctx context.Context, q *queue.Queue, run func(context.Context) transport.Answer) transport.Answer {
-	return q.Do(ctx, queue.Job{Priority: queue.User, Kind: queue.Read, Run: run})
+// do runs one of the person's reads.
+func (r *requests) do(ctx context.Context, run func(context.Context) transport.Answer) transport.Answer {
+	return r.q.Do(ctx, queue.Job{Priority: queue.User, Kind: queue.Read, Run: run})
 }
 
-// refusal says why a check of the token brought no answer: a rejection by the
-// server is something else than a request that did not get through.
-func refusal(ans transport.Answer) string {
+// failed says why a request brought no answer. The command's own end comes
+// first: a limit that ran out (in a rate-limit pause, or waiting for an
+// answer) or a cancel is no statement of the server's.
+func (r *requests) failed(ctx context.Context, ans transport.Answer) string {
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		r.mu.Lock()
+		until := r.until
+		r.mu.Unlock()
+		if now := r.now(); until.After(now) {
+			return fmt.Sprintf("gave up waiting: the server's rate limit ends at %s, after this command's %s limit. Try again then", when(until, now), requestTimeout)
+		}
+		return fmt.Sprintf("no answer within %s", requestTimeout)
+	case errors.Is(ctx.Err(), context.Canceled):
+		return "canceled"
+	}
+	return fmt.Sprintf("%s: %s", ans.Class, show(ans.Message))
+}
+
+// tokenFailed says why a check of the token brought no answer: a rejection
+// by the server is something else than a request that did not get through.
+func (r *requests) tokenFailed(ctx context.Context, ans transport.Answer) string {
 	if ans.Class == transport.Unauthenticated {
 		return fmt.Sprintf("the server did not accept the token (%s): %s", ans.Class, show(ans.Message))
 	}
+	if ctx.Err() != nil {
+		return "the token could not be checked: " + r.failed(ctx, ans)
+	}
 	return fmt.Sprintf("the token could not be checked (%s): %s", ans.Class, show(ans.Message))
+}
+
+// when names the end of a pause: the time, the date too when it is another
+// day, and how long until then.
+func when(until, now time.Time) string {
+	u, n := until.Local(), now.Local()
+	layout := "15:04:05"
+	if u.YearDay() != n.YearDay() || u.Year() != n.Year() {
+		layout = "2006-01-02 15:04:05"
+	}
+	left := max(until.Sub(now).Round(time.Second), 0)
+	return fmt.Sprintf("%s (in %d s)", u.Format(layout), int(left.Seconds()))
 }
 
 func newAPI(baseURL, token string) (*api.API, *transport.Client, error) {
@@ -133,6 +182,10 @@ func authImport(args []string, globalProfile string, env Env) int {
 	}
 	// The profile "agent" is the agent's, whichever flag named it.
 	forAgent := *agent || target == profile.AgentName
+	// What the person reads to answer goes to stderr: with stdout in a file
+	// the list and the questions are still on the screen. The result goes to
+	// stdout.
+	ui := env.Stderr
 
 	entries, errs := claudecfg.Find(env.Home, env.Cwd)
 	for _, err := range errs {
@@ -155,18 +208,21 @@ func authImport(args []string, globalProfile string, env Env) int {
 	}
 
 	if len(usable) > 0 {
-		fmt.Fprintln(env.Stdout, "Lalabase servers in Claude Code's configuration:")
+		fmt.Fprintln(ui, "Lalabase servers in Claude Code's configuration:")
 		for i, e := range usable {
-			fmt.Fprintf(env.Stdout, "  %d) %-7s %s  %s  %s  token %s...\n", i+1, e.Scope, show(e.Where), show(e.Name), show(e.BaseURL), show(claudecfg.TokenPrefix(e.Token)))
+			fmt.Fprintf(ui, "  %d) %-7s %s  %s  %s  token %s...\n", i+1, e.Scope, show(e.Where), show(e.Name), show(e.BaseURL), show(claudecfg.TokenPrefix(e.Token)))
 			if e.Note != "" {
-				fmt.Fprintf(env.Stdout, "     %s\n", show(e.Note))
+				fmt.Fprintf(ui, "     %s\n", show(e.Note))
+			}
+			if e.Approval != "" {
+				fmt.Fprintf(ui, "     %s\n", show(e.Approval))
 			}
 		}
 	}
 	if len(unusable) > 0 {
-		fmt.Fprintln(env.Stdout, "Cannot be imported:")
+		fmt.Fprintln(ui, "Cannot be imported:")
 		for _, e := range unusable {
-			fmt.Fprintf(env.Stdout, "     %-7s %s  %s  (%s)\n", e.Scope, show(e.Where), show(e.Name), show(e.Problem))
+			fmt.Fprintf(ui, "     %-7s %s  %s  (%s)\n", e.Scope, show(e.Where), show(e.Name), show(e.Problem))
 		}
 	}
 	if len(usable) == 0 {
@@ -178,7 +234,7 @@ func authImport(args []string, globalProfile string, env Env) int {
 		return 2
 	}
 
-	in := asker{in: bufio.NewReader(env.Stdin), out: env.Stdout}
+	in := asker{in: bufio.NewReader(env.Stdin), out: ui}
 	n, err := strconv.Atoi(in.ask(fmt.Sprintf("Which one? [1-%d] ", len(usable))))
 	if err != nil || n < 1 || n > len(usable) {
 		fmt.Fprintln(env.Stderr, "No such entry; nothing saved.")
@@ -194,18 +250,19 @@ func authImport(args []string, globalProfile string, env Env) int {
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 	var me api.Me
-	ans := through(ctx, newQueue(env), func(ctx context.Context) (a transport.Answer) {
+	req := newRequests(env)
+	ans := req.do(ctx, func(ctx context.Context) (a transport.Answer) {
 		me, a = client.Me(ctx)
 		return a
 	})
 	if !ans.OK() {
-		fmt.Fprintf(env.Stderr, "%s\nNothing saved.\n", refusal(ans))
+		fmt.Fprintf(env.Stderr, "%s.\nNothing saved.\n", req.tokenFailed(ctx, ans))
 		return 1
 	}
-	fmt.Fprintf(env.Stdout, "Token of %s (%s), may write: %s\n", show(me.User.DisplayName), show(me.User.Email), mayWrite(me))
+	fmt.Fprintf(ui, "Token of %s (%s), may write: %s\n", show(me.User.DisplayName), show(me.User.Email), mayWrite(me))
 
 	if forAgent && (me.Token.ReadOnly == nil || !*me.Token.ReadOnly) {
-		fmt.Fprintln(env.Stdout, "Agent commands run only with a read-only token: with this one they will refuse to start.\n"+
+		fmt.Fprintln(ui, "Agent commands run only with a read-only token: with this one they will refuse to start.\n"+
 			"Create a token without write access for Claude Code and import that one.")
 		if !in.yes(fmt.Sprintf("Save it as profile %q anyway?", target)) {
 			fmt.Fprintln(env.Stderr, "Nothing saved.")
@@ -221,9 +278,9 @@ func authImport(args []string, globalProfile string, env Env) int {
 	}
 	old, exists := file.Profiles[target]
 	if exists {
-		fmt.Fprintf(env.Stdout, "Profile %q exists: %s, token %s...\n", target, show(old.URL), show(claudecfg.TokenPrefix(old.Token)))
+		fmt.Fprintf(ui, "Profile %q exists: %s, token %s...\n", target, show(old.URL), show(claudecfg.TokenPrefix(old.Token)))
 		if old.AllowWrite {
-			fmt.Fprintln(env.Stdout, "It allows agent commands to write (allow_write = true). The new token will not:\n"+
+			fmt.Fprintln(ui, "It allows agent commands to write (allow_write = true). The new token will not:\n"+
 				"set allow_write again by hand if you want that for this token.")
 		}
 		if !in.yes("Replace it?") {
@@ -285,7 +342,7 @@ func authStatus(args []string, globalProfile string, env Env) int {
 		checks = []check{{*name, mode}}
 	}
 
-	q := newQueue(env)
+	req := newRequests(env)
 	code := 0
 	for i, c := range checks {
 		if i > 0 {
@@ -299,7 +356,7 @@ func authStatus(args []string, globalProfile string, env Env) int {
 			continue
 		}
 		fmt.Fprintf(env.Stdout, "  %s, token %s... (%s)\n", show(p.URL), show(claudecfg.TokenPrefix(p.Token)), show(p.Source))
-		if !statusOf(q, p, c.mode, env.Stdout) {
+		if !statusOf(req, p, c.mode, env.Stdout) {
 			code = 1
 		}
 	}
@@ -307,7 +364,7 @@ func authStatus(args []string, globalProfile string, env Env) int {
 }
 
 // statusOf asks the server about one profile; false when it cannot be used.
-func statusOf(q *queue.Queue, p profile.Profile, mode profile.Mode, out io.Writer) bool {
+func statusOf(req *requests, p profile.Profile, mode profile.Mode, out io.Writer) bool {
 	client, raw, err := newAPI(p.URL, p.Token)
 	if err != nil {
 		fmt.Fprintf(out, "  %s\n", show(err.Error()))
@@ -317,12 +374,12 @@ func statusOf(q *queue.Queue, p profile.Profile, mode profile.Mode, out io.Write
 	defer cancel()
 
 	var me api.Me
-	ans := through(ctx, q, func(ctx context.Context) (a transport.Answer) {
+	ans := req.do(ctx, func(ctx context.Context) (a transport.Answer) {
 		me, a = client.Me(ctx)
 		return a
 	})
 	if !ans.OK() {
-		fmt.Fprintf(out, "  %s\n", refusal(ans))
+		fmt.Fprintf(out, "  %s\n", req.tokenFailed(ctx, ans))
 		return false
 	}
 	fmt.Fprintf(out, "  token of %s (%s), may write: %s\n", show(me.User.DisplayName), show(me.User.Email), mayWrite(me))
@@ -337,21 +394,21 @@ func statusOf(q *queue.Queue, p profile.Profile, mode profile.Mode, out io.Write
 	}
 
 	var info transport.ServerInfo
-	ans = through(ctx, q, func(ctx context.Context) (a transport.Answer) {
+	ans = req.do(ctx, func(ctx context.Context) (a transport.Answer) {
 		info, a = raw.Initialize(ctx)
 		return a
 	})
 	if !ans.OK() {
-		fmt.Fprintf(out, "  MCP: %s: %s\n", ans.Class, show(ans.Message))
+		fmt.Fprintf(out, "  MCP: %s\n", req.failed(ctx, ans))
 		return false
 	}
 	var tools []transport.Tool
-	ans = through(ctx, q, func(ctx context.Context) (a transport.Answer) {
+	ans = req.do(ctx, func(ctx context.Context) (a transport.Answer) {
 		tools, a = raw.ListTools(ctx)
 		return a
 	})
 	if !ans.OK() {
-		fmt.Fprintf(out, "  MCP tools: %s: %s\n", ans.Class, show(ans.Message))
+		fmt.Fprintf(out, "  MCP tools: %s\n", req.failed(ctx, ans))
 		return false
 	}
 	report := features.Detect(info, tools)

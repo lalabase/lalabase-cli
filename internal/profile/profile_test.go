@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/gboyke/lalabase-cli/internal/api"
 )
 
@@ -356,5 +358,68 @@ func TestAConfigTooLargeToReadBackIsNotWritten(t *testing.T) {
 	}
 	if _, err := Load(path); err != nil {
 		t.Fatalf("the old config no longer loads: %v", err)
+	}
+}
+
+// sized returns a config whose encoding is exactly n bytes.
+func sized(t *testing.T, n int) File {
+	t.Helper()
+	encode := func(f File) int {
+		var buf bytes.Buffer
+		if err := toml.NewEncoder(&buf).Encode(f); err != nil {
+			t.Fatal(err)
+		}
+		return buf.Len()
+	}
+	with := func(k int) File {
+		return File{Profiles: map[string]Entry{"default": {URL: "https://" + strings.Repeat("a", k) + ".example", Token: "lalab_pat_size0000"}}}
+	}
+	k := n - encode(with(0))
+	f := with(k)
+	if got := encode(f); got != n {
+		t.Fatalf("encoded %d bytes, want %d", got, n)
+	}
+	return f
+}
+
+// What Save writes, Load reads back, up to the byte: a config of exactly the
+// limit is saved and loaded, one byte more is not saved.
+func TestTheSizeLimitIsTheSameForSaveAndLoad(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lalabase", "config.toml")
+	if err := Save(path, sized(t, maxConfigSize)); err != nil {
+		t.Fatalf("a config of exactly the limit: %v", err)
+	}
+	if _, err := Load(path); err != nil {
+		t.Fatalf("a config of exactly the limit does not load: %v", err)
+	}
+	before, _ := os.ReadFile(path)
+	if err := Save(path, sized(t, maxConfigSize+1)); err == nil {
+		t.Fatal("one byte over the limit was saved")
+	}
+	if after, _ := os.ReadFile(path); !bytes.Equal(before, after) {
+		t.Fatal("the config changed")
+	}
+}
+
+// A rename that fails is a failed save: the old file stays, no temporary
+// file is left behind.
+func TestAFailedRenameIsAFailedSave(t *testing.T) {
+	path := writeConfig(t, twoProfiles, 0o600)
+	rename = func(string, string) error { return errors.New("disk gone") }
+	t.Cleanup(func() { rename = os.Rename })
+	if err := Save(path, File{Profiles: map[string]Entry{}}); err == nil || !strings.Contains(err.Error(), "disk gone") {
+		t.Fatalf("got %v", err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != twoProfiles {
+		t.Fatal("the config changed")
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != "config.toml" {
+			t.Fatalf("left behind: %s", e.Name())
+		}
 	}
 }
