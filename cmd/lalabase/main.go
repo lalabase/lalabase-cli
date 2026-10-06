@@ -1,11 +1,12 @@
 // Command lalabase is Lalabase from the terminal.
 //
 // This is slice C0 of the terminal client plan: the foundation (cleaning of
-// foreign text, the contract, transport, profiles). The full-screen interface
-// arrives in C1, the commands for agents in C4.
+// foreign text, the contract, transport, profiles, the request queue). The
+// full-screen interface arrives in C1, the commands for agents in C4.
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -16,27 +17,79 @@ import (
 var version = ""
 
 const usage = `Usage:
-  lalabase version     print the version
+  lalabase [--profile NAME] <command>
+
+Commands:
+  auth import [--agent] [--profile NAME]
+                       take a Lalabase server and token from Claude Code's
+                       MCP configuration into a profile
+  auth status          show the profiles, who their tokens belong to and what
+                       the server supports
+  version              print the version
 `
 
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+// Env is what a command reads and writes: the process's own in main, a test's
+// otherwise.
+type Env struct {
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+	Getenv func(string) string
+	Home   string
+	Cwd    string
+	// Interactive: stdin is a terminal, so a question can be asked.
+	Interactive bool
 }
 
+func main() {
+	home, _ := os.UserHomeDir()
+	cwd, _ := os.Getwd()
+	info, _ := os.Stdin.Stat()
+	env := Env{
+		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv,
+		Home: home, Cwd: cwd, Interactive: info != nil && info.Mode()&os.ModeCharDevice != 0,
+	}
+	os.Exit(runWith(os.Args[1:], env))
+}
+
+// run is the entry point for callers that only need output (version, help).
 func run(args []string, stdout, stderr io.Writer) int {
+	return runWith(args, Env{Stdout: stdout, Stderr: stderr, Getenv: func(string) string { return "" }})
+}
+
+func runWith(args []string, env Env) int {
+	// --version and --help look like flags but are commands.
+	if len(args) > 0 {
+		switch args[0] {
+		case "--version", "-v":
+			args = append([]string{"version"}, args[1:]...)
+		case "--help", "-h":
+			args = append([]string{"help"}, args[1:]...)
+		}
+	}
+	global := flag.NewFlagSet("lalabase", flag.ContinueOnError)
+	global.SetOutput(io.Discard)
+	profileName := global.String("profile", "", "profile to use")
+	if err := global.Parse(args); err != nil {
+		fmt.Fprintf(env.Stderr, "lalabase: %v\n\n%s", err, usage)
+		return 2
+	}
+	args = global.Args()
 	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
+		fmt.Fprint(env.Stderr, usage)
 		return 2
 	}
 	switch args[0] {
-	case "version", "--version", "-v":
-		fmt.Fprintf(stdout, "lalabase %s\n", buildVersion())
+	case "version":
+		fmt.Fprintf(env.Stdout, "lalabase %s\n", buildVersion())
 		return 0
-	case "help", "--help", "-h":
-		fmt.Fprint(stdout, usage)
+	case "help":
+		fmt.Fprint(env.Stdout, usage)
 		return 0
+	case "auth":
+		return runAuth(args[1:], *profileName, env)
 	default:
-		fmt.Fprintf(stderr, "lalabase: unknown command %q\n\n%s", args[0], usage)
+		fmt.Fprintf(env.Stderr, "lalabase: unknown command %q\n\n%s", args[0], usage)
 		return 2
 	}
 }
