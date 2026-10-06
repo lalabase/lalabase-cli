@@ -101,6 +101,9 @@ var afterLoad func()
 // read cannot slip through. It is opened without blocking, so a FIFO in its
 // place is refused instead of hanging the open.
 func Load(path string) (File, error) {
+	if err := dirsOf(filepath.Dir(path)); err != nil {
+		return File{}, err
+	}
 	data, info, err := safefile.ReadRegular(path, maxConfigSize)
 	if errors.Is(err, fs.ErrNotExist) {
 		return File{Profiles: map[string]Entry{}}, ErrNoFile
@@ -134,6 +137,9 @@ func Save(path string, file File) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
+	if err := dirsOf(dir); err != nil {
+		return err
+	}
 	if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
 		return fmt.Errorf("%s is no regular file; refusing to write through it", path)
 	}
@@ -164,8 +170,15 @@ func Save(path string, file File) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(name, path)
+	return rename(name, path)
 }
+
+// rename replaces the config (tests replace it to fail).
+var rename = os.Rename
+
+// dirsOf checks the directories on the way to the config (tests replace it
+// to reach the checks of the file itself).
+var dirsOf = checkDirs
 
 // Update loads the config file, lets change modify it and saves it, all under
 // an exclusive lock on a lock file beside it: two updates at the same time
@@ -173,6 +186,11 @@ func Save(path string, file File) error {
 // other's profile. If change returns an error, nothing is written.
 func Update(path string, change func(*File) error) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	// The lock file lies in the same directory: whoever could change it
+	// could take the lock away.
+	if err := dirsOf(filepath.Dir(path)); err != nil {
 		return err
 	}
 	unlock, err := lock(path + ".lock")

@@ -439,22 +439,27 @@ func TestRetryRules(t *testing.T) {
 		{"write, temporary after sending", Write, temporary(0, true), 1},
 		{"write, temporary 5xx", Write, temporary(503, true), 1},
 		{"write, nothing sent", Write, temporary(0, false), 2},
-		// A window long open: the retry needs no clock (a 429 without one
-		// pauses, TestA429WithoutAWindowPausesTheDefault).
-		{"write, 429", Write, transport.Answer{Class: transport.Temporary, Status: 429, RetryAt: time.Unix(1, 0), Sent: true}, 2},
+		// Its retry waits the default pause (TestEvery429Pauses).
+		{"write, 429", Write, transport.Answer{Class: transport.Temporary, Status: 429, Sent: true}, 2},
 		{"write, invalid input before sending", Write, transport.Answer{Class: transport.InvalidInput, Sent: false}, 1},
 		{"write, unauthenticated", Write, transport.Answer{Class: transport.Unauthenticated, Sent: true}, 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls atomic.Int32
-			q := New(WithClock(newClock()), WithRetryDelay(0))
-			got := answer(t, do(q, context.Background(), Job{Priority: User, Kind: tc.kind, Run: func(context.Context) transport.Answer {
+			clock := newClock()
+			q := New(WithClock(clock), WithRetryDelay(0))
+			r := do(q, context.Background(), Job{Priority: User, Kind: tc.kind, Run: func(context.Context) transport.Answer {
 				if calls.Add(1) == 1 {
 					return tc.first
 				}
 				return ok()
-			}}))
+			}})
+			if tc.first.Status == 429 {
+				waitPaused(t, q, clock.Now().Add(defaultPause))
+				clock.Advance(defaultPause)
+			}
+			got := answer(t, r)
 			if calls.Load() != tc.calls {
 				t.Fatalf("%d calls, want %d", calls.Load(), tc.calls)
 			}
@@ -808,4 +813,68 @@ func TestASharedReadStaysAheadWhileAPersonStillWaits(t *testing.T) {
 	waitStarted(t, preview) // a person still waits for it
 	preview.release <- ok()
 	answer(t, stays)
+}
+
+// Every received 429 pauses, whatever its class: a body too large
+// (Protocol) or a caller that left (Canceled) still met a closed window. A
+// window that is not in the future (Retry-After: 0, a past date, a clock
+// ahead of the server's) pauses the default; a longer pause stays.
+func TestEvery429Pauses(t *testing.T) {
+	cases := []struct {
+		name string
+		ans  func(now time.Time) transport.Answer
+		want time.Duration
+	}{
+		{"too large", func(now time.Time) transport.Answer {
+			return transport.Answer{Class: transport.Protocol, Status: 429, RetryAt: now.Add(30 * time.Second), Sent: true}
+		}, 30 * time.Second},
+		{"canceled", func(now time.Time) transport.Answer {
+			return transport.Answer{Class: transport.Canceled, Status: 429, RetryAt: now.Add(30 * time.Second), Sent: true}
+		}, 30 * time.Second},
+		{"window now", func(now time.Time) transport.Answer {
+			return transport.Answer{Class: transport.Temporary, Status: 429, RetryAt: now, Sent: true}
+		}, defaultPause},
+		{"window past", func(now time.Time) transport.Answer {
+			return transport.Answer{Class: transport.Temporary, Status: 429, RetryAt: now.Add(-time.Hour), Sent: true}
+		}, defaultPause},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			clock := newClock()
+			q := New(WithClock(clock), WithRetryDelay(0))
+			first, next := newGate(), newGate()
+			r := do(q, context.Background(), Job{Priority: Background, Kind: Write, Run: first.run})
+			waitStarted(t, first)
+			first.release <- tc.ans(clock.Now())
+			waitPaused(t, q, clock.Now().Add(tc.want))
+			n := do(q, context.Background(), Job{Priority: User, Kind: Read, Run: next.run})
+			notStarted(t, next)
+			// The first job may be retried (a Temporary write after a 429);
+			// its retry finds its answer waiting.
+			first.release <- ok()
+			clock.Advance(tc.want)
+			waitStarted(t, next)
+			next.release <- ok()
+			answer(t, n)
+			answer(t, r)
+		})
+	}
+}
+
+// A 429 whose window is not in the future does not shorten a longer pause.
+func TestADefaultPauseDoesNotShortenALongerOne(t *testing.T) {
+	clock := newClock()
+	q := New(WithClock(clock), WithRetryDelay(0))
+	a, b := newGate(), newGate()
+	ra := do(q, context.Background(), Job{Priority: Background, Kind: Read, Key: "a", Run: a.run})
+	rb := do(q, context.Background(), Job{Priority: User, Kind: Read, Key: "b", Run: b.run})
+	waitStarted(t, a)
+	waitStarted(t, b)
+	long := clock.Now().Add(time.Minute)
+	a.release <- transport.Answer{Class: transport.Canceled, Status: 429, RetryAt: long, Sent: true}
+	waitPaused(t, q, long)
+	b.release <- transport.Answer{Class: transport.Canceled, Status: 429, RetryAt: clock.Now(), Sent: true}
+	answer(t, ra)
+	answer(t, rb)
+	waitPaused(t, q, long)
 }

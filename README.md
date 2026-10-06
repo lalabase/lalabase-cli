@@ -30,11 +30,18 @@ lalabase auth status            # who the tokens belong to and what the server s
   entry to take, and checks the token with the server before saving. It runs
   nothing it finds and expands no variables. An entry from the current
   directory's `.mcp.json` (a cloned repository's, perhaps) is marked, with
-  whether Claude Code approved or rejected it. It asks only on a terminal, and
-  an answer is one short line. Its requests go through the request queue like
-  all others. Saving loads, merges and replaces the file under a lock (a
-  regular file beside it, never a link), and only if the profile is still what
-  was asked about; a file that would outgrow the read limit is not written.
+  what `~/.claude.json` records about its approval; Claude Code's effective
+  settings are not read, and the mark says so. It asks only on a terminal, an
+  answer is one short line, and the list and the questions go to stderr (the
+  result to stdout). Its requests go through the request queue like all
+  others; a rate-limit pause is shown with its end, and a pause that outlasts
+  the command's limit (30 s per profile) ends the command with that reason.
+  Saving loads, merges and replaces the file under a lock (a regular file
+  beside it, never a link), and only if the profile is still what was asked
+  about; a file that would outgrow the read limit is not written.
+* The config is used only when every directory on its way, from `/` down and
+  through links, belongs to the user or root and cannot be written by others
+  (a sticky directory such as `/tmp` excepted), as ssh treats its files.
 * Files the client does not control (its config, Claude Code's files, a
   `.mcp.json`) are read through `internal/safefile`: regular files only,
   opened without blocking, up to a size limit; a larger file is an error,
@@ -63,8 +70,9 @@ go-licenses check ./cmd/... --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3
   cases are those of `bin/lala` in the core repository, byte for byte, plus a
   test over every code point. The output is valid UTF-8 for a **UTF-8
   terminal**; an 8-bit terminal that reads C1 controls from single bytes cannot
-  be protected by cleaning (ordinary letters carry such bytes once encoded), so
-  the output layer refuses a locale that is not UTF-8.
+  be protected by cleaning (ordinary letters carry such bytes once encoded).
+  The interface (C1) and the agent commands (C4) will therefore refuse a
+  locale that is not UTF-8; C0 does not check the locale yet.
 * **No invisible characters in the repository:** `internal/sourceguard` reads
   every tracked text file. Write such characters as escapes or numbers.
 * **The server contract** is a copy of `spec/fixtures/mcp_contract.json` of the
@@ -95,12 +103,15 @@ go-licenses check ./cmd/... --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3
 * **The request queue** (`internal/queue`): at most two requests at once,
   background work in at most one of the two places; the person's actions go
   first; identical reads in flight share one request; after a 429 nothing
-  starts until the window opens (5 seconds when the 429 names none). A job is
+  starts until the window opens. Every received 429 pauses, also when its body
+  broke off, was too large or the caller left; a window not in the future
+  pauses 5 seconds. A job is
   retried at most once: a read on a temporary failure, a write only after a
   429 or when nothing was sent.
 * **Dependencies** must be permissive (MIT, Apache-2.0, BSD, ISC); CI checks
   it. Today: `github.com/BurntSushi/toml` (MIT), `golang.org/x/term` and
-  `golang.org/x/sys` (BSD-3-Clause).
+  `golang.org/x/sys` (BSD-3-Clause); in tests only `github.com/creack/pty`
+  (MIT).
 
 ## Release
 

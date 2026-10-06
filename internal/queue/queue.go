@@ -80,8 +80,8 @@ func WithRetryDelay(d time.Duration) Option { return func(q *Queue) { q.retryDel
 const (
 	slots           = 2
 	backgroundSlots = 1
-	// defaultPause is the window of a 429 that names none: never zero, or
-	// the retry would run straight into it.
+	// defaultPause is the window of a 429 that names none in the future:
+	// never zero, or the retry would run straight into it.
 	defaultPause = 5 * time.Second
 )
 
@@ -262,10 +262,13 @@ func retryable(kind Kind, ans transport.Answer) bool {
 func (q *Queue) finish(t *ticket, ans transport.Answer) {
 	q.mu.Lock()
 	paused := false
-	if ans.Class == transport.Temporary && ans.Status == 429 {
+	// Every received 429 pauses, whatever its class (a body too large, a
+	// caller that left); a window not in the future (Retry-After: 0, a past
+	// date, a clock ahead of the server's) pauses the default.
+	if ans.Status == 429 {
 		until := ans.RetryAt
-		if until.IsZero() {
-			until = q.clock.Now().Add(defaultPause)
+		if now := q.clock.Now(); !until.After(now) {
+			until = now.Add(defaultPause)
 		}
 		if until.After(q.pausedUntil) {
 			q.pausedUntil = until

@@ -9,3 +9,6 @@ func checkOwner(fs.FileInfo) error { return nil }
 
 // lock has no file lock to take here; the release builds are Unix only.
 func lock(string) (func(), error) { return func() {}, nil }
+
+// checkDirs has no owners to check here.
+func checkDirs(string) error { return nil }

@@ -179,9 +179,12 @@ func TestProjectEntriesAreMarkedWithTheirApproval(t *testing.T) {
 		t.Fatalf("%+v", entries)
 	}
 	for _, e := range entries {
-		want := map[string]string{"approved": "approved in Claude Code", "stranger": "not approved in Claude Code"}[e.Name]
-		if !strings.Contains(e.Note, want) || !strings.Contains(e.Note, ".mcp.json") {
+		want := map[string]string{"approved": "approved", "stranger": "none"}[e.Name]
+		if !strings.Contains(e.Note, ".mcp.json") || !strings.Contains(e.Note, "check the address") {
 			t.Errorf("%s: note %q", e.Name, e.Note)
+		}
+		if e.Approval != "approval entry in ~/.claude.json: "+want+". Effective Claude Code settings were not checked." {
+			t.Errorf("%s: approval %q", e.Name, e.Approval)
 		}
 	}
 }
@@ -232,11 +235,11 @@ func TestTheApprovalOfProjectEntries(t *testing.T) {
 		want     map[string]string
 	}{
 		{"all approved", `"enableAllProjectMcpServers": true`, false,
-			map[string]string{"one": "approved in Claude Code", "two": "approved in Claude Code"}},
+			map[string]string{"one": "approved", "two": "approved"}},
 		{"a rejection wins", `"enableAllProjectMcpServers": true, "disabledMcpjsonServers": ["two"]`, false,
-			map[string]string{"one": "approved in Claude Code", "two": "rejected in Claude Code"}},
+			map[string]string{"one": "approved", "two": "rejected"}},
 		{"entered through a link", `"enabledMcpjsonServers": ["one"]`, true,
-			map[string]string{"one": "approved in Claude Code", "two": "not approved in Claude Code"}},
+			map[string]string{"one": "approved", "two": "none"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -259,8 +262,8 @@ func TestTheApprovalOfProjectEntries(t *testing.T) {
 				t.Fatalf("%+v", entries)
 			}
 			for _, e := range entries {
-				if !strings.HasSuffix(e.Note, ", "+tc.want[e.Name]) {
-					t.Errorf("%s: note %q, want %q", e.Name, e.Note, tc.want[e.Name])
+				if !strings.HasPrefix(e.Approval, "approval entry in ~/.claude.json: "+tc.want[e.Name]+".") {
+					t.Errorf("%s: approval %q, want %q", e.Name, e.Approval, tc.want[e.Name])
 				}
 			}
 		})
