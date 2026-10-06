@@ -36,6 +36,19 @@ go-licenses check ./cmd/... --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3
   core repository, with its origin in `internal/contract/testdata/SOURCE.json`.
   Refresh it when the client adopts a newer server:
   `go run ./tools/update-contract -core <path to the core checkout> -ref origin/main`.
+* **Talking to the server** (`internal/transport`): REST readers under `/api/v1`
+  and MCP tools under `/api/mcp`. Every answer gets one class (object, not
+  found, no access, read-only, refused, invalid input, unauthenticated,
+  protocol, temporary); the cache (`internal/cache`) and the interface decide
+  from the class, never from the server's wording. An older server without the
+  machine field is recognised only by its exact texts; anything else it says
+  is a refusal. TLS is required except for localhost; redirects are not
+  followed.
+* **Adapters** (`internal/api`): one per tool and REST reader, each with a
+  `Spec` naming the arguments it sends and the fields it needs back. The same
+  spec drives feature detection (`internal/features`, from `tools/list` and the
+  input schemas; the server version decides nothing), the runtime check of
+  every answer, and the compatibility test against the contract copy.
 * **Dependencies** must be permissive (MIT, Apache-2.0, BSD, ISC); CI checks it.
 
 ## Release
