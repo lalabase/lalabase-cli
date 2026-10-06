@@ -473,3 +473,40 @@ func TestAProtocolErrorKeepsSentAndStatus(t *testing.T) {
 		t.Fatalf("got %v sent=%v status=%d", ans.Class, ans.Sent, ans.Status)
 	}
 }
+
+// The name of a deleted user may be null, its id may not: an empty id is no
+// address for anything the person does next.
+func TestAPersonWithoutAnIDIsAProtocolError(t *testing.T) {
+	ctx := context.Background()
+	cases := map[string]func() transport.Answer{
+		"ticket creator": func() transport.Answer {
+			text := recordedText(t, "get_ticket", func(p map[string]any) { p["creator"].(map[string]any)["id"] = nil })
+			_, ans := replayText(t, text).Ticket(ctx, website, login)
+			return ans
+		},
+		"comment author in a ticket": func() transport.Answer {
+			text := recordedText(t, "get_ticket", func(p map[string]any) {
+				p["posts"].([]any)[0].(map[string]any)["author"].(map[string]any)["id"] = nil
+			})
+			_, ans := replayText(t, text).Ticket(ctx, website, login)
+			return ans
+		},
+		"inbox actor": func() transport.Answer {
+			text := recordedText(t, "list_notifications", func(p map[string]any) {
+				p["data"].([]any)[0].(map[string]any)["actor"].(map[string]any)["id"] = nil
+			})
+			_, ans := replayText(t, text).Notifications(ctx, NotificationQuery{})
+			return ans
+		},
+		"new comment author": func() transport.Answer {
+			text := recordedText(t, "post_comment", func(p map[string]any) { p["author"].(map[string]any)["id"] = nil })
+			_, ans := replayText(t, text).PostComment(ctx, website, login, "x", "key-0011")
+			return ans
+		},
+	}
+	for name, run := range cases {
+		if ans := run(); ans.Class != transport.Protocol {
+			t.Errorf("%s: got %v %q", name, ans.Class, ans.Message)
+		}
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -105,7 +106,9 @@ func TestA429CarriesTheTimeTheWindowOpensAgain(t *testing.T) {
 		{"garbage", map[string]string{"RateLimit-Reset": "soon"}, fixedNow.Add(5 * time.Second)},
 		{"absurd retry-after", map[string]string{"Retry-After": "99999999999"}, fixedNow.Add(5 * time.Minute)},
 		{"retry-after that overflows a duration", map[string]string{"Retry-After": "9223372037"}, fixedNow.Add(5 * time.Minute)},
-		{"reset seconds that overflow a duration", map[string]string{"RateLimit-Reset": "9223372037"}, fixedNow.Add(5 * time.Minute)},
+		{"reset beyond the epoch range, in seconds", map[string]string{"RateLimit-Reset": "922337203685"}, fixedNow.Add(5 * time.Minute)},
+		{"reset at the int64 limit", map[string]string{"RateLimit-Reset": "9223372036854775807"}, fixedNow.Add(5 * time.Minute)},
+		{"reset as a far epoch", map[string]string{"RateLimit-Reset": "9223372037"}, fixedNow.Add(5 * time.Minute)},
 		{"reset far in the future", map[string]string{"RateLimit-Reset": strconv.FormatInt(fixedNow.Add(30*24*time.Hour).Unix(), 10)}, fixedNow.Add(5 * time.Minute)},
 	}
 	for _, tc := range cases {
@@ -637,6 +640,10 @@ func TestALegacyNotFoundUsesTheServersNormalisedAddress(t *testing.T) {
 			t.Errorf("%v: got %v", tc.args, got.Class)
 		}
 	}
+	notification := Call{Tool: "mark_notification_read", OneRecord: true, Args: map[string]any{"notification_id": " n-1 "}}
+	if got := clientAt(t, answer("No notification found for n-1.").URL).CallTool(context.Background(), notification); got.Class != NotFound {
+		t.Errorf("notification id with spaces: got %v", got.Class)
+	}
 }
 
 // A catalogue of three valid pages is read whole; the page limit only stops
@@ -657,5 +664,20 @@ func TestToolsListReadsThreePages(t *testing.T) {
 	tools, ans := clientAt(t, srv.URL).ListTools(context.Background())
 	if ans.Class != Object || len(tools) != 3 {
 		t.Fatalf("%v %d tools", ans.Class, len(tools))
+	}
+}
+
+// The TLS text decides only while the connection is set up: a handshake the
+// two sides cannot agree on stays so. A TLS error while the answer is read
+// (a broken record mid-body) is the network and may be retried.
+func TestATLSErrorCountsAsPermanentOnlyWhileConnecting(t *testing.T) {
+	ctx := context.Background()
+	for _, text := range []string{"remote error: tls: protocol version not supported", "tls: server selected unsupported protocol version 302"} {
+		if got := failure(ctx, errors.New(text), false, phaseConnect, "x"); got.Class != Protocol {
+			t.Errorf("connecting, %q: got %v", text, got.Class)
+		}
+	}
+	if got := failure(ctx, errors.New("local error: tls: bad record MAC"), true, phaseReadBody, "x"); got.Class != Temporary {
+		t.Errorf("reading the body: got %v", got.Class)
 	}
 }

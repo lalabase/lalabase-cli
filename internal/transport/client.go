@@ -229,13 +229,13 @@ func (c *Client) send(ctx context.Context, method string, target *url.URL, body 
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return 0, nil, nil, failure(ctx, err, sent.Load(), "no answer from the server"), false
+		return 0, nil, nil, failure(ctx, err, sent.Load(), phaseConnect, "no answer from the server"), false
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	data, err = io.ReadAll(io.LimitReader(resp.Body, c.maxBody+1))
 	if err != nil {
-		ans := failure(ctx, err, true, "the answer broke off")
+		ans := failure(ctx, err, true, phaseReadBody, "the answer broke off")
 		ans.Status = resp.StatusCode
 		return resp.StatusCode, resp.Header, nil, ans, false
 	}
@@ -246,18 +246,26 @@ func (c *Client) send(ctx context.Context, method string, target *url.URL, body 
 	return resp.StatusCode, resp.Header, data, Answer{}, true
 }
 
+// phase says where a request failed: while the client connected and sent it
+// (TLS handshake included), or while it read the answer.
+type phase int
+
+const (
+	phaseConnect phase = iota
+	phaseReadBody
+)
+
 // failure classifies a request that brought no usable answer. The client's
 // own cancellation is no failure of the server; a certificate that does not
 // check out, or a plain HTTP server behind an https address, is no network
 // hiccup to retry but a broken or attacked setup; the rest is the network.
-func failure(ctx context.Context, err error, sent bool, msg string) Answer {
+func failure(ctx context.Context, err error, sent bool, at phase, msg string) Answer {
 	var (
 		verify    *tls.CertificateVerificationError
 		authority x509.UnknownAuthorityError
 		hostname  x509.HostnameError
 		invalid   x509.CertificateInvalidError
 		header    tls.RecordHeaderError
-		alert     tls.AlertError
 		netErr    net.Error
 	)
 	timeout := errors.As(err, &netErr) && netErr.Timeout()
@@ -269,8 +277,12 @@ func failure(ctx context.Context, err error, sent bool, msg string) Answer {
 	case errors.As(err, &header), strings.Contains(err.Error(), "server gave HTTP response to HTTPS client"):
 		return Answer{Class: Protocol, Message: "the server answers plain HTTP at an https address", Err: err, Sent: sent}
 	// A handshake the two sides cannot agree on (protocol version, cipher,
-	// an alert from the server) stays so on every retry.
-	case errors.As(err, &alert), !timeout && strings.Contains(err.Error(), "tls: "):
+	// an alert from the server) stays so on every retry. Over TCP Go reports
+	// these only as text ("remote error: tls: ...", "tls: server selected
+	// ..."; its AlertError type is for QUIC), so the text decides, and only
+	// while connecting: a TLS error while the answer is read (a broken record
+	// mid-body) is the network and may be retried.
+	case at == phaseConnect && !timeout && strings.Contains(err.Error(), "tls: "):
 		return Answer{Class: Protocol, Message: "no TLS connection could be agreed with the server: " + err.Error(), Err: err, Sent: sent}
 	case strings.Contains(err.Error(), "invalid header field"):
 		return Answer{Class: Protocol, Message: "the request could not be built: " + err.Error(), Err: err, Sent: sent}
