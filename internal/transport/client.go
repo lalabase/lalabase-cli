@@ -248,6 +248,11 @@ func (c *Client) send(ctx context.Context, method string, target *url.URL, body 
 	if err != nil {
 		ans := failure(ctx, err, true, true, "the answer broke off")
 		ans.Status = resp.StatusCode
+		// The headers arrived: a 429 keeps its window, or the queue would
+		// retry at once into it.
+		if resp.StatusCode == http.StatusTooManyRequests && ans.Class == Temporary {
+			ans.RetryAt = c.retryAt(resp.Header)
+		}
 		return resp.StatusCode, resp.Header, nil, ans, false
 	}
 	if int64(len(data)) > c.maxBody {

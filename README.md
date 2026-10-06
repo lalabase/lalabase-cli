@@ -5,6 +5,41 @@ full-screen interface) and for scripts and Claude Code (plain text or JSON).
 
 **Status:** foundation (slice C0). Nothing to use day to day yet.
 
+## Setting up
+
+```sh
+lalabase auth import            # take a server and token from Claude Code into the profile "default"
+lalabase auth import --agent    # a read-only token for Claude Code into the profile "agent"
+lalabase auth status            # who the tokens belong to and what the server supports
+```
+
+* **A profile is a server and a token, always together.** They live in
+  `~/.config/lalabase/config.toml` (or under `$XDG_CONFIG_HOME`), which is
+  refused when anybody but its owner may read it.
+* The interactive mode takes `LALABASE_URL` plus `LALABASE_TOKEN` (both or
+  neither), else the profile `default`. Agent commands take
+  `LALABASE_AGENT_URL` plus `LALABASE_AGENT_TOKEN`, else the profile `agent`,
+  never the person's profile, and refuse a token that may write, or one whose
+  server does not say whether it may (before MCP 0.7.0), unless the profile
+  says `allow_write = true`. That line lets both through, on purpose: the
+  person allowed the agent to write. It is set by hand only; `auth import`
+  never sets it and drops it, with a notice, when it replaces a profile.
+  `--profile NAME` picks one profile of the file, whole.
+* `auth import` reads Claude Code's MCP configuration (user, local and project
+  scope), lists what it finds with only the token's prefix, always asks which
+  entry to take, and checks the token with the server before saving. It runs
+  nothing it finds and expands no variables. An entry from the current
+  directory's `.mcp.json` (a cloned repository's, perhaps) is marked, with
+  whether Claude Code approved or rejected it. It asks only on a terminal, and
+  an answer is one short line. Its requests go through the request queue like
+  all others. Saving loads, merges and replaces the file under a lock (a
+  regular file beside it, never a link), and only if the profile is still what
+  was asked about; a file that would outgrow the read limit is not written.
+* Files the client does not control (its config, Claude Code's files, a
+  `.mcp.json`) are read through `internal/safefile`: regular files only,
+  opened without blocking, up to a size limit; a larger file is an error,
+  never cut.
+
 ## Build
 
 ```sh
@@ -57,7 +92,15 @@ go-licenses check ./cmd/... --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3
   spec drives feature detection (`internal/features`, from `tools/list` and the
   input schemas; the server version decides nothing), the runtime check of
   every answer, and the compatibility test against the contract copy.
-* **Dependencies** must be permissive (MIT, Apache-2.0, BSD, ISC); CI checks it.
+* **The request queue** (`internal/queue`): at most two requests at once,
+  background work in at most one of the two places; the person's actions go
+  first; identical reads in flight share one request; after a 429 nothing
+  starts until the window opens (5 seconds when the 429 names none). A job is
+  retried at most once: a read on a temporary failure, a write only after a
+  429 or when nothing was sent.
+* **Dependencies** must be permissive (MIT, Apache-2.0, BSD, ISC); CI checks
+  it. Today: `github.com/BurntSushi/toml` (MIT), `golang.org/x/term` and
+  `golang.org/x/sys` (BSD-3-Clause).
 
 ## Release
 
