@@ -36,6 +36,7 @@ func TestTextFilesCarryNoInvisibleCharacters(t *testing.T) {
 	for _, dir := range []string{
 		".", ".github/workflows", "cmd/lalabase", "internal/clean", "internal/clean/testdata",
 		"internal/contract", "internal/contract/testdata", "internal/sourceguard", "tools/update-contract",
+		"internal/api", "internal/cache", "internal/features", "internal/transport",
 	} {
 		if !seen[dir] {
 			t.Errorf("no file of %s was checked", dir)
