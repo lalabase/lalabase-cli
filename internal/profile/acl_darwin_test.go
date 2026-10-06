@@ -4,6 +4,7 @@ package profile
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,6 +36,10 @@ func TestAccessListsAreChecked(t *testing.T) {
 			setACL(t, dir, "everyone deny delete")
 		}, false},
 		{"an allow entry on the config's directory", func(t *testing.T, _, dir, _ string) {
+			setACL(t, dir, "everyone allow list")
+		}, true},
+		{"a deny entry, then an allow entry on the config's directory", func(t *testing.T, _, dir, _ string) {
+			setACL(t, dir, "everyone deny delete")
 			setACL(t, dir, "everyone allow list")
 		}, true},
 		{"an inherited allow entry on the config", func(t *testing.T, _, dir, path string) {
@@ -80,14 +85,30 @@ func TestAccessListsAreChecked(t *testing.T) {
 	}
 }
 
-// The lock file is checked like the config: an allow entry lets others in.
+// The lock file is checked like the config: any allow entry lets others in,
+// one to read included (reading is enough to hold a lock).
 func TestALockFileWithAnAccessListIsRefused(t *testing.T) {
-	path := writeConfig(t, twoProfiles, 0o600)
-	if err := os.WriteFile(path+".lock", nil, 0o600); err != nil {
-		t.Fatal(err)
+	for _, entry := range []string{"everyone allow write", "everyone allow read"} {
+		t.Run(entry, func(t *testing.T) {
+			path := writeConfig(t, twoProfiles, 0o600)
+			if err := os.WriteFile(path+".lock", nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			setACL(t, path+".lock", entry)
+			if err := Update(path, func(*File) error { return nil }); err == nil || !strings.Contains(err.Error(), "access list") {
+				t.Fatalf("got %v", err)
+			}
+		})
 	}
-	setACL(t, path+".lock", "everyone allow write")
-	if err := Update(path, func(*File) error { return nil }); err == nil || !strings.Contains(err.Error(), "access list") {
+}
+
+// An access list that cannot be read is no access list: refused.
+func TestAnAccessListThatCannotBeReadIsRefused(t *testing.T) {
+	path := writeConfig(t, twoProfiles, 0o600)
+	old := readACLOf
+	readACLOf = func(string) ([]ace, error) { return nil, errors.New("ENOSYS") }
+	t.Cleanup(func() { readACLOf = old })
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "reading its access list") {
 		t.Fatalf("got %v", err)
 	}
 }

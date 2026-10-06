@@ -45,7 +45,9 @@ lalabase auth status            # who the tokens belong to and what the server s
   a directory passed through belongs to the user or root and is not writable
   by group or others unless sticky (`/tmp`); a link passed through belongs to
   the user or root; the config's own directory, the config and its lock file
-  belong to the user and are writable by nobody else, sticky or not; the
+  belong to the user and are writable by nobody else, sticky or not (the
+  config and its lock file not readable either: reading is enough to hold a
+  lock); the
   config is never a link. On macOS access control lists are read too (they
   can grant what the mode bits deny): an entry that allows others anything
   on the config, its lock file or its directory, or that lets them add,

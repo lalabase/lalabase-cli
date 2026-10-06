@@ -45,7 +45,7 @@ type attrlist struct {
 // checkACL refuses an access list that lets others in, per zone. An entry
 // that denies is always fine (every home carries "everyone deny delete").
 func checkACL(path string, zone aclZone) error {
-	entries, err := readACL(path)
+	entries, err := readACLOf(path)
 	if err != nil {
 		return fmt.Errorf("%s: reading its access list: %w", path, err)
 	}
@@ -61,6 +61,9 @@ func checkACL(path string, zone aclZone) error {
 }
 
 type ace struct{ flags, rights uint32 }
+
+// readACLOf reads an access list (tests replace it to fail).
+var readACLOf = readACL
 
 func readACL(path string) ([]ace, error) {
 	p, err := unix.BytePtrFromString(path)

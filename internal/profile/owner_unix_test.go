@@ -310,18 +310,22 @@ func TestTheConfigDirectoryIsNeverShared(t *testing.T) {
 // refused before anything waits on it: its owner could hold it forever, or
 // swap it while we hold it.
 func TestALockFileOfOthersIsRefused(t *testing.T) {
-	t.Run("writable by others", func(t *testing.T) {
-		path := writeConfig(t, twoProfiles, 0o600)
-		if err := os.WriteFile(path+".lock", nil, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(path+".lock", 0o666); err != nil { //nolint:gosec // the test opens it on purpose
-			t.Fatal(err)
-		}
-		if err := Update(path, func(*File) error { return nil }); err == nil || !strings.Contains(err.Error(), path+".lock") {
-			t.Fatalf("got %v", err)
-		}
-	})
+	// Reading is enough to hold a lock (flock with LOCK_SH on a descriptor
+	// opened for reading): no right at all for anybody else.
+	for _, mode := range []os.FileMode{0o640, 0o604, 0o620, 0o602, 0o666} {
+		t.Run(fmt.Sprintf("mode %o", mode), func(t *testing.T) {
+			path := writeConfig(t, twoProfiles, 0o600)
+			if err := os.WriteFile(path+".lock", nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(path+".lock", mode); err != nil {
+				t.Fatal(err)
+			}
+			if err := Update(path, func(*File) error { return nil }); err == nil || !strings.Contains(err.Error(), path+".lock") || !strings.Contains(err.Error(), "chmod 600") {
+				t.Fatalf("got %v", err)
+			}
+		})
+	}
 	t.Run("of another user, held", func(t *testing.T) {
 		path := writeConfig(t, twoProfiles, 0o600)
 		held, err := os.OpenFile(path+".lock", os.O_RDWR|os.O_CREATE, 0o600)

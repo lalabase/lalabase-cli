@@ -68,13 +68,15 @@ func checkOwner(info fs.FileInfo) error {
 }
 
 // ownFile: a file beside the config (its lock) is the user's alone: owned
-// by the user, writable by nobody else, no access list letting others in.
+// by the user, no right at all for anybody else (reading is enough to hold
+// a lock: flock with LOCK_SH on a descriptor opened for reading), no access
+// list letting others in.
 func ownFile(path string, info fs.FileInfo) error {
 	if uid := ownerOf(path, info); int(uid) != currentUID() {
 		return fmt.Errorf("%s belongs to another user (uid %d)", path, uid)
 	}
-	if info.Mode().Perm()&0o022 != 0 {
-		return fmt.Errorf("%s may be changed by others (mode %o); run: chmod go-w %s", path, info.Mode().Perm(), path)
+	if info.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("%s is open to others (mode %o), who could hold it and block every save; run: chmod 600 %s", path, info.Mode().Perm(), path)
 	}
 	return checkACL(path, private)
 }
