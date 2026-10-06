@@ -22,6 +22,10 @@ import (
 // requestTimeout bounds the few requests auth makes.
 const requestTimeout = 30 * time.Second
 
+// errChangedMeanwhile: the profile is no longer what the person was asked
+// about.
+var errChangedMeanwhile = errors.New("changed meanwhile")
+
 func runAuth(args []string, globalProfile string, env Env) int {
 	if len(args) == 0 {
 		fmt.Fprint(env.Stderr, usage)
@@ -93,6 +97,8 @@ func authImport(args []string, globalProfile string, env Env) int {
 			target = profile.AgentName
 		}
 	}
+	// The profile "agent" is the agent's, whichever flag named it.
+	forAgent := *agent || target == profile.AgentName
 
 	entries, errs := claudecfg.Find(env.Home, env.Cwd)
 	for _, err := range errs {
@@ -118,6 +124,9 @@ func authImport(args []string, globalProfile string, env Env) int {
 		fmt.Fprintln(env.Stdout, "Lalabase servers in Claude Code's configuration:")
 		for i, e := range usable {
 			fmt.Fprintf(env.Stdout, "  %d) %-7s %s  %s  %s  token %s...\n", i+1, e.Scope, show(e.Where), show(e.Name), show(e.BaseURL), show(claudecfg.TokenPrefix(e.Token)))
+			if e.Note != "" {
+				fmt.Fprintf(env.Stdout, "     %s\n", show(e.Note))
+			}
 		}
 	}
 	if len(unusable) > 0 {
@@ -157,7 +166,7 @@ func authImport(args []string, globalProfile string, env Env) int {
 	}
 	fmt.Fprintf(env.Stdout, "Token of %s (%s), may write: %s\n", show(me.User.DisplayName), show(me.User.Email), mayWrite(me))
 
-	if *agent && (me.Token.ReadOnly == nil || !*me.Token.ReadOnly) {
+	if forAgent && (me.Token.ReadOnly == nil || !*me.Token.ReadOnly) {
 		fmt.Fprintln(env.Stdout, "Agent commands run only with a read-only token: with this one they will refuse to start.\n"+
 			"Create a token without write access for Claude Code and import that one.")
 		if !in.yes(fmt.Sprintf("Save it as profile %q anyway?", target)) {
@@ -169,10 +178,11 @@ func authImport(args []string, globalProfile string, env Env) int {
 	path := profile.Path(env.Getenv, env.Home)
 	file, err := profile.Load(path)
 	if err != nil && !errors.Is(err, profile.ErrNoFile) {
-		fmt.Fprintf(env.Stderr, "%s\n", show(err.Error()))
+		fmt.Fprintf(env.Stderr, "%s\nNothing saved.\n", show(err.Error()))
 		return 1
 	}
-	if old, exists := file.Profiles[target]; exists {
+	old, exists := file.Profiles[target]
+	if exists {
 		fmt.Fprintf(env.Stdout, "Profile %q exists: %s, token %s...\n", target, show(old.URL), show(claudecfg.TokenPrefix(old.Token)))
 		if old.AllowWrite {
 			fmt.Fprintln(env.Stdout, "It allows agent commands to write (allow_write = true). The new token will not:\n"+
@@ -183,13 +193,27 @@ func authImport(args []string, globalProfile string, env Env) int {
 			return 1
 		}
 	}
-	file.Profiles[target] = profile.Entry{URL: chosen.BaseURL, Token: chosen.Token}
-	if err := profile.Save(path, file); err != nil {
+	// Load, merge and replace under one lock; and only if the profile is
+	// still what the person was asked about.
+	err = profile.Update(path, func(current *profile.File) error {
+		now, stillExists := current.Profiles[target]
+		if stillExists != exists || now != old {
+			return errChangedMeanwhile
+		}
+		current.Profiles[target] = profile.Entry{URL: chosen.BaseURL, Token: chosen.Token}
+		file = *current
+		return nil
+	})
+	if errors.Is(err, errChangedMeanwhile) {
+		fmt.Fprintf(env.Stderr, "Profile %q changed while you were asked; nothing saved. Run auth import again.\n", target)
+		return 1
+	}
+	if err != nil {
 		fmt.Fprintf(env.Stderr, "Saving failed: %s\n", show(err.Error()))
 		return 1
 	}
 	fmt.Fprintf(env.Stdout, "Saved profile %q in %s\n", target, show(path))
-	if !*agent {
+	if !forAgent {
 		if _, ok := file.Profiles[profile.AgentName]; !ok {
 			fmt.Fprintln(env.Stdout, "For Claude Code, add a read-only token as the agent profile: lalabase auth import --agent")
 		}
@@ -215,7 +239,12 @@ func authStatus(args []string, globalProfile string, env Env) int {
 	}
 	checks := []check{{"default (interactive)", profile.Interactive}, {"agent", profile.Agent}}
 	if *name != "" {
-		checks = []check{{*name, profile.Interactive}}
+		// The profile "agent" is checked as the agent commands will use it.
+		mode := profile.Interactive
+		if *name == profile.AgentName {
+			mode = profile.Agent
+		}
+		checks = []check{{*name, mode}}
 	}
 
 	code := 0

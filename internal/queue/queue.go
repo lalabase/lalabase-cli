@@ -113,14 +113,36 @@ type ticket struct {
 	background bool // holds a background place
 }
 
-// flight is a read shared by its callers.
+// flight is a read shared by its callers. Its priority follows the callers
+// still waiting: a person joining lifts it, the last person leaving lets it
+// fall back to background work.
 type flight struct {
 	cancel context.CancelFunc
 	refs   int
+	users  int // callers of priority User among refs
 	prio   Priority
 	ticket *ticket // the place it waits for, while it waits
 	done   chan struct{}
 	ans    transport.Answer
+}
+
+// setPrio changes a waiting flight's priority and lets the queue act on it.
+// Returns the pause end when a person now waits in a closed window, for the
+// caller to report outside the lock. Called with q.mu held.
+func (q *Queue) setPrio(f *flight, prio Priority) (time.Time, bool) {
+	if f.prio == prio {
+		return time.Time{}, false
+	}
+	f.prio = prio
+	if f.ticket == nil || f.ticket.granted {
+		return time.Time{}, false
+	}
+	f.ticket.prio = prio
+	q.dispatch()
+	if prio == User && q.clock.Now().Before(q.pausedUntil) {
+		return q.pausedUntil, true
+	}
+	return time.Time{}, false
 }
 
 func canceled() transport.Answer {
@@ -137,19 +159,21 @@ func (q *Queue) Do(ctx context.Context, job Job) transport.Answer {
 
 func (q *Queue) doShared(ctx context.Context, job Job) transport.Answer {
 	q.mu.Lock()
+	var tell time.Time
+	var mustTell bool
 	f, ok := q.shared[job.Key]
 	if ok {
 		f.refs++
-		if job.Priority == User && f.prio == Background {
-			f.prio = User
-			if f.ticket != nil && !f.ticket.granted {
-				f.ticket.prio = User
-				q.dispatch()
-			}
+		if job.Priority == User {
+			f.users++
+			tell, mustTell = q.setPrio(f, User)
 		}
 	} else {
 		runCtx, cancel := context.WithCancel(context.Background())
 		f = &flight{cancel: cancel, refs: 1, prio: job.Priority, done: make(chan struct{})}
+		if job.Priority == User {
+			f.users = 1
+		}
 		q.shared[job.Key] = f
 		go func() {
 			f.ans = q.run(runCtx, job, f)
@@ -163,6 +187,9 @@ func (q *Queue) doShared(ctx context.Context, job Job) transport.Answer {
 		}()
 	}
 	q.mu.Unlock()
+	if mustTell && q.onPause != nil {
+		q.onPause(tell)
+	}
 
 	select {
 	case <-f.done:
@@ -170,6 +197,12 @@ func (q *Queue) doShared(ctx context.Context, job Job) transport.Answer {
 	case <-ctx.Done():
 		q.mu.Lock()
 		f.refs--
+		if job.Priority == User {
+			f.users--
+			if f.users == 0 {
+				q.setPrio(f, Background)
+			}
+		}
 		if f.refs == 0 {
 			// Nobody waits any more: cancel it, and let a new caller start
 			// afresh instead of joining a canceled request.
@@ -192,11 +225,8 @@ func (q *Queue) run(ctx context.Context, job Job, f *flight) transport.Answer {
 			return canceled()
 		}
 		ans := job.Run(ctx)
-		q.release(t)
+		q.finish(t, ans)
 
-		if ans.Class == transport.Temporary && ans.Status == 429 {
-			q.pause(ans.RetryAt)
-		}
 		if attempt >= 1 || !retryable(job.Kind, ans) {
 			return ans
 		}
@@ -222,14 +252,39 @@ func retryable(kind Kind, ans transport.Answer) bool {
 	return ans.Status == 429 || !ans.Sent
 }
 
-// pause stops new work until until; a later window never shortens an
-// earlier, longer one.
-func (q *Queue) pause(until time.Time) {
+// finish gives a place back after a job ran. A 429 sets the pause in the
+// same step, before the place goes to anybody: a job already waiting must not
+// slip into the closed window in between. A later window never shortens an
+// earlier, longer one. A person already waiting is told.
+func (q *Queue) finish(t *ticket, ans transport.Answer) {
 	q.mu.Lock()
-	defer q.mu.Unlock()
-	if until.After(q.pausedUntil) {
-		q.pausedUntil = until
+	paused := false
+	if ans.Class == transport.Temporary && ans.Status == 429 && ans.RetryAt.After(q.pausedUntil) {
+		q.pausedUntil = ans.RetryAt
+		paused = true
 	}
+	q.running--
+	if t.background {
+		q.bgRunning--
+	}
+	q.dispatch()
+	until := q.pausedUntil
+	tell := paused && q.clock.Now().Before(until) && q.personWaits()
+	q.mu.Unlock()
+	if tell && q.onPause != nil {
+		q.onPause(until)
+	}
+}
+
+// personWaits reports a person's action waiting for a place. Called with q.mu
+// held.
+func (q *Queue) personWaits() bool {
+	for _, t := range q.waiting {
+		if t.prio == User {
+			return true
+		}
+	}
+	return false
 }
 
 // acquire waits for a place.
@@ -305,12 +360,18 @@ func (q *Queue) dispatch() {
 	now := q.clock.Now()
 	if now.Before(q.pausedUntil) {
 		if !q.timerFor.Equal(q.pausedUntil) {
-			q.timerFor = q.pausedUntil
-			wake := q.clock.After(q.pausedUntil.Sub(now))
+			until := q.pausedUntil
+			q.timerFor = until
+			wake := q.clock.After(until.Sub(now))
 			go func() {
 				<-wake
 				q.mu.Lock()
-				q.timerFor = time.Time{}
+				// A timer for an earlier, since extended window only
+				// dispatches; the marker belongs to the current one, so no
+				// second timer is started for the same window.
+				if q.timerFor.Equal(until) {
+					q.timerFor = time.Time{}
+				}
 				q.dispatch()
 				q.mu.Unlock()
 			}()

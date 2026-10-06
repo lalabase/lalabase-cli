@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -119,5 +120,99 @@ func TestTokenPrefixShowsNoMoreThanTheServerDoes(t *testing.T) {
 	}
 	if got := TokenPrefix("short"); got != "short" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func findWithin(t *testing.T, home, cwd string) ([]Entry, []error) {
+	t.Helper()
+	type result struct {
+		entries []Entry
+		errs    []error
+	}
+	done := make(chan result, 1)
+	go func() {
+		e, errs := Find(home, cwd)
+		done <- result{e, errs}
+	}()
+	select {
+	case r := <-done:
+		return r.entries, r.errs
+	case <-time.After(2 * time.Second):
+		t.Fatal("Find did not return: it blocked or read without end")
+	}
+	return nil, nil
+}
+
+// A cloned repository can carry a .mcp.json that is a link to an endless
+// device: auth import in that directory must not read forever.
+func TestAnEndlessProjectFileIsRefusedAtOnce(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	if err := os.Symlink("/dev/zero", filepath.Join(cwd, ".mcp.json")); err != nil {
+		t.Fatal(err)
+	}
+	entries, errs := findWithin(t, home, cwd)
+	if len(entries) != 0 || len(errs) != 1 {
+		t.Fatalf("%v %v", entries, errs)
+	}
+}
+
+func TestAnOversizedProjectFileIsRefused(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(cwd, ".mcp.json"), `{"x":"`+strings.Repeat("a", maxProjectFile)+`"}`)
+	if _, errs := findWithin(t, home, cwd); len(errs) != 1 || !strings.Contains(errs[0].Error(), "larger than") {
+		t.Fatalf("%v", errs)
+	}
+}
+
+// The project scope comes from whatever directory auth import runs in, a
+// cloned repository included: such entries are marked, with whether Claude
+// Code was allowed to use them.
+func TestProjectEntriesAreMarkedWithTheirApproval(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(home, ".claude.json"), `{"projects": {"`+cwd+`": {"enabledMcpjsonServers": ["approved"]}}}`)
+	write(t, filepath.Join(cwd, ".mcp.json"), `{"mcpServers": {
+	  "approved": {"url":"https://lalabase.com/api/mcp","headers":{"Authorization":"Bearer `+tokenA+`"}},
+	  "stranger": {"url":"https://evil.example/api/mcp","headers":{"Authorization":"Bearer `+tokenB+`"}}
+	}}`)
+	entries, _ := findWithin(t, home, cwd)
+	if len(entries) != 2 {
+		t.Fatalf("%+v", entries)
+	}
+	for _, e := range entries {
+		want := map[string]string{"approved": "approved in Claude Code", "stranger": "not approved in Claude Code"}[e.Name]
+		if !strings.Contains(e.Note, want) || !strings.Contains(e.Note, ".mcp.json") {
+			t.Errorf("%s: note %q", e.Name, e.Note)
+		}
+	}
+}
+
+func TestTheTokenMustBeTheWholeHeader(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(home, ".claude.json"), `{"mcpServers": {
+	  "lalabase": {"url":"https://lalabase.com/api/mcp","headers":{"Authorization":"Bearer `+tokenA+` extra"}},
+	  "lalabase-fragment": {"url":"https://lalabase.com/api/mcp#x","headers":{"Authorization":"Bearer `+tokenA+`"}},
+	  "lalabase-stdio-type": {"type":"stdio"}
+	}}`)
+	entries, _ := findWithin(t, home, cwd)
+	if len(entries) != 3 {
+		t.Fatalf("%+v", entries)
+	}
+	reasons := map[string]string{"lalabase": "token", "lalabase-fragment": "address", "lalabase-stdio-type": "program"}
+	for _, e := range entries {
+		if e.Usable() || !strings.Contains(e.Problem, reasons[e.Name]) {
+			t.Errorf("%s: %+v", e.Name, e)
+		}
+	}
+}
+
+// An entry with any name is found by its Lalabase token alone.
+func TestAnEntryIsFoundByItsTokenAlone(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(home, ".claude.json"), `{"mcpServers": {
+	  "acme": {"url":"https://proxy.example/tools","headers":{"Authorization":"Bearer `+tokenA+`"}}
+	}}`)
+	entries, _ := findWithin(t, home, cwd)
+	if len(entries) != 1 || entries[0].Name != "acme" || entries[0].Usable() {
+		t.Fatalf("%+v", entries)
 	}
 }

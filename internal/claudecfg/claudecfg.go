@@ -16,11 +16,13 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
-	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
+
+	"github.com/gboyke/lalabase-cli/internal/safefile"
 )
 
 // Entry is one Lalabase server Claude Code knows.
@@ -37,7 +39,18 @@ type Entry struct {
 	Token string
 	// Problem says why the entry cannot be imported; empty when it can.
 	Problem string
+	// Note is shown with the entry: for the project scope, that it comes from
+	// the current directory's .mcp.json (a cloned repository's, perhaps) and
+	// whether Claude Code was allowed to use it.
+	Note string
 }
+
+// Limits on what is read. Claude Code's own file keeps a history and can
+// grow; a project's .mcp.json is a few lines.
+const (
+	maxUserFile    = 64 << 20
+	maxProjectFile = 1 << 20
+)
 
 // Usable reports whether the entry can be imported.
 func (e Entry) Usable() bool { return e.Problem == "" }
@@ -66,10 +79,12 @@ func Find(home, cwd string) (entries []Entry, errs []error) {
 	var claude struct {
 		MCPServers map[string]server `json:"mcpServers"`
 		Projects   map[string]struct {
-			MCPServers map[string]server `json:"mcpServers"`
+			MCPServers                 map[string]server `json:"mcpServers"`
+			EnabledMcpjsonServers      []string          `json:"enabledMcpjsonServers"`
+			EnableAllProjectMcpServers bool              `json:"enableAllProjectMcpServers"`
 		} `json:"projects"`
 	}
-	if err := readJSON(userFile, &claude); err != nil {
+	if err := readJSON(userFile, maxUserFile, &claude); err != nil {
 		errs = append(errs, err)
 	}
 	entries = append(entries, collect("user", userFile, claude.MCPServers)...)
@@ -86,15 +101,23 @@ func Find(home, cwd string) (entries []Entry, errs []error) {
 	var project struct {
 		MCPServers map[string]server `json:"mcpServers"`
 	}
-	if err := readJSON(projectFile, &project); err != nil {
+	if err := readJSON(projectFile, maxProjectFile, &project); err != nil {
 		errs = append(errs, err)
 	}
-	entries = append(entries, collect("project", projectFile, project.MCPServers)...)
+	approval := claude.Projects[cwd]
+	for _, e := range collect("project", projectFile, project.MCPServers) {
+		state := "not approved in Claude Code"
+		if approval.EnableAllProjectMcpServers || slices.Contains(approval.EnabledMcpjsonServers, e.Name) {
+			state = "approved in Claude Code"
+		}
+		e.Note = "from .mcp.json in this directory, " + state
+		entries = append(entries, e)
+	}
 	return entries, errs
 }
 
-func readJSON(path string, out any) error {
-	data, err := os.ReadFile(path) //nolint:gosec // Claude Code's own config files
+func readJSON(path string, maxBytes int64, out any) error {
+	data, _, err := safefile.ReadRegular(path, maxBytes)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}

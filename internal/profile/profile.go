@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -29,6 +28,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/gboyke/lalabase-cli/internal/api"
+	"github.com/gboyke/lalabase-cli/internal/safefile"
 )
 
 // Mode is who runs the command.
@@ -89,37 +89,32 @@ func Path(getenv func(string) string, home string) string {
 // ErrNoFile reports a config file that does not exist yet.
 var ErrNoFile = errors.New("no config file")
 
+// maxConfigSize bounds the config file. A larger one is an error, never cut:
+// a cut file written back would lose the profiles behind the cut.
+const maxConfigSize = 1 << 20
+
+// afterLoad runs inside Update between loading and saving (tests).
+var afterLoad func()
+
 // Load reads the config file. Owner and permissions are checked on the file
 // that was opened, not on its name: a file swapped between a check and the
-// read cannot slip through.
+// read cannot slip through. It is opened without blocking, so a FIFO in its
+// place is refused instead of hanging the open.
 func Load(path string) (File, error) {
-	f, err := os.Open(path) //nolint:gosec // the path is the config file's, chosen by Path or the person
+	data, info, err := safefile.ReadRegular(path, maxConfigSize)
 	if errors.Is(err, fs.ErrNotExist) {
 		return File{Profiles: map[string]Entry{}}, ErrNoFile
 	}
 	if err != nil {
 		return File{}, err
 	}
-	defer func() { _ = f.Close() }()
-
-	info, err := f.Stat()
-	if err != nil {
-		return File{}, err
-	}
-	if !info.Mode().IsRegular() {
-		return File{}, fmt.Errorf("%s is no regular file", path)
-	}
 	if info.Mode().Perm()&0o077 != 0 {
-		return File{}, fmt.Errorf("%s holds tokens and others may read it (mode %o); run: chmod 600 %s", path, info.Mode().Perm(), path)
+		return File{}, fmt.Errorf("%s holds tokens and others may read or change it (mode %o); run: chmod 600 %s", path, info.Mode().Perm(), path)
 	}
 	if err := checkOwner(info); err != nil {
 		return File{}, fmt.Errorf("%s: %w", path, err)
 	}
 
-	data, err := io.ReadAll(io.LimitReader(f, 1<<20))
-	if err != nil {
-		return File{}, err
-	}
 	var file File
 	if _, err := toml.Decode(string(data), &file); err != nil {
 		return File{}, fmt.Errorf("%s: %w", path, err)
@@ -167,6 +162,33 @@ func Save(path string, file File) error {
 	return os.Rename(name, path)
 }
 
+// Update loads the config file, lets change modify it and saves it, all under
+// an exclusive lock on a lock file beside it: two updates at the same time
+// (two auth import runs) cannot both load the same state and overwrite each
+// other's profile. If change returns an error, nothing is written.
+func Update(path string, change func(*File) error) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	unlock, err := lock(path + ".lock")
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	file, err := Load(path)
+	if err != nil && !errors.Is(err, ErrNoFile) {
+		return err
+	}
+	if afterLoad != nil {
+		afterLoad()
+	}
+	if err := change(&file); err != nil {
+		return err
+	}
+	return Save(path, file)
+}
+
 // Resolve chooses the profile for a command.
 func Resolve(mode Mode, explicit string, getenv func(string) string, path string) (Profile, error) {
 	if explicit != "" {
@@ -210,9 +232,14 @@ func fromFile(path, name, hint string) (Profile, error) {
 	return Profile{Name: name, URL: entry.URL, Token: entry.Token, AllowWrite: entry.AllowWrite, Source: "file " + path}, nil
 }
 
-// VerifyAgent refuses an agent profile whose token may write. A server that
-// does not say (before MCP 0.7.0) is refused too: "unknown" is not "read-only".
-// allow_write = true in the file is the person's own, deliberate choice.
+// VerifyAgent refuses an agent profile whose token may write, and one whose
+// server does not say (before MCP 0.7.0): "unknown" is not "read-only".
+//
+// allow_write = true in the file lets both through, deliberately: the person
+// allowed the agent to write, so whether the token may write no longer
+// matters, and "unknown" is only a "maybe" of that. It comes only from the
+// file, written by hand; auth import never sets it and drops it when it
+// replaces a profile.
 func VerifyAgent(me api.Me, p Profile) error {
 	if p.AllowWrite {
 		return nil

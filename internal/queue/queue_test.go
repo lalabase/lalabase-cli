@@ -447,12 +447,12 @@ func TestRetryRules(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls atomic.Int32
 			q := New(WithClock(newClock()), WithRetryDelay(0))
-			got := q.Do(context.Background(), Job{Priority: User, Kind: tc.kind, Run: func(context.Context) transport.Answer {
+			got := answer(t, do(q, context.Background(), Job{Priority: User, Kind: tc.kind, Run: func(context.Context) transport.Answer {
 				if calls.Add(1) == 1 {
 					return tc.first
 				}
 				return ok()
-			}})
+			}}))
 			if calls.Load() != tc.calls {
 				t.Fatalf("%d calls, want %d", calls.Load(), tc.calls)
 			}
@@ -502,5 +502,186 @@ func TestReadKeysNameServerTokenOperationAndArguments(t *testing.T) {
 		if other == base {
 			t.Errorf("a different request has the same key: %s", other)
 		}
+	}
+}
+
+// The case of the review: two jobs run, a third already waits, the first is
+// throttled. The waiting job must not slip into the closed window between
+// the place being freed and the pause being set; the person is told.
+func TestA429StopsAJobThatAlreadyWaits(t *testing.T) {
+	clock := newClock()
+	var mu sync.Mutex
+	var told []time.Time
+	q := New(WithClock(clock), WithOnPause(func(until time.Time) { mu.Lock(); told = append(told, until); mu.Unlock() }))
+	// The throttled job is background work: its own retry must not be what
+	// tells the person, the waiting person's action must be.
+	a, b, c := newGate(), newGate(), newGate()
+	ra := do(q, context.Background(), Job{Priority: Background, Kind: Read, Key: "a", Run: a.run})
+	rb := do(q, context.Background(), Job{Priority: User, Kind: Read, Key: "b", Run: b.run})
+	waitStarted(t, a)
+	waitStarted(t, b)
+	rc := do(q, context.Background(), Job{Priority: User, Kind: Read, Key: "c", Run: c.run})
+	waitWaiting(t, q, 1)
+
+	until := clock.Now().Add(30 * time.Second)
+	a.release <- throttled(clock, 30*time.Second)
+	notStarted(t, c)
+	b.release <- ok()
+	answer(t, rb)
+	notStarted(t, c)
+
+	mu.Lock()
+	wasTold := len(told) > 0 && told[len(told)-1].Equal(until)
+	mu.Unlock()
+	if !wasTold {
+		t.Fatalf("the waiting person was not told of the pause: %v", told)
+	}
+
+	clock.Advance(30 * time.Second)
+	waitStarted(t, c)
+	waitStarted(t, a) // the throttled job's one retry
+	a.release <- ok()
+	c.release <- ok()
+	answer(t, ra)
+	answer(t, rc)
+}
+
+// The background place is given back: background work keeps running after
+// its first job.
+func TestBackgroundJobsRunOneAfterTheOther(t *testing.T) {
+	q := New(WithClock(newClock()))
+	for i := range 3 {
+		g := newGate()
+		r := do(q, context.Background(), Job{Priority: Background, Run: g.run})
+		waitStarted(t, g)
+		g.release <- ok()
+		if a := answer(t, r); a.Class != transport.Object {
+			t.Fatalf("background job %d: %v", i, a.Class)
+		}
+	}
+}
+
+// A caller that leaves at the very moment its place is granted gives the
+// place back. With a context already canceled and a free place, the queue
+// grants and the caller leaves in the same instant; repeated, a lost place
+// would leave the queue with none.
+func TestAPlaceIsNeverLostWhenACallerLeavesAtTheGrant(t *testing.T) {
+	q := New(WithClock(newClock()))
+	done, cancel := context.WithCancel(context.Background())
+	cancel()
+	for range 200 {
+		answer(t, do(q, done, Job{Priority: User, Run: func(context.Context) transport.Answer { return ok() }}))
+	}
+	q.mu.Lock()
+	running := q.running
+	q.mu.Unlock()
+	if running != 0 {
+		t.Fatalf("%d places were never given back", running)
+	}
+	a, b := newGate(), newGate()
+	do(q, context.Background(), Job{Priority: User, Run: a.run})
+	do(q, context.Background(), Job{Priority: User, Run: b.run})
+	waitStarted(t, a)
+	waitStarted(t, b)
+}
+
+// A background read that waits only because the background place is taken
+// starts at once when a person joins it and a place is free.
+func TestARaisedReadStartsAtOnceWhenAPlaceIsFree(t *testing.T) {
+	q := New(WithClock(newClock()))
+	refresh, preview := newGate(), newGate()
+	do(q, context.Background(), Job{Priority: Background, Run: refresh.run})
+	waitStarted(t, refresh)
+	do(q, context.Background(), Job{Priority: Background, Kind: Read, Key: "ticket-7", Run: preview.run})
+	waitWaiting(t, q, 1)
+	notStarted(t, preview)
+
+	joined := do(q, context.Background(), Job{Priority: User, Kind: Read, Key: "ticket-7", Run: preview.run})
+	waitStarted(t, preview)
+	preview.release <- ok()
+	answer(t, joined)
+}
+
+// When the person who lifted a waiting read leaves again, it falls back to
+// background work: two background jobs never hold both places.
+func TestARaisedReadFallsBackWhenThePersonLeaves(t *testing.T) {
+	q := New(WithClock(newClock()))
+	refresh, person, preview := newGate(), newGate(), newGate()
+	do(q, context.Background(), Job{Priority: Background, Run: refresh.run})
+	waitStarted(t, refresh)
+	rp := do(q, context.Background(), Job{Priority: User, Run: person.run})
+	waitStarted(t, person)
+
+	do(q, context.Background(), Job{Priority: Background, Kind: Read, Key: "ticket-7", Run: preview.run})
+	waitWaiting(t, q, 1)
+	ctx, leave := context.WithCancel(context.Background())
+	joined := do(q, ctx, Job{Priority: User, Kind: Read, Key: "ticket-7", Run: preview.run})
+	waitJoined(t, q, "ticket-7", 2)
+	leave()
+	answer(t, joined)
+
+	person.release <- ok()
+	answer(t, rp)
+	notStarted(t, preview) // the background place is still the refresh's
+}
+
+// A read retried after a temporary failure that was no 429 waits the retry
+// delay first.
+func TestARetryWaitsTheDelay(t *testing.T) {
+	clock := newClock()
+	q := New(WithClock(clock), WithRetryDelay(time.Second))
+	g := newGate()
+	r := do(q, context.Background(), Job{Priority: User, Kind: Read, Run: g.run})
+	waitStarted(t, g)
+	g.release <- transport.Answer{Class: transport.Temporary, Status: 503, Sent: true}
+	notStarted(t, g)
+	waitTimers(t, clock, 1)
+	clock.Advance(time.Second)
+	waitStarted(t, g)
+	g.release <- ok()
+	answer(t, r)
+}
+
+// waitTimers waits until n timers wait on the fake clock.
+func waitTimers(t *testing.T, c *fakeClock, n int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		c.mu.Lock()
+		got := len(c.waiters)
+		c.mu.Unlock()
+		if got >= n {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("%d timers did not start", n)
+}
+
+// A timer for a window that was extended meanwhile does not start a second
+// timer for the new window: one window, one timer.
+func TestAnExtendedPauseKeepsOneTimer(t *testing.T) {
+	clock := newClock()
+	q := New(WithClock(clock))
+	a, b := newGate(), newGate()
+	do(q, context.Background(), Job{Priority: User, Kind: Read, Key: "a", Run: a.run})
+	do(q, context.Background(), Job{Priority: User, Kind: Read, Key: "b", Run: b.run})
+	waitStarted(t, a)
+	waitStarted(t, b)
+	a.release <- throttled(clock, 10*time.Second)
+	waitPaused(t, q, clock.Now().Add(10*time.Second))
+	waitWaiting(t, q, 1)
+	b.release <- throttled(clock, 60*time.Second)
+	waitPaused(t, q, clock.Now().Add(60*time.Second))
+	waitWaiting(t, q, 2)
+	waitTimers(t, clock, 2)
+
+	clock.Advance(10 * time.Second) // the first window's timer fires
+	time.Sleep(50 * time.Millisecond)
+	clock.mu.Lock()
+	pending := len(clock.waiters)
+	clock.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("%d timers wait for one window", pending)
 	}
 }

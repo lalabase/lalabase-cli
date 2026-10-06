@@ -1,10 +1,12 @@
 package profile
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/api"
 )
@@ -135,8 +137,8 @@ func TestAMissingFileSaysHowToSetUp(t *testing.T) {
 }
 
 // The file holds tokens: refused when anybody but the owner may read it.
-func TestAFileOthersCanReadIsRefused(t *testing.T) {
-	for _, mode := range []os.FileMode{0o640, 0o604, 0o644, 0o666} {
+func TestAFileOthersCanReadOrChangeIsRefused(t *testing.T) {
+	for _, mode := range []os.FileMode{0o640, 0o604, 0o644, 0o666, 0o620, 0o602, 0o610, 0o601} {
 		path := writeConfig(t, twoProfiles, mode)
 		if _, err := Resolve(Interactive, "", env(nil), path); err == nil || !strings.Contains(err.Error(), "chmod 600") {
 			t.Errorf("mode %o: got %v", mode, err)
@@ -233,5 +235,90 @@ func TestVerifyAgent(t *testing.T) {
 	// The person allowed writes; whether the server says so changes nothing.
 	if err := VerifyAgent(me(nil), Profile{AllowWrite: true}); err != nil {
 		t.Errorf("allow_write with a server that does not say: %v", err)
+	}
+}
+
+// A config larger than the limit is an error, not a silent cut: a cut file
+// written back by auth import would lose the profiles behind the cut.
+func TestAnOversizedConfigIsAnErrorNotACut(t *testing.T) {
+	big := "# " + strings.Repeat("x", maxConfigSize) + "\n" + twoProfiles
+	path := writeConfig(t, big, 0o600)
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "larger than") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// Two updates at the same time both land: load, merge and replace happen
+// under one lock. The second update is held at the lock while the first has
+// loaded and not yet saved.
+func TestConcurrentUpdatesDoNotLoseAProfile(t *testing.T) {
+	path := writeConfig(t, twoProfiles, 0o600)
+	loaded := make(chan struct{})
+	release := make(chan struct{})
+	first := true
+	afterLoad = func() {
+		if first {
+			first = false
+			close(loaded)
+			<-release
+		}
+	}
+	t.Cleanup(func() { afterLoad = nil })
+
+	errs := make(chan error, 2)
+	go func() {
+		errs <- Update(path, func(f *File) error {
+			f.Profiles["one"] = Entry{URL: "https://one.example", Token: "lalab_pat_one00000"}
+			return nil
+		})
+	}()
+	<-loaded
+	secondDone := make(chan struct{})
+	go func() {
+		errs <- Update(path, func(f *File) error {
+			f.Profiles["two"] = Entry{URL: "https://two.example", Token: "lalab_pat_two00000"}
+			return nil
+		})
+		close(secondDone)
+	}()
+	select {
+	case <-secondDone:
+		t.Fatal("the second update ran while the first held the file")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	for range 2 {
+		select {
+		case err := <-errs:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("an update did not finish")
+		}
+	}
+	file, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"default", "agent", "one", "two"} {
+		if _, ok := file.Profiles[name]; !ok {
+			t.Errorf("profile %s was lost", name)
+		}
+	}
+}
+
+func TestAnUpdateThatFailsWritesNothing(t *testing.T) {
+	path := writeConfig(t, twoProfiles, 0o600)
+	before, _ := os.ReadFile(path)
+	err := Update(path, func(f *File) error {
+		f.Profiles["x"] = Entry{URL: "u", Token: "t"}
+		return errors.New("changed meanwhile")
+	})
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(before) {
+		t.Fatal("the file changed")
 	}
 }

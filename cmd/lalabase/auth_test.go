@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,6 +20,9 @@ import (
 const (
 	readToken  = "lalab_pat_READREADREADREAD"
 	writeToken = "lalab_pat_WRITEWRITEWRITE"
+	// oldToken belongs to a server before MCP 0.7.0: /me does not say
+	// whether it may write.
+	oldToken = "lalab_pat_OLDSERVEROLDSERV"
 )
 
 // fakeServer answers /api/v1/me per token and the MCP initialize and
@@ -29,7 +33,7 @@ func fakeServer(t *testing.T, displayName string) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	readOnly := map[string]bool{readToken: true, writeToken: false}
+	readOnly := map[string]bool{readToken: true, writeToken: false, oldToken: false}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		ro, known := readOnly[token]
@@ -40,9 +44,13 @@ func fakeServer(t *testing.T, displayName string) *httptest.Server {
 		}
 		switch r.URL.Path {
 		case "/api/v1/me":
+			tokenInfo := map[string]any{"id": "t-1", "name": "n", "prefix": token[:12], "read_only": ro}
+			if token == oldToken {
+				delete(tokenInfo, "read_only")
+			}
 			body, _ := json.Marshal(map[string]any{"data": map[string]any{
 				"user":                 map[string]any{"id": "u-1", "email": "anna@example.com", "display_name": displayName},
-				"token":                map[string]any{"id": "t-1", "name": "n", "prefix": token[:12], "read_only": ro},
+				"token":                tokenInfo,
 				"scoped_organisations": []any{map[string]any{"id": "o-1", "name": "Nordlicht GmbH"}},
 			}})
 			_, _ = w.Write(body)
@@ -317,4 +325,119 @@ func TestStatusReportsHalfAnEnvPair(t *testing.T) {
 	if code := h.run("", false, "auth", "status"); code != 1 || !strings.Contains(h.out.String()+h.err.String(), "LALABASE_TOKEN") {
 		t.Fatalf("exit %d:\n%s%s", code, h.out.String(), h.err.String())
 	}
+}
+
+// The profile "agent" is the agent's, whatever flag named it: the warning
+// about a writing token comes without --agent too, and status checks it as
+// the agent commands will.
+func TestTheAgentProfileIsTreatedAsTheAgentsWithoutTheFlag(t *testing.T) {
+	srv := fakeServer(t, "Anna Albers")
+	h := newHarness(t)
+	h.claudeConfig(t, httpEntry("lalabase", srv.URL, writeToken))
+	if code := h.run("1\nn\n", true, "auth", "import", "--profile", "agent"); code != 1 || !strings.Contains(h.out.String(), "read-only") {
+		t.Fatalf("import --profile agent: exit %d\n%s", code, h.out.String())
+	}
+
+	saveProfiles(t, h, srv, writeToken)
+	if code := h.run("", false, "--profile", "agent", "auth", "status"); code != 1 || !strings.Contains(h.out.String(), "agent commands refuse") {
+		t.Fatalf("status --profile agent: exit %d\n%s", code, h.out.String())
+	}
+}
+
+// A server that does not say whether the token may write gets the same
+// warning as a writing token.
+func TestImportAsAgentWarnsWhenTheServerDoesNotSay(t *testing.T) {
+	srv := fakeServer(t, "Anna Albers")
+	h := newHarness(t)
+	h.claudeConfig(t, httpEntry("lalabase", srv.URL, oldToken))
+	if code := h.run("1\nn\n", true, "auth", "import", "--agent"); code != 1 || !strings.Contains(h.out.String(), "read-only") {
+		t.Fatalf("exit %d\n%s", code, h.out.String())
+	}
+}
+
+// An entry from the current directory's .mcp.json says so, and whether
+// Claude Code was allowed to use it.
+func TestImportMarksEntriesFromTheCurrentDirectory(t *testing.T) {
+	srv := fakeServer(t, "Anna Albers")
+	h := newHarness(t)
+	project := `{"mcpServers": {` + httpEntry("lalabase", srv.URL, writeToken) + `}}`
+	if err := os.WriteFile(filepath.Join(h.cwd, ".mcp.json"), []byte(project), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.run("", false, "auth", "import")
+	if !strings.Contains(h.out.String(), "not approved in Claude Code") {
+		t.Fatalf("no mark:\n%s", h.out.String())
+	}
+}
+
+// A config file that cannot be read whole is never written back.
+func TestImportDoesNotRewriteAConfigItCannotReadWhole(t *testing.T) {
+	srv := fakeServer(t, "Anna Albers")
+	h := newHarness(t)
+	h.claudeConfig(t, httpEntry("lalabase", srv.URL, writeToken))
+	if err := os.MkdirAll(filepath.Dir(h.configPath()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	big := "# " + strings.Repeat("x", 1<<20) + "\n[profiles.agent]\nurl = \"https://x.example\"\ntoken = \"lalab_pat_keepme00\"\n"
+	if err := os.WriteFile(h.configPath(), []byte(big), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code := h.run("1\n", true, "auth", "import"); code != 1 {
+		t.Fatalf("exit %d", code)
+	}
+	if after, _ := os.ReadFile(h.configPath()); string(after) != big {
+		t.Fatal("the config was rewritten")
+	}
+}
+
+// When the profile changed between the question and the save (another
+// import, a hand edit), nothing is overwritten.
+func TestImportDoesNotOverwriteAProfileThatChangedMeanwhile(t *testing.T) {
+	srv := fakeServer(t, "Anna Albers")
+	h := newHarness(t)
+	h.claudeConfig(t, httpEntry("lalabase", srv.URL, writeToken))
+	if err := profile.Save(h.configPath(), profile.File{Profiles: map[string]profile.Entry{
+		"default": {URL: "https://old.example", Token: "lalab_pat_OLDOLDOLDOLD"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	// The answer to "Replace it?" arrives after another process changed the
+	// profile.
+	changer := &changingReader{answers: "1\ny\n", onSecondLine: func() {
+		_ = profile.Save(h.configPath(), profile.File{Profiles: map[string]profile.Entry{
+			"default": {URL: "https://meanwhile.example", Token: "lalab_pat_MEANWHILE000"},
+		}})
+	}}
+	code := runWith([]string{"auth", "import"}, Env{
+		Stdin: changer, Stdout: &h.out, Stderr: &h.err,
+		Getenv: func(k string) string { return h.vars[k] }, Home: h.home, Cwd: h.cwd, Interactive: true,
+	})
+	if code != 1 || !strings.Contains(h.err.String(), "changed") {
+		t.Fatalf("exit %d\n%s%s", code, h.out.String(), h.err.String())
+	}
+	if entry := h.config(t).Profiles["default"]; entry.Token != "lalab_pat_MEANWHILE000" {
+		t.Fatalf("overwritten: %+v", entry)
+	}
+}
+
+// changingReader hands out its answers and runs onSecondLine just before the
+// second line is read.
+type changingReader struct {
+	answers      string
+	onSecondLine func()
+	lines        int
+}
+
+func (r *changingReader) Read(p []byte) (int, error) {
+	if r.answers == "" {
+		return 0, io.EOF
+	}
+	i := strings.IndexByte(r.answers, '\n') + 1
+	r.lines++
+	if r.lines == 2 && r.onSecondLine != nil {
+		r.onSecondLine()
+	}
+	n := copy(p, r.answers[:i])
+	r.answers = r.answers[n:]
+	return n, nil
 }

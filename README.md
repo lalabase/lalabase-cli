@@ -19,13 +19,23 @@ lalabase auth status            # who the tokens belong to and what the server s
 * The interactive mode takes `LALABASE_URL` plus `LALABASE_TOKEN` (both or
   neither), else the profile `default`. Agent commands take
   `LALABASE_AGENT_URL` plus `LALABASE_AGENT_TOKEN`, else the profile `agent`,
-  never the person's profile, and refuse a token that may write unless the
-  profile says `allow_write = true` (set by hand; `auth import` never does).
+  never the person's profile, and refuse a token that may write, or one whose
+  server does not say whether it may (before MCP 0.7.0), unless the profile
+  says `allow_write = true`. That line lets both through, on purpose: the
+  person allowed the agent to write. It is set by hand only; `auth import`
+  never sets it and drops it, with a notice, when it replaces a profile.
   `--profile NAME` picks one profile of the file, whole.
 * `auth import` reads Claude Code's MCP configuration (user, local and project
   scope), lists what it finds with only the token's prefix, always asks which
   entry to take, and checks the token with the server before saving. It runs
-  nothing it finds and expands no variables.
+  nothing it finds and expands no variables. An entry from the current
+  directory's `.mcp.json` (a cloned repository's, perhaps) is marked, with
+  whether Claude Code was allowed to use it. Saving loads, merges and replaces
+  the file under a lock, and only if the profile is still what was asked about.
+* Files the client does not control (its config, Claude Code's files, a
+  `.mcp.json`) are read through `internal/safefile`: regular files only,
+  opened without blocking, up to a size limit; a larger file is an error,
+  never cut.
 
 ## Build
 
