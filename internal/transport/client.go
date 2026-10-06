@@ -217,25 +217,36 @@ func (c *Client) send(ctx context.Context, method string, target *url.URL, body 
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	var sent atomic.Bool
 	// Sent from the moment the headers are written: with HTTP/2 a canceled
 	// request can end before WroteRequest, while the server already reads it.
 	// Counting too early is the safe side; a write is then reloaded, not
-	// sent again.
+	// sent again. handshake: a TLS connection was agreed, freshly or on a
+	// reused connection; after that, a TLS error is the network, not the setup.
+	var sent, handshake atomic.Bool
 	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		WroteHeaders: func() { sent.Store(true) },
 		WroteRequest: func(httptrace.WroteRequestInfo) { sent.Store(true) },
+		TLSHandshakeDone: func(_ tls.ConnectionState, err error) {
+			if err == nil {
+				handshake.Store(true)
+			}
+		},
+		GotConn: func(info httptrace.GotConnInfo) {
+			if info.Reused {
+				handshake.Store(true)
+			}
+		},
 	}))
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return 0, nil, nil, failure(ctx, err, sent.Load(), phaseConnect, "no answer from the server"), false
+		return 0, nil, nil, failure(ctx, err, sent.Load(), handshake.Load(), "no answer from the server"), false
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	data, err = io.ReadAll(io.LimitReader(resp.Body, c.maxBody+1))
 	if err != nil {
-		ans := failure(ctx, err, true, phaseReadBody, "the answer broke off")
+		ans := failure(ctx, err, true, true, "the answer broke off")
 		ans.Status = resp.StatusCode
 		return resp.StatusCode, resp.Header, nil, ans, false
 	}
@@ -246,20 +257,11 @@ func (c *Client) send(ctx context.Context, method string, target *url.URL, body 
 	return resp.StatusCode, resp.Header, data, Answer{}, true
 }
 
-// phase says where a request failed: while the client connected and sent it
-// (TLS handshake included), or while it read the answer.
-type phase int
-
-const (
-	phaseConnect phase = iota
-	phaseReadBody
-)
-
 // failure classifies a request that brought no usable answer. The client's
 // own cancellation is no failure of the server; a certificate that does not
 // check out, or a plain HTTP server behind an https address, is no network
 // hiccup to retry but a broken or attacked setup; the rest is the network.
-func failure(ctx context.Context, err error, sent bool, at phase, msg string) Answer {
+func failure(ctx context.Context, err error, sent, handshakeDone bool, msg string) Answer {
 	var (
 		verify    *tls.CertificateVerificationError
 		authority x509.UnknownAuthorityError
@@ -280,9 +282,10 @@ func failure(ctx context.Context, err error, sent bool, at phase, msg string) An
 	// an alert from the server) stays so on every retry. Over TCP Go reports
 	// these only as text ("remote error: tls: ...", "tls: server selected
 	// ..."; its AlertError type is for QUIC), so the text decides, and only
-	// while connecting: a TLS error while the answer is read (a broken record
-	// mid-body) is the network and may be retried.
-	case at == phaseConnect && !timeout && strings.Contains(err.Error(), "tls: "):
+	// before a handshake succeeded: a TLS error after it (a broken record in
+	// the answer's headers or body, which http.Client.Do reads too) is the
+	// network and may be retried.
+	case !handshakeDone && !timeout && strings.Contains(err.Error(), "tls: "):
 		return Answer{Class: Protocol, Message: "no TLS connection could be agreed with the server: " + err.Error(), Err: err, Sent: sent}
 	case strings.Contains(err.Error(), "invalid header field"):
 		return Answer{Class: Protocol, Message: "the request could not be built: " + err.Error(), Err: err, Sent: sent}

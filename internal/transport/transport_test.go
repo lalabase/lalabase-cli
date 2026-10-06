@@ -1,15 +1,18 @@
 package transport
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -667,17 +670,92 @@ func TestToolsListReadsThreePages(t *testing.T) {
 	}
 }
 
-// The TLS text decides only while the connection is set up: a handshake the
-// two sides cannot agree on stays so. A TLS error while the answer is read
-// (a broken record mid-body) is the network and may be retried.
-func TestATLSErrorCountsAsPermanentOnlyWhileConnecting(t *testing.T) {
+// The TLS text decides only before the handshake succeeded: a handshake the
+// two sides cannot agree on stays so. A TLS error after it (a broken record
+// in the answer, headers or body) is the network and may be retried.
+func TestATLSErrorCountsAsPermanentOnlyBeforeTheHandshake(t *testing.T) {
 	ctx := context.Background()
 	for _, text := range []string{"remote error: tls: protocol version not supported", "tls: server selected unsupported protocol version 302"} {
-		if got := failure(ctx, errors.New(text), false, phaseConnect, "x"); got.Class != Protocol {
-			t.Errorf("connecting, %q: got %v", text, got.Class)
+		if got := failure(ctx, errors.New(text), false, false, "x"); got.Class != Protocol {
+			t.Errorf("before the handshake, %q: got %v", text, got.Class)
 		}
 	}
-	if got := failure(ctx, errors.New("local error: tls: bad record MAC"), true, phaseReadBody, "x"); got.Class != Temporary {
-		t.Errorf("reading the body: got %v", got.Class)
+	if got := failure(ctx, errors.New("local error: tls: bad record MAC"), true, true, "x"); got.Class != Temporary {
+		t.Errorf("after the handshake: got %v", got.Class)
+	}
+}
+
+// corruptingConn flips the last byte of every write once corrupt is set: a
+// TLS record whose authentication tag no longer matches.
+type corruptingConn struct {
+	net.Conn
+	corrupt atomic.Bool
+}
+
+func (c *corruptingConn) Write(b []byte) (int, error) {
+	if c.corrupt.Load() && len(b) > 0 {
+		b = append([]byte(nil), b...)
+		b[len(b)-1] ^= 0xff
+	}
+	return c.Conn.Write(b)
+}
+
+// The case of the review: the handshake succeeds, the request arrives, the
+// first record of the answer is broken. http.Client.Do reads the answer's
+// headers itself, so the error comes out of Do; it must still be temporary.
+func TestABrokenRecordAfterTheHandshakeIsTemporary(t *testing.T) {
+	ctx := context.Background()
+	trusted := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	trusted.StartTLS()
+	defer trusted.Close()
+
+	l, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = l.Close() }()
+	go func() {
+		raw, err := l.Accept()
+		if err != nil {
+			return
+		}
+		conn := &corruptingConn{Conn: raw}
+		server := tls.Server(conn, &tls.Config{Certificates: trusted.TLS.Certificates, NextProtos: []string{"http/1.1"}, MinVersion: tls.VersionTLS12})
+		defer func() { _ = server.Close() }()
+		if server.HandshakeContext(ctx) != nil {
+			return
+		}
+		req, err := http.ReadRequest(bufio.NewReader(server))
+		if err != nil {
+			return
+		}
+		_, _ = io.Copy(io.Discard, req.Body)
+		conn.corrupt.Store(true)
+		_, _ = server.Write([]byte("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}"))
+		time.Sleep(200 * time.Millisecond)
+	}()
+
+	got := clientAt(t, "https://"+l.Addr().String(), WithTransport(trusted.Client().Transport)).Get(ctx, "/api/v1/me")
+	if got.Class != Temporary || !got.Sent || got.Err == nil || !strings.Contains(got.Err.Error(), "tls") {
+		t.Fatalf("got %v sent=%v err=%v", got.Class, got.Sent, got.Err)
+	}
+}
+
+// An older server (no machine field) answers objects as JSON and missing
+// records with its known sentences. A plain text that is neither is a
+// refusal, shown and never retried. A newer server that marks the same text
+// "ok" is believed: the code tools answer Markdown on purpose.
+func TestAnUnknownPlainTextFromAnOlderServerIsARefusal(t *testing.T) {
+	plain := func(meta string) *httptest.Server {
+		return rpcServer(t, func(id json.RawMessage) string {
+			return `{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"content":[{"type":"text","text":"Service retired permanently."}]` + meta + `}}`
+		})
+	}
+	call := Call{Tool: "get_ticket", OneRecord: true, Args: map[string]any{"ticket_id": "t-1"}}
+	if got := clientAt(t, plain("").URL).CallTool(context.Background(), call); got.Class != Refused || got.Message != "Service retired permanently." {
+		t.Errorf("older server: got %v %q", got.Class, got.Message)
+	}
+	if got := clientAt(t, plain(`,"_meta":{"lalabase/kind":"ok"}`).URL).CallTool(context.Background(), call); got.Class != Object {
+		t.Errorf("newer server, kind ok: got %v", got.Class)
 	}
 }

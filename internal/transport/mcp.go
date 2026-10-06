@@ -227,6 +227,12 @@ func (c *Client) CallTool(ctx context.Context, call Call) Answer {
 		out.Class, out.Message = NotFound, text
 	case call.OneRecord && kind == "" && slices.Contains(legacyNotFound(call), text):
 		out.Class, out.Message = NotFound, text
+	// An older server answers objects as JSON and missing records with the
+	// sentences above; any other plain text from it is a refusal. A newer
+	// server that marks a text "ok" is believed: the code tools answer
+	// Markdown on purpose.
+	case kind == "" && !json.Valid([]byte(text)):
+		out.Class, out.Message = Refused, text
 	default:
 		out.Class, out.Payload = Object, json.RawMessage(text)
 	}
