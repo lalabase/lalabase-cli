@@ -77,6 +77,11 @@ golangci-lint run
 go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,0BSD
 ```
 
+* **Before every merge the tests run once on a Mac.** The CI tests on Linux
+  only; the code that only macOS runs (access lists, file locks and FIFOs,
+  the terminal) is tested nowhere else. As soon as anybody develops without
+  a Mac, the macOS job comes back into `.github/workflows/ci.yml`.
+
 * **Foreign text** (titles, comments, names, server error texts) goes through
   `internal/clean` before it reaches the terminal, in every mode. Its test
   cases are those of `bin/lala` in the core repository, byte for byte, plus a
