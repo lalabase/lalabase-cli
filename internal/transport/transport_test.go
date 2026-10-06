@@ -34,7 +34,7 @@ func clientAt(t *testing.T, base string, opts ...Option) *Client {
 
 func TestABaseAddressWithoutTLSIsOnlyAllowedForThisMachine(t *testing.T) {
 	ok := []string{"https://lalabase.com", "https://example.com/sub/", "http://localhost:3000", "http://127.0.0.1:3000", "http://[::1]:3000"}
-	refused := []string{"http://lalabase.com", "http://10.0.0.5:3000", "ftp://lalabase.com", "https://user:pw@lalabase.com",
+	refused := []string{"http://lalabase.com", "http://10.0.0.5:3000", "http://localhost.evil.example", "http://127.0.0.1.evil.example", "ftp://lalabase.com", "https://user:pw@lalabase.com",
 		"https://lalabase.com/?x=1", "https://lalabase.com/#f", "lalabase.com", "", "https://"}
 	for _, base := range ok {
 		if _, err := New(base, "lalab_pat_test"); err != nil {
@@ -63,7 +63,7 @@ func TestRequestsCarryTokenAgentAndAcceptHeaders(t *testing.T) {
 		got, path = r.Header.Clone(), r.URL.Path
 		_, _ = w.Write([]byte(`{"data":{}}`))
 	})
-	c := clientAt(t, srv.URL+"/sub", WithUserAgent("lalabase/v0.1.0"))
+	c := clientAt(t, srv.URL+"/sub", WithVersion("v0.1.0"))
 	if ans := c.Get(context.Background(), "/api/v1/me"); ans.Class != Object {
 		t.Fatalf("got %v %s", ans.Class, ans.Message)
 	}
@@ -102,6 +102,8 @@ func TestA429CarriesTheTimeTheWindowOpensAgain(t *testing.T) {
 		{"retry-after first", map[string]string{"Retry-After": "3", "RateLimit-Reset": "50"}, fixedNow.Add(3 * time.Second)},
 		{"nothing said", nil, fixedNow.Add(5 * time.Second)},
 		{"garbage", map[string]string{"RateLimit-Reset": "soon"}, fixedNow.Add(5 * time.Second)},
+		{"absurd retry-after", map[string]string{"Retry-After": "99999999999"}, fixedNow.Add(5 * time.Minute)},
+		{"reset far in the future", map[string]string{"RateLimit-Reset": strconv.FormatInt(fixedNow.Add(30*24*time.Hour).Unix(), 10)}, fixedNow.Add(5 * time.Minute)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -126,15 +128,36 @@ func TestA429CarriesTheTimeTheWindowOpensAgain(t *testing.T) {
 }
 
 func TestStatusCodesOfTheRestReaders(t *testing.T) {
-	want := map[int]Class{200: Object, 401: Unauthenticated, 403: NoAccess, 404: NotFound, 422: InvalidInput,
-		500: Temporary, 502: Temporary, 503: Temporary, 400: Protocol, 409: Protocol}
-	for status, class := range want {
+	cases := []struct {
+		status int
+		body   string
+		class  Class
+	}{
+		{200, `{"data":[]}`, Object},
+		{401, `{"error":"unauthorized"}`, Unauthenticated},
+		{403, `{"error":"forbidden"}`, NoAccess},
+		{404, `{"error":"not_found"}`, NotFound},
+		{422, `{"error":"x"}`, InvalidInput},
+		{500, `x`, Temporary},
+		{502, `x`, Temporary},
+		{503, `x`, Temporary},
+		{400, `{"error":"bad_request"}`, Protocol},
+		{409, `{"error":"x"}`, Protocol},
+		// A 403 or 404 that is not the API's own answer (a proxy, a firewall,
+		// a wrong base address, Rails' HTML 404) says nothing about the
+		// record: it must not make the cache drop it.
+		{404, `<html>The page you were looking for doesn't exist</html>`, Protocol},
+		{403, `<html>Forbidden</html>`, Protocol},
+		{404, `{"error":"forbidden"}`, Protocol},
+		{403, `{"error":"not_found"}`, Protocol},
+	}
+	for _, tc := range cases {
 		srv := serve(t, func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(status)
-			_, _ = w.Write([]byte(`{"error":"x"}`))
+			w.WriteHeader(tc.status)
+			_, _ = w.Write([]byte(tc.body))
 		})
-		if got := clientAt(t, srv.URL).Get(context.Background(), "/api/v1/me"); got.Class != class {
-			t.Errorf("%d: got %v, want %v", status, got.Class, class)
+		if got := clientAt(t, srv.URL).Get(context.Background(), "/api/v1/me"); got.Class != tc.class {
+			t.Errorf("%d %s: got %v, want %v", tc.status, tc.body, got.Class, tc.class)
 		}
 	}
 }
@@ -290,7 +313,7 @@ func TestALegacyNotFoundMustMatchExactly(t *testing.T) {
 			return `{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"content":[{"type":"text","text":` + string(b) + `}]}}`
 		}
 	}
-	call := Call{Tool: "get_ticket", OneRecord: true, LegacyNotFound: []string{"No ticket found for t-1."}}
+	call := Call{Tool: "get_ticket", OneRecord: true, Args: map[string]any{"ticket_id": "t-1"}}
 	if got := clientAt(t, rpcServer(t, answer("No ticket found for t-1.")).URL).CallTool(context.Background(), call); got.Class != NotFound {
 		t.Errorf("exact text: got %v", got.Class)
 	}
@@ -377,5 +400,138 @@ func TestToolsListStopsAfterAPageLimit(t *testing.T) {
 	})
 	if _, ans := clientAt(t, srv.URL).ListTools(context.Background()); ans.Class != Protocol {
 		t.Fatalf("got %v", ans.Class)
+	}
+}
+
+// A certificate that does not check out is no network hiccup: retrying it
+// forever hides an attack or a broken setup. It is a protocol error.
+func TestACertificateThatDoesNotCheckOutIsAProtocolError(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{}}`))
+	}))
+	defer srv.Close()
+	got := clientAt(t, srv.URL).Get(context.Background(), "/api/v1/me")
+	if got.Class != Protocol || !strings.Contains(got.Message, "certificate") {
+		t.Fatalf("got %v %q", got.Class, got.Message)
+	}
+	// The same server, trusted: an object.
+	if got := clientAt(t, srv.URL, WithTransport(srv.Client().Transport)).Get(context.Background(), "/api/v1/me"); got.Class != Object {
+		t.Fatalf("trusted: got %v %q", got.Class, got.Message)
+	}
+}
+
+func TestAPlainHTTPServerBehindAnHTTPSAddressIsAProtocolError(t *testing.T) {
+	srv := serve(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) })
+	got := clientAt(t, strings.Replace(srv.URL, "http://", "https://", 1)).Get(context.Background(), "/api/v1/me")
+	if got.Class != Protocol {
+		t.Fatalf("got %v %q", got.Class, got.Message)
+	}
+}
+
+func TestAVersionWithControlCharactersIsRefused(t *testing.T) {
+	if _, err := New("https://lalabase.com", "lalab_pat_test", WithVersion("v1\r\nX-Evil: 1")); err == nil {
+		t.Fatal("a version with a line break was accepted")
+	}
+}
+
+// The client's own cancellation (the selection moved on) is no failure of
+// the server: the answer is dropped, not marked stale and not retried.
+func TestTheClientsOwnCancellationIsCanceled(t *testing.T) {
+	arrived := make(chan struct{})
+	release := make(chan struct{})
+	srv := serve(t, func(http.ResponseWriter, *http.Request) {
+		close(arrived)
+		<-release
+	})
+	defer close(release)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { <-arrived; cancel() }()
+	got := clientAt(t, srv.URL).Get(ctx, "/api/v1/me")
+	if got.Class != Canceled || !got.Sent {
+		t.Fatalf("got %v sent=%v", got.Class, got.Sent)
+	}
+}
+
+// Whether the request left the client: a write with an unclear outcome is
+// reloaded, never sent again (plan, Writes). A refused connection sent
+// nothing; a request that got no answer may have been carried out.
+func TestSentSaysWhetherTheRequestLeft(t *testing.T) {
+	l, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := l.Addr().String()
+	_ = l.Close()
+	if got := clientAt(t, "http://"+addr).CallTool(context.Background(), Call{Tool: "post_comment"}); got.Class != Temporary || got.Sent {
+		t.Fatalf("refused connection: %v sent=%v", got.Class, got.Sent)
+	}
+
+	release := make(chan struct{})
+	srv := serve(t, func(http.ResponseWriter, *http.Request) { <-release })
+	defer close(release)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if got := clientAt(t, srv.URL).CallTool(ctx, Call{Tool: "post_comment"}); got.Class != Temporary || !got.Sent {
+		t.Fatalf("no answer after sending: %v sent=%v", got.Class, got.Sent)
+	}
+}
+
+func TestInitializeSendsTheVersionAndNeedsAServerName(t *testing.T) {
+	var clientVersion string
+	srv := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     json.RawMessage `json:"id"`
+			Params struct {
+				ClientInfo struct {
+					Version string `json:"version"`
+				} `json:"clientInfo"`
+			} `json:"params"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		clientVersion = req.Params.ClientInfo.Version
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":` + string(req.ID) + `,"result":{"serverInfo":{"name":"","version":"0.7.0"}}}`))
+	})
+	_, ans := clientAt(t, srv.URL, WithVersion("v0.2.0")).Initialize(context.Background())
+	if ans.Class != Protocol {
+		t.Errorf("a server without a name: got %v", ans.Class)
+	}
+	if clientVersion != "v0.2.0" {
+		t.Errorf("clientInfo.version %q", clientVersion)
+	}
+}
+
+func TestAResultOfNullIsAProtocolError(t *testing.T) {
+	srv := rpcServer(t, func(id json.RawMessage) string { return `{"jsonrpc":"2.0","id":` + string(id) + `,"result":null}` })
+	if _, ans := clientAt(t, srv.URL).ListTools(context.Background()); ans.Class != Protocol {
+		t.Fatalf("got %v", ans.Class)
+	}
+}
+
+func TestMCPKeepsTheBasePath(t *testing.T) {
+	var path string
+	srv := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		var req struct {
+			ID json.RawMessage `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":` + string(req.ID) + `,"result":{"tools":[]}}`))
+	})
+	if _, ans := clientAt(t, srv.URL+"/sub/").ListTools(context.Background()); ans.Class != Object {
+		t.Fatalf("got %v", ans.Class)
+	}
+	if path != "/sub/api/mcp" {
+		t.Fatalf("path %q", path)
+	}
+}
+
+// A machine code other than "refused" carries no reason, even if the server
+// sends one.
+func TestAReasonOnlyNamesARefusal(t *testing.T) {
+	srv := rpcServer(t, func(id json.RawMessage) string {
+		return `{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"isError":true,"content":[{"type":"text","text":"no"}],"_meta":{"lalabase/code":"forbidden","lalabase/reason":"x"}}}`
+	})
+	if got := clientAt(t, srv.URL).CallTool(context.Background(), Call{Tool: "get_ticket"}); got.Class != NoAccess || got.Reason != "" {
+		t.Fatalf("got %v %q", got.Class, got.Reason)
 	}
 }

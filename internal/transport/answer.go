@@ -39,6 +39,9 @@ const (
 	// Temporary: the network failed, the server is overloaded (5xx) or the
 	// rate limit was hit (429, see RetryAt). The only class worth retrying.
 	Temporary
+	// Canceled: the client itself gave up on the request (the selection moved
+	// on). No statement about the server; the answer is dropped.
+	Canceled
 )
 
 func (c Class) String() string {
@@ -61,6 +64,8 @@ func (c Class) String() string {
 		return "protocol"
 	case Temporary:
 		return "temporary"
+	case Canceled:
+		return "canceled"
 	}
 	return "unknown"
 }
@@ -82,6 +87,10 @@ type Answer struct {
 	RetryAt time.Time
 	// Err is the cause on the client side (network, decoding), if any.
 	Err error
+	// Sent: the request left the client, so a write may have been carried
+	// out even without an answer. A write whose outcome is unclear is
+	// reloaded, never sent again (plan, Writes).
+	Sent bool
 }
 
 // OK reports whether the answer is an object.

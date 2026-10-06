@@ -73,9 +73,31 @@ type Call struct {
 	// OneRecord: the tool addresses one record, so an empty answer means the
 	// record was not found. For every other tool an empty answer is a result.
 	OneRecord bool
-	// LegacyNotFound are the exact texts a server before 0.7.0 answers a
-	// missing record of this call with, naming the id that was asked for.
-	LegacyNotFound []string
+}
+
+// legacyNotFound are the exact texts a server before 0.7.0 answers a missing
+// record of a call with, naming the id or number that was asked for. Kept
+// here beside legacyErrors: every sentence the client reads of an older
+// server stands in one place.
+func legacyNotFound(call Call) []string {
+	if !call.OneRecord {
+		return nil
+	}
+	var texts []string
+	switch call.Tool {
+	case "get_ticket", "post_comment":
+		if id, ok := call.Args["ticket_id"].(string); ok {
+			texts = append(texts, "No ticket found for "+id+".")
+		}
+		if n, ok := call.Args["number"].(string); ok {
+			texts = append(texts, "No ticket found for number "+n+".")
+		}
+	case "mark_notification_read":
+		if id, ok := call.Args["notification_id"].(string); ok {
+			texts = append(texts, "No notification found for "+id+".")
+		}
+	}
+	return texts
 }
 
 // Initialize asks the server who it is.
@@ -83,7 +105,7 @@ func (c *Client) Initialize(ctx context.Context) (ServerInfo, Answer) {
 	params := map[string]any{
 		"protocolVersion": protocolVersion,
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": "lalabase", "version": c.userAgent},
+		"clientInfo":      map[string]any{"name": "lalabase", "version": c.version},
 	}
 	result, ans := c.rpc(ctx, "initialize", params)
 	if !ans.OK() {
@@ -93,7 +115,7 @@ func (c *Client) Initialize(ctx context.Context) (ServerInfo, Answer) {
 		ServerInfo ServerInfo `json:"serverInfo"`
 	}
 	if err := json.Unmarshal(result, &body); err != nil || body.ServerInfo.Name == "" {
-		return ServerInfo{}, Answer{Class: Protocol, Status: ans.Status, Message: "initialize names no server"}
+		return ServerInfo{}, Answer{Class: Protocol, Status: ans.Status, Message: "initialize names no server", Sent: true}
 	}
 	return body.ServerInfo, ans
 }
@@ -116,7 +138,7 @@ func (c *Client) ListTools(ctx context.Context) ([]Tool, Answer) {
 			NextCursor string `json:"nextCursor"`
 		}
 		if err := json.Unmarshal(result, &page); err != nil {
-			return nil, Answer{Class: Protocol, Status: ans.Status, Message: "tools/list is no list", Err: err}
+			return nil, Answer{Class: Protocol, Status: ans.Status, Message: "tools/list is no list", Err: err, Sent: true}
 		}
 		tools = append(tools, page.Tools...)
 		if page.NextCursor == "" {
@@ -147,7 +169,7 @@ func (c *Client) CallTool(ctx context.Context, call Call) Answer {
 		Meta    map[string]any `json:"_meta"`
 	}
 	if err := json.Unmarshal(result, &body); err != nil {
-		return Answer{Class: Protocol, Status: ans.Status, Message: "a tool answer of the wrong shape", Err: err}
+		return Answer{Class: Protocol, Status: ans.Status, Message: "a tool answer of the wrong shape", Err: err, Sent: true}
 	}
 	i := slices.IndexFunc(body.Content, func(c struct {
 		Type string `json:"type"`
@@ -156,13 +178,13 @@ func (c *Client) CallTool(ctx context.Context, call Call) Answer {
 		return c.Type == "text"
 	})
 	if i < 0 {
-		return Answer{Class: Protocol, Status: ans.Status, Message: "a tool answer without text"}
+		return Answer{Class: Protocol, Status: ans.Status, Message: "a tool answer without text", Sent: true}
 	}
 	text := body.Content[i].Text
 	kind, _ := body.Meta[metaKind].(string)
 	code, _ := body.Meta[metaCode].(string)
 	reason, _ := body.Meta[metaReason].(string)
-	out := Answer{Status: ans.Status, Code: code}
+	out := Answer{Status: ans.Status, Code: code, Sent: true}
 
 	switch {
 	case body.IsError && code != "":
@@ -180,7 +202,7 @@ func (c *Client) CallTool(ctx context.Context, call Call) Answer {
 		}
 	case call.OneRecord && kind == "empty":
 		out.Class, out.Message = NotFound, text
-	case call.OneRecord && kind == "" && slices.Contains(call.LegacyNotFound, text):
+	case call.OneRecord && kind == "" && slices.Contains(legacyNotFound(call), text):
 		out.Class, out.Message = NotFound, text
 	default:
 		out.Class, out.Payload = Object, json.RawMessage(text)
@@ -203,6 +225,14 @@ func (c *Client) rpc(ctx context.Context, method string, params any) (json.RawMe
 	if !ok {
 		return nil, ans
 	}
+	reply, ans := c.readReply(id, status, header, body)
+	ans.Sent = true
+	return reply, ans
+}
+
+// readReply classifies the HTTP status and the JSON-RPC envelope of an
+// answer that arrived.
+func (c *Client) readReply(id int64, status int, header http.Header, body []byte) (json.RawMessage, Answer) {
 	if ans, ok := c.classifyStatus(status, header, body); !ok {
 		return nil, ans
 	}

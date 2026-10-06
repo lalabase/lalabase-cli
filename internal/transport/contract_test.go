@@ -72,22 +72,6 @@ var oneRecord = map[string]string{
 	"mark_notification_read": "notification_id",
 }
 
-// The exact texts an older server answers a missing record with.
-func legacyNotFound(tool string, args map[string]any) []string {
-	id, _ := args[oneRecord[tool]].(string)
-	switch tool {
-	case "get_ticket", "post_comment":
-		texts := []string{"No ticket found for " + id + "."}
-		if n, ok := args["number"].(string); ok {
-			texts = append(texts, "No ticket found for number "+n+".")
-		}
-		return texts
-	case "mark_notification_read":
-		return []string{"No notification found for " + id + "."}
-	}
-	return nil
-}
-
 // replay answers every request with one recorded response.
 func replay(t *testing.T, status int, body []byte) *httptest.Server {
 	t.Helper()
@@ -181,7 +165,7 @@ func TestRecordedToolAnswersAreClassified(t *testing.T) {
 				continue // reported by TestEveryRecordedCaseIsClassified
 			}
 			callName, args := callArgs(t, ex)
-			call := Call{Tool: callName, Args: args, OneRecord: oneRecord[callName] != "", LegacyNotFound: legacyNotFound(callName, args)}
+			call := Call{Tool: callName, Args: args, OneRecord: oneRecord[callName] != ""}
 
 			t.Run(tool+"/"+name, func(t *testing.T) {
 				srv := replay(t, ex.Response.Status, ex.Response.Body)
@@ -191,6 +175,12 @@ func TestRecordedToolAnswersAreClassified(t *testing.T) {
 				}
 				if got.Class == Object && len(got.Payload) == 0 {
 					t.Fatal("an object without payload")
+				}
+				if got.Class != Refused && got.Reason != "" {
+					t.Fatalf("a reason on a %v answer: %q", got.Class, got.Reason)
+				}
+				if !got.Sent {
+					t.Fatal("an answer that arrived does not count as sent")
 				}
 			})
 			t.Run(tool+"/"+name+"/older-server", func(t *testing.T) {

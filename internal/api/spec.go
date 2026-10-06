@@ -27,9 +27,11 @@ type Spec struct {
 	// found" (and an older server's "No ... found for <id>." too).
 	OneRecord bool
 	// Required are the fields the client relies on, as paths: "a.b" for a
-	// field of an object, "list[].c" for a field of every list element. A
-	// field may be null; a field missing, or an object or list in the wrong
-	// shape, fails the answer.
+	// field of an object, "list[].c" for a field of every list element.
+	// Required means present and not null. A field that may be null is
+	// marked "?": "status?" may be null, "ticket?.id" means the ticket may be
+	// null, but when it is there it must have an id. A field missing, null
+	// without "?", or an object or list in the wrong shape fails the answer.
 	Required []string
 }
 
@@ -54,13 +56,14 @@ func Missing(payload []byte, required []string) ([]string, error) {
 }
 
 // walk follows the remaining path segments from node and returns the paths
-// that are absent. at is the path walked so far, for the report.
+// that are absent or null. at is the path walked so far, for the report.
 func walk(node any, segments []string, at string) []string {
 	if len(segments) == 0 {
 		return nil
 	}
 	seg := segments[0]
 	name, isList := strings.CutSuffix(seg, "[]")
+	name, nullable := strings.CutSuffix(name, "?")
 	here := join(at, name)
 
 	obj, ok := node.(map[string]any)
@@ -71,10 +74,17 @@ func walk(node any, segments []string, at string) []string {
 	if !present {
 		return []string{join(at, seg)}
 	}
-	if !isList {
-		if len(segments) == 1 {
+	if value == nil {
+		switch {
+		case nullable:
 			return nil
+		case isList:
+			return []string{here + "[]"}
+		default:
+			return []string{here}
 		}
+	}
+	if !isList {
 		return walk(value, segments[1:], here)
 	}
 	list, ok := value.([]any)
@@ -84,7 +94,8 @@ func walk(node any, segments []string, at string) []string {
 	var missing []string
 	for i, element := range list {
 		elementAt := fmt.Sprintf("%s[%d]", here, i)
-		if len(segments) == 1 {
+		if element == nil {
+			missing = append(missing, elementAt)
 			continue
 		}
 		missing = append(missing, walk(element, segments[1:], elementAt)...)

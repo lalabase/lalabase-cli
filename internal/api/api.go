@@ -20,12 +20,7 @@ func New(c *transport.Client) *API { return &API{c: c} }
 
 // call runs a tool adapter and decodes its object into out.
 func (a *API) call(ctx context.Context, spec Spec, args map[string]any, out any) transport.Answer {
-	ans := a.c.CallTool(ctx, transport.Call{
-		Tool:           spec.Tool,
-		Args:           args,
-		OneRecord:      spec.OneRecord,
-		LegacyNotFound: legacyNotFound(spec, args),
-	})
+	ans := a.c.CallTool(ctx, transport.Call{Tool: spec.Tool, Args: args, OneRecord: spec.OneRecord})
 	return decode(spec, ans, out)
 }
 
@@ -62,28 +57,11 @@ func protocol(ans transport.Answer, msg string, err error) transport.Answer {
 	return transport.Answer{Class: transport.Protocol, Status: ans.Status, Message: msg, Err: err}
 }
 
-// legacyNotFound are the texts a server before 0.7.0 answers a missing
-// record with: "No ticket found for <id>." and its kin, naming exactly what
-// was asked for.
-func legacyNotFound(spec Spec, args map[string]any) []string {
-	if !spec.OneRecord {
-		return nil
-	}
-	var texts []string
-	switch spec.Tool {
-	case "get_ticket", "post_comment":
-		if id, ok := args["ticket_id"].(string); ok {
-			texts = append(texts, "No ticket found for "+id+".")
-		}
-		if n, ok := args["number"].(string); ok {
-			texts = append(texts, "No ticket found for number "+n+".")
-		}
-	case "mark_notification_read":
-		if id, ok := args["notification_id"].(string); ok {
-			texts = append(texts, "No notification found for "+id+".")
-		}
-	}
-	return texts
+// missingKey refuses a write without an idempotency key before anything is
+// sent: every write carries the key of the person's action, so a retry after
+// a lost answer cannot write twice (plan, Writes).
+func missingKey(spec Spec) transport.Answer {
+	return transport.Answer{Class: transport.InvalidInput, Message: spec.Name + ": a write needs an idempotency key"}
 }
 
 // setString and setInt add an argument only when it carries a value, so an
@@ -107,8 +85,11 @@ var NotificationsSpec = Spec{
 	Args: []string{"status", "page", "per_page", "project_id"},
 	Required: []string{
 		"data[].id", "data[].read", "data[].message", "data[].event_type", "data[].last_event_at",
-		"data[].organisation.id", "data[].organisation.name", "data[].ticket", "data[].project",
-		"meta.page", "meta.per_page", "meta.total", "meta.unread_total", "meta.by_organisation",
+		"data[].organisation.id", "data[].organisation.name",
+		"data[].ticket?.id", "data[].ticket?.number", "data[].ticket?.title", "data[].ticket?.project_id",
+		"data[].project?.id", "data[].project?.name", "data[].actor?.name",
+		"meta.page", "meta.per_page", "meta.total", "meta.unread_total",
+		"meta.by_organisation[].id", "meta.by_organisation[].name", "meta.by_organisation[].unread",
 	},
 }
 
@@ -174,7 +155,7 @@ var MarkReadSpec = Spec{
 	Name: "mark_notification_read", Tool: "mark_notification_read",
 	Args:      []string{"notification_id", "idempotency_key"},
 	OneRecord: true,
-	Required:  []string{"id", "state", "read_at"},
+	Required:  []string{"id", "state", "read_at?"},
 }
 
 type NotificationState struct {
@@ -186,8 +167,10 @@ type NotificationState struct {
 // MarkNotificationRead is a write: key is the idempotency key of the
 // person's action, the same on every retry of that action.
 func (a *API) MarkNotificationRead(ctx context.Context, id, key string) (NotificationState, transport.Answer) {
-	args := map[string]any{"notification_id": id}
-	setString(args, "idempotency_key", key)
+	if key == "" {
+		return NotificationState{}, missingKey(MarkReadSpec)
+	}
+	args := map[string]any{"notification_id": id, "idempotency_key": key}
 	var state NotificationState
 	return state, a.call(ctx, MarkReadSpec, args, &state)
 }
@@ -198,8 +181,9 @@ var TicketsSpec = Spec{
 	Name: "list_tickets", Tool: "list_tickets",
 	Args: []string{"project_id", "q", "status", "page", "per_page"},
 	Required: []string{
-		"data[].id", "data[].number", "data[].title", "data[].status", "data[].assignees", "data[].updated_at",
-		"meta.page", "meta.per_page", "meta.total", "meta.available_statuses",
+		"data[].id", "data[].number", "data[].title", "data[].status?", "data[].updated_at",
+		"data[].assignees[].id", "data[].assignees[].name",
+		"meta.page", "meta.per_page", "meta.total", "meta.available_statuses[]",
 	},
 }
 
@@ -245,16 +229,17 @@ var TicketSpec = Spec{
 	Args:      []string{"project_id", "ticket_id", "number"},
 	OneRecord: true,
 	Required: []string{
-		"id", "number", "title", "status", "description_text", "assignees", "creator", "updated_at",
+		"id", "number", "title", "status?", "description_text?", "updated_at",
+		"assignees[].id", "assignees[].name", "creator?.name",
 		"project.id", "project.name",
-		"posts[].id", "posts[].author.name", "posts[].body_text", "posts[].is_private", "posts[].created_at",
-		"posts_total", "posts_truncated", "attachments", "attachments_total",
+		"posts[].id", "posts[].author?.name", "posts[].body_text", "posts[].is_private", "posts[].created_at",
+		"posts_total", "posts_truncated", "attachments[].filename", "attachments_total",
 	},
 }
 
 type Post struct {
 	ID        string `json:"id"`
-	Author    Ref    `json:"author"`
+	Author    *Ref   `json:"author"`
 	BodyText  string `json:"body_text"`
 	IsPrivate bool   `json:"is_private"`
 	CreatedAt string `json:"created_at"`
@@ -297,13 +282,13 @@ var CommentSpec = Spec{
 	Name: "post_comment", Tool: "post_comment",
 	Args:      []string{"project_id", "ticket_id", "body", "idempotency_key"},
 	OneRecord: true,
-	Required:  []string{"id", "ticket_id", "author.name", "body_text", "is_private", "created_at"},
+	Required:  []string{"id", "ticket_id", "author?.name", "body_text", "is_private", "created_at"},
 }
 
 type Comment struct {
 	ID        string `json:"id"`
 	TicketID  string `json:"ticket_id"`
-	Author    Ref    `json:"author"`
+	Author    *Ref   `json:"author"`
 	BodyText  string `json:"body_text"`
 	IsPrivate bool   `json:"is_private"`
 	CreatedAt string `json:"created_at"`
@@ -311,8 +296,10 @@ type Comment struct {
 
 // PostComment is a write: key is the idempotency key of the person's action.
 func (a *API) PostComment(ctx context.Context, projectID, ticketID, body, key string) (Comment, transport.Answer) {
-	args := map[string]any{"project_id": projectID, "ticket_id": ticketID, "body": body}
-	setString(args, "idempotency_key", key)
+	if key == "" {
+		return Comment{}, missingKey(CommentSpec)
+	}
+	args := map[string]any{"project_id": projectID, "ticket_id": ticketID, "body": body, "idempotency_key": key}
 	var c Comment
 	return c, a.call(ctx, CommentSpec, args, &c)
 }
@@ -359,7 +346,8 @@ func (a *API) SearchKnowledge(ctx context.Context, q KnowledgeQuery) (KnowledgeP
 
 var MeSpec = Spec{
 	Name: "GET /api/v1/me", Path: "/api/v1/me",
-	Required: []string{"data.user.id", "data.user.display_name", "data.token.id", "data.token.prefix", "data.scoped_organisations"},
+	Required: []string{"data.user.id", "data.user.display_name", "data.token.id", "data.token.prefix",
+		"data.scoped_organisations[].id", "data.scoped_organisations[].name"},
 }
 
 // Me is who the token belongs to. Token.ReadOnly is nil on a server before

@@ -3,11 +3,15 @@ package transport
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"path"
 	"strconv"
@@ -25,8 +29,12 @@ const (
 	DefaultMaxBody = 8 << 20
 	// defaultRetryPause is the wait after a 429 that names no window.
 	defaultRetryPause = 5 * time.Second
-	mcpPath           = "/api/mcp"
-	apiPrefix         = "/api/"
+	// maxRetryPause bounds the wait a 429 can ask for. The core's windows are
+	// at most a minute; a server asking for days is broken or hostile, and the
+	// whole background work would wait with it.
+	maxRetryPause = 5 * time.Minute
+	mcpPath       = "/api/mcp"
+	apiPrefix     = "/api/"
 )
 
 // Client is one server and one token. It retries nothing; the request queue
@@ -35,6 +43,7 @@ type Client struct {
 	base      *url.URL
 	token     string
 	http      *http.Client
+	version   string
 	userAgent string
 	maxBody   int64
 	now       func() time.Time
@@ -47,8 +56,15 @@ type Option func(*Client)
 // WithClock replaces the clock (tests).
 func WithClock(now func() time.Time) Option { return func(c *Client) { c.now = now } }
 
-// WithUserAgent sets the User-Agent header.
-func WithUserAgent(ua string) Option { return func(c *Client) { c.userAgent = ua } }
+// WithVersion names the client's version: in the User-Agent header
+// ("lalabase/<version>") and in initialize's clientInfo.
+func WithVersion(v string) Option {
+	return func(c *Client) { c.version, c.userAgent = v, "lalabase/"+v }
+}
+
+// WithTransport replaces the HTTP transport (tests: a server's own
+// certificate).
+func WithTransport(rt http.RoundTripper) Option { return func(c *Client) { c.http.Transport = rt } }
 
 // WithMaxBody sets the most bytes read of one answer.
 func WithMaxBody(n int64) Option { return func(c *Client) { c.maxBody = n } }
@@ -73,7 +89,8 @@ func New(baseURL, token string, opts ...Option) (*Client, error) {
 	c := &Client{
 		base:      base,
 		token:     token,
-		userAgent: "lalabase",
+		version:   "dev",
+		userAgent: "lalabase/dev",
 		maxBody:   DefaultMaxBody,
 		now:       time.Now,
 		http: &http.Client{
@@ -85,6 +102,9 @@ func New(baseURL, token string, opts ...Option) (*Client, error) {
 	}
 	for _, opt := range opts {
 		opt(c)
+	}
+	if err := checkHeaderValue(c.version); err != nil {
+		return nil, fmt.Errorf("version: %w", err)
 	}
 	return c, nil
 }
@@ -123,12 +143,21 @@ func isLoopback(host string) bool {
 }
 
 func checkToken(token string) error {
-	if token == "" {
-		return errors.New("empty token")
+	if err := checkHeaderValue(token); err != nil {
+		return fmt.Errorf("token: %w", err)
 	}
-	for i := 0; i < len(token); i++ {
-		if token[i] < 0x21 || token[i] > 0x7e {
-			return errors.New("the token contains a space or a control character")
+	return nil
+}
+
+// checkHeaderValue allows printable ASCII without spaces: what goes into a
+// header line can then not end it.
+func checkHeaderValue(v string) error {
+	if v == "" {
+		return errors.New("empty")
+	}
+	for i := 0; i < len(v); i++ {
+		if v[i] < 0x21 || v[i] > 0x7e {
+			return errors.New("contains a space or a control character")
 		}
 	}
 	return nil
@@ -145,7 +174,9 @@ func (c *Client) Get(ctx context.Context, apiPath string) Answer {
 	if !ok {
 		return ans
 	}
-	return c.classifyREST(status, header, body)
+	ans = c.classifyREST(status, header, body)
+	ans.Sent = true
+	return ans
 }
 
 // resolve joins an API path to the base address. Only a plain path under
@@ -186,21 +217,53 @@ func (c *Client) send(ctx context.Context, method string, target *url.URL, body 
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	var sent atomic.Bool
+	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		WroteRequest: func(httptrace.WroteRequestInfo) { sent.Store(true) },
+	}))
+
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return 0, nil, nil, Answer{Class: Temporary, Message: "no answer from the server", Err: err}, false
+		return 0, nil, nil, failure(ctx, err, sent.Load(), "no answer from the server"), false
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	data, err = io.ReadAll(io.LimitReader(resp.Body, c.maxBody+1))
 	if err != nil {
-		return resp.StatusCode, resp.Header, nil, Answer{Class: Temporary, Status: resp.StatusCode, Message: "the answer broke off", Err: err}, false
+		ans := failure(ctx, err, true, "the answer broke off")
+		ans.Status = resp.StatusCode
+		return resp.StatusCode, resp.Header, nil, ans, false
 	}
 	if int64(len(data)) > c.maxBody {
 		err := fmt.Errorf("answer larger than %d bytes", c.maxBody)
-		return resp.StatusCode, resp.Header, nil, Answer{Class: Protocol, Status: resp.StatusCode, Message: err.Error(), Err: err}, false
+		return resp.StatusCode, resp.Header, nil, Answer{Class: Protocol, Status: resp.StatusCode, Message: err.Error(), Err: err, Sent: true}, false
 	}
 	return resp.StatusCode, resp.Header, data, Answer{}, true
+}
+
+// failure classifies a request that brought no usable answer. The client's
+// own cancellation is no failure of the server; a certificate that does not
+// check out, or a plain HTTP server behind an https address, is no network
+// hiccup to retry but a broken or attacked setup; the rest is the network.
+func failure(ctx context.Context, err error, sent bool, msg string) Answer {
+	var (
+		verify    *tls.CertificateVerificationError
+		authority x509.UnknownAuthorityError
+		hostname  x509.HostnameError
+		invalid   x509.CertificateInvalidError
+		header    tls.RecordHeaderError
+	)
+	switch {
+	case errors.Is(err, context.Canceled) && errors.Is(ctx.Err(), context.Canceled):
+		return Answer{Class: Canceled, Message: "canceled", Err: err, Sent: sent}
+	case errors.As(err, &verify), errors.As(err, &authority), errors.As(err, &hostname), errors.As(err, &invalid):
+		return Answer{Class: Protocol, Message: "the server's certificate does not check out: " + err.Error(), Err: err, Sent: sent}
+	case errors.As(err, &header), strings.Contains(err.Error(), "server gave HTTP response to HTTPS client"):
+		return Answer{Class: Protocol, Message: "the server answers plain HTTP at an https address", Err: err, Sent: sent}
+	case strings.Contains(err.Error(), "invalid header field"):
+		return Answer{Class: Protocol, Message: "the request could not be built: " + err.Error(), Err: err, Sent: sent}
+	}
+	return Answer{Class: Temporary, Message: msg, Err: err, Sent: sent}
 }
 
 // classifyStatus places the HTTP statuses both surfaces share. ok is false
@@ -229,14 +292,32 @@ func (c *Client) classifyREST(status int, header http.Header, body []byte) Answe
 			return Answer{Class: Protocol, Status: status, Message: "the answer is no JSON"}
 		}
 		return Answer{Class: Object, Status: status, Payload: body}
+	// A 403 or 404 counts only in the API's own form: one from a proxy, a
+	// firewall or a wrong base address says nothing about the record and
+	// must not make the cache drop it.
 	case http.StatusForbidden:
-		return Answer{Class: NoAccess, Status: status, Message: string(body)}
+		if apiError(body) == "forbidden" {
+			return Answer{Class: NoAccess, Status: status, Message: string(body)}
+		}
 	case http.StatusNotFound:
-		return Answer{Class: NotFound, Status: status, Message: string(body)}
+		if apiError(body) == "not_found" {
+			return Answer{Class: NotFound, Status: status, Message: string(body)}
+		}
 	case http.StatusUnprocessableEntity:
 		return Answer{Class: InvalidInput, Status: status, Message: string(body)}
 	}
 	return Answer{Class: Protocol, Status: status, Message: string(body)}
+}
+
+// apiError reads the "error" of the API's error body ({"error":"..."}).
+func apiError(body []byte) string {
+	var e struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(body, &e) != nil {
+		return ""
+	}
+	return e.Error
 }
 
 // retryAt reads when a rate limit window opens again: Retry-After (seconds
@@ -262,6 +343,9 @@ func (c *Client) retryAt(header http.Header) time.Time {
 	}
 	if at.Before(now) {
 		return now
+	}
+	if limit := now.Add(maxRetryPause); at.After(limit) {
+		return limit
 	}
 	return at
 }
