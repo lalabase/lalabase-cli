@@ -16,6 +16,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/clean"
 	"github.com/gboyke/lalabase-cli/internal/features"
 	"github.com/gboyke/lalabase-cli/internal/profile"
+	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 )
 
@@ -44,6 +45,10 @@ func runAuth(args []string, globalProfile string, env Env) int {
 // show cleans foreign text for one line of output.
 func show(s string) string { return clean.Inline(s) }
 
+// maxAnswer bounds one answer: a number or a yes. A longer line is no
+// answer, and is not read to its end (which may never come).
+const maxAnswer = 64
+
 // asker reads answers from stdin, one line each.
 type asker struct {
 	in  *bufio.Reader
@@ -52,13 +57,42 @@ type asker struct {
 
 func (a asker) ask(question string) string {
 	fmt.Fprint(a.out, question)
-	line, _ := a.in.ReadString('\n')
-	return strings.TrimSpace(line)
+	var line []byte
+	for len(line) <= maxAnswer {
+		b, err := a.in.ReadByte()
+		if err != nil || b == '\n' {
+			return strings.TrimSpace(string(line))
+		}
+		line = append(line, b)
+	}
+	return ""
 }
 
 func (a asker) yes(question string) bool {
 	answer := strings.ToLower(a.ask(question + " [y/N] "))
 	return answer == "y" || answer == "yes"
+}
+
+// newQueue: auth's requests go through the queue like every other request,
+// so a 429 holds back what follows instead of running into the window.
+func newQueue(env Env) *queue.Queue {
+	return queue.New(queue.WithOnPause(func(until time.Time) {
+		fmt.Fprintf(env.Stderr, "The server asks to wait; continuing at %s.\n", until.Local().Format("15:04:05"))
+	}))
+}
+
+// through runs one of the person's reads through the queue.
+func through(ctx context.Context, q *queue.Queue, run func(context.Context) transport.Answer) transport.Answer {
+	return q.Do(ctx, queue.Job{Priority: queue.User, Kind: queue.Read, Run: run})
+}
+
+// refusal says why a check of the token brought no answer: a rejection by the
+// server is something else than a request that did not get through.
+func refusal(ans transport.Answer) string {
+	if ans.Class == transport.Unauthenticated {
+		return fmt.Sprintf("the server did not accept the token (%s): %s", ans.Class, show(ans.Message))
+	}
+	return fmt.Sprintf("the token could not be checked (%s): %s", ans.Class, show(ans.Message))
 }
 
 func newAPI(baseURL, token string) (*api.API, *transport.Client, error) {
@@ -159,9 +193,13 @@ func authImport(args []string, globalProfile string, env Env) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
-	me, ans := client.Me(ctx)
+	var me api.Me
+	ans := through(ctx, newQueue(env), func(ctx context.Context) (a transport.Answer) {
+		me, a = client.Me(ctx)
+		return a
+	})
 	if !ans.OK() {
-		fmt.Fprintf(env.Stderr, "The server did not accept the token (%s): %s\nNothing saved.\n", ans.Class, show(ans.Message))
+		fmt.Fprintf(env.Stderr, "%s\nNothing saved.\n", refusal(ans))
 		return 1
 	}
 	fmt.Fprintf(env.Stdout, "Token of %s (%s), may write: %s\n", show(me.User.DisplayName), show(me.User.Email), mayWrite(me))
@@ -247,6 +285,7 @@ func authStatus(args []string, globalProfile string, env Env) int {
 		checks = []check{{*name, mode}}
 	}
 
+	q := newQueue(env)
 	code := 0
 	for i, c := range checks {
 		if i > 0 {
@@ -260,7 +299,7 @@ func authStatus(args []string, globalProfile string, env Env) int {
 			continue
 		}
 		fmt.Fprintf(env.Stdout, "  %s, token %s... (%s)\n", show(p.URL), show(claudecfg.TokenPrefix(p.Token)), show(p.Source))
-		if !statusOf(p, c.mode, env.Stdout) {
+		if !statusOf(q, p, c.mode, env.Stdout) {
 			code = 1
 		}
 	}
@@ -268,7 +307,7 @@ func authStatus(args []string, globalProfile string, env Env) int {
 }
 
 // statusOf asks the server about one profile; false when it cannot be used.
-func statusOf(p profile.Profile, mode profile.Mode, out io.Writer) bool {
+func statusOf(q *queue.Queue, p profile.Profile, mode profile.Mode, out io.Writer) bool {
 	client, raw, err := newAPI(p.URL, p.Token)
 	if err != nil {
 		fmt.Fprintf(out, "  %s\n", show(err.Error()))
@@ -277,9 +316,13 @@ func statusOf(p profile.Profile, mode profile.Mode, out io.Writer) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 
-	me, ans := client.Me(ctx)
+	var me api.Me
+	ans := through(ctx, q, func(ctx context.Context) (a transport.Answer) {
+		me, a = client.Me(ctx)
+		return a
+	})
 	if !ans.OK() {
-		fmt.Fprintf(out, "  the server did not accept the token (%s): %s\n", ans.Class, show(ans.Message))
+		fmt.Fprintf(out, "  %s\n", refusal(ans))
 		return false
 	}
 	fmt.Fprintf(out, "  token of %s (%s), may write: %s\n", show(me.User.DisplayName), show(me.User.Email), mayWrite(me))
@@ -293,12 +336,20 @@ func statusOf(p profile.Profile, mode profile.Mode, out io.Writer) bool {
 		}
 	}
 
-	info, ans := raw.Initialize(ctx)
+	var info transport.ServerInfo
+	ans = through(ctx, q, func(ctx context.Context) (a transport.Answer) {
+		info, a = raw.Initialize(ctx)
+		return a
+	})
 	if !ans.OK() {
 		fmt.Fprintf(out, "  MCP: %s: %s\n", ans.Class, show(ans.Message))
 		return false
 	}
-	tools, ans := raw.ListTools(ctx)
+	var tools []transport.Tool
+	ans = through(ctx, q, func(ctx context.Context) (a transport.Answer) {
+		tools, a = raw.ListTools(ctx)
+		return a
+	})
 	if !ans.OK() {
 		fmt.Fprintf(out, "  MCP tools: %s: %s\n", ans.Class, show(ans.Message))
 		return false

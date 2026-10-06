@@ -30,8 +30,11 @@ lalabase auth status            # who the tokens belong to and what the server s
   entry to take, and checks the token with the server before saving. It runs
   nothing it finds and expands no variables. An entry from the current
   directory's `.mcp.json` (a cloned repository's, perhaps) is marked, with
-  whether Claude Code was allowed to use it. Saving loads, merges and replaces
-  the file under a lock, and only if the profile is still what was asked about.
+  whether Claude Code approved or rejected it. It asks only on a terminal, and
+  an answer is one short line. Its requests go through the request queue like
+  all others. Saving loads, merges and replaces the file under a lock (a
+  regular file beside it, never a link), and only if the profile is still what
+  was asked about; a file that would outgrow the read limit is not written.
 * Files the client does not control (its config, Claude Code's files, a
   `.mcp.json`) are read through `internal/safefile`: regular files only,
   opened without blocking, up to a size limit; a larger file is an error,
@@ -92,10 +95,12 @@ go-licenses check ./cmd/... --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3
 * **The request queue** (`internal/queue`): at most two requests at once,
   background work in at most one of the two places; the person's actions go
   first; identical reads in flight share one request; after a 429 nothing
-  starts until the window opens. A job is retried at most once: a read on a
-  temporary failure, a write only after a 429 or when nothing was sent.
+  starts until the window opens (5 seconds when the 429 names none). A job is
+  retried at most once: a read on a temporary failure, a write only after a
+  429 or when nothing was sent.
 * **Dependencies** must be permissive (MIT, Apache-2.0, BSD, ISC); CI checks
-  it. Today: `github.com/BurntSushi/toml` (MIT).
+  it. Today: `github.com/BurntSushi/toml` (MIT), `golang.org/x/term` and
+  `golang.org/x/sys` (BSD-3-Clause).
 
 ## Release
 

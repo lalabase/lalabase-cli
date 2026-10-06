@@ -11,6 +11,8 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+
+	"golang.org/x/term"
 )
 
 // version is set at build time: -ldflags "-X main.version=v0.1.0".
@@ -44,10 +46,9 @@ type Env struct {
 func main() {
 	home, _ := os.UserHomeDir()
 	cwd, _ := os.Getwd()
-	info, _ := os.Stdin.Stat()
 	env := Env{
 		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv,
-		Home: home, Cwd: cwd, Interactive: info != nil && info.Mode()&os.ModeCharDevice != 0,
+		Home: home, Cwd: cwd, Interactive: isTerminal(os.Stdin),
 	}
 	os.Exit(runWith(os.Args[1:], env))
 }
@@ -105,3 +106,7 @@ func buildVersion() string {
 	}
 	return "dev"
 }
+
+// isTerminal asks the terminal driver: a character device alone (/dev/null,
+// /dev/zero) is no person to ask.
+func isTerminal(f *os.File) bool { return term.IsTerminal(int(f.Fd())) }

@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -272,7 +273,11 @@ func TestConcurrentUpdatesDoNotLoseAProfile(t *testing.T) {
 			return nil
 		})
 	}()
-	<-loaded
+	select {
+	case <-loaded:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first update never loaded the file")
+	}
 	secondDone := make(chan struct{})
 	go func() {
 		errs <- Update(path, func(f *File) error {
@@ -320,5 +325,36 @@ func TestAnUpdateThatFailsWritesNothing(t *testing.T) {
 	}
 	if after, _ := os.ReadFile(path); string(after) != string(before) {
 		t.Fatal("the file changed")
+	}
+}
+
+// A config that would outgrow what Load reads is not written: it could not
+// be read back, and every profile in it would be out of reach.
+func TestAConfigTooLargeToReadBackIsNotWritten(t *testing.T) {
+	path := writeConfig(t, twoProfiles, 0o600)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	huge := Entry{URL: "https://" + strings.Repeat("a", maxConfigSize) + ".example", Token: "lalab_pat_big000000"}
+	err = Update(path, func(f *File) error {
+		f.Profiles["big"] = huge
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("got %v", err)
+	}
+	if err := Save(path, File{Profiles: map[string]Entry{"big": huge}}); err == nil {
+		t.Fatal("Save wrote a config it cannot read back")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("the config changed")
+	}
+	if _, err := Load(path); err != nil {
+		t.Fatalf("the old config no longer loads: %v", err)
 	}
 }

@@ -81,6 +81,7 @@ func Find(home, cwd string) (entries []Entry, errs []error) {
 		Projects   map[string]struct {
 			MCPServers                 map[string]server `json:"mcpServers"`
 			EnabledMcpjsonServers      []string          `json:"enabledMcpjsonServers"`
+			DisabledMcpjsonServers     []string          `json:"disabledMcpjsonServers"`
 			EnableAllProjectMcpServers bool              `json:"enableAllProjectMcpServers"`
 		} `json:"projects"`
 	}
@@ -104,10 +105,18 @@ func Find(home, cwd string) (entries []Entry, errs []error) {
 	if err := readJSON(projectFile, maxProjectFile, &project); err != nil {
 		errs = append(errs, err)
 	}
-	approval := claude.Projects[cwd]
+	// Claude Code keeps a project under its real path; the directory may
+	// have been entered through a link.
+	approval, ok := claude.Projects[cwd]
+	if real, err := filepath.EvalSymlinks(cwd); !ok && err == nil {
+		approval = claude.Projects[real]
+	}
 	for _, e := range collect("project", projectFile, project.MCPServers) {
 		state := "not approved in Claude Code"
-		if approval.EnableAllProjectMcpServers || slices.Contains(approval.EnabledMcpjsonServers, e.Name) {
+		switch {
+		case slices.Contains(approval.DisabledMcpjsonServers, e.Name):
+			state = "rejected in Claude Code"
+		case approval.EnableAllProjectMcpServers || slices.Contains(approval.EnabledMcpjsonServers, e.Name):
 			state = "approved in Claude Code"
 		}
 		e.Note = "from .mcp.json in this directory, " + state

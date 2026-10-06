@@ -58,3 +58,54 @@ func TestAFIFOInPlaceOfTheConfigDoesNotBlock(t *testing.T) {
 		t.Fatal("opening a FIFO blocked")
 	}
 }
+
+// Load itself refuses the file of another user, not only checkOwner.
+func TestLoadRefusesAConfigOfAnotherUser(t *testing.T) {
+	path := writeConfig(t, twoProfiles, 0o600)
+	me := currentUID
+	currentUID = func() int { return me() + 1 }
+	t.Cleanup(func() { currentUID = me })
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "another user") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// The lock file is opened without following a link and must be a regular
+// file: a link would take the lock (and create a file) somewhere else, a FIFO
+// would never lock.
+func TestTheLockFileIsNoLinkAndNoFIFO(t *testing.T) {
+	type prepared struct {
+		make func(t *testing.T, lockPath string)
+		want string
+	}
+	cases := map[string]prepared{
+		"link": {want: "", make: func(t *testing.T, lockPath string) {
+			if err := os.Symlink(filepath.Join(t.TempDir(), "elsewhere"), lockPath); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		// Whether flock refuses a FIFO depends on the system (macOS does,
+		// Linux does not): the type check must say so itself.
+		"fifo": {want: "no regular file", make: func(t *testing.T, lockPath string) {
+			if err := syscall.Mkfifo(lockPath, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := writeConfig(t, twoProfiles, 0o600)
+			tc.make(t, path+".lock")
+			done := make(chan error, 1)
+			go func() { done <- Update(path, func(*File) error { return nil }) }()
+			select {
+			case err := <-done:
+				if err == nil || !strings.Contains(err.Error(), path+".lock") || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("got %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("Update hangs on the lock file")
+			}
+		})
+	}
+}

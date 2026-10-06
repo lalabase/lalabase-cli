@@ -142,6 +142,11 @@ func Save(path string, file File) error {
 	if err := toml.NewEncoder(&buf).Encode(file); err != nil {
 		return err
 	}
+	// Load reads at most maxConfigSize: a larger file could not be read back,
+	// and every profile in it would be out of reach. The old file stays.
+	if buf.Len() > maxConfigSize {
+		return fmt.Errorf("%s would grow too large (%d bytes, at most %d); nothing written", path, buf.Len(), maxConfigSize)
+	}
 	tmp, err := os.CreateTemp(dir, ".config-*.toml") // O_EXCL, mode 0600
 	if err != nil {
 		return err

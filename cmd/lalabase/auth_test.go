@@ -9,7 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -391,32 +394,38 @@ func TestImportDoesNotRewriteAConfigItCannotReadWhole(t *testing.T) {
 }
 
 // When the profile changed between the question and the save (another
-// import, a hand edit), nothing is overwritten.
+// import, a hand edit), nothing is overwritten: whatever field changed.
 func TestImportDoesNotOverwriteAProfileThatChangedMeanwhile(t *testing.T) {
-	srv := fakeServer(t, "Anna Albers")
-	h := newHarness(t)
-	h.claudeConfig(t, httpEntry("lalabase", srv.URL, writeToken))
-	if err := profile.Save(h.configPath(), profile.File{Profiles: map[string]profile.Entry{
-		"default": {URL: "https://old.example", Token: "lalab_pat_OLDOLDOLDOLD"},
-	}}); err != nil {
-		t.Fatal(err)
+	old := profile.Entry{URL: "https://old.example", Token: "lalab_pat_OLDOLDOLDOLD"}
+	changes := map[string]profile.Entry{
+		"token":       {URL: "https://meanwhile.example", Token: "lalab_pat_MEANWHILE000"},
+		"url only":    {URL: "https://meanwhile.example", Token: old.Token},
+		"allow_write": {URL: old.URL, Token: old.Token, AllowWrite: true},
 	}
-	// The answer to "Replace it?" arrives after another process changed the
-	// profile.
-	changer := &changingReader{answers: "1\ny\n", onSecondLine: func() {
-		_ = profile.Save(h.configPath(), profile.File{Profiles: map[string]profile.Entry{
-			"default": {URL: "https://meanwhile.example", Token: "lalab_pat_MEANWHILE000"},
-		}})
-	}}
-	code := runWith([]string{"auth", "import"}, Env{
-		Stdin: changer, Stdout: &h.out, Stderr: &h.err,
-		Getenv: func(k string) string { return h.vars[k] }, Home: h.home, Cwd: h.cwd, Interactive: true,
-	})
-	if code != 1 || !strings.Contains(h.err.String(), "changed") {
-		t.Fatalf("exit %d\n%s%s", code, h.out.String(), h.err.String())
-	}
-	if entry := h.config(t).Profiles["default"]; entry.Token != "lalab_pat_MEANWHILE000" {
-		t.Fatalf("overwritten: %+v", entry)
+	for name, meanwhile := range changes {
+		t.Run(name, func(t *testing.T) {
+			srv := fakeServer(t, "Anna Albers")
+			h := newHarness(t)
+			h.claudeConfig(t, httpEntry("lalabase", srv.URL, writeToken))
+			if err := profile.Save(h.configPath(), profile.File{Profiles: map[string]profile.Entry{"default": old}}); err != nil {
+				t.Fatal(err)
+			}
+			// The answer to "Replace it?" arrives after another process
+			// changed the profile.
+			changer := &changingReader{answers: "1\ny\n", onSecondLine: func() {
+				_ = profile.Save(h.configPath(), profile.File{Profiles: map[string]profile.Entry{"default": meanwhile}})
+			}}
+			code := runWith([]string{"auth", "import"}, Env{
+				Stdin: changer, Stdout: &h.out, Stderr: &h.err,
+				Getenv: func(k string) string { return h.vars[k] }, Home: h.home, Cwd: h.cwd, Interactive: true,
+			})
+			if code != 1 || !strings.Contains(h.err.String(), "changed") {
+				t.Fatalf("exit %d\n%s%s", code, h.out.String(), h.err.String())
+			}
+			if entry := h.config(t).Profiles["default"]; entry != meanwhile {
+				t.Fatalf("overwritten: %+v", entry)
+			}
+		})
 	}
 }
 
@@ -440,4 +449,126 @@ func (r *changingReader) Read(p []byte) (int, error) {
 	n := copy(p, r.answers[:i])
 	r.answers = r.answers[n:]
 	return n, nil
+}
+
+// An answer is one short line: an endless input (a device, a pipe that never
+// ends a line) is not read without end.
+func TestAnEndlessAnswerIsNotReadWithoutEnd(t *testing.T) {
+	srv := fakeServer(t, "Anna Albers")
+	h := newHarness(t)
+	h.claudeConfig(t, httpEntry("lalabase", srv.URL, writeToken))
+	endless := &zeros{}
+	done := make(chan int, 1)
+	go func() {
+		done <- runWith([]string{"auth", "import"}, Env{
+			Stdin: endless, Stdout: &h.out, Stderr: &h.err,
+			Getenv: func(k string) string { return h.vars[k] }, Home: h.home, Cwd: h.cwd, Interactive: true,
+		})
+	}()
+	select {
+	case code := <-done:
+		if code != 1 {
+			t.Fatalf("exit %d\n%s%s", code, h.out.String(), h.err.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("import still reads its answer")
+	}
+	if n := endless.n.Load(); n > 64<<10 {
+		t.Fatalf("read %d bytes for one answer", n)
+	}
+	if _, err := os.Stat(h.configPath()); err == nil {
+		t.Fatal("saved a profile")
+	}
+}
+
+// zeros reads like /dev/zero and counts what was taken.
+type zeros struct{ n atomic.Int64 }
+
+func (z *zeros) Read(p []byte) (int, error) {
+	clear(p)
+	z.n.Add(int64(len(p)))
+	return len(p), nil
+}
+
+// A device is no terminal: /dev/null is a character device, as a terminal is.
+func TestADeviceIsNoTerminal(t *testing.T) {
+	f, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	if isTerminal(f) {
+		t.Fatal("/dev/null taken for a terminal")
+	}
+}
+
+// auth's requests go through the queue: a 429 holds back what follows, the
+// person is told until when, and the read is retried once the window opens.
+func TestStatusWaitsForTheWindowOfA429(t *testing.T) {
+	srv := fakeServer(t, "Anna Albers")
+	var mu sync.Mutex
+	var times []time.Time
+	throttled := false
+	limited := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		times = append(times, time.Now())
+		first := !throttled
+		throttled = true
+		mu.Unlock()
+		if first {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		srv.Config.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(limited.Close)
+	h := newHarness(t)
+	saveProfiles(t, h, limited, readToken)
+	if code := h.run("", false, "auth", "status"); code != 0 {
+		t.Fatalf("exit %d: %s %s", code, h.out.String(), h.err.String())
+	}
+	if !strings.Contains(h.err.String(), "wait") {
+		t.Fatalf("not told of the wait:\n%s", h.err.String())
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(times) < 2 || times[1].Sub(times[0]) < 900*time.Millisecond {
+		t.Fatalf("the next request did not wait for the window: %v", times)
+	}
+}
+
+// Both profiles share one queue: when the first gives up on a 429 (its retry
+// met a second one), the next profile's request still waits for the window
+// instead of running into it.
+func TestStatusHoldsTheNextProfileBackAfterA429(t *testing.T) {
+	srv := fakeServer(t, "Anna Albers")
+	var mu sync.Mutex
+	var times []time.Time
+	limited := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		times = append(times, time.Now())
+		n := len(times)
+		mu.Unlock()
+		if n <= 2 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		srv.Config.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(limited.Close)
+	h := newHarness(t)
+	saveProfiles(t, h, limited, readToken)
+	if code := h.run("", false, "auth", "status"); code != 1 {
+		t.Fatalf("exit %d: %s %s", code, h.out.String(), h.err.String())
+	}
+	if !strings.Contains(h.out.String(), "agent commands accept this profile") {
+		t.Fatalf("the agent profile was not checked:\n%s", h.out.String())
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(times) < 3 || times[2].Sub(times[1]) < 900*time.Millisecond {
+		t.Fatalf("the next profile did not wait for the window: %v", times)
+	}
 }

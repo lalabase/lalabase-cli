@@ -759,3 +759,28 @@ func TestAnUnknownPlainTextFromAnOlderServerIsARefusal(t *testing.T) {
 		t.Errorf("newer server, kind ok: got %v", got.Class)
 	}
 }
+
+// A 429 whose body breaks off still carries its window: the headers arrived,
+// and without RetryAt the queue would retry at once into the closed window.
+func TestA429WithABrokenBodyKeepsItsWindow(t *testing.T) {
+	srv := serve(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "60")
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte("Zu vi"))
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			t.Fatal("no hijacker")
+		}
+		conn, _, _ := hj.Hijack()
+		_ = conn.Close()
+	})
+	for _, got := range []Answer{
+		clientAt(t, srv.URL).Get(context.Background(), "/api/v1/me"),
+		clientAt(t, srv.URL).CallTool(context.Background(), Call{Tool: "get_ticket"}),
+	} {
+		if got.Class != Temporary || got.Status != 429 || !got.RetryAt.Equal(fixedNow.Add(60*time.Second)) {
+			t.Fatalf("got %v status %d retry %v", got.Class, got.Status, got.RetryAt)
+		}
+	}
+}

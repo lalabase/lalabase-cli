@@ -216,3 +216,53 @@ func TestAnEntryIsFoundByItsTokenAlone(t *testing.T) {
 		t.Fatalf("%+v", entries)
 	}
 }
+
+// The approval Claude Code keeps per project: all of a project's servers at
+// once, a rejection that wins over that, and the project found under its real
+// path when the directory was entered through a link.
+func TestTheApprovalOfProjectEntries(t *testing.T) {
+	servers := `{"mcpServers": {
+	  "one": {"url":"https://lalabase.com/api/mcp","headers":{"Authorization":"Bearer ` + tokenA + `"}},
+	  "two": {"url":"https://lalabase.com/api/mcp","headers":{"Authorization":"Bearer ` + tokenB + `"}}
+	}}`
+	cases := []struct {
+		name     string
+		settings string
+		viaLink  bool
+		want     map[string]string
+	}{
+		{"all approved", `"enableAllProjectMcpServers": true`, false,
+			map[string]string{"one": "approved in Claude Code", "two": "approved in Claude Code"}},
+		{"a rejection wins", `"enableAllProjectMcpServers": true, "disabledMcpjsonServers": ["two"]`, false,
+			map[string]string{"one": "approved in Claude Code", "two": "rejected in Claude Code"}},
+		{"entered through a link", `"enabledMcpjsonServers": ["one"]`, true,
+			map[string]string{"one": "approved in Claude Code", "two": "not approved in Claude Code"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home, real := t.TempDir(), t.TempDir()
+			real, err := filepath.EvalSymlinks(real)
+			if err != nil {
+				t.Fatal(err)
+			}
+			write(t, filepath.Join(real, ".mcp.json"), servers)
+			write(t, filepath.Join(home, ".claude.json"), `{"projects": {"`+real+`": {`+tc.settings+`}}}`)
+			cwd := real
+			if tc.viaLink {
+				cwd = filepath.Join(t.TempDir(), "link")
+				if err := os.Symlink(real, cwd); err != nil {
+					t.Fatal(err)
+				}
+			}
+			entries, _ := findWithin(t, home, cwd)
+			if len(entries) != 2 {
+				t.Fatalf("%+v", entries)
+			}
+			for _, e := range entries {
+				if !strings.HasSuffix(e.Note, ", "+tc.want[e.Name]) {
+					t.Errorf("%s: note %q, want %q", e.Name, e.Note, tc.want[e.Name])
+				}
+			}
+		})
+	}
+}

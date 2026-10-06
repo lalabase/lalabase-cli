@@ -439,7 +439,9 @@ func TestRetryRules(t *testing.T) {
 		{"write, temporary after sending", Write, temporary(0, true), 1},
 		{"write, temporary 5xx", Write, temporary(503, true), 1},
 		{"write, nothing sent", Write, temporary(0, false), 2},
-		{"write, 429", Write, transport.Answer{Class: transport.Temporary, Status: 429, Sent: true}, 2},
+		// A window long open: the retry needs no clock (a 429 without one
+		// pauses, TestA429WithoutAWindowPausesTheDefault).
+		{"write, 429", Write, transport.Answer{Class: transport.Temporary, Status: 429, RetryAt: time.Unix(1, 0), Sent: true}, 2},
 		{"write, invalid input before sending", Write, transport.Answer{Class: transport.InvalidInput, Sent: false}, 1},
 		{"write, unauthenticated", Write, transport.Answer{Class: transport.Unauthenticated, Sent: true}, 1},
 	}
@@ -684,4 +686,126 @@ func TestAnExtendedPauseKeepsOneTimer(t *testing.T) {
 	if pending != 1 {
 		t.Fatalf("%d timers wait for one window", pending)
 	}
+}
+
+// A 429 that names no window (or lost it) still pauses: the default wait,
+// never zero.
+func TestA429WithoutAWindowPausesTheDefault(t *testing.T) {
+	clock := newClock()
+	q := New(WithClock(clock), WithRetryDelay(0))
+	g := newGate()
+	r := do(q, context.Background(), Job{Priority: User, Kind: Read, Run: g.run})
+	waitStarted(t, g)
+	g.release <- transport.Answer{Class: transport.Temporary, Status: 429, Sent: true}
+	waitPaused(t, q, clock.Now().Add(defaultPause))
+	notStarted(t, g)
+	clock.Advance(defaultPause)
+	waitStarted(t, g)
+	g.release <- ok()
+	answer(t, r)
+}
+
+// A shared read that every caller left can finish after a new one with the
+// same key started; it must not remove the new one, or a third caller would
+// start a third request.
+func TestALateEndOfAnOldReadDoesNotRemoveItsSuccessor(t *testing.T) {
+	q := New(WithClock(newClock()))
+	var calls atomic.Int32
+	releaseOld := make(chan struct{})
+	startedNew := make(chan struct{}, 1)
+	releaseNew := make(chan struct{})
+	run := func(context.Context) transport.Answer {
+		// Ignores its context, so the order of the two ends is the test's.
+		if calls.Add(1) == 1 {
+			<-releaseOld
+		} else {
+			startedNew <- struct{}{}
+			<-releaseNew
+		}
+		return ok()
+	}
+	job := Job{Priority: User, Kind: Read, Key: "k", Run: run}
+
+	ctx, leave := context.WithCancel(context.Background())
+	first := do(q, ctx, job)
+	waitJoined(t, q, "k", 1)
+	leave()
+	answer(t, first)
+
+	second := do(q, context.Background(), job)
+	select {
+	case <-startedNew:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the new read did not start")
+	}
+	close(releaseOld) // the old read ends after its successor started
+	time.Sleep(50 * time.Millisecond)
+
+	third := do(q, context.Background(), job)
+	waitJoined(t, q, "k", 2)
+	close(releaseNew)
+	answer(t, second)
+	answer(t, third)
+	if calls.Load() != 2 {
+		t.Fatalf("%d requests, want 2", calls.Load())
+	}
+}
+
+// A person joining a background read that waits in a closed window is told
+// of the pause, once, with its end.
+func TestAPersonJoiningAReadInAPauseIsTold(t *testing.T) {
+	clock := newClock()
+	var mu sync.Mutex
+	var told []time.Time
+	q := New(WithClock(clock), WithOnPause(func(until time.Time) { mu.Lock(); told = append(told, until); mu.Unlock() }))
+	a, b := newGate(), newGate()
+	do(q, context.Background(), Job{Priority: Background, Kind: Read, Key: "a", Run: a.run})
+	do(q, context.Background(), Job{Priority: User, Kind: Read, Key: "b", Run: b.run})
+	waitStarted(t, a)
+	waitStarted(t, b)
+	until := clock.Now().Add(30 * time.Second)
+	a.release <- throttled(clock, 30*time.Second) // background: its retry tells nobody
+	waitPaused(t, q, until)
+	b.release <- ok()
+
+	preview := newGate()
+	do(q, context.Background(), Job{Priority: Background, Kind: Read, Key: "p", Run: preview.run})
+	waitJoined(t, q, "p", 1)
+	mu.Lock()
+	before := len(told)
+	mu.Unlock()
+
+	do(q, context.Background(), Job{Priority: User, Kind: Read, Key: "p", Run: preview.run})
+	waitJoined(t, q, "p", 2)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(told) != before+1 || !told[len(told)-1].Equal(until) {
+		t.Fatalf("told %v (before the person joined: %d)", told, before)
+	}
+}
+
+// When one of two persons sharing a waiting read leaves, the other still
+// waits: the read stays ahead of background work.
+func TestASharedReadStaysAheadWhileAPersonStillWaits(t *testing.T) {
+	q := New(WithClock(newClock()))
+	refresh, person, preview := newGate(), newGate(), newGate()
+	do(q, context.Background(), Job{Priority: Background, Run: refresh.run})
+	waitStarted(t, refresh)
+	rp := do(q, context.Background(), Job{Priority: User, Run: person.run})
+	waitStarted(t, person)
+
+	do(q, context.Background(), Job{Priority: Background, Kind: Read, Key: "t", Run: preview.run})
+	waitWaiting(t, q, 1)
+	ctx, leave := context.WithCancel(context.Background())
+	gone := do(q, ctx, Job{Priority: User, Kind: Read, Key: "t", Run: preview.run})
+	stays := do(q, context.Background(), Job{Priority: User, Kind: Read, Key: "t", Run: preview.run})
+	waitJoined(t, q, "t", 3)
+	leave()
+	answer(t, gone)
+
+	person.release <- ok()
+	answer(t, rp)
+	waitStarted(t, preview) // a person still waits for it
+	preview.release <- ok()
+	answer(t, stays)
 }
