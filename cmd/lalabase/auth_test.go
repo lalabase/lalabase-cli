@@ -626,6 +626,10 @@ func TestYesTakesAnyCase(t *testing.T) {
 func TestATerminalIsATerminal(t *testing.T) {
 	ptmx, tty, err := pty.Open()
 	if err != nil {
+		// On the CI a skip would pass without testing anything.
+		if os.Getenv("CI") != "" {
+			t.Fatalf("no pseudo-terminal: %v", err)
+		}
 		t.Skipf("no pseudo-terminal here: %v", err)
 	}
 	defer func() { _ = ptmx.Close(); _ = tty.Close() }()
@@ -696,12 +700,16 @@ func TestWhenAPauseEnds(t *testing.T) {
 	if got := when(now.Add(-time.Hour).Add(30*time.Second), now.Add(-time.Hour)); got != "23:00:20 (in 30 s)" {
 		t.Fatalf("same day: %q", got)
 	}
+	// Rounded, not cut: 1.6 s is 2 s.
+	if got := when(now.Add(-time.Hour).Add(1600*time.Millisecond), now.Add(-time.Hour)); !strings.HasSuffix(got, "(in 2 s)") {
+		t.Fatalf("rounding: %q", got)
+	}
 }
 
 // Why a request brought no answer: the server refused it, the command's
 // limit ended (in a pause or not), or it was canceled.
 func TestWhyARequestFailed(t *testing.T) {
-	r := &requests{now: time.Now}
+	r := &requests{now: time.Now, until: time.Now().Add(-time.Minute)}
 	expired, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
 	canceled, stop := context.WithCancel(context.Background())
@@ -713,6 +721,8 @@ func TestWhyARequestFailed(t *testing.T) {
 	}{
 		{context.Background(), transport.Answer{Class: transport.Unauthenticated, Message: "no"}, "the server did not accept the token (unauthenticated): no"},
 		{expired, transport.Answer{Class: transport.Canceled, Message: "canceled before it was sent"}, "the token could not be checked: no answer within 30s"},
+		// A pause that is over is no reason any more.
+		{expired, transport.Answer{Class: transport.Temporary, Message: "no answer from the server"}, "the token could not be checked: no answer within 30s"},
 		{canceled, transport.Answer{Class: transport.Canceled, Message: "canceled before it was sent"}, "the token could not be checked: canceled"},
 		{context.Background(), transport.Answer{Class: transport.Temporary, Message: "boom"}, "the token could not be checked (temporary): boom"},
 	}
@@ -720,5 +730,31 @@ func TestWhyARequestFailed(t *testing.T) {
 		if got := r.tokenFailed(tc.ctx, tc.ans); got != tc.want {
 			t.Errorf("%v: got %q, want %q", tc.ans.Class, got, tc.want)
 		}
+	}
+}
+
+// Foreign text from the server is cleaned on every way to the terminal, the
+// MCP failures of auth status included.
+func TestStatusCleansTheServersErrorText(t *testing.T) {
+	srv := fakeServer(t, "Anna Albers")
+	hostile := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/mcp" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("down \x1b]8;;https://evil.example\x07click\x1b]8;;\x07"))
+			return
+		}
+		srv.Config.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(hostile.Close)
+	h := newHarness(t)
+	saveProfiles(t, h, hostile, readToken)
+	if code := h.run("", false, "--profile", "default", "auth", "status"); code != 1 {
+		t.Fatalf("exit %d: %s %s", code, h.out.String(), h.err.String())
+	}
+	if !strings.Contains(h.out.String(), "MCP:") {
+		t.Fatalf("the MCP failure is not shown:\n%s", h.out.String())
+	}
+	if strings.ContainsRune(h.out.String()+h.err.String(), 0x1b) || strings.ContainsRune(h.out.String()+h.err.String(), 0x07) {
+		t.Fatalf("a control character reached the terminal:\n%q", h.out.String())
 	}
 }

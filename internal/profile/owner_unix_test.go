@@ -4,6 +4,7 @@ package profile
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -252,4 +253,206 @@ func TestALinkLoopIsRefused(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Load hangs on a link loop")
 	}
+}
+
+// The config itself is never a link: what it points to lies in a directory
+// nobody checked.
+func TestTheConfigIsNoLink(t *testing.T) {
+	root := t.TempDir()
+	safe := filepath.Join(root, "safe")
+	bad := filepath.Join(root, "bad")
+	for _, d := range []string{safe, bad} {
+		if err := os.Mkdir(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(bad, 0o777); err != nil { //nolint:gosec // the test opens it on purpose
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bad, "config.toml"), []byte(twoProfiles), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(safe, "config.toml")
+	if err := os.Symlink("../bad/config.toml", link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(link); err == nil || !strings.Contains(err.Error(), "is a link") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// The config's own directory is the user's alone: a sticky bit lets others
+// add entries there (a lock file of theirs, say), so it is no excuse here.
+func TestTheConfigDirectoryIsNeverShared(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "lalabase")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(twoProfiles), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o777|os.ModeSticky); err != nil { //nolint:gosec // the test opens it on purpose
+		t.Fatal(err)
+	}
+	for op, run := range map[string]func() error{
+		"Load":   func() error { _, err := Load(path); return err },
+		"Save":   func() error { return Save(path, File{Profiles: map[string]Entry{}}) },
+		"Update": func() error { return Update(path, func(*File) error { return nil }) },
+	} {
+		if err := run(); err == nil || !strings.Contains(err.Error(), "chmod go-w") {
+			t.Errorf("%s: got %v", op, err)
+		}
+	}
+}
+
+// A lock file that others may change, or that belongs to somebody else, is
+// refused before anything waits on it: its owner could hold it forever, or
+// swap it while we hold it.
+func TestALockFileOfOthersIsRefused(t *testing.T) {
+	t.Run("writable by others", func(t *testing.T) {
+		path := writeConfig(t, twoProfiles, 0o600)
+		if err := os.WriteFile(path+".lock", nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path+".lock", 0o666); err != nil { //nolint:gosec // the test opens it on purpose
+			t.Fatal(err)
+		}
+		if err := Update(path, func(*File) error { return nil }); err == nil || !strings.Contains(err.Error(), path+".lock") {
+			t.Fatalf("got %v", err)
+		}
+	})
+	t.Run("of another user, held", func(t *testing.T) {
+		path := writeConfig(t, twoProfiles, 0o600)
+		held, err := os.OpenFile(path+".lock", os.O_RDWR|os.O_CREATE, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = held.Close() }()
+		if err := syscall.Flock(int(held.Fd()), syscall.LOCK_EX); err != nil { //nolint:gosec // a file descriptor fits an int
+			t.Fatal(err)
+		}
+		foreignAt(t, path+".lock")
+		done := make(chan error, 1)
+		go func() { done <- Update(path, func(*File) error { return nil }) }()
+		select {
+		case err := <-done:
+			if err == nil || !strings.Contains(err.Error(), "another user") {
+				t.Fatalf("got %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("Update waits on a lock file of another user")
+		}
+	})
+}
+
+// foreignAt makes the entry at path look owned by another user.
+func foreignAt(t *testing.T, path string) {
+	t.Helper()
+	old := ownerOf
+	ownerOf = func(p string, info fs.FileInfo) uint32 {
+		if p == path {
+			return uint32(currentUID()) + 1 //nolint:gosec // a uid fits
+		}
+		return old(p, info)
+	}
+	t.Cleanup(func() { ownerOf = old })
+}
+
+// A link on the way that belongs to somebody else can be pointed elsewhere
+// by its owner at any time, even in a sticky directory: refused, wherever it
+// points now.
+func TestALinkOfAnotherUserIsRefused(t *testing.T) {
+	root := realTempDir(t)
+	target := filepath.Join(root, "real")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	foreignAt(t, link)
+	path := filepath.Join(link, "config.toml")
+	if err := Save(path, File{Profiles: map[string]Entry{}}); err == nil || !strings.Contains(err.Error(), "link of another user") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// Links are resolved as the kernel resolves them: a ".." after a link goes
+// up from where the link led, not from where it lies.
+func TestDotDotAfterALinkGoesUpFromItsTarget(t *testing.T) {
+	root := t.TempDir()
+	mk := func(rel string, mode os.FileMode) {
+		t.Helper()
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(p, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(p, mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("far/deep", 0o700)
+	mk("far/leaf", 0o777) // where the kernel arrives
+	mk("leaf", 0o700)     // where a lexical shortcut would arrive
+	if err := os.Symlink("far/deep", filepath.Join(root, "hop")); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "L")
+	if err := os.Symlink("hop/../leaf", dir); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.Stat(filepath.Join(root, "far", "leaf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(got, want) {
+		t.Fatal("the kernel resolves the link elsewhere; the test's premise is wrong")
+	}
+	if err := checkDirs(dir); err == nil || !strings.Contains(err.Error(), "far/leaf") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// At most 40 links on the way, as Linux allows (macOS stops at 32, and then
+// the open fails on its own).
+func TestTheLinkLimitIsForty(t *testing.T) {
+	chain := func(n int) string {
+		root := realTempDir(t)
+		end := filepath.Join(root, "end")
+		if err := os.Mkdir(end, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		prev := end
+		for i := range n {
+			l := filepath.Join(root, fmt.Sprintf("l%d", i))
+			if err := os.Symlink(prev, l); err != nil {
+				t.Fatal(err)
+			}
+			prev = l
+		}
+		return prev
+	}
+	if err := checkDirs(chain(40)); err != nil {
+		t.Fatalf("40 links: %v", err)
+	}
+	if err := checkDirs(chain(41)); err == nil || !strings.Contains(err.Error(), "too many links") {
+		t.Fatalf("41 links: %v", err)
+	}
+}
+
+// realTempDir is t.TempDir with its links resolved (on macOS /var is one), so
+// a test counts and names exactly the links it made.
+func realTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }

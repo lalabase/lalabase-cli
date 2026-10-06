@@ -104,7 +104,9 @@ func Load(path string) (File, error) {
 	if err := dirsOf(filepath.Dir(path)); err != nil {
 		return File{}, err
 	}
-	data, info, err := safefile.ReadRegular(path, maxConfigSize)
+	// The config is never a link: what a link points to lies in a
+	// directory nobody checked.
+	data, info, err := safefile.ReadRegularNoLink(path, maxConfigSize)
 	if errors.Is(err, fs.ErrNotExist) {
 		return File{Profiles: map[string]Entry{}}, ErrNoFile
 	}
@@ -116,6 +118,9 @@ func Load(path string) (File, error) {
 	}
 	if err := checkOwner(info); err != nil {
 		return File{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := checkACL(path, private); err != nil {
+		return File{}, err
 	}
 
 	var file File

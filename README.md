@@ -39,9 +39,21 @@ lalabase auth status            # who the tokens belong to and what the server s
   Saving loads, merges and replaces the file under a lock (a regular file
   beside it, never a link), and only if the profile is still what was asked
   about; a file that would outgrow the read limit is not written.
-* The config is used only when every directory on its way, from `/` down and
-  through links, belongs to the user or root and cannot be written by others
-  (a sticky directory such as `/tmp` excepted), as ssh treats its files.
+* **The config's way is checked** against one threat: another local user
+  without root, who can change only what is writable for them and replace
+  only entries they own. From `/` down, links resolved as the kernel does:
+  a directory passed through belongs to the user or root and is not writable
+  by group or others unless sticky (`/tmp`); a link passed through belongs to
+  the user or root; the config's own directory, the config and its lock file
+  belong to the user and are writable by nobody else, sticky or not; the
+  config is never a link. On macOS access control lists are read too (they
+  can grant what the mode bits deny): an entry that allows others anything
+  on the config, its lock file or its directory, or that lets them add,
+  delete or rename further up, is refused; deny entries are fine. On Linux
+  an access list shows in the mode bits (its mask), so the mode checks see it.
+  Not covered: an attacker with root, network file systems that map user
+  ids, and changes by the user's own processes between the check and the
+  open (there is no descriptor-bound walk).
 * Files the client does not control (its config, Claude Code's files, a
   `.mcp.json`) are read through `internal/safefile`: regular files only,
   opened without blocking, up to a size limit; a larger file is an error,
@@ -62,7 +74,7 @@ Go version: see `go.mod`.
 go vet ./...
 go test -race ./...
 golangci-lint run
-go-licenses check ./cmd/... --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,0BSD
+go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,0BSD
 ```
 
 * **Foreign text** (titles, comments, names, server error texts) goes through

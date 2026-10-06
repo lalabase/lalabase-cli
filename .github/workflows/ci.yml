@@ -1,7 +1,7 @@
 # Every pull request and every push to main: vet, tests (with the race
 # detector), lint, and the license rule of the core repository: every
 # dependency is permissive (MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC,
-# 0BSD), checked on the dependencies the binary actually links. The release
+# 0BSD), checked on the dependencies of the binary and of the tests. The release
 # workflow calls this one first, so a tag is never published past these checks.
 name: ci
 
@@ -40,6 +40,20 @@ jobs:
       - name: fuzz the cleaning function briefly
         run: go test -run='^$' -fuzz=FuzzCleanedTextIsTerminalSafe -fuzztime=20s ./internal/clean/
 
+  # The code that only macOS runs (its access lists, its file locks and
+  # FIFOs, its terminal) is tested on macOS too; the rest needs no second run.
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: go test
+        run: go test -race -count=1 -timeout 5m ./internal/profile/ ./internal/safefile/ ./cmd/lalabase/
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -65,4 +79,4 @@ jobs:
       - name: go-licenses
         run: |
           go install github.com/google/go-licenses/v2@v2.0.1
-          go-licenses check ./cmd/... --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,0BSD
+          go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,0BSD
