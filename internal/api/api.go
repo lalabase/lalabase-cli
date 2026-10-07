@@ -254,7 +254,9 @@ var TicketSpec = Spec{
 		"assignees[].id", "assignees[].name", "creator?.id", "creator?.name?",
 		"project.id", "project.name",
 		"posts[].id", "posts[].author?.id", "posts[].author?.name?", "posts[].body_text", "posts[].is_private", "posts[].created_at",
-		"posts_total", "posts_truncated", "attachments[].filename", "attachments_total",
+		// attachments_truncated since the server lists attachments at all
+		// (core #701, with attachments_total): a missing one is not "complete".
+		"posts_total", "posts_truncated", "attachments[].filename", "attachments_total", "attachments_truncated",
 	},
 }
 
@@ -285,8 +287,9 @@ type Ticket struct {
 	PostsTruncated   bool         `json:"posts_truncated"`
 	Attachments      []Attachment `json:"attachments"`
 	AttachmentsTotal int          `json:"attachments_total"`
-	// The page, from MCP 0.9.0; required only when TicketOptions asked for
-	// one (see ticketSpec).
+	// AttachmentsTruncated is required on every answer (TicketSpec). The
+	// page, from MCP 0.9.0, is required only when TicketOptions asked for one
+	// (see ticketSpec).
 	PostsPage            int    `json:"posts_page"`
 	PostsPerPage         int    `json:"posts_per_page"`
 	PostsPages           int    `json:"posts_pages"`
@@ -316,10 +319,9 @@ func (o TicketOptions) paged() bool {
 
 // attachmentPageFields come with every S1 answer, a page of comments or one
 // comment; pageFields add the page of comments. A page the client cannot
-// place is a protocol error, not page 0 of 0, and a missing
-// attachments_truncated is not "complete".
+// place is a protocol error, not page 0 of 0.
 var (
-	attachmentPageFields = []string{"attachments_page", "attachments_pages", "attachments_truncated"}
+	attachmentPageFields = []string{"attachments_page", "attachments_pages"}
 	pageFields           = append([]string{"posts_page", "posts_per_page", "posts_pages", "posts_order"}, attachmentPageFields...)
 )
 

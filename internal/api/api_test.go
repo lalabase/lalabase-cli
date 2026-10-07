@@ -354,7 +354,7 @@ func TestAWriteWithoutAnIdempotencyKeyIsRefusedBeforeSending(t *testing.T) {
 func TestAFieldOfTheWrongTypeIsAProtocolError(t *testing.T) {
 	text := `{"id":"x","number":"1","title":"T","status":null,"description_text":"","assignees":[],"creator":null,` +
 		`"updated_at":"u","project":{"id":"p","name":"P"},"posts":[],"posts_total":0,"posts_truncated":false,` +
-		`"attachments":[],"attachments_total":0}`
+		`"attachments":[],"attachments_total":0,"attachments_truncated":false}`
 	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{
 		"content": []map[string]any{{"type": "text", "text": text}}, "_meta": map[string]any{"lalabase/kind": "ok"},
 	}})
@@ -619,6 +619,110 @@ func TestAMissingCommentKeepsTheTicket(t *testing.T) {
 	if _, ans := api.TicketWith(context.Background(), website, missing, TicketOptions{}); ans.Class != transport.NotFound ||
 		cache.Decide(ans.Class, cache.Read) != cache.Remove {
 		t.Fatalf("plain: %v", ans.Class)
+	}
+}
+
+// The reason is a value others rely on (the plan, C1's cache rule), not only
+// a constant both sides share.
+func TestTheMissingCommentReasonIsPinned(t *testing.T) {
+	if CommentNotFound != "comment_not_found" {
+		t.Fatalf("CommentNotFound is %q", CommentNotFound)
+	}
+}
+
+// The adapter changes class and reason, nothing else: status, sent, code,
+// message and payload are what the transport gave.
+func TestTheMissingCommentKeepsWhatTheTransportKnew(t *testing.T) {
+	file, err := contract.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex := file.Contract.MCP.Calls["get_ticket"]["post_not_found"]
+	// The recorded answer under the id of each request.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID json.RawMessage `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		var body map[string]any
+		_ = json.Unmarshal(ex.Response.Body, &body)
+		body["id"] = req.ID
+		out, _ := json.Marshal(body)
+		w.WriteHeader(ex.Response.Status)
+		_, _ = w.Write(out)
+	}))
+	defer srv.Close()
+	c, _ := transport.New(srv.URL, "lalab_pat_test")
+	args := map[string]any{"project_id": website, "ticket_id": login, "post_id": missing}
+	raw := c.CallTool(context.Background(), transport.Call{Tool: "get_ticket", Args: args, OneRecord: true})
+	_, got := New(c).TicketWith(context.Background(), website, login, TicketOptions{PostID: missing})
+	if raw.Class != transport.NotFound || got.Class != transport.Refused {
+		t.Fatalf("raw %v, adapted %v", raw.Class, got.Class)
+	}
+	if got.Status != raw.Status || got.Status != 200 || got.Sent != raw.Sent || !got.Sent || got.Code != raw.Code ||
+		got.Message != raw.Message || string(got.Payload) != string(raw.Payload) {
+		t.Fatalf("raw %+v\nadapted %+v", raw, got)
+	}
+}
+
+// Only "not found" is about the comment. A ticket the reader may not see
+// stays "no access", and the cache removes it.
+func TestNoAccessWithAPostIDStaysNoAccess(t *testing.T) {
+	body := `{"jsonrpc":"2.0","id":1,"result":{"isError":true,"content":[{"type":"text","text":"Not authorized."}],"_meta":{"lalabase/code":"forbidden"}}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(body)) }))
+	defer srv.Close()
+	c, _ := transport.New(srv.URL, "lalab_pat_test")
+	_, ans := New(c).TicketWith(context.Background(), website, login, TicketOptions{PostID: comment})
+	if ans.Class != transport.NoAccess || ans.Reason != "" || cache.Decide(ans.Class, cache.Read) != cache.Remove {
+		t.Fatalf("got %v %q", ans.Class, ans.Reason)
+	}
+}
+
+// The whole description alone: only full_text goes out, and an answer
+// without page fields is fine, because no page was asked for.
+func TestTheWholeDescriptionAlone(t *testing.T) {
+	var sent map[string]any
+	text := recordedText(t, "get_ticket", func(p map[string]any) {
+		p["description_text"] = "lang"
+		for _, k := range []string{"posts_page", "posts_per_page", "posts_pages", "posts_order", "attachments_page", "attachments_pages"} {
+			delete(p, k)
+		}
+	})
+	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{
+		"content": []map[string]any{{"type": "text", "text": text}}, "_meta": map[string]any{"lalabase/kind": "ok"},
+	}})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Params struct {
+				Arguments map[string]any `json:"arguments"`
+			} `json:"params"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		sent = req.Params.Arguments
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+	c, _ := transport.New(srv.URL, "lalab_pat_test")
+	ticket, ans := New(c).TicketWith(context.Background(), website, login, TicketOptions{FullText: true})
+	if !ans.OK() || ticket.DescriptionText != "lang" {
+		t.Fatalf("%v %q %q", ans.Class, ans.Message, ticket.DescriptionText)
+	}
+	sentExactly(t, sent, map[string]any{"project_id": website, "ticket_id": login, "full_text": true})
+}
+
+// attachments_truncated is required on every ticket answer, with options or
+// without: a missing one would read as "complete".
+func TestEveryTicketAnswerSaysWhetherItsAttachmentsAreComplete(t *testing.T) {
+	for _, o := range []TicketOptions{{}, {FullText: true}} {
+		for name, edit := range map[string]func(map[string]any){
+			"missing": func(p map[string]any) { delete(p, "attachments_truncated") },
+			"null":    func(p map[string]any) { p["attachments_truncated"] = nil },
+		} {
+			text := recordedText(t, "get_ticket", func(p map[string]any) { edit(p); p["attachments_total"] = 11 })
+			if _, ans := replayText(t, text).TicketWith(context.Background(), website, login, o); ans.Class != transport.Protocol {
+				t.Errorf("%+v, %s: %v", o, name, ans.Class)
+			}
+		}
 	}
 }
 
