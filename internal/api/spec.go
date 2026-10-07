@@ -23,6 +23,11 @@ type Spec struct {
 	// Args are the arguments the adapter may send; the tool's input schema
 	// must declare every one of them.
 	Args []string
+	// Optional are arguments the adapter sends only when asked to, each
+	// checked by the feature that asks (features.Feature.ExtraArgs): a server
+	// without them keeps the adapter's base feature. The caller asks only
+	// when that feature is on.
+	Optional []string
 	// OneRecord: the tool addresses one record, so an empty answer is "not
 	// found" (and an older server's "No ... found for <id>." too).
 	OneRecord bool

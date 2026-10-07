@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -93,7 +94,8 @@ func setInt(args map[string]any, key string, value int) {
 
 var NotificationsSpec = Spec{
 	Name: "list_notifications", Tool: "list_notifications",
-	Args: []string{"status", "page", "per_page", "project_id"},
+	Args:     []string{"status", "page", "per_page", "project_id"},
+	Optional: []string{"organisation_id"},
 	Required: []string{
 		"data[].id", "data[].read", "data[].message", "data[].event_type", "data[].last_event_at",
 		"data[].organisation.id", "data[].organisation.name",
@@ -109,6 +111,9 @@ type NotificationQuery struct {
 	Page      int
 	PerPage   int
 	ProjectID string
+	// OrganisationID narrows the inbox to one organisation (MCP 0.8.0,
+	// feature inbox_by_organisation).
+	OrganisationID string
 }
 
 // Ref is a person, project or organisation by id and name. The name is
@@ -161,6 +166,7 @@ func (a *API) Notifications(ctx context.Context, q NotificationQuery) (Notificat
 	setInt(args, "page", q.Page)
 	setInt(args, "per_page", q.PerPage)
 	setString(args, "project_id", q.ProjectID)
+	setString(args, "organisation_id", q.OrganisationID)
 	var page NotificationPage
 	return page, a.call(ctx, NotificationsSpec, args, &page)
 }
@@ -241,13 +247,16 @@ func (a *API) Tickets(ctx context.Context, q TicketQuery) (TicketPage, transport
 var TicketSpec = Spec{
 	Name: "get_ticket", Tool: "get_ticket",
 	Args:      []string{"project_id", "ticket_id", "number"},
+	Optional:  []string{"posts_page", "posts_per_page", "posts_order", "attachments_page", "full_text", "post_id"},
 	OneRecord: true,
 	Required: []string{
 		"id", "number", "title", "status?", "description_text?", "updated_at",
 		"assignees[].id", "assignees[].name", "creator?.id", "creator?.name?",
 		"project.id", "project.name",
 		"posts[].id", "posts[].author?.id", "posts[].author?.name?", "posts[].body_text", "posts[].is_private", "posts[].created_at",
-		"posts_total", "posts_truncated", "attachments[].filename", "attachments_total",
+		// attachments_truncated since the server lists attachments at all
+		// (core #701, with attachments_total): a missing one is not "complete".
+		"posts_total", "posts_truncated", "attachments[].filename", "attachments_total", "attachments_truncated",
 	},
 }
 
@@ -278,11 +287,94 @@ type Ticket struct {
 	PostsTruncated   bool         `json:"posts_truncated"`
 	Attachments      []Attachment `json:"attachments"`
 	AttachmentsTotal int          `json:"attachments_total"`
+	// AttachmentsTruncated is required on every answer (TicketSpec). The
+	// page, from MCP 0.9.0, is required only when TicketOptions asked for one
+	// (see ticketSpec).
+	PostsPage            int    `json:"posts_page"`
+	PostsPerPage         int    `json:"posts_per_page"`
+	PostsPages           int    `json:"posts_pages"`
+	PostsOrder           string `json:"posts_order"`
+	AttachmentsPage      int    `json:"attachments_page"`
+	AttachmentsPages     int    `json:"attachments_pages"`
+	AttachmentsTruncated bool   `json:"attachments_truncated"`
+	// PostID echoes the one comment asked for with TicketOptions.PostID.
+	PostID string `json:"post_id"`
+}
+
+// TicketOptions are the S1 arguments of get_ticket (MCP 0.9.0). The zero
+// value sends none of them. Paging needs the feature ticket_posts_paged,
+// FullText and PostID need ticket_full_text.
+type TicketOptions struct {
+	PostsPage       int
+	PostsPerPage    int
+	Newest          bool // oldest first is the server's default and is not sent
+	AttachmentsPage int
+	FullText        bool
+	PostID          string // one comment, whole; no page of comments then
+}
+
+func (o TicketOptions) paged() bool {
+	return o.PostsPage > 0 || o.PostsPerPage > 0 || o.Newest || o.AttachmentsPage > 0
+}
+
+// attachmentPageFields come with every S1 answer, a page of comments or one
+// comment; pageFields add the page of comments. A page the client cannot
+// place is a protocol error, not page 0 of 0.
+var (
+	attachmentPageFields = []string{"attachments_page", "attachments_pages"}
+	pageFields           = append([]string{"posts_page", "posts_per_page", "posts_pages", "posts_order"}, attachmentPageFields...)
+)
+
+// CommentNotFound is the reason of the refusal TicketWith gives for a
+// missing or hidden comment (TicketOptions.PostID).
+const CommentNotFound = "comment_not_found"
+
+// ticketSpec is TicketSpec with the fields the options rely on.
+func ticketSpec(o TicketOptions) Spec {
+	spec := TicketSpec
+	spec.Required = slices.Clone(TicketSpec.Required)
+	switch {
+	case o.PostID != "":
+		spec.Required = append(append(spec.Required, "post_id"), attachmentPageFields...)
+	case o.paged():
+		spec.Required = append(spec.Required, pageFields...)
+	}
+	return spec
 }
 
 func (a *API) Ticket(ctx context.Context, projectID, ticketID string) (Ticket, transport.Answer) {
+	return a.TicketWith(ctx, projectID, ticketID, TicketOptions{})
+}
+
+// TicketWith reads a ticket with the S1 options: a page of comments or
+// attachments, the whole description, or one comment whole.
+//
+// With PostID, "not found" is not about the ticket: the server answers a
+// missing or hidden comment like a missing record, and the cache would drop
+// the ticket on it. It comes back as a refusal with the reason
+// CommentNotFound instead; a ticket that is really gone says so on the next
+// plain read.
+func (a *API) TicketWith(ctx context.Context, projectID, ticketID string, o TicketOptions) (Ticket, transport.Answer) {
+	if o.PostsPage < 0 || o.PostsPerPage < 0 || o.AttachmentsPage < 0 {
+		return Ticket{}, transport.Answer{Class: transport.InvalidInput, Message: TicketSpec.Name + ": a page or page size below 0"}
+	}
+	args := map[string]any{"project_id": projectID, "ticket_id": ticketID}
+	setInt(args, "posts_page", o.PostsPage)
+	setInt(args, "posts_per_page", o.PostsPerPage)
+	if o.Newest {
+		args["posts_order"] = "newest"
+	}
+	setInt(args, "attachments_page", o.AttachmentsPage)
+	if o.FullText {
+		args["full_text"] = true
+	}
+	setString(args, "post_id", o.PostID)
 	var t Ticket
-	return t, a.call(ctx, TicketSpec, map[string]any{"project_id": projectID, "ticket_id": ticketID}, &t)
+	ans := a.call(ctx, ticketSpec(o), args, &t)
+	if o.PostID != "" && ans.Class == transport.NotFound {
+		ans.Class, ans.Reason = transport.Refused, CommentNotFound
+	}
+	return t, ans
 }
 
 // TicketByNumber sends the number as text, the form the tool documents

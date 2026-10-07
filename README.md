@@ -119,6 +119,13 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   spec drives feature detection (`internal/features`, from `tools/list` and the
   input schemas; the server version decides nothing), the runtime check of
   every answer, and the compatibility test against the contract copy.
+  Arguments a newer server brings (server slice S1: `organisation_id`, the
+  pages and the full text of `get_ticket`) are optional in the spec, each
+  checked by the feature that sends it, so an older server keeps the base
+  feature. An answer to such a request must carry the fields it relies on
+  (a page without `posts_pages` is a protocol error, not page 0 of 0). A
+  missing or hidden comment asked for by `post_id` comes back as a refusal
+  (`comment_not_found`), not as "not found": the cache would drop the ticket.
 * **The request queue** (`internal/queue`): at most two requests at once,
   background work in at most one of the two places; the person's actions go
   first; identical reads in flight share one request; after a 429 nothing

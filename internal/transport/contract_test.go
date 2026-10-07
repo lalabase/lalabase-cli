@@ -38,7 +38,15 @@ var toolCases = map[string]expected{
 	"get_ticket/empty":         {class: NotFound, legacyClass: NotFound},
 	"get_ticket/invalid_input": {class: InvalidInput, legacyClass: Refused},
 	"get_ticket/not_found":     {class: NotFound, legacyClass: NotFound},
-	"get_ticket/forbidden":     {class: NoAccess, legacyClass: NoAccess},
+	// Since 0.7.1 a ticket without read access answers like a missing one.
+	"get_ticket/hidden": {class: NotFound, legacyClass: NotFound},
+	// S1 (0.9.0). A server older than 0.7.0 never gets these arguments
+	// (feature detection), so its class only says the text is not one it
+	// knows: "No comment found" names a comment, not the ticket.
+	"get_ticket/page_newest":    {class: Object, legacyClass: Object},
+	"get_ticket/one_post":       {class: Object, legacyClass: Object},
+	"get_ticket/post_not_found": {class: NotFound, legacyClass: Refused},
+	"get_ticket/invalid_paging": {class: InvalidInput, legacyClass: Refused},
 
 	"search_knowledge/ok":            {class: Object, legacyClass: Object},
 	"search_knowledge/empty":         {class: Object, legacyClass: Object},
@@ -50,12 +58,16 @@ var toolCases = map[string]expected{
 	"post_comment/invalid_input": {class: InvalidInput, legacyClass: Refused},
 	"post_comment/read_only":     {class: ReadOnly, legacyClass: ReadOnly},
 	"post_comment/not_found":     {class: NotFound, legacyClass: NotFound},
+	"post_comment/forbidden":     {class: NoAccess, legacyClass: NoAccess},
 
 	"list_notifications/ok":                    {class: Object, legacyClass: Object},
 	"list_notifications/empty":                 {class: Object, legacyClass: Object},
 	"list_notifications/invalid_input":         {class: InvalidInput, legacyClass: Refused},
 	"list_notifications/invalid_input_in_tool": {class: InvalidInput, legacyClass: Refused},
 	"list_notifications/not_found":             {class: NotFound, legacyClass: NotFound},
+	// S1 (0.8.0): organisation_id. An older server never gets it.
+	"list_notifications/by_organisation":        {class: Object, legacyClass: Object},
+	"list_notifications/organisation_not_found": {class: NotFound, legacyClass: Refused},
 
 	"mark_notification_read/ok":               {class: Object, legacyClass: Object},
 	"mark_notification_read/empty":            {class: NotFound, legacyClass: NotFound},
@@ -229,7 +241,7 @@ func TestTheRecordedServerAnswersInitializeAndToolsList(t *testing.T) {
 	}
 	srv := replay(t, 200, file.Contract.MCP.Initialize.Response.Body)
 	info, ans := newClient(t, srv.URL).Initialize(context.Background())
-	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.7.0" {
+	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.9.0" {
 		t.Fatalf("initialize: %v %+v", ans.Class, info)
 	}
 

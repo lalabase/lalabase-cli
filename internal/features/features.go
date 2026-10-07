@@ -15,10 +15,10 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/transport"
 )
 
-// MinTestedServerVersion is the MCP surface the client was tested against
-// (the contract copy in internal/contract). C1 raises it to the version that
-// brings server slice S1.
-const MinTestedServerVersion = "0.7.0"
+// MinTestedServerVersion is the MCP surface the client was tested against:
+// the version of the contract copy in internal/contract, server slice S1
+// included.
+const MinTestedServerVersion = "0.9.0"
 
 // Feature is one thing the client offers, and what it needs from the server.
 type Feature struct {
@@ -41,7 +41,7 @@ var All = []Feature{
 	{Name: "comment", Spec: api.CommentSpec},
 	{Name: "knowledge_search", Spec: api.KnowledgeSpec},
 	{Name: "inbox_by_organisation", Spec: api.NotificationsSpec, ExtraArgs: []string{"organisation_id"}, Since: "S1"},
-	{Name: "ticket_posts_paged", Spec: api.TicketSpec, ExtraArgs: []string{"posts_page", "posts_order"}, Since: "S1"},
+	{Name: "ticket_posts_paged", Spec: api.TicketSpec, ExtraArgs: []string{"posts_page", "posts_per_page", "posts_order", "attachments_page"}, Since: "S1"},
 	{Name: "ticket_full_text", Spec: api.TicketSpec, ExtraArgs: []string{"full_text", "post_id"}, Since: "S1"},
 }
 
