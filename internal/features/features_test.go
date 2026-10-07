@@ -27,22 +27,17 @@ func contractTools(t *testing.T) ([]transport.Tool, *contract.File) {
 	return tools, file
 }
 
-var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.7.0"}
+var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.9.0"}
 
-// On the contract the client was built against, the base features are on and
-// the ones that need server slice S1 are off: a missing capability really
-// switches a feature off, it is not assumed from the version.
-func TestOnTheContractTheBaseFeaturesAreOnAndTheS1OnesOff(t *testing.T) {
+// On the contract the client was built against (MCP 0.9.0, server slice S1
+// included), every feature is on.
+func TestOnTheContractEveryFeatureIsOn(t *testing.T) {
 	tools, _ := contractTools(t)
 	report := Detect(contractServer, tools)
 	for _, f := range All {
-		got := report.Enabled[f.Name]
-		if want := f.Since == ""; got != want {
-			t.Errorf("%s: enabled %v, want %v (missing %v)", f.Name, got, want, report.Missing[f.Name])
+		if !report.Enabled[f.Name] {
+			t.Errorf("%s: off (missing %v)", f.Name, report.Missing[f.Name])
 		}
-	}
-	if !slices.Contains(report.Missing["inbox_by_organisation"], "list_notifications: argument organisation_id") {
-		t.Errorf("inbox_by_organisation missing %v", report.Missing["inbox_by_organisation"])
 	}
 	if report.BelowTested {
 		t.Error("the contract's own version counts as below the tested one")
@@ -100,8 +95,8 @@ func TestTheFieldCheckSeesAFieldTheContractLacks(t *testing.T) {
 		} `json:"result"`
 	}
 	_ = json.Unmarshal(ex.Response.Body, &body)
-	missing, _ := api.Missing([]byte(body.Result.Content[0].Text), append(slices.Clone(api.TicketSpec.Required), "posts_page"))
-	if !slices.Equal(missing, []string{"posts_page"}) {
+	missing, _ := api.Missing([]byte(body.Result.Content[0].Text), append(slices.Clone(api.TicketSpec.Required), "posts_cursor"))
+	if !slices.Equal(missing, []string{"posts_cursor"}) {
 		t.Fatalf("got %v", missing)
 	}
 }
@@ -205,9 +200,6 @@ func TestFeaturesNameTheArgumentsTheirAdaptersSend(t *testing.T) {
 // time, switches that feature off: idempotency_key as much as ticket_id.
 func TestEveryArgumentOfEveryFeatureIsChecked(t *testing.T) {
 	for _, f := range All {
-		if f.Since != "" {
-			continue
-		}
 		for _, arg := range append(slices.Clone(f.Spec.Args), f.ExtraArgs...) {
 			tools, _ := contractTools(t)
 			for i, tool := range tools {
@@ -222,6 +214,98 @@ func TestEveryArgumentOfEveryFeatureIsChecked(t *testing.T) {
 			if Detect(contractServer, tools).Enabled[f.Name] {
 				t.Errorf("%s stayed on without %s", f.Name, arg)
 			}
+		}
+	}
+}
+
+// An adapter's optional arguments are exactly the extra arguments of the
+// features that run it: an argument no feature checks could be sent to a
+// server that does not know it.
+func TestEveryOptionalArgumentBelongsToAFeature(t *testing.T) {
+	for _, spec := range api.Specs {
+		var extra []string
+		for _, f := range All {
+			if f.Spec.Name == spec.Name {
+				extra = append(extra, f.ExtraArgs...)
+			}
+		}
+		slices.Sort(extra)
+		optional := slices.Sorted(slices.Values(spec.Optional))
+		if !slices.Equal(slices.Compact(extra), optional) {
+			t.Errorf("%s: optional %v, features check %v", spec.Name, optional, extra)
+		}
+		for _, arg := range spec.Optional {
+			if slices.Contains(spec.Args, arg) {
+				t.Errorf("%s: %s is both required and optional", spec.Name, arg)
+			}
+		}
+	}
+}
+
+// Removing one S1 argument switches off its feature and leaves the base
+// feature of the same tool on: an older server keeps the inbox and the ticket.
+func TestAnS1ArgumentSwitchesOffOnlyItsFeature(t *testing.T) {
+	cases := []struct{ tool, arg, off, stays string }{
+		{"list_notifications", "organisation_id", "inbox_by_organisation", "inbox"},
+		{"get_ticket", "posts_page", "ticket_posts_paged", "ticket"},
+		{"get_ticket", "attachments_page", "ticket_posts_paged", "ticket_full_text"},
+		{"get_ticket", "post_id", "ticket_full_text", "ticket_posts_paged"},
+	}
+	for _, c := range cases {
+		tools, _ := contractTools(t)
+		for i, tool := range tools {
+			if tool.Name != c.tool {
+				continue
+			}
+			var schema map[string]any
+			_ = json.Unmarshal(tool.InputSchema, &schema)
+			delete(schema["properties"].(map[string]any), c.arg)
+			tools[i].InputSchema, _ = json.Marshal(schema)
+		}
+		report := Detect(contractServer, tools)
+		if report.Enabled[c.off] || !report.Enabled[c.stays] {
+			t.Errorf("without %s: %s on %v, %s on %v", c.arg, c.off, report.Enabled[c.off], c.stays, report.Enabled[c.stays])
+		}
+	}
+}
+
+// The version the client says it was tested with is the version of its
+// contract copy.
+func TestTheTestedVersionIsTheContractCopys(t *testing.T) {
+	source, err := contract.LoadSource()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source.MCPServerVersion != MinTestedServerVersion {
+		t.Fatalf("contract copy %s, MinTestedServerVersion %s", source.MCPServerVersion, MinTestedServerVersion)
+	}
+}
+
+// Which feature checks which optional argument, written out on its own: a
+// feature that checks another feature's argument switches on against a server
+// that lacks it.
+func TestEachOptionalArgumentBelongsToItsFeature(t *testing.T) {
+	want := map[string]string{
+		"organisation_id":  "inbox_by_organisation",
+		"posts_page":       "ticket_posts_paged",
+		"posts_per_page":   "ticket_posts_paged",
+		"posts_order":      "ticket_posts_paged",
+		"attachments_page": "ticket_posts_paged",
+		"full_text":        "ticket_full_text",
+		"post_id":          "ticket_full_text",
+	}
+	seen := map[string]bool{}
+	for _, f := range All {
+		for _, arg := range f.ExtraArgs {
+			if want[arg] != f.Name {
+				t.Errorf("%s checks %s, which belongs to %q", f.Name, arg, want[arg])
+			}
+			seen[arg] = true
+		}
+	}
+	for arg := range want {
+		if !seen[arg] {
+			t.Errorf("no feature checks %s", arg)
 		}
 	}
 }
