@@ -380,9 +380,20 @@ func TestTerminalChild(t *testing.T) {
 	}
 	code := runWith(nil, env)
 	_, _ = fmt.Fprintf(os.Stdout, "C1A_RESULT=%d\n", code)
-	fds := []unix.PollFd{{Fd: 3, Events: unix.POLLIN}}
-	if n, err := unix.Poll(fds, int(exitLimit/time.Millisecond)); err != nil || n != 1 {
-		os.Exit(99)
+	// Wait for the parent's acknowledgement. The runtime's preemption signals
+	// interrupt poll under load; leaving on EINTR would end the session
+	// leader early, and Darwin then revokes the terminal the parent inspects.
+	deadline := time.Now().Add(exitLimit)
+	for {
+		fds := []unix.PollFd{{Fd: 3, Events: unix.POLLIN}}
+		n, err := unix.Poll(fds, max(0, int(time.Until(deadline)/time.Millisecond)))
+		if errors.Is(err, unix.EINTR) && time.Now().Before(deadline) {
+			continue
+		}
+		if err != nil || n != 1 {
+			os.Exit(99)
+		}
+		break
 	}
 	os.Exit(code)
 }
