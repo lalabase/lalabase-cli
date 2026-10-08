@@ -45,7 +45,7 @@ func body(value present.Body, width, height int, method ansi.Method) []string {
 		return nil
 	}
 	text := strings.ReplaceAll(value.String(), "\t", "    ")
-	lines := strings.Split(method.Wrap(text, width, ""), "\n")
+	lines := wrapBody(text, width, method)
 	overflow := len(lines) > height
 	lines = lines[:min(len(lines), height)]
 	for i := range lines {

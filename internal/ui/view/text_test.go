@@ -61,3 +61,44 @@ func TestBodyDimensionBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestBodyWrappingPreservesGraphemeClusters(t *testing.T) {
+	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
+		for _, cluster := range []string{"e\u0301", "e\u0301\u0327", "1\ufe0f\u20e3", "🇩🇪", "👍🏽", "👩\u200d👩\u200d👧\u200d👦"} {
+			prefix := strings.Repeat("a", 24-method.StringWidth(cluster))
+			text := prefix + cluster + "x"
+			for _, tc := range []struct {
+				width int
+				want  []string
+			}{
+				{23, []string{prefix, cluster + "x"}},
+				{24, []string{prefix + cluster, "x"}},
+				{25, []string{text}},
+			} {
+				got := body(present.NewBody(text), tc.width, 8, method)
+				if !reflect.DeepEqual(got, tc.want) {
+					t.Errorf("method %d, cluster %q at width %d: got %q, want %q", method, cluster, tc.width, got, tc.want)
+				}
+				if strings.Join(got, "") != text {
+					t.Errorf("method %d, width %d: wrapping lost text: %q", method, tc.width, got)
+				}
+			}
+		}
+		for _, tc := range []struct {
+			text  string
+			width int
+			want  []string
+		}{
+			{"one two", 5, []string{"one", "two"}},
+			{"one-two", 5, []string{"one-", "two"}},
+			{"  a\n\nb\n", 5, []string{"  a", "", "b", ""}},
+			{"a\tb", 8, []string{"a    b"}},
+			{"e\u0301x", 1, []string{"e\u0301", "x"}},
+			{"界x", 1, []string{"…", "x"}},
+		} {
+			if got := body(present.NewBody(tc.text), tc.width, 8, method); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("method %d, %q at width %d: got %q, want %q", method, tc.text, tc.width, got, tc.want)
+			}
+		}
+	}
+}
