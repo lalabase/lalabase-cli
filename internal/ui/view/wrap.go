@@ -58,7 +58,7 @@ func wrapBody(text string, width int, method ansi.Method) []string {
 			flushWord()
 			flushSpace()
 			newline()
-		case strings.TrimSpace(cluster) == "" && cluster != "\u00a0":
+		case strings.TrimSpace(cluster) == "" && cluster != "\u00a0" && cluster != "\u202f" && cluster != "\u2007":
 			flushWord()
 			space.WriteString(cluster)
 			spaceWidth += cells

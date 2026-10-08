@@ -10,6 +10,53 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/present"
 )
 
+func TestBodyWordWidthUsesCells(t *testing.T) {
+	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
+		for _, tc := range []struct {
+			width int
+			want  []string
+		}{
+			{5, []string{"aa", "äää"}}, {6, []string{"aa äää"}}, {7, []string{"aa äää"}},
+		} {
+			if got := body(present.NewBody("aa äää"), tc.width, 3, method); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("method %d, width %d: %q, want %q", method, tc.width, got, tc.want)
+			}
+		}
+	}
+}
+
+func TestBodyPreservesNonbreakingSpaces(t *testing.T) {
+	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
+		for _, space := range []string{"\u00a0", "\u202f", "\u2007"} {
+			text := "z." + space + "B. x"
+			// An overlong word may break between graphemes, but its protected
+			// space must stay intact instead of being discarded as a separator.
+			want := []string{"z." + space + "B", ". x"}
+			if got := body(present.NewBody(text), 4, 3, method); !reflect.DeepEqual(got, want) {
+				t.Errorf("method %d, space %q: %q, want %q", method, space, got, want)
+			}
+			if got := body(present.NewBody("x "+"z."+space+"B."), 5, 3, method); !reflect.DeepEqual(got, []string{"x", "z." + space + "B."}) {
+				t.Errorf("method %d: protected word was split: %q", method, got)
+			}
+		}
+	}
+}
+
+func TestHelpIncludesExactlyFittingEntry(t *testing.T) {
+	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
+		for _, tc := range []struct {
+			width int
+			want  string
+		}{
+			{23, "q quit"}, {24, "q quit  ctrl+c interrupt"}, {25, "q quit  ctrl+c interrupt"},
+		} {
+			if got := ansi.Strip(Help(tc.width, List, true, method)); got != tc.want {
+				t.Errorf("method %d, width %d: %q, want %q", method, tc.width, got, tc.want)
+			}
+		}
+	}
+}
+
 func TestTextGeometryPreservesGraphemes(t *testing.T) {
 	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
 		for _, tc := range []struct {

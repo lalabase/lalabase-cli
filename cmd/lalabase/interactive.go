@@ -30,21 +30,23 @@ func runInteractive(name string, env Env) int {
 		fmt.Fprintln(env.Stderr, uitext.Inline(uitext.ProfileError).String())
 		return 1
 	}
+	ctx := env.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	environment := []string{}
+	for _, key := range []string{"TERM", "TERM_PROGRAM", "COLORTERM", "NO_COLOR", "CLICOLOR", "CLICOLOR_FORCE", "SSH_TTY", "WT_SESSION"} {
+		if value := env.Getenv(key); value != "" {
+			environment = append(environment, key+"="+value)
+		}
+	}
 	run := env.runUI
 	if run == nil {
-		ctx := env.Context
-		if ctx == nil {
-			ctx = context.Background()
+		run = func(ctx context.Context, in io.Reader, out io.Writer, environment []string) error {
+			return ui.Run(ctx, in, out, environment, ui.New())
 		}
-		environment := []string{}
-		for _, key := range []string{"TERM", "TERM_PROGRAM", "COLORTERM", "NO_COLOR", "CLICOLOR", "CLICOLOR_FORCE", "SSH_TTY", "WT_SESSION"} {
-			if value := env.Getenv(key); value != "" {
-				environment = append(environment, key+"="+value)
-			}
-		}
-		run = func(in io.Reader, out io.Writer) error { return ui.Run(ctx, in, out, environment, ui.New()) }
 	}
-	if err := run(env.Stdin, env.Stdout); err != nil {
+	if err := run(ctx, env.Stdin, env.Stdout, environment); err != nil {
 		if errors.Is(err, tea.ErrInterrupted) {
 			return 130
 		}

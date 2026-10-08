@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -25,7 +26,7 @@ func TestNoCommandRequiresBothTerminals(t *testing.T) {
 				Interactive: in, OutputTerminal: out, Getenv: func(k string) string {
 					return map[string]string{"LC_ALL": "UTF-8", "LALABASE_URL": "http://127.0.0.1:1", "LALABASE_TOKEN": "dummy"}[k]
 				},
-				runUI: func(io.Reader, io.Writer) error { launched = true; return nil }}
+				runUI: func(context.Context, io.Reader, io.Writer, []string) error { launched = true; return nil }}
 			code := runWith(nil, env)
 			if in && out {
 				if code != 0 || !launched {
@@ -105,7 +106,10 @@ func TestInteractiveProfileFailureBeforeUI(t *testing.T) {
 					}
 				}
 			}
-			env.runUI = func(io.Reader, io.Writer) error { t.Fatal("profile failure started the UI"); return nil }
+			env.runUI = func(context.Context, io.Reader, io.Writer, []string) error {
+				t.Fatal("profile failure started the UI")
+				return nil
+			}
 			if code := runInteractive("", env); code != 1 || !strings.Contains(errOut.String(), "lalabase auth import") {
 				t.Fatalf("exit %d: %s", code, errOut.String())
 			}
@@ -130,7 +134,7 @@ func interactiveEnv(t *testing.T, vars map[string]string) (Env, *bytes.Buffer) {
 			}
 			return vars[k]
 		},
-		runUI: func(io.Reader, io.Writer) error { return nil }}, &errOut
+		runUI: func(context.Context, io.Reader, io.Writer, []string) error { return nil }}, &errOut
 }
 
 func TestInteractiveDefaultResolution(t *testing.T) {
@@ -188,7 +192,10 @@ func TestInteractivePreflightOrder(t *testing.T) {
 				}
 				return tc.locale
 			},
-			runUI: func(io.Reader, io.Writer) error { t.Fatal("launched UI before preflight passed"); return nil }}
+			runUI: func(context.Context, io.Reader, io.Writer, []string) error {
+				t.Fatal("launched UI before preflight passed")
+				return nil
+			}}
 		if code := runInteractive(tc.name, env); code != 2 || calls != tc.calls {
 			t.Fatalf("%+v: exit %d, calls %d", tc, code, calls)
 		}
@@ -212,7 +219,7 @@ func TestInteractiveRejectsNonDefaultProfile(t *testing.T) {
 }
 
 func TestInvalidGlobalFlagIsASCIIBeforePreflight(t *testing.T) {
-	for _, name := range []string{"--bad\x1b[31m", "--bad\u009b", "--bad\u202e", "--bad\xff", "--profile"} {
+	for _, name := range []string{"--bad\x1b[31m", "--bad\u009b", "--bad\u202e", "--bad\xff", "--bad\u00db", "--profile"} {
 		var out, errOut bytes.Buffer
 		env := Env{Stdout: &out, Stderr: &errOut, Getenv: func(string) string { t.Fatal("flag error read environment"); return "" }}
 		if code := runWith([]string{name}, env); code != 2 || out.Len() != 0 {
@@ -222,6 +229,50 @@ func TestInvalidGlobalFlagIsASCIIBeforePreflight(t *testing.T) {
 			if b != '\n' && (b < 32 || b >= 127) {
 				t.Fatalf("unsafe preflight flag diagnostic: %q", errOut.String())
 			}
+		}
+	}
+}
+
+func TestUnknownCommandIsASCIIBeforePreflight(t *testing.T) {
+	for _, name := range []string{"bad\u00db", "bad\x1b[31m", "bad\u009b", "bad\u202e", "bad\xff"} {
+		var out, errOut bytes.Buffer
+		env := Env{Stdout: &out, Stderr: &errOut, Getenv: func(string) string { t.Fatal("unknown command read environment"); return "" }}
+		if code := runWith([]string{name}, env); code != 2 || out.Len() != 0 || !strings.Contains(errOut.String(), "unknown command") {
+			t.Fatalf("exit %d, stdout %q, stderr %q", code, out.String(), errOut.String())
+		}
+		for _, b := range errOut.Bytes() {
+			if b != '\n' && (b < 32 || b >= 127) {
+				t.Fatalf("unsafe command diagnostic: %q", errOut.String())
+			}
+		}
+	}
+}
+
+func TestInteractivePassesOnlyTerminalEnvironment(t *testing.T) {
+	allowed := []string{"TERM", "TERM_PROGRAM", "COLORTERM", "NO_COLOR", "CLICOLOR", "CLICOLOR_FORCE", "SSH_TTY", "WT_SESSION"}
+	for _, populated := range []bool{false, true} {
+		vars := map[string]string{"LALABASE_URL": "http://127.0.0.1:1", "LALABASE_TOKEN": "dummy-secret", "TMUX": "dummy", "TEA_DEBUG": "1", "TEA_TRACE": "dummy-trace", "UV_DEBUG": "dummy-debug"}
+		want := []string{}
+		if populated {
+			for _, key := range allowed {
+				vars[key] = "test-" + key
+				want = append(want, key+"="+vars[key])
+			}
+		}
+		env, _ := interactiveEnv(t, vars)
+		called := false
+		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string) error {
+			called = true
+			if ctx == nil || in != env.Stdin || out != env.Stdout {
+				t.Fatal("runner lost context or terminal streams")
+			}
+			if !reflect.DeepEqual(environment, want) {
+				t.Errorf("runner environment %q, want %q", environment, want)
+			}
+			return nil
+		}
+		if code := runInteractive("", env); code != 0 || !called {
+			t.Fatalf("exit %d, called %v", code, called)
 		}
 	}
 }

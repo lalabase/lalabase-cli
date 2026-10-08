@@ -25,7 +25,11 @@ func forbiddenImport(p string) bool {
 			return true
 		}
 	}
-	return p == "net" || strings.HasPrefix(p, "net/") || p == "os" || strings.HasPrefix(p, "os/") || p == "syscall" || p == "unsafe" || p == "log" || strings.HasPrefix(p, "log/")
+	return p == "net" || strings.HasPrefix(p, "net/") || p == "os" || strings.HasPrefix(p, "os/") || p == "syscall" || p == "unsafe" || p == "log" || strings.HasPrefix(p, "log/") || terminalAccess(p)
+}
+
+func terminalAccess(p string) bool {
+	return p == "golang.org/x/sys/unix" || p == "golang.org/x/term" || p == "github.com/charmbracelet/x/term"
 }
 
 func inspectUI(sources map[string]string) []string {
@@ -74,16 +78,13 @@ func inspectUI(sources map[string]string) []string {
 		}
 	}
 	for name, file := range files {
-		if !reachable[path.Dir(name)] {
-			continue
-		}
 		aliases := map[string]string{}
 		for _, imp := range file.Imports {
 			p, _ := strconv.Unquote(imp.Path.Value)
-			if surface(path.Dir(name)) && forbiddenImport(p) {
+			if (surface(path.Dir(name)) && forbiddenImport(p)) || (reachable[path.Dir(name)] && terminalAccess(p)) {
 				findings = append(findings, name+": forbidden direct import "+p)
 			}
-			if imp.Name != nil && imp.Name.Name == "." {
+			if imp.Name != nil && imp.Name.Name == "." && (reachable[path.Dir(name)] || p == clientModule+"internal/ui") {
 				findings = append(findings, name+": dot import")
 			}
 			alias := path.Base(p)
@@ -98,6 +99,12 @@ func inspectUI(sources map[string]string) []string {
 			}
 			aliases[alias] = p
 		}
+		if !strings.HasSuffix(name, "_test.go") {
+			findings = append(findings, inspectUIEntry(name, file, aliases)...)
+		}
+		if !reachable[path.Dir(name)] {
+			continue
+		}
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch n := node.(type) {
 			case *ast.GoStmt:
@@ -107,8 +114,19 @@ func inspectUI(sources map[string]string) []string {
 					findings = append(findings, name+": builtin output")
 				}
 			case *ast.SelectorExpr:
+				// Forbid taking the method value too, so a later alias cannot
+				// hide WaitGroup.Go. C1a has no application workers.
+				if n.Sel.Name == "Go" {
+					findings = append(findings, name+": application goroutine")
+				}
 				if ident, ok := n.X.(*ast.Ident); ok {
 					p := aliases[ident.Name]
+					if (p == "time" || p == "context") && n.Sel.Name == "AfterFunc" {
+						findings = append(findings, name+": application goroutine")
+					}
+					if p == "charm.land/lipgloss/v2" && (n.Sel.Name == "Writer" || strings.HasPrefix(n.Sel.Name, "Fprint")) {
+						findings = append(findings, name+": default output")
+					}
 					if p == "os" && (n.Sel.Name == "Stdout" || n.Sel.Name == "Stderr") {
 						findings = append(findings, name+": terminal output stream")
 					}

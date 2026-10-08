@@ -35,10 +35,12 @@ type terminalProcess struct {
 	cmd                *exec.Cmd
 	master, slave      *os.File
 	release            *os.File
+	descendantFD       int
 	before             *unix.Termios
 	deadline           time.Time
 	readDone, waitDone chan struct{}
 	cancel             context.CancelFunc
+	cancelProcess      context.CancelFunc
 	mu                 sync.Mutex
 	output             bytes.Buffer
 	readErr, errorExit error
@@ -92,14 +94,37 @@ func startTerminal(t *testing.T, scenario string, width uint16) *terminalProcess
 	}
 	t.Cleanup(func() { _ = ack.Close(); _ = release.Close() })
 	cmd.ExtraFiles = []*os.File{ack}
+	var descendants, alive *os.File
+	descendantFD := -1
+	if scenario == "hang" {
+		descendants, alive, err = os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = descendants.Close(); _ = alive.Close() })
+		// File.Fd can restore blocking mode on a pipe. Capture it once,
+		// then use the descriptor directly in every bounded probe.
+		descendantFD = int(descendants.Fd())
+		if err := unix.SetNonblock(descendantFD, true); err != nil {
+			t.Fatal(err)
+		}
+		cmd.ExtraFiles = append(cmd.ExtraFiles, alive)
+	}
 	cmd.WaitDelay = cleanupLimit
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	_ = ack.Close()
+	if alive != nil {
+		_ = alive.Close()
+		// Keep mutation failures contained even if the cleanup under test
+		// kills only the leader. This independent fallback runs last.
+		t.Cleanup(func() { _ = unix.Kill(-cmd.Process.Pid, unix.SIGKILL) })
+	}
 	ctx, cancel := context.WithCancel(processCtx)
 	c := &terminalProcess{cmd: cmd, master: master, slave: slave, before: before, deadline: time.Now().Add(caseLimit), readDone: make(chan struct{}), waitDone: make(chan struct{}), cancel: cancel}
 	c.release = release
+	c.descendantFD, c.cancelProcess = descendantFD, processCancel
 	if d, ok := t.Deadline(); ok && d.Add(-cleanupLimit).Before(c.deadline) {
 		c.deadline = d.Add(-cleanupLimit)
 	}
@@ -170,7 +195,12 @@ func (c *terminalProcess) until(label string, limit time.Duration, condition fun
 		if !time.Now().Before(deadline) {
 			return fmt.Errorf("%s timeout after %s", label, limit)
 		}
-		if condition() {
+		passed := condition()
+		// A late observation must never turn an expired case into success.
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("%s timeout after %s", label, limit)
+		}
+		if passed {
 			return nil
 		}
 		c.mu.Lock()
@@ -239,8 +269,8 @@ func (c *terminalProcess) finish(t *testing.T, code int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(c.before, after) {
-		t.Fatalf("termios not restored:\nbefore %+v\nafter  %+v", c.before, after)
+	if err := termiosRestorationError(c.before, after); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := c.release.Write([]byte{1}); err != nil {
 		t.Fatal(err)
@@ -269,14 +299,8 @@ func (c *terminalProcess) finish(t *testing.T, code int) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct {
-		mode int
-		end  bool
-	}{{1049, false}, {25, true}, {2004, false}} {
-		events := terminalModes(c.bytes())[tc.mode]
-		if len(events) < 2 || events[0] == tc.end || events[len(events)-1] != tc.end {
-			t.Fatalf("mode %d not restored: %v", tc.mode, events)
-		}
+	if err := terminalRestorationError(c.bytes()); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -319,14 +343,35 @@ func TestTerminalChild(t *testing.T) {
 	defer cancel()
 	env := Env{Context: ctx, Home: os.Getenv("HOME"), Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv, Interactive: isTerminal(os.Stdin), OutputTerminal: isTerminal(os.Stdout)}
 	scenario := os.Args[len(os.Args)-1]
+	if scenario == "hang" {
+		// The inherited pipe stays open while this sleeping descendant lives.
+		// EOF proves group termination without relying on zombie reaping by
+		// the host's init process, which differs across CI containers.
+		// Ignore the session leader's hangup, otherwise killing only the
+		// leader could appear to be a successful group kill. Signal readiness
+		// only after the ignored disposition has been installed.
+		grandchild := exec.CommandContext(ctx, "/bin/sh", "-c", "trap '' HUP; printf R >&3; exec /bin/sleep 60")
+		grandchild.Env = []string{}
+		grandchild.ExtraFiles = []*os.File{os.NewFile(4, "descendant-liveness")}
+		if err := grandchild.Start(); err != nil {
+			t.Fatal(err)
+		}
+		go func() { _ = grandchild.Wait() }()
+		_, _ = fmt.Fprintln(os.Stdout, "C1A_DESCENDANT_STARTED")
+	}
 	if scenario == "panic-update" || scenario == "panic-view" || scenario == "hang" {
-		env.runUI = func(in io.Reader, out io.Writer) error {
-			return ui.Run(ctx, in, out, []string{"TERM=xterm-256color"}, faultModel{Model: ui.New(), scenario: scenario})
+		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string) error {
+			return ui.Run(ctx, in, out, environment, faultModel{Model: ui.New(), scenario: scenario})
 		}
 	}
 	if scenario == "hostile" {
-		env.runUI = func(in io.Reader, out io.Writer) error {
-			return ui.Run(ctx, in, out, []string{"TERM=xterm-256color"}, ui.NewWithContent("SAFE_INLINE"+terminalHostile, "No data loaded\nSAFE_LIST"+terminalHostile, "SAFE_OBJECT"+terminalHostile))
+		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string) error {
+			return ui.Run(ctx, in, out, environment, ui.NewWithContent("SAFE_INLINE"+terminalHostile, "No data loaded\nSAFE_LIST"+terminalHostile, "SAFE_OBJECT"+terminalHostile))
+		}
+	}
+	if scenario == "environment" {
+		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string) error {
+			return ui.Run(ctx, in, out, environment, environmentModel{Model: ui.New()})
 		}
 	}
 	code := runWith(nil, env)
@@ -336,6 +381,25 @@ func TestTerminalChild(t *testing.T) {
 		os.Exit(99)
 	}
 	os.Exit(code)
+}
+
+type environmentModel struct{ tea.Model }
+
+func (m environmentModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if environment, ok := msg.(tea.EnvMsg); ok {
+		if !reflect.DeepEqual([]string(environment), []string{"TERM=xterm-256color"}) {
+			panic("runner did not use the explicit environment")
+		}
+		return m, tea.Quit
+	}
+	next, cmd := m.Model.Update(msg)
+	m.Model = next
+	return m, cmd
+}
+
+func TestPTYRunnerUsesExplicitEnvironment(t *testing.T) {
+	c := startTerminal(t, "environment", 80)
+	c.finish(t, 0)
 }
 
 // Faults are test-only model decorators, triggered after terminal readiness.
@@ -390,6 +454,12 @@ func TestPTYTimeoutKillsAndReapsGroup(t *testing.T) {
 	if err := c.ready(); err != nil {
 		t.Fatal(err)
 	}
+	if !strings.Contains(c.bytes(), "C1A_DESCENDANT_STARTED") {
+		t.Fatal("fixture omitted the descendant")
+	}
+	if err := c.descendantReady(); err != nil {
+		t.Fatal(err)
+	}
 	if err := c.send("q"); err != nil {
 		t.Fatal(err)
 	}
@@ -407,8 +477,8 @@ func TestPTYTimeoutKillsAndReapsGroup(t *testing.T) {
 	if elapsed := time.Since(start); elapsed < exitLimit || elapsed > exitLimit+cleanupLimit {
 		t.Fatalf("unexpected deadline duration: %s", elapsed)
 	}
-	if err := unix.Kill(-c.cmd.Process.Pid, 0); !errors.Is(err, unix.ESRCH) {
-		t.Fatalf("process group survived cleanup: %v", err)
+	if err := c.descendantsExited(); err != nil {
+		t.Fatal(err)
 	}
 	select {
 	case <-c.waitDone:
@@ -418,10 +488,82 @@ func TestPTYTimeoutKillsAndReapsGroup(t *testing.T) {
 	t.Logf("timeout rejected; group killed and reaped after %s", time.Since(start))
 }
 
+func (c *terminalProcess) descendantReady() error {
+	probe := &terminalProcess{deadline: c.deadline}
+	return probe.until("descendant readiness", readyLimit, func() bool {
+		var b [1]byte
+		n, err := unix.Read(c.descendantFD, b[:])
+		if err != nil && !errors.Is(err, unix.EAGAIN) && !errors.Is(err, unix.EINTR) {
+			probe.setReadError(err)
+		}
+		if n == 0 && err == nil {
+			probe.setReadError(errors.New("descendant exited before readiness"))
+		}
+		return n == 1 && b[0] == 'R'
+	})
+}
+
+func (c *terminalProcess) descendantsExited() error {
+	// Descendant liveness comes from a separate pipe and must not depend
+	// on PTY reads after process cancellation.
+	probe := &terminalProcess{deadline: c.deadline}
+	return probe.until("descendant exit", cleanupLimit, func() bool {
+		var b [1]byte
+		n, err := unix.Read(c.descendantFD, b[:])
+		if err != nil && !errors.Is(err, unix.EAGAIN) && !errors.Is(err, unix.EINTR) {
+			probe.setReadError(err)
+		}
+		return n == 0 && err == nil
+	})
+}
+
+func TestPTYCancellationKillsDescendants(t *testing.T) {
+	c := startTerminal(t, "hang", 80)
+	if err := c.ready(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(c.bytes(), "C1A_DESCENDANT_STARTED") {
+		t.Fatal("fixture omitted the descendant")
+	}
+	if err := c.descendantReady(); err != nil {
+		t.Fatal(err)
+	}
+	c.cancelProcess()
+	// Check before stop(), so its group kill cannot hide a broken Cancel.
+	if err := c.descendantsExited(); err != nil {
+		t.Fatal(err)
+	}
+	probe := &terminalProcess{deadline: c.deadline}
+	if err := probe.until("canceled child reap", cleanupLimit, func() bool {
+		select {
+		case <-c.waitDone:
+			return true
+		default:
+			return false
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.stop(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPTYDeadlineCannotPassAfterExpiry(t *testing.T) {
 	c := &terminalProcess{deadline: time.Now().Add(-time.Second)}
 	if err := c.until("expired case", time.Second, func() bool { return true }); err == nil {
 		t.Fatal("condition passed after the case deadline")
+	}
+}
+
+func TestPTYDeadlineCannotPassDuringCondition(t *testing.T) {
+	c := &terminalProcess{deadline: time.Now().Add(caseLimit)}
+	err := c.until("slow condition", time.Millisecond, func() bool {
+		time.Sleep(20 * time.Millisecond)
+		return true
+	})
+	if err == nil || !strings.Contains(err.Error(), "slow condition timeout") {
+		t.Fatalf("late success escaped the deadline: %v", err)
 	}
 }
 

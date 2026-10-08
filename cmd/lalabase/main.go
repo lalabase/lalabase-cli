@@ -44,7 +44,7 @@ type Env struct {
 	// Interactive: stdin is a terminal, so a question can be asked.
 	Interactive    bool
 	OutputTerminal bool
-	runUI          func(io.Reader, io.Writer) error
+	runUI          func(context.Context, io.Reader, io.Writer, []string) error
 }
 
 func main() {
@@ -94,7 +94,7 @@ func runWith(args []string, env Env) int {
 	case "auth":
 		return runAuth(args[1:], *profileName, env)
 	default:
-		fmt.Fprintf(env.Stderr, "lalabase: unknown command %q\n\n%s", args[0], usage)
+		fmt.Fprintf(env.Stderr, "lalabase: unknown command %+q\n\n%s", args[0], usage)
 		return 2
 	}
 }

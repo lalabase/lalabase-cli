@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"unicode"
@@ -9,6 +10,44 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
+
+func TestShellBodyColumnsStayAligned(t *testing.T) {
+	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
+		for _, tc := range []struct {
+			width      int
+			separators []int
+		}{{80, []int{31}}, {119, []int{47}}, {120, []int{24, 62}}, {121, []int{24, 63}}} {
+			for _, height := range []int{8, 24} {
+				for _, focus := range []view.Pane{view.Navigation, view.List, view.Object} {
+					m := NewWithContent("Büro", "Größe 👩\u200d👩\u200d👧\u200d👦\n界 e\u0301", "Änderung 🇩🇪\n👍🏽")
+					m.width, m.height, m.focus, m.widthMethod = tc.width, height, focus, method
+					lines := strings.Split(m.View().Content, "\n")
+					if len(lines) != height {
+						t.Fatalf("height %d: %d lines", height, len(lines))
+					}
+					if !strings.Contains(lines[2], "\x1b[1m") {
+						t.Fatal("fixture omitted the styled focus title")
+					}
+					for row, line := range lines[2 : height-1] {
+						if cells := method.StringWidth(line); cells != tc.width {
+							t.Fatalf("method %d, width %d, focus %d, row %d: %d cells: %q", method, tc.width, focus, row, cells, line)
+						}
+						var separators []int
+						plain := ansi.Strip(line)
+						for offset, r := range plain {
+							if r == '|' {
+								separators = append(separators, method.StringWidth(plain[:offset]))
+							}
+						}
+						if !reflect.DeepEqual(separators, tc.separators) {
+							t.Fatalf("width %d, row %d: separators %v, want %v", tc.width, row, separators, tc.separators)
+						}
+					}
+				}
+			}
+		}
+	}
+}
 
 const hostile = "\x1b[2J\x1b[31mCSI\x1b[0m\x1b]8;;https://evil.invalid\x07LINK\x1b]8;;\x1b\\\x1b]52;c;YQ==\x1b\\\x1bPpayload\x1b\\\x07\u202e\u2066\u2069\xff\u009b"
 
