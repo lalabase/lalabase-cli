@@ -1,13 +1,18 @@
 package sourceguard
 
 import (
+	"crypto/tls"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net"
+	"net/http"
+	"net/http/httptrace"
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -78,7 +83,7 @@ var reachableImports = map[string][]string{
 	"encoding/json": {"Decoder", "Marshal", "NewDecoder", "RawMessage", "Unmarshal", "Valid"},
 	"fmt":           {"Errorf", "Sprint", "Sprintf", "Sprintln"},
 	"io":            {"EOF", "LimitReader", "ReadAll", "ReadCloser", "Reader", "Writer"},
-	// Its hooks run on net/http's goroutines: see foreignCallbacks.
+	// Its hooks run on net/http's goroutines: see foreignCallbackTypes.
 	"net/http/httptrace": {"ClientTrace", "GotConnInfo", "WithClientTrace", "WroteRequestInfo"},
 	// Their writing names are refused below (Println, Fprint, Writer,
 	// WithoutCatchPanics).
@@ -86,18 +91,30 @@ var reachableImports = map[string][]string{
 	"charm.land/lipgloss/v2": nil, "github.com/charmbracelet/x/ansi": nil,
 }
 
-// foreignCallbacks are the fields of standard library types whose function
-// runs on a goroutine of the library's own (a trace hook, a dial, a
-// handshake), where no supervisor recovers a panic. Where the interface
-// reaches, such a field is set only in the type's literal and only through
-// transport's onWire wrappers, which raise the panic again on the request's
-// goroutine. nil: every field; such a type is used only as a literal.
-// http.Client.CheckRedirect runs on the caller's goroutine and is not here.
-var foreignCallbacks = map[string][]string{
-	"net/http/httptrace.ClientTrace": nil,
-	"net/http.Transport":             {"Dial", "DialContext", "DialTLS", "DialTLSContext", "GetProxyConnectHeader", "OnProxyConnectResponse", "Proxy"},
-	"crypto/tls.Config":              {"GetCertificate", "GetClientCertificate", "GetConfigForClient", "UnwrapSession", "VerifyConnection", "VerifyPeerCertificate", "WrapSession"},
-	"net.Dialer":                     {"Control", "ControlContext"},
+// foreignCallbackTypes are standard library types with fields whose value
+// the library uses on a goroutine of its own (a trace hook, a dial, a
+// handshake): a function, an interface (its methods are called there) or a
+// map of functions. The fields come from the types themselves.
+var foreignCallbackTypes = map[string]reflect.Type{
+	"net/http/httptrace.ClientTrace": reflect.TypeFor[httptrace.ClientTrace](),
+	"net/http.Transport":             reflect.TypeFor[http.Transport](),
+	"crypto/tls.Config":              reflect.TypeFor[tls.Config](),
+	"net.Dialer":                     reflect.TypeFor[net.Dialer](),
+	"net.Resolver":                   reflect.TypeFor[net.Resolver](),
+}
+
+// callbackFields are the exported fields of t that hold code: functions,
+// interfaces and maps of functions.
+func callbackFields(t reflect.Type) []string {
+	var names []string
+	for i := range t.NumField() {
+		f := t.Field(i)
+		kind := f.Type.Kind()
+		if f.IsExported() && (kind == reflect.Func || kind == reflect.Interface || (kind == reflect.Map && f.Type.Elem().Kind() == reflect.Func)) {
+			names = append(names, f.Name)
+		}
+	}
+	return names
 }
 
 // onWireCall: a call of one of transport's wrappers (onWire0, onWire1, ...).
@@ -117,7 +134,13 @@ func onWireCall(expr ast.Expr) bool {
 	return ok && strings.HasPrefix(ident.Name, "onWire")
 }
 
-// inspectForeignCallbacks applies foreignCallbacks to a production file.
+// inspectForeignCallbacks: in production code anywhere, a callback field of
+// foreignCallbackTypes is set only in its type's literal and only through
+// transport's onWire wrappers, which raise a panic again on the request's
+// goroutine, under the supervisor. An assignment to such a field is caught
+// by its name, whatever the variable's type (a syntax guard cannot know it).
+// onWire is transport's own, so elsewhere such a field cannot be set at all.
+// http.Client.CheckRedirect runs on the caller's goroutine and is allowed.
 func inspectForeignCallbacks(name string, file *ast.File, aliases map[string]string) []string {
 	var findings []string
 	typeOf := func(expr ast.Expr) string {
@@ -129,20 +152,19 @@ func inspectForeignCallbacks(name string, file *ast.File, aliases map[string]str
 		return ""
 	}
 	callbackField := map[string]bool{}
-	for _, fields := range foreignCallbacks {
-		for _, field := range fields {
+	for _, typ := range foreignCallbackTypes {
+		for _, field := range callbackFields(typ) {
 			callbackField[field] = true
 		}
 	}
-	literal := map[ast.Expr]bool{}
 	ast.Inspect(file, func(node ast.Node) bool {
 		switch n := node.(type) {
 		case *ast.CompositeLit:
-			fields, ok := foreignCallbacks[typeOf(n.Type)]
+			typ, ok := foreignCallbackTypes[typeOf(n.Type)]
 			if !ok {
 				return true
 			}
-			literal[n.Type] = true
+			fields := callbackFields(typ)
 			for _, elt := range n.Elts {
 				kv, ok := elt.(*ast.KeyValueExpr)
 				key, isIdent := kv.Key.(*ast.Ident)
@@ -150,7 +172,7 @@ func inspectForeignCallbacks(name string, file *ast.File, aliases map[string]str
 					findings = append(findings, name+": "+typeOf(n.Type)+" without field names")
 					continue
 				}
-				if (fields == nil || slices.Contains(fields, key.Name)) && !onWireCall(kv.Value) {
+				if slices.Contains(fields, key.Name) && !onWireCall(kv.Value) {
 					findings = append(findings, name+": "+typeOf(n.Type)+"."+key.Name+" runs on a foreign goroutine; set it through onWire")
 				}
 			}
@@ -159,14 +181,6 @@ func inspectForeignCallbacks(name string, file *ast.File, aliases map[string]str
 				if sel, ok := lhs.(*ast.SelectorExpr); ok && callbackField[sel.Sel.Name] {
 					findings = append(findings, name+": "+sel.Sel.Name+" set outside its literal; set it there, through onWire")
 				}
-			}
-		}
-		return true
-	})
-	ast.Inspect(file, func(node ast.Node) bool {
-		if expr, ok := node.(ast.Expr); ok && !literal[expr] {
-			if fields, ok := foreignCallbacks[typeOf(expr)]; ok && fields == nil {
-				findings = append(findings, name+": "+typeOf(expr)+" is used only as a literal")
 			}
 		}
 		return true
@@ -273,6 +287,7 @@ func inspectUI(sources map[string]string) []string {
 		test := strings.HasSuffix(name, "_test.go")
 		if !test {
 			findings = append(findings, inspectUIEntry(name, file, aliases)...)
+			findings = append(findings, inspectForeignCallbacks(name, file, aliases)...)
 		}
 		// Goroutines: production code anywhere starts one only in the
 		// worker's Start; a test harness may, except in the interface.
@@ -292,7 +307,6 @@ func inspectUI(sources map[string]string) []string {
 		}
 		if !test {
 			findings = append(findings, inspectReachableImports(name, file, aliases)...)
-			findings = append(findings, inspectForeignCallbacks(name, file, aliases)...)
 		}
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch n := node.(type) {

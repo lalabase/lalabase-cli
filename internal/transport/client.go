@@ -48,6 +48,9 @@ type Client struct {
 	maxBody   int64
 	now       func() time.Time
 	nextID    atomic.Int64
+	// wireStep lets a test make a hook panic at a step of send ("afterDo",
+	// "afterBody"); nil in the program.
+	wireStep func(step string, w *onWire)
 }
 
 // Option changes a Client at construction.
@@ -244,13 +247,18 @@ func (c *Client) send(ctx context.Context, method string, target *url.URL, body 
 	}))
 
 	resp, err := c.http.Do(req)
+	if err == nil {
+		// Registered before any raise: a raised panic closes the body too.
+		defer func() { _ = resp.Body.Close() }()
+	}
+	c.step("afterDo", &wire)
 	wire.raise()
 	if err != nil {
 		return 0, nil, nil, failure(ctx, err, sent.Load(), handshake.Load(), "no answer from the server"), false
 	}
-	defer func() { _ = resp.Body.Close() }()
 
 	data, err = io.ReadAll(io.LimitReader(resp.Body, c.maxBody+1))
+	c.step("afterBody", &wire)
 	if err != nil {
 		ans := failure(ctx, err, true, true, "the answer broke off")
 		ans.Status = resp.StatusCode
@@ -262,6 +270,13 @@ func (c *Client) send(ctx context.Context, method string, target *url.URL, body 
 		return resp.StatusCode, resp.Header, nil, c.window(ans, resp.Header), false
 	}
 	return resp.StatusCode, resp.Header, data, Answer{}, true
+}
+
+// step runs a test's hook step, if any.
+func (c *Client) step(at string, w *onWire) {
+	if c.wireStep != nil {
+		c.wireStep(at, w)
+	}
 }
 
 // window gives an answer whose headers said 429 the server's window, whatever

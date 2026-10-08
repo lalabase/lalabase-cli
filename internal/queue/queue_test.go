@@ -436,6 +436,10 @@ func TestRetryRules(t *testing.T) {
 		{"read, refused", Read, transport.Answer{Class: transport.Refused, Sent: true}, 1},
 		{"read, protocol", Read, transport.Answer{Class: transport.Protocol, Sent: true}, 1},
 		{"read, canceled", Read, transport.Answer{Class: transport.Canceled}, 1},
+		// A removal is final: one flight carries one answer, and its waiters
+		// all see the removal (gateway.Scope relies on it).
+		{"read, not found", Read, transport.Answer{Class: transport.NotFound, Status: 404, Sent: true}, 1},
+		{"read, no access", Read, transport.Answer{Class: transport.NoAccess, Status: 403, Sent: true}, 1},
 		{"write, temporary after sending", Write, temporary(0, true), 1},
 		{"write, temporary 5xx", Write, temporary(503, true), 1},
 		{"write, nothing sent", Write, temporary(0, false), 2},

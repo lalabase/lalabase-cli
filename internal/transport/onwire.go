@@ -20,7 +20,12 @@ func (w *onWire) catch() {
 	}
 }
 
-// raise throws a kept panic on the caller's goroutine.
+// raise throws a kept panic on the caller's goroutine. send calls it right
+// after Do and again when it returns. A hook can still run after both: net/
+// http may report the written request only after the answer was read. Its
+// panic is then kept and never raised, but it does not escape either: no
+// value is printed, no lock or place is lost. The hooks of this client only
+// store a flag.
 func (w *onWire) raise() {
 	if w.panicked.Load() {
 		panic(callbackPanicked)

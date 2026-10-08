@@ -249,3 +249,58 @@ func TestCallbacksOnForeignGoroutinesAreWrapped(t *testing.T) {
 		}
 	}
 }
+
+// Review #9, round 4: every callback field of the listed types is checked
+// one by one, as a literal and as an assignment, in the transport and in
+// the command (a transport handed in through WithTransport). The fields
+// come from the types themselves; the ones named here must be among them.
+func TestEveryCallbackFieldIsWrapped(t *testing.T) {
+	reach := `package gateway; import _ "` + clientModule + `internal/transport"`
+	seen := map[string]bool{}
+	for name, typ := range foreignCallbackTypes {
+		pkg, typeName, _ := strings.Cut(name, ".")
+		for _, field := range callbackFields(typ) {
+			seen[typeName+"."+field] = true
+			for _, file := range []string{"internal/transport/x.go", "cmd/lalabase/x.go"} {
+				for kind, body := range map[string]string{
+					"literal":    `var _ = p.` + typeName + `{` + field + `: nil}`,
+					"assignment": `func set(v *p.` + typeName + `) { v.` + field + ` = nil }`,
+				} {
+					source := `package x; import p "` + pkg + `"; ` + body
+					if got := inspectUI(map[string]string{"internal/gateway/reach.go": reach, file: source}); len(got) == 0 {
+						t.Errorf("missed %s.%s as %s in %s", typeName, field, kind, file)
+					}
+				}
+			}
+		}
+	}
+	for _, want := range []string{"ClientTrace.WroteHeaders", "ClientTrace.ConnectStart", "Transport.DialContext", "Transport.Proxy",
+		"Transport.TLSNextProto", "Config.VerifyPeerCertificate", "Config.Time", "Config.Rand", "Config.KeyLogWriter",
+		"Dialer.Control", "Resolver.Dial"} {
+		if !seen[want] {
+			t.Errorf("%s is not checked", want)
+		}
+	}
+}
+
+// Review #9, round 4: a hook set on a trace after its literal, the common
+// way in Go, is caught by the field's name.
+func TestHooksSetAfterTheLiteralAreCaught(t *testing.T) {
+	reach := `package gateway; import _ "` + clientModule + `internal/transport"`
+	for name, body := range map[string]string{
+		"empty literal":   `func f() { tr := httptrace.ClientTrace{}; tr.WroteHeaders = func() { panic(1) }; _ = tr }`,
+		"pointer literal": `func f() { tr := &httptrace.ClientTrace{}; tr.WroteHeaders = func() {}; _ = tr }`,
+		"var literal":     `func f() { var tr = httptrace.ClientTrace{}; tr.GotConn = func(httptrace.GotConnInfo) {}; _ = tr }`,
+		"copy":            `var w onWire; var base = httptrace.ClientTrace{WroteHeaders: onWire0(&w, func() {})}; func f() { t2 := base; t2.ConnectStart = func(string, string) {}; _ = t2 }`,
+	} {
+		source := `package transport; import "net/http/httptrace"; ` + body
+		if got := inspectUI(map[string]string{"internal/gateway/reach.go": reach, "internal/transport/x.go": source}); len(got) == 0 {
+			t.Errorf("missed %s", name)
+		}
+	}
+	// httptrace by name only: what the transport does not use is refused.
+	source := `package transport; import ("context"; "net/http/httptrace"); var _ = httptrace.ContextClientTrace(context.Background())`
+	if got := inspectUI(map[string]string{"internal/gateway/reach.go": reach, "internal/transport/x.go": source}); len(got) == 0 {
+		t.Error("httptrace allowed beyond its names")
+	}
+}

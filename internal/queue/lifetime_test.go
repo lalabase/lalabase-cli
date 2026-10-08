@@ -325,21 +325,33 @@ func TestDoSharedNamesTheRequest(t *testing.T) {
 		}()
 		return out
 	}
+	receive := func(ch <-chan got) got {
+		t.Helper()
+		select {
+		case v := <-ch:
+			return v
+		case <-time.After(2 * time.Second):
+			t.Fatal("no answer")
+		}
+		return got{}
+	}
 	first := shared()
 	waitStarted(t, g)
 	second := shared()
-	for q.Sharers("k") != 2 {
-		time.Sleep(time.Millisecond)
+	for deadline := time.Now().Add(2 * time.Second); q.Sharers("k") != 2; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the second waiter did not join")
+		}
 	}
 	g.release <- ok()
-	a, b := <-first, <-second
+	a, b := receive(first), receive(second)
 	if a.flight == 0 || a.flight != b.flight || !a.ans.OK() || !b.ans.OK() {
 		t.Fatalf("one request, flights %d and %d", a.flight, b.flight)
 	}
 	later := shared()
 	waitStarted(t, g)
 	g.release <- ok()
-	if c := <-later; c.flight == 0 || c.flight == a.flight {
+	if c := receive(later); c.flight == 0 || c.flight == a.flight {
 		t.Fatalf("a separate request reused flight %d", c.flight)
 	}
 	if _, f := q.DoShared(context.Background(), Job{Priority: User, Kind: Write, Run: func(context.Context) transport.Answer { return ok() }}); f != 0 {
