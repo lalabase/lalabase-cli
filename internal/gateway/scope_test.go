@@ -329,3 +329,23 @@ func TestAWriteInvalidatesTheCopiesOfARemoval(t *testing.T) {
 	s.Invalidate(key)
 	refused(t, s, store, InboxResult{Ticket: open, Answer: gone}, "a copy from before the write")
 }
+
+// A copy of a removal reaches its waiter, not the cache: a reload begun
+// after the removal and filed before the copy arrived stays.
+func TestACopyOfARemovalLeavesANewerReloadAlone(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	key := unreadPage(ns, "org-a", 1)
+	preview, open := s.Begin(Inbox, key, queue.Background), s.Begin(Inbox, key, queue.User)
+	gone := transport.Answer{Class: transport.NoAccess}
+	if _, ok := s.Receive(store, InboxResult{Ticket: preview, Answer: gone}, now); !ok {
+		t.Fatal("the removal was dropped")
+	}
+	accepted(t, s, store, object(s.Begin(Inbox, key, queue.User), `{"reload":1}`))
+	if d, ok := s.Receive(store, InboxResult{Ticket: open, Answer: gone}, now); !ok || d != cache.Remove {
+		t.Fatalf("the copy: %v %v", d, ok)
+	}
+	if e, ok := store.Get(key); !ok || string(e.Payload) != `{"reload":1}` {
+		t.Fatal("the copy removed the newer reload")
+	}
+}

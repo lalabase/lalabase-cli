@@ -152,14 +152,19 @@ func (s *Scope) Receive(store *cache.Store, r InboxResult, now time.Time) (cache
 		s.EndSession(store)
 		return d, true
 	}
+	res := r.Key.Resource()
+	if d == cache.Remove && r.ShareKey() == s.removed[res] {
+		// A copy of a removal already carried out (a waiter that shared its
+		// request): it reaches its waiter, not the cache, which may hold a
+		// reload begun since. It invalidates nothing again.
+		return d, true
+	}
 	store.Apply(r.Key, d, r.Answer.Payload, now)
-	if d == cache.Remove && r.ShareKey() != s.removed[r.Key.Resource()] {
+	if d == cache.Remove {
 		// A removal is an invalidation: an older answer for another page
 		// of the resource must not bring back what the server took away.
-		// The answer's other copies (the waiters that shared its request)
-		// still arrive and are accepted; they invalidate nothing again.
 		s.Invalidate(r.Key)
-		s.removed[r.Key.Resource()] = r.ShareKey()
+		s.removed[res] = r.ShareKey()
 	}
 	return d, true
 }
