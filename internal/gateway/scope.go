@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/cache"
@@ -26,6 +27,7 @@ type Gens struct{ Session, Area uint64 }
 
 // Ticket describes one waiter's read. It does not change after Begin.
 type Ticket struct {
+	Scope    uint64 // the scope that issued it, unique in the process
 	Waiter   Waiter
 	Area     Area
 	Key      cache.Key
@@ -34,18 +36,24 @@ type Ticket struct {
 	Priority queue.Priority
 }
 
-// ShareKey is the key two waiters share a request under: the data, the session
-// and the resource's epoch. Waiter and selection generation are not part of
-// it, so a preview and an open of the same page send one request.
+// ShareKey is the key two waiters share a request under: the data, the
+// scope, the session and the resource's epoch. Waiter and selection
+// generation are not part of it, so a preview and an open of the same page
+// send one request. The scope is: the queue outlives a scope, and a new
+// scope starts its epochs at zero.
 func (t Ticket) ShareKey() string {
-	return t.Key.String() + "|" + strconv.FormatUint(t.Gens.Session, 10) + "|" + strconv.FormatUint(t.Epoch, 10)
+	return t.Key.String() + "|" + strconv.FormatUint(t.Scope, 10) + "|" + strconv.FormatUint(t.Gens.Session, 10) + "|" + strconv.FormatUint(t.Epoch, 10)
 }
+
+// scopes numbers the scopes of the process.
+var scopes atomic.Uint64
 
 // Scope decides which results may still be accepted. The root model owns it
 // and changes it only in its update step. Generations and epochs only grow:
 // returning to an organisation gives a new generation, and epochs live apart
 // from cache entries, so evicting an entry forgets no invalidation.
 type Scope struct {
+	id      uint64
 	ns      cache.Namespace
 	session uint64
 	area    [areas]uint64
@@ -56,13 +64,13 @@ type Scope struct {
 
 // NewScope starts a session for a confirmed identity.
 func NewScope(ns cache.Namespace) *Scope {
-	return &Scope{ns: ns, epochs: map[cache.Key]uint64{}, pending: map[Waiter]Ticket{}}
+	return &Scope{id: scopes.Add(1), ns: ns, epochs: map[cache.Key]uint64{}, pending: map[Waiter]Ticket{}}
 }
 
 // Begin issues a ticket for a new waiter.
 func (s *Scope) Begin(area Area, key cache.Key, prio queue.Priority) Ticket {
 	s.next++
-	t := Ticket{Waiter: s.next, Area: area, Key: key, Gens: Gens{Session: s.session, Area: s.area[area]},
+	t := Ticket{Scope: s.id, Waiter: s.next, Area: area, Key: key, Gens: Gens{Session: s.session, Area: s.area[area]},
 		Epoch: s.epochs[key.Resource()], Priority: prio}
 	s.pending[t.Waiter] = t
 	return t
@@ -132,5 +140,10 @@ func (s *Scope) Receive(store *cache.Store, r InboxResult, now time.Time) (cache
 		return d, true
 	}
 	store.Apply(r.Key, d, r.Answer.Payload, now)
+	if d == cache.Remove {
+		// A removal is an invalidation: an older answer for another page
+		// of the resource must not bring back what the server took away.
+		s.Invalidate(r.Key)
+	}
 	return d, true
 }

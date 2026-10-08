@@ -95,3 +95,29 @@ func TestStopIsBounded(t *testing.T) {
 		t.Fatal("work started after Stop")
 	}
 }
+
+// Review #9, finding 4: Stop waits for work running in Run on another
+// goroutine (a command Bubble Tea runs), so its panic is recorded before
+// the command reads Err.
+func TestStopWaitsForRunningCalls(t *testing.T) {
+	s := New(context.Background())
+	entered, release := make(chan struct{}), make(chan struct{})
+	go Run(s, "gateway: inbox", func() int {
+		close(entered)
+		<-release
+		panic("late")
+	})
+	<-entered
+	go func() { time.Sleep(50 * time.Millisecond); close(release) }()
+	if !s.Stop(limit) {
+		t.Fatal("Stop gave up on a running call")
+	}
+	if s.Err() == nil {
+		t.Fatal("Stop returned before the running call's panic was recorded")
+	}
+	// Calls after Stop still run and count; a second Stop stays safe.
+	if v, ok := Run(s, "after", func() int { return 1 }); !ok || v != 1 {
+		t.Fatal("a call after Stop did not run")
+	}
+	s.Stop(limit)
+}

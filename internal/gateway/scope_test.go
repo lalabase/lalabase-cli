@@ -211,3 +211,39 @@ func TestEveryClassIsFiledByItsDecision(t *testing.T) {
 		}
 	}
 }
+
+// Review #9, finding 1: a removal is an invalidation. An older successful
+// answer for another page of the resource must not refill what the server
+// just took away.
+func TestARemovalRefusesOlderAnswersForTheResource(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	p1, p2 := unreadPage(ns, "org-a", 1), unreadPage(ns, "org-a", 2)
+	accepted(t, s, store, object(s.Begin(Inbox, p2, queue.User), `{"p2":1}`))
+	first := s.Begin(Inbox, p1, queue.User)
+	second := s.Begin(Inbox, p2, queue.Background)
+	if d, ok := s.Receive(store, InboxResult{Ticket: first, Answer: transport.Answer{Class: transport.NoAccess}}, now); !ok || d != cache.Remove {
+		t.Fatalf("%v %v", d, ok)
+	}
+	refused(t, s, store, object(second, `{"p2":2}`), "begun before the removal")
+	if store.Len() != 0 {
+		t.Fatal("the removed resource was refilled")
+	}
+	accepted(t, s, store, object(s.Begin(Inbox, p2, queue.User), `{"p2":3}`))
+}
+
+// Review #9, finding 2: a new scope for the same identity shares no request
+// and no ticket with an older one, whose epochs it does not know.
+func TestANewScopeSharesNothingWithAnOldOne(t *testing.T) {
+	ns := confirmed(t)
+	key := unreadPage(ns, "org-a", 1)
+	old := NewScope(ns)
+	stale := old.Begin(Inbox, key, queue.User)
+	fresh, store := NewScope(ns), cache.NewStore()
+	current := fresh.Begin(Inbox, key, queue.User)
+	if stale.ShareKey() == current.ShareKey() {
+		t.Fatal("the new scope joins the old scope's request")
+	}
+	refused(t, fresh, store, object(stale, `{"old":1}`), "the old scope's result")
+	accepted(t, fresh, store, object(current, `{"new":1}`))
+}

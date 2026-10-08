@@ -64,3 +64,22 @@ func TestTheSessionsWorkEndsWithTheInterface(t *testing.T) {
 		t.Fatal("the session's work was not canceled")
 	}
 }
+
+// Review #9, finding 4: a command still running when "q" ends the interface
+// is waited for; its panic ends with exit 1.
+func TestAPanicInARunningCommandAfterQuitExitsOne(t *testing.T) {
+	env, _ := interactiveEnv(t, map[string]string{"LALABASE_URL": "http://127.0.0.1:1", "LALABASE_TOKEN": "synthetic"})
+	env.runUI = func(_ context.Context, _ io.Reader, _ io.Writer, _ []string, sup *worker.Supervisor) error {
+		entered := make(chan struct{})
+		go worker.Run(sup, "gateway: inbox", func() int {
+			close(entered)
+			time.Sleep(100 * time.Millisecond)
+			panic("late")
+		})
+		<-entered
+		return nil // "q" won the race
+	}
+	if code := runInteractive("", env); code != 1 {
+		t.Fatalf("exit %d", code)
+	}
+}

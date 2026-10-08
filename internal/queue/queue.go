@@ -178,9 +178,6 @@ func (q *Queue) Do(ctx context.Context, job Job) transport.Answer {
 
 func (q *Queue) doShared(ctx context.Context, job Job) transport.Answer {
 	f, fresh, tell, mustTell := q.join(job)
-	if mustTell && q.onPause != nil {
-		q.onPause(tell)
-	}
 	if fresh {
 		runCtx := f.ctx
 		started := q.life.Start("queue: shared read", func(context.Context) {
@@ -192,6 +189,9 @@ func (q *Queue) doShared(ctx context.Context, job Job) transport.Answer {
 		if !started {
 			q.land(job.Key, f, canceled())
 		}
+	}
+	if mustTell && q.onPause != nil {
+		q.tell(tell, func() { q.leave(job, f) })
 	}
 
 	select {
@@ -365,11 +365,17 @@ func (q *Queue) personWaits() bool {
 func (q *Queue) acquire(ctx context.Context, prio Priority, f *flight) (*ticket, error) {
 	t, prio, paused, until := q.enqueue(prio, f)
 	if paused && prio == User && q.onPause != nil {
-		q.onPause(until)
+		q.tell(until, func() { q.abandon(t); q.clearTicket(f) })
 	}
 
 	select {
 	case <-t.ready:
+		if q.life.Context().Err() != nil {
+			// Granted as the lifetime ended: select picked either.
+			q.abandon(t)
+			q.clearTicket(f)
+			return nil, context.Canceled
+		}
 		q.clearTicket(f)
 		return t, nil
 	case <-ctx.Done():
@@ -381,6 +387,19 @@ func (q *Queue) acquire(ctx context.Context, prio Priority, f *flight) (*ticket,
 		q.clearTicket(f)
 		return nil, context.Canceled
 	}
+}
+
+// tell reports a pause to the person. A panic in the callback undoes, on its
+// way up, what the caller took (a place, a share), so none is lost.
+func (q *Queue) tell(until time.Time, undo func()) {
+	told := false
+	defer func() {
+		if !told {
+			undo()
+		}
+	}()
+	q.onPause(until)
+	told = true
 }
 
 func (q *Queue) enqueue(prio Priority, f *flight) (*ticket, Priority, bool, time.Time) {

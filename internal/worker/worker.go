@@ -38,8 +38,9 @@ type Supervisor struct {
 	mu       sync.Mutex
 	err      error
 	stopping bool
-	active   int
+	active   int           // calls of Run in progress, Start's included
 	idle     chan struct{} // closed when stopping and no work is left
+	idled    bool
 }
 
 // New returns a supervisor whose lifetime ends with parent or with Stop.
@@ -74,8 +75,14 @@ func (s *Supervisor) fail(where string) {
 }
 
 // Run calls f on the caller's goroutine. A panic in f becomes the fatal
-// error: ok is false and v the zero value, never a half-made result.
+// error: ok is false and v the zero value, never a half-made result. Stop
+// waits for calls in progress (a command on one of Bubble Tea's goroutines),
+// so their panic is recorded before the command reads Err.
 func Run[T any](s *Supervisor, where string, f func() T) (v T, ok bool) {
+	s.mu.Lock()
+	s.active++
+	s.mu.Unlock()
+	defer s.done()
 	defer func() {
 		if recover() != nil {
 			s.fail(where)
@@ -95,7 +102,7 @@ func (s *Supervisor) Start(where string, f func(ctx context.Context)) bool {
 		s.mu.Unlock()
 		return false
 	}
-	s.active++
+	s.active++ // until the goroutine's Run counts itself
 	s.mu.Unlock()
 	go func() {
 		defer s.done()
@@ -108,7 +115,14 @@ func (s *Supervisor) done() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.active--
-	if s.stopping && s.active == 0 {
+	s.closeIdle()
+}
+
+// closeIdle closes idle once, when stopping and nothing runs. Called with
+// s.mu held.
+func (s *Supervisor) closeIdle() {
+	if s.stopping && s.active == 0 && !s.idled {
+		s.idled = true
 		close(s.idle)
 	}
 }
@@ -118,12 +132,8 @@ func (s *Supervisor) done() {
 // behind, and the process ends without it.
 func (s *Supervisor) Stop(limit time.Duration) bool {
 	s.mu.Lock()
-	if !s.stopping {
-		s.stopping = true
-		if s.active == 0 {
-			close(s.idle)
-		}
-	}
+	s.stopping = true
+	s.closeIdle()
 	s.mu.Unlock()
 	s.cancel()
 	timer := time.NewTimer(limit)

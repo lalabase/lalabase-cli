@@ -131,3 +131,25 @@ func TestTheGuardReadsTheRealWorkerFiles(t *testing.T) {
 		}
 	}
 }
+
+// Review #9, finding 7: the gaps a reviewer found.
+func TestReviewGapsInTheGoroutineAndOutputRules(t *testing.T) {
+	for name, source := range map[string]string{
+		"cmd/lalabase/main.go#dot time":    `package main; import . "time"; var spawn = AfterFunc`,
+		"cmd/lalabase/main.go#dot context": `package main; import . "context"; var spawn = AfterFunc`,
+		"internal/queue/queue.go#trygo":    `package queue; import "golang.org/x/sync/errgroup"; func run(g *errgroup.Group) { g.TryGo(func() error { return nil }) }`,
+		"internal/queue/queue.go#dochan":   `package queue; import "golang.org/x/sync/singleflight"; func run(g *singleflight.Group) { g.DoChan("k", nil) }`,
+		"internal/gateway/x.go#log":        `package gateway; import "log"; func run() { log.Print("x") }`,
+		"internal/gateway/x.go#slog":       `package gateway; import "log/slog"; func run() { slog.Info("x") }`,
+		"internal/worker/x_test.go#log":    `package worker; import l "log"; var output = l.Println`,
+	} {
+		file, _, _ := strings.Cut(name, "#")
+		if got := inspectUI(map[string]string{file: source}); len(got) == 0 {
+			t.Errorf("missed %s", name)
+		}
+	}
+	// A package the worker paths do not reach may still log.
+	if got := inspectUI(map[string]string{"tools/update-contract/main.go": `package main; import "log"; func run() { log.Print("x") }`}); len(got) != 0 {
+		t.Fatalf("unrelated logging rejected: %v", got)
+	}
+}

@@ -252,3 +252,56 @@ func TestRecordingAFatalErrorDoesNotWaitForTheQueue(t *testing.T) {
 		t.Fatal("recording waited for the queue's lock")
 	}
 }
+
+// Review #9, finding 5: a panic in the pause callback gives back the place
+// and the share it took on its way up.
+func TestAPanicInOnPauseLosesNoPlace(t *testing.T) {
+	clock := newClock()
+	var armed atomic.Bool
+	q := New(WithClock(clock), WithOnPause(func(time.Time) {
+		if armed.Load() {
+			panic("onPause fault")
+		}
+	}))
+	g := newGate()
+	r := do(q, context.Background(), Job{Priority: Background, Kind: Read, Key: "bg", Run: g.run})
+	waitStarted(t, g)
+	g.release <- throttled(clock, time.Second)
+	waitPaused(t, q, clock.Now().Add(time.Second))
+	armed.Store(true)
+
+	call := func(job Job) {
+		defer func() { _ = recover() }()
+		q.Do(context.Background(), job)
+	}
+	call(Job{Priority: User, Kind: Write, Run: g.run})           // waits in the pause: acquire tells
+	call(Job{Priority: User, Kind: Read, Key: "bg", Run: g.run}) // joins the waiting retry: join tells
+	if n := q.Sharers("bg"); n != 1 {
+		t.Fatalf("the shared read keeps %d callers", n)
+	}
+	armed.Store(false)
+	clock.Advance(time.Second)
+	waitStarted(t, g) // the retry
+	g.release <- ok()
+	answer(t, r)
+	idle(t, q)
+}
+
+// Review #9, finding 6: once the lifetime ended no job starts, even when its
+// place is granted at the same moment.
+func TestNoJobStartsAfterTheLifetimeEnded(t *testing.T) {
+	life := worker.New(context.Background())
+	q := New(WithLifetime(life))
+	life.Stop(time.Second)
+	var ran atomic.Int32
+	for range 200 {
+		ans := q.Do(context.Background(), Job{Priority: User, Kind: Write, Run: func(context.Context) transport.Answer { ran.Add(1); return ok() }})
+		if ans.Class != transport.Canceled {
+			t.Fatalf("got %v", ans.Class)
+		}
+	}
+	if n := ran.Load(); n != 0 {
+		t.Fatalf("%d writes ran after the lifetime ended", n)
+	}
+	idle(t, q)
+}

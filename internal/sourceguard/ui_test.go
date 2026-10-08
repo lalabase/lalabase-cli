@@ -107,7 +107,10 @@ func inspectUI(sources map[string]string) []string {
 		for _, imp := range file.Imports {
 			p, _ := strconv.Unquote(imp.Path.Value)
 			direct := (view(path.Dir(name)) && forbiddenImport(p)) || (path.Dir(name) == rootController && systemImport(p))
-			if direct || (reachable[path.Dir(name)] && terminalAccess(p)) {
+			// The log packages write to stderr: barred wherever the
+			// interface or its work reaches, not only in the views.
+			logging := p == "log" || strings.HasPrefix(p, "log/")
+			if direct || (reachable[path.Dir(name)] && (terminalAccess(p) || logging)) {
 				findings = append(findings, name+": forbidden direct import "+p)
 			}
 			if imp.Name != nil && imp.Name.Name == "." && (reachable[path.Dir(name)] || p == clientModule+"internal/ui") {
@@ -195,6 +198,13 @@ func inspectUI(sources map[string]string) []string {
 // a go statement, a method value Go (WaitGroup.Go, errgroup) and AfterFunc.
 func inspectWorkers(name string, file *ast.File, aliases map[string]string) []string {
 	var findings []string
+	// A dot import makes AfterFunc a bare name.
+	bareAfterFunc := false
+	for _, imp := range file.Imports {
+		if imp.Name != nil && imp.Name.Name == "." && (imp.Path.Value == `"time"` || imp.Path.Value == `"context"`) {
+			bareAfterFunc = true
+		}
+	}
 	for _, decl := range file.Decls {
 		allowed := name == workerFile && isWorkerStart(decl)
 		ast.Inspect(decl, func(node ast.Node) bool {
@@ -203,10 +213,15 @@ func inspectWorkers(name string, file *ast.File, aliases map[string]string) []st
 				if !allowed {
 					findings = append(findings, name+": application goroutine")
 				}
+			case *ast.Ident:
+				if bareAfterFunc && n.Name == "AfterFunc" {
+					findings = append(findings, name+": application goroutine")
+				}
 			case *ast.SelectorExpr:
 				// Forbid taking the method value too, so a later alias cannot
-				// hide WaitGroup.Go.
-				if n.Sel.Name == "Go" {
+				// hide WaitGroup.Go. TryGo (errgroup) and DoChan (singleflight)
+				// start one as well.
+				if n.Sel.Name == "Go" || n.Sel.Name == "TryGo" || n.Sel.Name == "DoChan" {
 					findings = append(findings, name+": application goroutine")
 				}
 				if ident, ok := n.X.(*ast.Ident); ok && n.Sel.Name == "AfterFunc" && (aliases[ident.Name] == "time" || aliases[ident.Name] == "context") {
