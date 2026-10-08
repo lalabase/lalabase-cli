@@ -1,0 +1,109 @@
+package ui
+
+import (
+	"strings"
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/gboyke/lalabase-cli/internal/ui/view"
+)
+
+func press(name string) tea.KeyPressMsg {
+	special := map[string]rune{"left": tea.KeyLeft, "right": tea.KeyRight, "up": tea.KeyUp, "down": tea.KeyDown, "enter": tea.KeyEnter, "esc": tea.KeyEscape, "tab": tea.KeyTab, "pgup": tea.KeyPgUp, "pgdown": tea.KeyPgDown}
+	if code, ok := special[name]; ok {
+		return tea.KeyPressMsg{Code: code}
+	}
+	if name == "ctrl+c" {
+		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
+	}
+	if name == "ctrl+s" {
+		return tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
+	}
+	return tea.KeyPressMsg{Code: []rune(name)[0], Text: name}
+}
+
+func TestShellKeysAndHelpAgree(t *testing.T) {
+	m := New()
+	m.width, m.height = 120, 24
+	if help := view.Help(120, m.focus, false, m.widthMethod); !strings.Contains(help, "ctrl+c") || !strings.Contains(help, "left/right") || !strings.Contains(help, "q") {
+		t.Fatalf("missing shell help: %q", help)
+	}
+	for _, name := range []string{"up", "down", "tab", "pgup", "pgdown", "[", "]", "/", "r", "R", "ctrl+s", "?", "j", "k", "v"} {
+		next, cmd := step(t, m, press(name))
+		if next != m || cmd != nil {
+			t.Fatalf("inactive key %s acted", name)
+		}
+	}
+	if next, cmd := step(t, m, tea.PasteMsg{Content: "q\n\x03"}); next != m || cmd != nil {
+		t.Fatal("paste acted as navigation")
+	}
+	for _, tc := range []struct {
+		from view.Pane
+		key  string
+		to   view.Pane
+	}{
+		{view.List, "left", view.Navigation}, {view.Navigation, "left", view.Navigation}, {view.List, "right", view.Object}, {view.Object, "right", view.Object},
+		{view.Object, "esc", view.List}, {view.List, "esc", view.Navigation}, {view.Navigation, "esc", view.List}, {view.Navigation, "enter", view.List}, {view.Object, "enter", view.Object},
+	} {
+		m.focus = tc.from
+		next, cmd := step(t, m, press(tc.key))
+		if next.focus != tc.to || cmd != nil {
+			t.Fatalf("%d %s: %d", tc.from, tc.key, next.focus)
+		}
+	}
+	for _, small := range []bool{false, true} {
+		if small {
+			m.width = 23
+		}
+		for _, name := range []string{"q", "ctrl+c"} {
+			_, cmd := step(t, m, press(name))
+			if cmd == nil {
+				t.Fatalf("%s has no command", name)
+			}
+			msg := cmd()
+			if name == "q" {
+				if _, ok := msg.(tea.QuitMsg); !ok {
+					t.Fatalf("q: %T", msg)
+				}
+			} else if _, ok := msg.(tea.InterruptMsg); !ok {
+				t.Fatalf("ctrl+c: %T", msg)
+			}
+		}
+	}
+	m.width = 23
+	before := m
+	m, cmd := step(t, m, press("left"))
+	if m != before || cmd != nil {
+		t.Fatal("small terminal changed navigation")
+	}
+	if help := view.Help(120, view.List, true, m.widthMethod); strings.Contains(help, "focus") || strings.Contains(help, "enter") || strings.Contains(help, "esc") {
+		t.Fatalf("small help advertises frozen actions: %q", help)
+	}
+	if help := view.Help(120, view.List, false, m.widthMethod); strings.Contains(help, "enter") {
+		t.Fatalf("empty list advertises enter: %q", help)
+	}
+	if help := view.Help(120, view.Navigation, false, m.widthMethod); !strings.Contains(help, "enter") {
+		t.Fatalf("chooser has no enter help: %q", help)
+	}
+}
+
+func TestKeyRoutingHasOneMode(t *testing.T) {
+	for _, text := range []string{"q", "r", "R", "/", "[", "]", "?", " ", "é", "界"} {
+		if got := routeKey(TextEntry, press(text)); got.Kind != InsertText || got.Text != text {
+			t.Fatalf("text %q: %+v", text, got)
+		}
+	}
+	for _, mode := range []Mode{Navigate, TextEntry} {
+		if got := routeKey(mode, press("ctrl+c")); got.Kind != Interrupt {
+			t.Fatalf("mode %d: ctrl+c: %+v", mode, got)
+		}
+	}
+	if routeKey(TextEntry, press("enter")).Kind != Submit || routeKey(TextEntry, press("esc")).Kind != Cancel {
+		t.Fatal("text submit/cancel routing")
+	}
+	for _, key := range []string{"left", "right", "tab", "ctrl+s"} {
+		if got := routeKey(TextEntry, press(key)); got.Kind != Ignore {
+			t.Fatalf("text mode routed %s: %+v", key, got)
+		}
+	}
+}
