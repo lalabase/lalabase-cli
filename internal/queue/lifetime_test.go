@@ -359,3 +359,55 @@ func TestDoSharedNamesTheRequest(t *testing.T) {
 	}
 	idle(t, q)
 }
+
+// The wait before a retry ends with the lifetime, also for work that is not
+// shared and runs on its caller's context, which the lifetime does not end.
+func TestARetryWaitEndsWithTheLifetime(t *testing.T) {
+	life := worker.New(context.Background())
+	q := New(WithLifetime(life), WithClock(newClock()), WithRetryDelay(time.Hour))
+	g := newGate()
+	r := do(q, context.Background(), Job{Priority: User, Kind: Read, Run: g.run}) // no key: not shared
+	waitStarted(t, g)
+	g.release <- transport.Answer{Class: transport.Temporary, Status: 503, Sent: true}
+	life.Stop(0)
+	if ans := answer(t, r); ans.Class != transport.Canceled {
+		t.Fatalf("got %v", ans.Class)
+	}
+	if n := g.calls.Load(); n != 1 {
+		t.Fatalf("%d calls after the lifetime ended", n)
+	}
+	idle(t, q)
+}
+
+// A place granted to a caller who left goes to the next one waiting at once,
+// not when some other job happens to finish.
+func TestAnAbandonedPlaceGoesToTheNextWaiter(t *testing.T) {
+	q := New()
+	holder := newGate()
+	held := do(q, context.Background(), Job{Priority: User, Kind: Write, Run: holder.run})
+	waitStarted(t, holder)
+	left, _, _, _ := q.enqueue(User, nil) // the second place, granted at once
+	if !left.granted {
+		t.Fatal("the second place was not granted")
+	}
+	next := newGate()
+	waiting := do(q, context.Background(), Job{Priority: User, Kind: Write, Run: next.run})
+	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(time.Millisecond) {
+		q.mu.Lock()
+		n := len(q.waiting)
+		q.mu.Unlock()
+		if n == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the next caller is not waiting")
+		}
+	}
+	q.abandon(left) // the caller left after its place was granted
+	waitStarted(t, next)
+	next.release <- ok()
+	holder.release <- ok()
+	answer(t, waiting)
+	answer(t, held)
+	idle(t, q)
+}

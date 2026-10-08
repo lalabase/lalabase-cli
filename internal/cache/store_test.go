@@ -24,7 +24,9 @@ func inbox(ns Namespace, org string, page int) Key {
 }
 
 func TestOnlyAConfirmedIdentityOpensANamespace(t *testing.T) {
-	for _, c := range [][3]string{{"", "https://a.example", "tok"}, {"default", "https://a.example", ""}, {"default", "not a url", "tok"}, {"default", "https://a.example?x=1", "tok"}} {
+	for _, c := range [][3]string{{"", "https://a.example", "tok"}, {"default", "https://a.example", ""}, {"default", "not a url", "tok"}, {"default", "https://a.example?x=1", "tok"},
+		// A user or a fragment in the address is no server of its own.
+		{"default", "https://user@a.example", "tok"}, {"default", "https://a.example#inbox", "tok"}} {
 		if _, ok := Confirmed(c[0], c[1], c[2]); ok {
 			t.Errorf("confirmed %v", c)
 		}
@@ -234,5 +236,62 @@ func TestRemovingANamespaceKeepsTheSameTokenIDElsewhere(t *testing.T) {
 		if e, ok := s.Get(inbox(ns, "org-1", 1)); !ok || string(e.Payload) != "kept" {
 			t.Errorf("%+v lost its entry", ns)
 		}
+	}
+}
+
+// The limits are a promise of the README: 64 entries, 16 MiB, 2 MiB each.
+// The tests above count from the constants; this pins the constants.
+func TestTheLimitsAreTheDocumentedOnes(t *testing.T) {
+	if MaxEntries != 64 || MaxBytes != 16<<20 || MaxEntryBytes != 2<<20 {
+		t.Fatalf("limits %d entries, %d bytes, %d per entry", MaxEntries, MaxBytes, MaxEntryBytes)
+	}
+}
+
+// A key needs an operation: a key of no operation is never filed.
+func TestAKeyWithoutAnOperationIsNotFiled(t *testing.T) {
+	ns := namespace(t, "default", "https://a.example", "tok")
+	k := ns.Key("")
+	k.Global = true
+	s := NewStore()
+	s.Apply(k, Replace, []byte(`{}`), t0)
+	if s.Len() != 0 {
+		t.Fatal("a key without an operation was filed")
+	}
+}
+
+// Resource is the key without its page, nothing else: a removal or an
+// invalidation reaches every page of a query, never another query.
+func TestResourceIsTheKeyWithoutItsPage(t *testing.T) {
+	ns := namespace(t, "default", "https://a.example", "tok")
+	base := inbox(ns, "org-1", 1)
+	other := base
+	other.Page, other.PerPage = 7, 50
+	if base.Resource() != other.Resource() {
+		t.Fatal("two pages of one query are two resources")
+	}
+	for name, change := range map[string]func(*Key){
+		"status":       func(k *Key) { k.Status = "read" },
+		"organisation": func(k *Key) { k.Organisation = "org-2" },
+		"project":      func(k *Key) { k.Project = "p-1" },
+		"operation":    func(k *Key) { k.Operation = "list_tickets" },
+		"global":       func(k *Key) { k.Organisation, k.Global = "", true },
+	} {
+		k := base
+		change(&k)
+		if k.Resource() == base.Resource() {
+			t.Errorf("another %s is the same resource", name)
+		}
+	}
+	s := NewStore()
+	read := base
+	read.Status = "read"
+	s.Apply(base, Replace, []byte(`unread`), t0)
+	s.Apply(read, Replace, []byte(`read`), t0)
+	s.Apply(other, Remove, nil, t0)
+	if _, ok := s.Get(base); ok {
+		t.Fatal("the removal missed a page of its query")
+	}
+	if _, ok := s.Get(read); !ok {
+		t.Fatal("the removal took another query")
 	}
 }

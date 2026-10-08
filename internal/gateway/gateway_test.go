@@ -297,3 +297,47 @@ func TestBothWaitersOfARemovingRequestGetIt(t *testing.T) {
 		t.Fatalf("a separate request reused flight %d", c.Flight)
 	}
 }
+
+// Every option of the key reaches the request: an answer is filed only
+// under the options it was asked for.
+func TestTheQueryCarriesEveryOptionOfTheKey(t *testing.T) {
+	ns := confirmed(t)
+	k := ns.Key("list_notifications")
+	k.Organisation, k.Status, k.Page, k.PerPage, k.Project = "org-a", "read", 3, 50, "p-1"
+	want := api.NotificationQuery{Status: "read", Page: 3, PerPage: 50, ProjectID: "p-1", OrganisationID: "org-a"}
+	if got := InboxQuery(k); got != want {
+		t.Fatalf("query %+v, want %+v", got, want)
+	}
+	global := unreadPage(ns, "", 1)
+	if got := InboxQuery(global); got.OrganisationID != "" || got.Status != "unread" || got.Page != 1 || got.PerPage != 25 {
+		t.Fatalf("global query %+v", got)
+	}
+}
+
+// jobs records the job it was given; its answer does not matter here.
+type jobs struct{ got []queue.Job }
+
+func (j *jobs) DoShared(_ context.Context, job queue.Job) (transport.Answer, queue.Flight) {
+	j.got = append(j.got, job)
+	return transport.Answer{Class: transport.Canceled}, 1
+}
+
+// The job is the ticket's: a shared read under the ticket's share key, with
+// the ticket's priority (a preview stays background work).
+func TestTheJobIsTheTickets(t *testing.T) {
+	life := worker.New(context.Background())
+	defer life.Stop(wall)
+	ns := confirmed(t)
+	s := NewScope(ns)
+	for _, prio := range []queue.Priority{queue.Background, queue.User} {
+		q := &jobs{}
+		ticket := s.Begin(Inbox, unreadPage(ns, "org-a", 1), prio)
+		New(life, q, nil).Inbox(context.Background(), ticket)()
+		if len(q.got) != 1 {
+			t.Fatalf("%d jobs", len(q.got))
+		}
+		if job := q.got[0]; job.Priority != prio || job.Kind != queue.Read || job.Key != ticket.ShareKey() || job.Run == nil {
+			t.Fatalf("job %+v for ticket %+v", job, ticket)
+		}
+	}
+}

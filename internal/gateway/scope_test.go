@@ -393,3 +393,17 @@ func TestOnlyTheLastRemovalHasCopies(t *testing.T) {
 	}
 	refused(t, s, store, InboxResult{Ticket: open, Answer: gone, Flight: 1}, "a copy of the first removal")
 }
+
+// An invalidation gives the same page a new share key: a reader begun after
+// a write never joins a request sent before it.
+func TestAfterAnInvalidationTheSamePageSharesNothing(t *testing.T) {
+	ns := confirmed(t)
+	s := NewScope(ns)
+	key := unreadPage(ns, "org-a", 1)
+	before := s.Begin(Inbox, key, queue.User)
+	s.Invalidate(key)
+	after := s.Begin(Inbox, key, queue.User)
+	if before.ShareKey() == after.ShareKey() {
+		t.Fatal("a reader after the write joins the request from before it")
+	}
+}

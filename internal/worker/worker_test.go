@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -31,7 +30,7 @@ func TestAPanicInStartedWorkIsKeptNotPrinted(t *testing.T) {
 	closed(t, s.Failed(), "the fatal error")
 	closed(t, s.Context().Done(), "the end of the lifetime")
 	var fatal *FatalError
-	if err := s.Err(); !errors.As(err, &fatal) || fatal.Where != "queue: shared read" || strings.Contains(err.Error(), "secret") {
+	if err := s.Err(); !errors.As(err, &fatal) || fatal.Where != "queue: shared read" || err.Error() != "fatal error in queue: shared read" {
 		t.Fatalf("got %v", err)
 	}
 	// The record is durable: the first error stays, a later one does not
