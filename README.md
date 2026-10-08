@@ -25,7 +25,12 @@ The shell needs at least 24 columns and 8 rows, uses two columns from 80 and
 three from 120, and preserves focus on resize. Left/right move focus, Enter
 opens the list from the organisation selector, and Esc goes back. `q` exits
 with 0; Ctrl-C and SIGINT exit with 130. Startup profile errors and recovered
-panics exit with 1; terminal, locale and profile flag errors exit with 2.
+panics exit with 1; terminal, locale and profile flag errors exit with 2. A
+panic in the client's background work (a shared request, the wake-up after a
+rate limit pause, a read for the interface) ends the program the same way:
+the terminal is restored first, then one fixed line is printed and the exit
+code is 1, also when it coincides with `q`. Work that ignores its
+cancellation is left behind after one second.
 
 * **A profile is a server and a token, always together.** They live in
   `~/.config/lalabase/config.toml` (or under `$XDG_CONFIG_HOME`), which is
@@ -148,7 +153,9 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   broke off, was too large or the caller left; a window not in the future
   pauses 5 seconds. A job is
   retried at most once: a read on a temporary failure, a write only after a
-  429 or when nothing was sent.
+  429 or when nothing was sent. A shared request belongs to the program's
+  lifetime, not to its first caller: it is canceled when its last caller
+  leaves or the program stops its work (on quitting, or after a fatal error).
 * **Dependencies** must be permissive (MIT, Apache-2.0, BSD-2-Clause,
   BSD-3-Clause, ISC, 0BSD). CI checks the actual imports, including tests;
   a terminal library or its transitive dependency receives no exception.

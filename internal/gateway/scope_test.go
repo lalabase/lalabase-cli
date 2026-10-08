@@ -1,0 +1,409 @@
+package gateway
+
+import (
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/gboyke/lalabase-cli/internal/cache"
+	"github.com/gboyke/lalabase-cli/internal/queue"
+	"github.com/gboyke/lalabase-cli/internal/transport"
+)
+
+var now = time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+
+func object(t Ticket, payload string) InboxResult {
+	return InboxResult{Ticket: t, Answer: transport.Answer{Class: transport.Object, Payload: []byte(payload), Sent: true, Status: 200}}
+}
+
+// refused fails unless the result is dropped and the cache keeps exactly
+// what it had.
+func refused(t *testing.T, s *Scope, store *cache.Store, r InboxResult, why string) {
+	t.Helper()
+	before, bytes := store.Len(), store.Bytes()
+	if d, ok := s.Receive(store, r, now); ok || d != cache.Drop {
+		t.Fatalf("%s: accepted (%v)", why, d)
+	}
+	if store.Len() != before || store.Bytes() != bytes {
+		t.Fatalf("%s: the cache changed", why)
+	}
+	if _, ok := store.Get(r.Key); ok && before == 0 {
+		t.Fatalf("%s: filed", why)
+	}
+}
+
+func accepted(t *testing.T, s *Scope, store *cache.Store, r InboxResult) {
+	t.Helper()
+	if _, ok := s.Receive(store, r, now); !ok {
+		t.Fatal("a current result was dropped")
+	}
+	if e, ok := store.Get(r.Key); !ok || string(e.Payload) != string(r.Answer.Payload) {
+		t.Fatal("a current result was not filed")
+	}
+}
+
+// Back to the first organisation: the old request's answer stays old.
+func TestReturningToAnOrganisationDoesNotReviveItsOldRequest(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	a1 := s.Begin(Inbox, unreadPage(ns, "org-a", 1), queue.User)
+	s.Move(Inbox)
+	b := s.Begin(Inbox, unreadPage(ns, "org-b", 1), queue.User)
+	s.Move(Inbox)
+	a2 := s.Begin(Inbox, unreadPage(ns, "org-a", 1), queue.User)
+	if a1.ShareKey() != a2.ShareKey() {
+		t.Fatal("the same data under a new generation does not share")
+	}
+	refused(t, s, store, object(a1, `{"old":1}`), "A, first visit")
+	refused(t, s, store, object(b, `{"b":1}`), "B")
+	accepted(t, s, store, object(a2, `{"new":1}`))
+}
+
+func TestOnlyTheLastOfQuickPageSwitchesCounts(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	var tickets []Ticket
+	for page := 1; page <= 3; page++ {
+		s.Move(Inbox)
+		tickets = append(tickets, s.Begin(Inbox, unreadPage(ns, "org-a", page), queue.User))
+	}
+	accepted(t, s, store, object(tickets[2], `{"page":3}`))
+	refused(t, s, store, object(tickets[0], `{"page":1}`), "page 1")
+	refused(t, s, store, object(tickets[1], `{"page":2}`), "page 2")
+	// Another area moving on keeps this one's waiters.
+	other := s.Begin(Organisations, func() cache.Key { k := ns.Key("organisations"); k.Global = true; return k }(), queue.User)
+	keep := s.Begin(Inbox, unreadPage(ns, "org-a", 3), queue.Background)
+	if dropped := s.Move(Organisations); len(dropped) != 1 || dropped[0] != other.Waiter {
+		t.Fatalf("dropped %v", dropped)
+	}
+	accepted(t, s, store, object(keep, `{"page":3,"again":1}`))
+}
+
+func TestAWaiterThatLeftGetsNothing(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	t1 := s.Begin(Inbox, unreadPage(ns, "org-a", 1), queue.User)
+	s.Leave(t1.Waiter)
+	refused(t, s, store, object(t1, `{}`), "after leaving")
+	// A waiter gets one result.
+	t2 := s.Begin(Inbox, unreadPage(ns, "org-a", 1), queue.User)
+	accepted(t, s, store, object(t2, `{"one":1}`))
+	refused(t, s, store, object(t2, `{"two":1}`), "a second result")
+}
+
+// A result must match the ticket its waiter was given, in every field.
+func TestAResultUnderAnotherIdentityIsRefused(t *testing.T) {
+	ns := confirmed(t)
+	other, _ := cache.Confirmed("default", "http://127.0.0.1:1", "token-synthetic-2")
+	s, store := NewScope(ns), cache.NewStore()
+	issued := s.Begin(Inbox, unreadPage(ns, "org-a", 1), queue.User)
+	for name, edit := range map[string]func(*Ticket){
+		"waiter":    func(t *Ticket) { t.Waiter++ },
+		"page":      func(t *Ticket) { t.Key.Page = 2 },
+		"org":       func(t *Ticket) { t.Key.Organisation = "org-b" },
+		"area":      func(t *Ticket) { t.Area = Organisations },
+		"namespace": func(t *Ticket) { t.Key = unreadPage(other, "org-a", 1) },
+		"gen":       func(t *Ticket) { t.Gens.Area++ },
+		"epoch":     func(t *Ticket) { t.Epoch++ },
+		"session":   func(t *Ticket) { t.Gens.Session++ },
+	} {
+		forged := issued
+		edit(&forged)
+		refused(t, s, store, object(forged, `{}`), name)
+	}
+	accepted(t, s, store, object(issued, `{"real":1}`))
+	// A ticket issued for another identity's data is never filed here, even
+	// when it is the waiter's own.
+	foreign := s.Begin(Inbox, unreadPage(other, "org-a", 1), queue.User)
+	refused(t, s, store, object(foreign, `{"foreign":1}`), "another identity's key")
+}
+
+// An invalidation refuses what was asked before it, also once the cache has
+// evicted the resource's entries: epochs do not live in the cache.
+func TestInvalidationOutlivesEviction(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	key := unreadPage(ns, "org-a", 1)
+	accepted(t, s, store, object(s.Begin(Inbox, key, queue.User), `{"v":1}`))
+	before := s.Begin(Inbox, key, queue.User)
+	s.Invalidate(key)
+	for i := range cache.MaxEntries {
+		k := unreadPage(ns, fmt.Sprintf("org-%d", i), 1)
+		accepted(t, s, store, object(s.Begin(Inbox, k, queue.User), `{}`))
+	}
+	if _, ok := store.Get(key); ok {
+		t.Fatal("the entry was not evicted")
+	}
+	refused(t, s, store, object(before, `{"stale":1}`), "begun before the invalidation")
+	after := s.Begin(Inbox, unreadPage(ns, "org-a", 2), queue.User)
+	if after.Epoch != before.Epoch+1 || after.ShareKey() == before.ShareKey() {
+		t.Fatal("another page of the resource kept the old epoch")
+	}
+	accepted(t, s, store, object(after, `{"v":2}`))
+}
+
+// An ended session empties its namespace and refuses every answer asked in
+// it, a 401 too.
+func TestAnEndedSessionIsNotRefilled(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	k1, k2 := unreadPage(ns, "org-a", 1), unreadPage(ns, "org-b", 1)
+	accepted(t, s, store, object(s.Begin(Inbox, k1, queue.User), `{"a":1}`))
+	pending := s.Begin(Inbox, k2, queue.Background)
+	unauth := s.Begin(Inbox, k1, queue.User)
+	if _, ok := s.Receive(store, InboxResult{Ticket: unauth, Answer: transport.Answer{Class: transport.Unauthenticated, Status: 401}}, now); !ok {
+		t.Fatal("the 401 was dropped")
+	}
+	if store.Len() != 0 {
+		t.Fatal("the namespace was not emptied")
+	}
+	refused(t, s, store, object(pending, `{"b":1}`), "begun in the ended session")
+	again := s.Begin(Inbox, k2, queue.User)
+	if again.ShareKey() == pending.ShareKey() {
+		t.Fatal("a new session shares a request of the old one")
+	}
+	accepted(t, s, store, object(again, `{"b":2}`))
+}
+
+// Every class of answer is filed by its decision, through Receive.
+func TestEveryClassIsFiledByItsDecision(t *testing.T) {
+	ns := confirmed(t)
+	key := unreadPage(ns, "org-a", 1)
+	want := map[transport.Class]cache.Decision{
+		transport.Object: cache.Replace, transport.NotFound: cache.Remove, transport.NoAccess: cache.Remove,
+		transport.Temporary: cache.KeepStale, transport.Canceled: cache.Drop, transport.ReadOnly: cache.KeepShowMessage,
+		transport.Refused: cache.KeepShowMessage, transport.InvalidInput: cache.KeepShowMessage,
+		transport.Protocol: cache.KeepShowMessage, transport.Unauthenticated: cache.KeepShowMessage,
+	}
+	if len(want) != int(transport.Canceled)+1 {
+		t.Fatal("a class is missing")
+	}
+	for class, decision := range want {
+		s, store := NewScope(ns), cache.NewStore()
+		accepted(t, s, store, object(s.Begin(Inbox, key, queue.User), `{"old":1}`))
+		r := InboxResult{Ticket: s.Begin(Inbox, key, queue.User), Answer: transport.Answer{Class: class, Payload: []byte(`{"new":1}`)}}
+		d, ok := s.Receive(store, r, now.Add(time.Minute))
+		if !ok || d != decision {
+			t.Errorf("%v: %v %v", class, d, ok)
+			continue
+		}
+		e, has := store.Get(key)
+		switch decision {
+		case cache.Replace:
+			if string(e.Payload) != `{"new":1}` || !e.LoadedAt.Equal(now.Add(time.Minute)) {
+				t.Errorf("%v: %+v", class, e)
+			}
+		case cache.Remove:
+			if has {
+				t.Errorf("%v: kept", class)
+			}
+		default:
+			if class == transport.Unauthenticated {
+				if has {
+					t.Errorf("%v: the namespace was kept", class)
+				}
+				continue
+			}
+			// A failed refresh is no load.
+			if !has || string(e.Payload) != `{"old":1}` || !e.LoadedAt.Equal(now) || e.Stale != (decision == cache.KeepStale) {
+				t.Errorf("%v: %+v", class, e)
+			}
+		}
+	}
+}
+
+// Review #9, finding 1: a removal is an invalidation. An older successful
+// answer for another page of the resource must not refill what the server
+// just took away.
+func TestARemovalRefusesOlderAnswersForTheResource(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	p1, p2 := unreadPage(ns, "org-a", 1), unreadPage(ns, "org-a", 2)
+	accepted(t, s, store, object(s.Begin(Inbox, p2, queue.User), `{"p2":1}`))
+	first := s.Begin(Inbox, p1, queue.User)
+	second := s.Begin(Inbox, p2, queue.Background)
+	if d, ok := s.Receive(store, InboxResult{Ticket: first, Answer: transport.Answer{Class: transport.NoAccess}}, now); !ok || d != cache.Remove {
+		t.Fatalf("%v %v", d, ok)
+	}
+	refused(t, s, store, object(second, `{"p2":2}`), "begun before the removal")
+	if store.Len() != 0 {
+		t.Fatal("the removed resource was refilled")
+	}
+	accepted(t, s, store, object(s.Begin(Inbox, p2, queue.User), `{"p2":3}`))
+}
+
+// Review #9, finding 2: a new scope for the same identity shares no request
+// and no ticket with an older one, whose epochs it does not know.
+func TestANewScopeSharesNothingWithAnOldOne(t *testing.T) {
+	ns := confirmed(t)
+	key := unreadPage(ns, "org-a", 1)
+	old := NewScope(ns)
+	stale := old.Begin(Inbox, key, queue.User)
+	fresh, store := NewScope(ns), cache.NewStore()
+	current := fresh.Begin(Inbox, key, queue.User)
+	if stale.ShareKey() == current.ShareKey() {
+		t.Fatal("the new scope joins the old scope's request")
+	}
+	refused(t, fresh, store, object(stale, `{"old":1}`), "the old scope's result")
+	accepted(t, fresh, store, object(current, `{"new":1}`))
+}
+
+// Review #9, round 2: preview and open share one request. When it brings a
+// removal, both get it: the second copy carries the epoch from before the
+// removal, but it is the same answer, not an older one. The epoch grows
+// once, and a reload begun in between stays current.
+func TestEveryCopyOfARemovalIsAccepted(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	key := unreadPage(ns, "org-a", 1)
+	accepted(t, s, store, object(s.Begin(Inbox, key, queue.User), `{"old":1}`))
+	preview, open := s.Begin(Inbox, key, queue.Background), s.Begin(Inbox, key, queue.User)
+	if preview.ShareKey() != open.ShareKey() {
+		t.Fatal("preview and open do not share")
+	}
+	older := s.Begin(Inbox, unreadPage(ns, "org-a", 2), queue.Background)
+	gone := transport.Answer{Class: transport.NoAccess, Status: 403}
+	if d, ok := s.Receive(store, InboxResult{Ticket: preview, Answer: gone, Flight: 7}, now); !ok || d != cache.Remove {
+		t.Fatalf("preview: %v %v", d, ok)
+	}
+	reload := s.Begin(Inbox, key, queue.User)
+	if d, ok := s.Receive(store, InboxResult{Ticket: open, Answer: gone, Flight: 7}, now); !ok || d != cache.Remove {
+		t.Fatalf("open: %v %v", d, ok)
+	}
+	if reload.Epoch != preview.Epoch+1 || s.Begin(Inbox, key, queue.User).Epoch != reload.Epoch {
+		t.Fatal("the epoch did not grow exactly once")
+	}
+	refused(t, s, store, object(older, `{"p2":1}`), "another page begun before the removal")
+	accepted(t, s, store, object(reload, `{"new":1}`))
+}
+
+// Review #9, round 2: a refused answer changes nothing, whatever its class.
+// An old "no access" removes no current data, an old 401 ends no session.
+func TestAnOldRefusalChangesNothing(t *testing.T) {
+	ns := confirmed(t)
+	for _, class := range []transport.Class{transport.NoAccess, transport.NotFound, transport.Unauthenticated} {
+		s, store := NewScope(ns), cache.NewStore()
+		key := unreadPage(ns, "org-a", 1)
+		old := s.Begin(Inbox, key, queue.User)
+		s.Move(Inbox)
+		current := s.Begin(Inbox, key, queue.User)
+		accepted(t, s, store, object(current, `{"current":1}`))
+		refused(t, s, store, InboxResult{Ticket: old, Answer: transport.Answer{Class: class}}, class.String()+" from the old selection")
+		if e, ok := store.Get(key); !ok || string(e.Payload) != `{"current":1}` {
+			t.Fatalf("%v: current data changed", class)
+		}
+		next := s.Begin(Inbox, key, queue.User)
+		if next.Gens.Session != current.Gens.Session {
+			t.Fatalf("%v: the session ended", class)
+		}
+		accepted(t, s, store, object(next, `{"next":1}`))
+	}
+}
+
+// An object never passes as a copy of a removal, even naming its request.
+func TestOnlyRemovalsPassAsCopiesOfARemoval(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	key := unreadPage(ns, "org-a", 1)
+	late, removing := s.Begin(Inbox, key, queue.User), s.Begin(Inbox, key, queue.User)
+	if d, ok := s.Receive(store, InboxResult{Ticket: removing, Answer: transport.Answer{Class: transport.NotFound}, Flight: 8}, now); !ok || d != cache.Remove {
+		t.Fatalf("%v %v", d, ok)
+	}
+	stale := object(late, `{"old":1}`)
+	stale.Flight = 8
+	refused(t, s, store, stale, "an object naming the removal's request")
+	if store.Len() != 0 {
+		t.Fatal("the removed resource was refilled")
+	}
+}
+
+// A write after the removal invalidates its copies too.
+func TestAWriteInvalidatesTheCopiesOfARemoval(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	key := unreadPage(ns, "org-a", 1)
+	preview, open := s.Begin(Inbox, key, queue.Background), s.Begin(Inbox, key, queue.User)
+	gone := transport.Answer{Class: transport.NoAccess}
+	if _, ok := s.Receive(store, InboxResult{Ticket: preview, Answer: gone, Flight: 9}, now); !ok {
+		t.Fatal("the removal was dropped")
+	}
+	s.Invalidate(key)
+	refused(t, s, store, InboxResult{Ticket: open, Answer: gone, Flight: 9}, "a copy from before the write")
+}
+
+// A copy of a removal reaches its waiter, not the cache: a reload begun
+// after the removal and filed before the copy arrived stays.
+func TestACopyOfARemovalLeavesANewerReloadAlone(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	key := unreadPage(ns, "org-a", 1)
+	preview, open := s.Begin(Inbox, key, queue.Background), s.Begin(Inbox, key, queue.User)
+	gone := transport.Answer{Class: transport.NoAccess}
+	if _, ok := s.Receive(store, InboxResult{Ticket: preview, Answer: gone, Flight: 10}, now); !ok {
+		t.Fatal("the removal was dropped")
+	}
+	accepted(t, s, store, object(s.Begin(Inbox, key, queue.User), `{"reload":1}`))
+	if d, ok := s.Receive(store, InboxResult{Ticket: open, Answer: gone, Flight: 10}, now); !ok || d != cache.Remove {
+		t.Fatalf("the copy: %v %v", d, ok)
+	}
+	if e, ok := store.Get(key); !ok || string(e.Payload) != `{"reload":1}` {
+		t.Fatal("the copy removed the newer reload")
+	}
+}
+
+// Review #9, round 3: two requests under one share key are two answers,
+// whatever their class. The newer removal is carried out; the older answer
+// that arrives after it is no copy and stays out, also with the same class.
+func TestASeparateRequestUnderTheSameKeyIsNoCopy(t *testing.T) {
+	ns := confirmed(t)
+	for _, class := range []transport.Class{transport.NotFound, transport.NoAccess} {
+		s, store := NewScope(ns), cache.NewStore()
+		key := unreadPage(ns, "org-a", 1)
+		older, newer := s.Begin(Inbox, key, queue.Background), s.Begin(Inbox, key, queue.User)
+		if older.ShareKey() != newer.ShareKey() {
+			t.Fatal("the two waiters do not share a key")
+		}
+		if d, ok := s.Receive(store, InboxResult{Ticket: newer, Answer: transport.Answer{Class: transport.NoAccess}, Flight: 2}, now); !ok || d != cache.Remove {
+			t.Fatalf("%v: the newer removal: %v %v", class, d, ok)
+		}
+		accepted(t, s, store, object(s.Begin(Inbox, key, queue.User), `{"reload":1}`))
+		refused(t, s, store, InboxResult{Ticket: older, Answer: transport.Answer{Class: class}, Flight: 1}, class.String()+" from an older request")
+		if e, ok := store.Get(key); !ok || string(e.Payload) != `{"reload":1}` {
+			t.Fatalf("%v: the reload is gone", class)
+		}
+	}
+}
+
+// Review #9, round 3: a second removal of the resource ends the copies of
+// the first, and a removal for another page from another request is no copy.
+func TestOnlyTheLastRemovalHasCopies(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	p1, p2 := unreadPage(ns, "org-a", 1), unreadPage(ns, "org-a", 2)
+	preview, open := s.Begin(Inbox, p1, queue.Background), s.Begin(Inbox, p1, queue.User)
+	otherPage := s.Begin(Inbox, p2, queue.Background)
+	gone := transport.Answer{Class: transport.NoAccess}
+	if _, ok := s.Receive(store, InboxResult{Ticket: preview, Answer: gone, Flight: 1}, now); !ok {
+		t.Fatal("the first removal was dropped")
+	}
+	refused(t, s, store, InboxResult{Ticket: otherPage, Answer: gone, Flight: 3}, "another page, another request")
+	second := s.Begin(Inbox, p2, queue.User)
+	if d, ok := s.Receive(store, InboxResult{Ticket: second, Answer: gone, Flight: 2}, now); !ok || d != cache.Remove {
+		t.Fatalf("the second removal: %v %v", d, ok)
+	}
+	refused(t, s, store, InboxResult{Ticket: open, Answer: gone, Flight: 1}, "a copy of the first removal")
+}
+
+// An invalidation gives the same page a new share key: a reader begun after
+// a write never joins a request sent before it.
+func TestAfterAnInvalidationTheSamePageSharesNothing(t *testing.T) {
+	ns := confirmed(t)
+	s := NewScope(ns)
+	key := unreadPage(ns, "org-a", 1)
+	before := s.Begin(Inbox, key, queue.User)
+	s.Invalidate(key)
+	after := s.Begin(Inbox, key, queue.User)
+	if before.ShareKey() == after.ShareKey() {
+		t.Fatal("a reader after the write joins the request from before it")
+	}
+}

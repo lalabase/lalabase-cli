@@ -4,9 +4,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
+	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if _, ok := msg.(worker.Fatal); ok {
+		// The command reads the error after the terminal is restored.
+		return m, tea.Quit
+	}
 	if size, ok := msg.(tea.WindowSizeMsg); ok {
 		m.width, m.height = max(0, size.Width), max(0, size.Height)
 		return m, nil

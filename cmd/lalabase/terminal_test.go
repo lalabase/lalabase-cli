@@ -23,6 +23,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/gboyke/lalabase-cli/internal/profile"
 	"github.com/gboyke/lalabase-cli/internal/ui"
+	"github.com/gboyke/lalabase-cli/internal/worker"
 	"golang.org/x/sys/unix"
 )
 
@@ -360,25 +361,39 @@ func TestTerminalChild(t *testing.T) {
 		_, _ = fmt.Fprintln(os.Stdout, "C1A_DESCENDANT_STARTED")
 	}
 	if scenario == "panic-update" || scenario == "panic-view" || scenario == "hang" {
-		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string) error {
+		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, _ *worker.Supervisor) error {
 			return ui.Run(ctx, in, out, environment, faultModel{Model: ui.New(), scenario: scenario})
 		}
 	}
+	if _, ok := fatalScenarios[scenario]; ok || scenario == "worker-hang" {
+		env.runUI = fatalRunner(scenario)
+	}
 	if scenario == "hostile" {
-		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string) error {
+		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, _ *worker.Supervisor) error {
 			return ui.Run(ctx, in, out, environment, ui.NewWithContent("SAFE_INLINE"+terminalHostile, "No data loaded\nSAFE_LIST"+terminalHostile, "SAFE_OBJECT"+terminalHostile))
 		}
 	}
 	if scenario == "environment" {
-		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string) error {
+		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, _ *worker.Supervisor) error {
 			return ui.Run(ctx, in, out, environment, environmentModel{Model: ui.New()})
 		}
 	}
 	code := runWith(nil, env)
 	_, _ = fmt.Fprintf(os.Stdout, "C1A_RESULT=%d\n", code)
-	fds := []unix.PollFd{{Fd: 3, Events: unix.POLLIN}}
-	if n, err := unix.Poll(fds, int(exitLimit/time.Millisecond)); err != nil || n != 1 {
-		os.Exit(99)
+	// Wait for the parent's acknowledgement. The runtime's preemption signals
+	// interrupt poll under load; leaving on EINTR would end the session
+	// leader early, and Darwin then revokes the terminal the parent inspects.
+	deadline := time.Now().Add(exitLimit)
+	for {
+		fds := []unix.PollFd{{Fd: 3, Events: unix.POLLIN}}
+		n, err := unix.Poll(fds, max(0, int(time.Until(deadline)/time.Millisecond)))
+		if errors.Is(err, unix.EINTR) && time.Now().Before(deadline) {
+			continue
+		}
+		if err != nil || n != 1 {
+			os.Exit(99)
+		}
+		break
 	}
 	os.Exit(code)
 }

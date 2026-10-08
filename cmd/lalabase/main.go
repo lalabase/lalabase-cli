@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime/debug"
 
+	"github.com/gboyke/lalabase-cli/internal/worker"
 	"golang.org/x/term"
 )
 
@@ -44,7 +45,9 @@ type Env struct {
 	// Interactive: stdin is a terminal, so a question can be asked.
 	Interactive    bool
 	OutputTerminal bool
-	runUI          func(context.Context, io.Reader, io.Writer, []string) error
+	// runUI replaces the interface in tests; it gets the session's
+	// supervisor, so a test can put work under it.
+	runUI func(context.Context, io.Reader, io.Writer, []string, *worker.Supervisor) error
 }
 
 func main() {

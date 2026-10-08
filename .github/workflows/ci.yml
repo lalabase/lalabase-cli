@@ -51,7 +51,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: test terminal and platform boundaries
-        run: go test -race -count=1 -timeout 5m ./cmd/lalabase/ ./internal/ui/... ./internal/present/ ./internal/uitext/ ./internal/terminal/ ./internal/sourceguard/ ./internal/profile/ ./internal/safefile/
+        run: go test -race -count=1 -timeout 5m ./cmd/lalabase/ ./internal/ui/... ./internal/worker/ ./internal/gateway/ ./internal/queue/ ./internal/present/ ./internal/uitext/ ./internal/terminal/ ./internal/sourceguard/ ./internal/profile/ ./internal/safefile/
 
   lint:
     runs-on: ubuntu-latest

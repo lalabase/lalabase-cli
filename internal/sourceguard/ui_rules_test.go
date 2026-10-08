@@ -1,6 +1,9 @@
 package sourceguard
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestUIRejectsIndirectOutputAndWorkers(t *testing.T) {
 	for _, source := range []string{
@@ -21,7 +24,14 @@ func TestUIRejectsIndirectOutputAndWorkers(t *testing.T) {
 					"internal/ui/view/pane.go": "package view; import \"" + clientModule + "internal/helper\"",
 					dir + "/" + name:           "package probe; " + source,
 				}
-				if got := inspectUI(files); len(got) == 0 {
+				got := inspectUI(files)
+				// A test harness outside the interface may start goroutines;
+				// it may not write to the terminal.
+				harness := dir != "internal/ui" && strings.HasSuffix(name, "_test.go") && (strings.Contains(source, ".Go(") || strings.Contains(source, "AfterFunc"))
+				if harness && len(got) != 0 {
+					t.Errorf("harness concurrency rejected in %s/%s: %v", dir, name, got)
+				}
+				if !harness && len(got) == 0 {
 					t.Errorf("missed %s/%s: %s", dir, name, source)
 				}
 			}
