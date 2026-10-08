@@ -112,6 +112,10 @@ func TestAResultUnderAnotherIdentityIsRefused(t *testing.T) {
 		refused(t, s, store, object(forged, `{}`), name)
 	}
 	accepted(t, s, store, object(issued, `{"real":1}`))
+	// A ticket issued for another identity's data is never filed here, even
+	// when it is the waiter's own.
+	foreign := s.Begin(Inbox, unreadPage(other, "org-a", 1), queue.User)
+	refused(t, s, store, object(foreign, `{"foreign":1}`), "another identity's key")
 }
 
 // An invalidation refuses what was asked before it, also once the cache has
