@@ -6,7 +6,7 @@ import (
 )
 
 func (m Model) View() tea.View {
-	v := tea.NewView(view.Render(m.content, layout(m.width, m.height), m.focus, m.widthMethod))
+	v := tea.NewView(view.Render(m.screen(), m.geometry(), m.focus, m.widthMethod))
 	v.AltScreen = true
 	return v
 }

@@ -94,8 +94,9 @@ func assertViewSafe(t *testing.T, text string) {
 func TestHostilePlaceholderViewBytes(t *testing.T) {
 	m := New()
 	m.width, m.height = 120, 24
-	m.content = presentation("INLINE_START"+hostile, "BODY_START"+hostile+"\n\tEND", "OBJECT_START"+hostile)
-	for _, field := range []string{m.content.Organisation.String(), m.content.List.String(), m.content.Object.String()} {
+	m.shell = [3]string{"INLINE_START" + hostile, "BODY_START" + hostile + "\n\tEND", "OBJECT_START" + hostile}
+	s := m.screen()
+	for _, field := range []string{s.Context.String(), s.List.Text.String(), s.Object.Text.String()} {
 		if strings.ContainsAny(field, "\x1b\x07\u202e\u2066\u2069\u009b") || !utf8.ValidString(field) {
 			t.Fatalf("mapping bypassed boundary: %q", field)
 		}

@@ -4,6 +4,9 @@ import (
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/gboyke/lalabase-cli/internal/present"
+	"github.com/gboyke/lalabase-cli/internal/ui/view"
+	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
 type Mode uint8
@@ -26,6 +29,13 @@ const (
 	InsertText
 	Submit
 	Cancel
+	Up
+	Down
+	PageUp
+	PageDown
+	PrevPage
+	NextPage
+	Refresh
 )
 
 type keyAction struct {
@@ -70,6 +80,118 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: OpenList}
 	case "esc":
 		return keyAction{Kind: Back}
+	case "up":
+		return keyAction{Kind: Up}
+	case "down":
+		return keyAction{Kind: Down}
+	case "pgup":
+		return keyAction{Kind: PageUp}
+	case "pgdown":
+		return keyAction{Kind: PageDown}
+	case "[":
+		return keyAction{Kind: PrevPage}
+	case "]":
+		return keyAction{Kind: NextPage}
+	case "R":
+		return keyAction{Kind: Refresh}
 	}
 	return keyAction{}
+}
+
+// binding is one action that is active right now: what the key does, and
+// how the help names it. The dispatch and the help read the same list.
+type binding struct {
+	kind      Action
+	key, help uitext.ID
+}
+
+// pairs says which second key a binding's help covers: "up/down" is one
+// entry of the help, two keys of the dispatch.
+var pairs = map[Action]Action{Up: Down, PageUp: PageDown, PrevPage: NextPage, Left: Right}
+
+// small is the terminal too small for anything but leaving.
+func (m Model) small() bool { return m.width < 24 || m.height < 8 }
+
+// actions are the bindings that act in the current state.
+func (m Model) actions() []binding {
+	out := []binding{{Quit, uitext.QuitKey, uitext.QuitHelp}, {Interrupt, uitext.InterruptKey, uitext.InterruptHelp}}
+	if m.small() {
+		return out
+	}
+	a := m.app
+	if a == nil {
+		out = append(out, binding{Left, uitext.FocusKey, uitext.FocusHelp}, binding{Back, uitext.EscapeKey, uitext.EscapeHelp})
+		if m.focus == view.Navigation {
+			out = append(out, binding{OpenList, uitext.EnterKey, uitext.EnterHelp})
+		}
+		return out
+	}
+	if a.expired {
+		return out
+	}
+	if a.steps[stepMe].state != ready {
+		if a.steps[stepMe].state == failed {
+			out = append(out, binding{Refresh, uitext.RefreshKey, uitext.RetryHelp})
+		}
+		return out
+	}
+	v := a.active
+	switch m.focus {
+	case view.Navigation:
+		if len(a.entries()) > 1 {
+			out = append(out, binding{Up, uitext.UpDownKey, uitext.HighlightHelp})
+		}
+		if a.canOpen(a.highlight) {
+			out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenHelp})
+		}
+		if v != nil {
+			out = append(out, binding{Back, uitext.EscapeKey, uitext.InboxHelp})
+		}
+	case view.List:
+		if v != nil && len(v.rows) > 1 {
+			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
+		}
+		if v != nil && v.selected != "" {
+			out = append(out, binding{OpenList, uitext.EnterKey, uitext.DetailsHelp})
+		}
+		if v != nil && a.pagingOn() && !v.loading && (v.page > 1 || (v.known && v.page < lastPage(v.total, v.perPage))) {
+			out = append(out, binding{PrevPage, uitext.PageKey, uitext.PageHelp})
+		}
+		out = append(out, binding{Back, uitext.EscapeKey, uitext.OrganisationsHelp})
+	case view.Object:
+		if v != nil && v.opened != "" {
+			out = append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
+		}
+		out = append(out, binding{Back, uitext.EscapeKey, uitext.CloseHelp})
+	}
+	if m.canRefresh() {
+		help := uitext.RefreshHelp
+		if a.anyFailed() {
+			help = uitext.RetryHelp
+		}
+		out = append(out, binding{Refresh, uitext.RefreshKey, help})
+	}
+	return append(out, binding{Left, uitext.FocusKey, uitext.FocusHelp})
+}
+
+// allowed is the set of actions the bindings cover.
+func (m Model) allowed() map[Action]bool {
+	set := map[Action]bool{}
+	for _, b := range m.actions() {
+		set[b.kind] = true
+		if second, ok := pairs[b.kind]; ok {
+			set[second] = true
+		}
+	}
+	return set
+}
+
+// help is the help line's content: the bindings, in order.
+func (m Model) help() []present.KeyHelp {
+	bindings := m.actions()
+	out := make([]present.KeyHelp, 0, len(bindings))
+	for _, b := range bindings {
+		out = append(out, present.KeyHelp{Key: uitext.Inline(b.key), Help: uitext.Inline(b.help)})
+	}
+	return out
 }

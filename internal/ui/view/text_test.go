@@ -42,18 +42,32 @@ func TestBodyPreservesNonbreakingSpaces(t *testing.T) {
 	}
 }
 
-func TestHelpIncludesExactlyFittingEntry(t *testing.T) {
+// An entry that exactly fits stays on the line; one that does not goes to
+// the next line, never away: every active binding is shown.
+func TestHelpWrapsInsteadOfDroppingBindings(t *testing.T) {
+	bindings := []present.KeyHelp{
+		{Key: present.NewInline("q"), Help: present.NewInline("quit")},
+		{Key: present.NewInline("ctrl+c"), Help: present.NewInline("interrupt")},
+	}
 	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
 		for _, tc := range []struct {
 			width int
-			want  string
+			want  []string
 		}{
-			{23, "q quit"}, {24, "q quit  ctrl+c interrupt"}, {25, "q quit  ctrl+c interrupt"},
+			{23, []string{"q quit", "ctrl+c interrupt"}}, {24, []string{"q quit  ctrl+c interrupt"}}, {25, []string{"q quit  ctrl+c interrupt"}},
+			{5, []string{"q qu…", "ctrl…"}},
 		} {
-			if got := ansi.Strip(Help(tc.width, List, true, method)); got != tc.want {
-				t.Errorf("method %d, width %d: %q, want %q", method, tc.width, got, tc.want)
+			lines := HelpLines(bindings, tc.width, method)
+			for i := range lines {
+				lines[i] = ansi.Strip(lines[i])
+			}
+			if !reflect.DeepEqual(lines, tc.want) {
+				t.Errorf("method %d, width %d: %q, want %q", method, tc.width, lines, tc.want)
 			}
 		}
+	}
+	if HelpLines(nil, 80, ansi.WcWidth) != nil || HelpLines(bindings, 0, ansi.WcWidth) != nil {
+		t.Fatal("help without bindings or width")
 	}
 }
 
