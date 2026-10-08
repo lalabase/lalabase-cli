@@ -161,14 +161,33 @@ type NotificationPage struct {
 }
 
 func (a *API) Notifications(ctx context.Context, q NotificationQuery) (NotificationPage, transport.Answer) {
+	return DecodeNotifications(a.NotificationsAnswer(ctx, q))
+}
+
+// NotificationsAnswer sends the request and returns the answer undecoded,
+// for a read shared by several waiters (internal/gateway): the queue shares
+// the answer, and every waiter decodes its own value with
+// DecodeNotifications.
+func (a *API) NotificationsAnswer(ctx context.Context, q NotificationQuery) transport.Answer {
 	args := map[string]any{}
 	setString(args, "status", q.Status)
 	setInt(args, "page", q.Page)
 	setInt(args, "per_page", q.PerPage)
 	setString(args, "project_id", q.ProjectID)
 	setString(args, "organisation_id", q.OrganisationID)
+	return a.c.CallTool(ctx, transport.Call{Tool: NotificationsSpec.Tool, Args: args, OneRecord: NotificationsSpec.OneRecord})
+}
+
+// DecodeNotifications checks an answer against NotificationsSpec and decodes
+// a new page from it, sharing nothing with an earlier decode. An answer that
+// is no object, or fails the check, gives the empty page: never a half-filled
+// one.
+func DecodeNotifications(ans transport.Answer) (NotificationPage, transport.Answer) {
 	var page NotificationPage
-	return page, a.call(ctx, NotificationsSpec, args, &page)
+	if ans = decode(NotificationsSpec, ans, &page); !ans.OK() {
+		return NotificationPage{}, ans
+	}
+	return page, ans
 }
 
 var MarkReadSpec = Spec{

@@ -15,16 +15,41 @@ import (
 
 const clientModule = "github.com/gboyke/lalabase-cli/"
 
-func surface(dir string) bool {
-	return dir == "internal/ui" || strings.HasPrefix(dir, "internal/ui/") || dir == "internal/present" || dir == "internal/uitext" || dir == "internal/terminal"
+// rootController is the root model's package: it may use the infrastructure
+// (queue, gateway, cache), its views may not.
+const rootController = "internal/ui"
+
+// workerFile and workerStart are the one place production code starts a
+// goroutine: the method Start of *Supervisor in this file.
+const (
+	workerFile  = "internal/worker/worker.go"
+	workerStart = "Start"
+)
+
+func surface(dir string) bool { return dir == rootController || view(dir) }
+
+func view(dir string) bool {
+	return strings.HasPrefix(dir, "internal/ui/") || dir == "internal/present" || dir == "internal/uitext" || dir == "internal/terminal"
 }
 
-func forbiddenImport(p string) bool {
-	for _, name := range []string{"internal/api", "internal/transport", "internal/cache", "internal/queue"} {
+// outputRoot: no terminal output from here or anything it reaches, the
+// interface and the paths its work runs on.
+func outputRoot(dir string) bool {
+	return surface(dir) || dir == "internal/gateway" || dir == "internal/worker" || dir == "internal/queue"
+}
+
+func infrastructure(p string) bool {
+	for _, name := range []string{"internal/api", "internal/transport", "internal/cache", "internal/queue", "internal/gateway"} {
 		if p == clientModule+name || strings.HasPrefix(p, clientModule+name+"/") {
 			return true
 		}
 	}
+	return false
+}
+
+func forbiddenImport(p string) bool { return infrastructure(p) || systemImport(p) }
+
+func systemImport(p string) bool {
 	return p == "net" || strings.HasPrefix(p, "net/") || p == "os" || strings.HasPrefix(p, "os/") || p == "syscall" || p == "unsafe" || p == "log" || strings.HasPrefix(p, "log/") || terminalAccess(p)
 }
 
@@ -73,7 +98,7 @@ func inspectUI(sources map[string]string) []string {
 		}
 	}
 	for name := range files {
-		if surface(path.Dir(name)) {
+		if outputRoot(path.Dir(name)) {
 			mark(path.Dir(name))
 		}
 	}
@@ -81,7 +106,8 @@ func inspectUI(sources map[string]string) []string {
 		aliases := map[string]string{}
 		for _, imp := range file.Imports {
 			p, _ := strconv.Unquote(imp.Path.Value)
-			if (surface(path.Dir(name)) && forbiddenImport(p)) || (reachable[path.Dir(name)] && terminalAccess(p)) {
+			direct := (view(path.Dir(name)) && forbiddenImport(p)) || (path.Dir(name) == rootController && systemImport(p))
+			if direct || (reachable[path.Dir(name)] && terminalAccess(p)) {
 				findings = append(findings, name+": forbidden direct import "+p)
 			}
 			if imp.Name != nil && imp.Name.Name == "." && (reachable[path.Dir(name)] || p == clientModule+"internal/ui") {
@@ -99,31 +125,35 @@ func inspectUI(sources map[string]string) []string {
 			}
 			aliases[alias] = p
 		}
-		if !strings.HasSuffix(name, "_test.go") {
+		test := strings.HasSuffix(name, "_test.go")
+		if !test {
 			findings = append(findings, inspectUIEntry(name, file, aliases)...)
 		}
+		// Goroutines: production code anywhere starts one only in the
+		// worker's Start; a test harness may, except in the interface.
+		if !test || surface(path.Dir(name)) {
+			findings = append(findings, inspectWorkers(name, file, aliases)...)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			if sel, ok := node.(*ast.SelectorExpr); ok && sel.Sel.Name == "WithoutCatchPanics" {
+				if ident, ok := sel.X.(*ast.Ident); ok && aliases[ident.Name] == "charm.land/bubbletea/v2" {
+					findings = append(findings, name+": panic recovery disabled")
+				}
+			}
+			return true
+		})
 		if !reachable[path.Dir(name)] {
 			continue
 		}
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch n := node.(type) {
-			case *ast.GoStmt:
-				findings = append(findings, name+": application goroutine")
 			case *ast.Ident:
 				if n.Name == "print" || n.Name == "println" {
 					findings = append(findings, name+": builtin output")
 				}
 			case *ast.SelectorExpr:
-				// Forbid taking the method value too, so a later alias cannot
-				// hide WaitGroup.Go. C1a has no application workers.
-				if n.Sel.Name == "Go" {
-					findings = append(findings, name+": application goroutine")
-				}
 				if ident, ok := n.X.(*ast.Ident); ok {
 					p := aliases[ident.Name]
-					if (p == "time" || p == "context") && n.Sel.Name == "AfterFunc" {
-						findings = append(findings, name+": application goroutine")
-					}
 					if p == "charm.land/lipgloss/v2" && (n.Sel.Name == "Writer" || strings.HasPrefix(n.Sel.Name, "Fprint")) {
 						findings = append(findings, name+": default output")
 					}
@@ -133,13 +163,13 @@ func inspectUI(sources map[string]string) []string {
 					if (p == "fmt" || p == "charm.land/bubbletea/v2" || p == "charm.land/lipgloss/v2") && strings.HasPrefix(n.Sel.Name, "Print") {
 						findings = append(findings, name+": default output")
 					}
-					if p == "charm.land/bubbletea/v2" && n.Sel.Name == "WithoutCatchPanics" {
-						findings = append(findings, name+": panic recovery disabled")
-					}
 				}
 			}
 			return true
 		})
+		if !view(path.Dir(name)) {
+			continue
+		}
 		seen := map[string]bool{}
 		var visit func(string)
 		visit = func(dir string) {
@@ -159,6 +189,47 @@ func inspectUI(sources map[string]string) []string {
 		visit(path.Dir(name))
 	}
 	return findings
+}
+
+// inspectWorkers reports every goroutine started outside the worker's Start:
+// a go statement, a method value Go (WaitGroup.Go, errgroup) and AfterFunc.
+func inspectWorkers(name string, file *ast.File, aliases map[string]string) []string {
+	var findings []string
+	for _, decl := range file.Decls {
+		allowed := name == workerFile && isWorkerStart(decl)
+		ast.Inspect(decl, func(node ast.Node) bool {
+			switch n := node.(type) {
+			case *ast.GoStmt:
+				if !allowed {
+					findings = append(findings, name+": application goroutine")
+				}
+			case *ast.SelectorExpr:
+				// Forbid taking the method value too, so a later alias cannot
+				// hide WaitGroup.Go.
+				if n.Sel.Name == "Go" {
+					findings = append(findings, name+": application goroutine")
+				}
+				if ident, ok := n.X.(*ast.Ident); ok && n.Sel.Name == "AfterFunc" && (aliases[ident.Name] == "time" || aliases[ident.Name] == "context") {
+					findings = append(findings, name+": application goroutine")
+				}
+			}
+			return true
+		})
+	}
+	return findings
+}
+
+func isWorkerStart(decl ast.Decl) bool {
+	fn, ok := decl.(*ast.FuncDecl)
+	if !ok || fn.Name.Name != workerStart || fn.Recv == nil || len(fn.Recv.List) != 1 {
+		return false
+	}
+	star, ok := fn.Recv.List[0].Type.(*ast.StarExpr)
+	if !ok {
+		return false
+	}
+	ident, ok := star.X.(*ast.Ident)
+	return ok && ident.Name == "Supervisor"
 }
 
 func TestRepositoryUIBoundaries(t *testing.T) {
@@ -260,11 +331,11 @@ func TestUISurfaceProtectionIsScoped(t *testing.T) {
 		}
 	}
 	if got := inspectUI(map[string]string{
-		"internal/ui/view/pane.go": `package view`,
-		"internal/queue/worker.go": `package queue; func worker(){ go func(){}() }`,
-		"cmd/lalabase/main.go":     `package main; import sys "os"; var output = sys.Stderr`,
+		"internal/ui/view/pane.go":      `package view`,
+		"internal/queue/worker_test.go": `package queue; func harness(){ go func(){}() }`,
+		"cmd/lalabase/main.go":          `package main; import sys "os"; var output = sys.Stderr`,
 	}); len(got) != 0 {
-		t.Fatalf("guard crossed into unrelated CLI or queue code: %v", got)
+		t.Fatalf("guard crossed into unrelated CLI output or a test harness: %v", got)
 	}
 }
 

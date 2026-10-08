@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/profile"
+	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
 func TestNoCommandRequiresBothTerminals(t *testing.T) {
@@ -26,7 +27,10 @@ func TestNoCommandRequiresBothTerminals(t *testing.T) {
 				Interactive: in, OutputTerminal: out, Getenv: func(k string) string {
 					return map[string]string{"LC_ALL": "UTF-8", "LALABASE_URL": "http://127.0.0.1:1", "LALABASE_TOKEN": "dummy"}[k]
 				},
-				runUI: func(context.Context, io.Reader, io.Writer, []string) error { launched = true; return nil }}
+				runUI: func(context.Context, io.Reader, io.Writer, []string, *worker.Supervisor) error {
+					launched = true
+					return nil
+				}}
 			code := runWith(nil, env)
 			if in && out {
 				if code != 0 || !launched {
@@ -106,7 +110,7 @@ func TestInteractiveProfileFailureBeforeUI(t *testing.T) {
 					}
 				}
 			}
-			env.runUI = func(context.Context, io.Reader, io.Writer, []string) error {
+			env.runUI = func(context.Context, io.Reader, io.Writer, []string, *worker.Supervisor) error {
 				t.Fatal("profile failure started the UI")
 				return nil
 			}
@@ -134,7 +138,7 @@ func interactiveEnv(t *testing.T, vars map[string]string) (Env, *bytes.Buffer) {
 			}
 			return vars[k]
 		},
-		runUI: func(context.Context, io.Reader, io.Writer, []string) error { return nil }}, &errOut
+		runUI: func(context.Context, io.Reader, io.Writer, []string, *worker.Supervisor) error { return nil }}, &errOut
 }
 
 func TestInteractiveDefaultResolution(t *testing.T) {
@@ -192,7 +196,7 @@ func TestInteractivePreflightOrder(t *testing.T) {
 				}
 				return tc.locale
 			},
-			runUI: func(context.Context, io.Reader, io.Writer, []string) error {
+			runUI: func(context.Context, io.Reader, io.Writer, []string, *worker.Supervisor) error {
 				t.Fatal("launched UI before preflight passed")
 				return nil
 			}}
@@ -261,7 +265,7 @@ func TestInteractivePassesOnlyTerminalEnvironment(t *testing.T) {
 		}
 		env, _ := interactiveEnv(t, vars)
 		called := false
-		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string) error {
+		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, _ *worker.Supervisor) error {
 			called = true
 			if ctx == nil || in != env.Stdin || out != env.Stdout {
 				t.Fatal("runner lost context or terminal streams")

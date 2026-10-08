@@ -3,8 +3,8 @@
 Working notes for coding agents in this repository (Claude Code reads this
 file through `CLAUDE.md`). The README says what the
 program does; this file says how to change it without repeating mistakes the
-reviews of C0 already found. Status: 2026-10-08, main at C0 plus the contract
-copy of MCP 0.9.0 (#5). C1a (the terminal shell) is on its own branch.
+reviews of C0 already found. Status: 2026-10-08, main at C1a (the terminal
+shell); C1b-1 adds the gateway, the memory cache and the supervised workers.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
@@ -29,8 +29,10 @@ on a Mac before every merge, by running the tests here.
 | `internal/transport` | REST `/api/v1` and MCP `/api/mcp`; every answer becomes one `Answer` with one `Class` |
 | `internal/api` | one adapter per tool or REST reader, each with a `Spec` |
 | `internal/features` | which features a server has, from `tools/list` and input schemas |
-| `internal/cache` | the four decisions on an answer, from its class alone |
+| `internal/cache` | the decisions on an answer, from its class alone, and the memory store they act on |
 | `internal/queue` | the one queue every request goes through |
+| `internal/gateway` | reads from the queue to the interface: one typed message per waiter, and `Scope`, which checks a result before it is cached |
+| `internal/worker` | the supervisor: the only place a goroutine is started, its panics become one fatal error |
 | `internal/profile` | server plus token; the config file and its threat model |
 | `internal/safefile` | reading files the client does not control |
 | `internal/claudecfg` | Lalabase entries in Claude Code's configuration (`auth import`) |
@@ -83,7 +85,11 @@ on a Mac before every merge, by running the tests here.
 11. **Dependencies are permissive** (MIT, Apache-2.0, BSD, ISC, 0BSD), test
     dependencies included, and are named in the README. Before adding one,
     read its license and ask whether the standard library does it.
-12. **No cgo.** macOS calls go through `golang.org/x/sys` (see `acl_darwin.go`).
+12. **Goroutines only through `worker.Supervisor.Start`** (the source guard
+    allows `go` nowhere else in production code). The queue shares an
+    answer, never a decoded value: every waiter decodes its own. A result is
+    cached or shown only after `gateway.Scope.Receive` accepted it.
+13. **No cgo.** macOS calls go through `golang.org/x/sys` (see `acl_darwin.go`).
     Platform code is split by build tags: `_unix`, `_darwin`, `_other`.
 
 ## Tests

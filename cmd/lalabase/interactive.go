@@ -5,13 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/profile"
 	"github.com/gboyke/lalabase-cli/internal/terminal"
 	"github.com/gboyke/lalabase-cli/internal/ui"
 	"github.com/gboyke/lalabase-cli/internal/uitext"
+	"github.com/gboyke/lalabase-cli/internal/worker"
 )
+
+// workerCleanup bounds the wait for the session's work after the terminal
+// is restored: work that ignores its cancellation is left behind.
+const workerCleanup = time.Second
 
 func runInteractive(name string, env Env) int {
 	if name != "" && name != profile.DefaultName {
@@ -42,11 +48,20 @@ func runInteractive(name string, env Env) int {
 	}
 	run := env.runUI
 	if run == nil {
-		run = func(ctx context.Context, in io.Reader, out io.Writer, environment []string) error {
-			return ui.Run(ctx, in, out, environment, ui.New())
+		run = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, sup *worker.Supervisor) error {
+			return ui.Run(ctx, in, out, environment, ui.New(ui.WithSupervisor(sup)))
 		}
 	}
-	if err := run(ctx, env.Stdin, env.Stdout, environment); err != nil {
+	sup := worker.New(ctx)
+	err := run(ctx, env.Stdin, env.Stdout, environment, sup)
+	// The terminal is restored here. A fatal error counts even when its
+	// message lost the race against the person quitting.
+	sup.Stop(workerCleanup)
+	if sup.Err() != nil {
+		fmt.Fprintln(env.Stderr, uitext.Inline(uitext.RunError).String())
+		return 1
+	}
+	if err != nil {
 		if errors.Is(err, tea.ErrInterrupted) {
 			return 130
 		}

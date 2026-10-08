@@ -11,7 +11,12 @@
 //     waits too and is told so (WithOnPause);
 //   - a job is retried at most once: a read on any temporary failure, a write
 //     only when the server cannot have acted on it (a 429, or nothing was
-//     sent). A retry runs the same job, so it carries the same idempotency key.
+//     sent). A retry runs the same job, so it carries the same idempotency key;
+//   - the queue's own goroutines (a shared read, the wake-up after a pause)
+//     run under one lifetime (WithLifetime, internal/worker). It ends them;
+//     a panic in them is recovered there and becomes its fatal error, and
+//     on its way up gives back the place, the lock and the waiters' answer
+//     (canceled, never an empty "object").
 package queue
 
 import (
@@ -21,6 +26,7 @@ import (
 	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/transport"
+	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
 // Priority orders waiting jobs.
@@ -73,6 +79,11 @@ func WithClock(c Clock) Option { return func(q *Queue) { q.clock = c } }
 // window, and until when.
 func WithOnPause(f func(until time.Time)) Option { return func(q *Queue) { q.onPause = f } }
 
+// WithLifetime runs the queue's goroutines under s: shared reads and pause
+// timers end with its lifetime, and a panic in them becomes its fatal error.
+// Without it the queue has a lifetime of its own that never ends.
+func WithLifetime(s *worker.Supervisor) Option { return func(q *Queue) { q.life = s } }
+
 // WithRetryDelay sets the wait before retrying a read after a temporary
 // failure that was no 429 (a 429 waits for its window instead).
 func WithRetryDelay(d time.Duration) Option { return func(q *Queue) { q.retryDelay = d } }
@@ -89,6 +100,7 @@ const (
 type Queue struct {
 	mu          sync.Mutex
 	clock       Clock
+	life        *worker.Supervisor
 	onPause     func(time.Time)
 	retryDelay  time.Duration
 	running     int
@@ -105,6 +117,9 @@ func New(opts ...Option) *Queue {
 	for _, opt := range opts {
 		opt(q)
 	}
+	if q.life == nil {
+		q.life = worker.New(context.Background())
+	}
 	return q
 }
 
@@ -120,6 +135,7 @@ type ticket struct {
 // still waiting: a person joining lifts it, the last person leaving lets it
 // fall back to background work.
 type flight struct {
+	ctx    context.Context
 	cancel context.CancelFunc
 	refs   int
 	users  int // callers of priority User among refs
@@ -161,9 +177,37 @@ func (q *Queue) Do(ctx context.Context, job Job) transport.Answer {
 }
 
 func (q *Queue) doShared(ctx context.Context, job Job) transport.Answer {
+	f, fresh, tell, mustTell := q.join(job)
+	if mustTell && q.onPause != nil {
+		q.onPause(tell)
+	}
+	if fresh {
+		runCtx := f.ctx
+		started := q.life.Start("queue: shared read", func(context.Context) {
+			ans := canceled()
+			// Deferred, so a panic in the job still frees every waiter.
+			defer func() { q.land(job.Key, f, ans) }()
+			ans = q.run(runCtx, job, f)
+		})
+		if !started {
+			q.land(job.Key, f, canceled())
+		}
+	}
+
+	select {
+	case <-f.done:
+		return f.ans
+	case <-ctx.Done():
+		q.leave(job, f)
+		return canceled()
+	}
+}
+
+// join adds the caller to the shared read of its key, or makes a new one
+// (fresh) for the caller to start.
+func (q *Queue) join(job Job) (f *flight, fresh bool, tell time.Time, mustTell bool) {
 	q.mu.Lock()
-	var tell time.Time
-	var mustTell bool
+	defer q.mu.Unlock()
 	f, ok := q.shared[job.Key]
 	if ok {
 		f.refs++
@@ -171,52 +215,50 @@ func (q *Queue) doShared(ctx context.Context, job Job) transport.Answer {
 			f.users++
 			tell, mustTell = q.setPrio(f, User)
 		}
-	} else {
-		runCtx, cancel := context.WithCancel(context.Background())
-		f = &flight{cancel: cancel, refs: 1, prio: job.Priority, done: make(chan struct{})}
-		if job.Priority == User {
-			f.users = 1
+		return f, false, tell, mustTell
+	}
+	// The request belongs to the queue's lifetime, never to its first caller.
+	runCtx, cancel := context.WithCancel(q.life.Context())
+	f = &flight{ctx: runCtx, cancel: cancel, refs: 1, prio: job.Priority, done: make(chan struct{})}
+	if job.Priority == User {
+		f.users = 1
+	}
+	q.shared[job.Key] = f
+	return f, true, time.Time{}, false
+}
+
+// leave takes a caller who gave up off its shared read.
+func (q *Queue) leave(job Job, f *flight) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	f.refs--
+	if job.Priority == User {
+		f.users--
+		if f.users == 0 {
+			q.setPrio(f, Background)
 		}
-		q.shared[job.Key] = f
-		go func() {
-			f.ans = q.run(runCtx, job, f)
-			cancel()
-			q.mu.Lock()
-			if q.shared[job.Key] == f {
-				delete(q.shared, job.Key)
-			}
-			q.mu.Unlock()
-			close(f.done)
-		}()
+	}
+	if f.refs == 0 {
+		// Nobody waits any more: cancel it, and let a new caller start
+		// afresh instead of joining a canceled request.
+		f.cancel()
+		if q.shared[job.Key] == f {
+			delete(q.shared, job.Key)
+		}
+	}
+}
+
+// land ends a shared read with its answer. A late read never removes the
+// one that replaced it under the same key.
+func (q *Queue) land(key string, f *flight, ans transport.Answer) {
+	f.cancel()
+	q.mu.Lock()
+	if q.shared[key] == f {
+		delete(q.shared, key)
 	}
 	q.mu.Unlock()
-	if mustTell && q.onPause != nil {
-		q.onPause(tell)
-	}
-
-	select {
-	case <-f.done:
-		return f.ans
-	case <-ctx.Done():
-		q.mu.Lock()
-		f.refs--
-		if job.Priority == User {
-			f.users--
-			if f.users == 0 {
-				q.setPrio(f, Background)
-			}
-		}
-		if f.refs == 0 {
-			// Nobody waits any more: cancel it, and let a new caller start
-			// afresh instead of joining a canceled request.
-			f.cancel()
-			if q.shared[job.Key] == f {
-				delete(q.shared, job.Key)
-			}
-		}
-		q.mu.Unlock()
-		return canceled()
-	}
+	f.ans = ans
+	close(f.done)
 }
 
 // run performs a job with at most one retry. f is the shared read it runs
@@ -227,8 +269,7 @@ func (q *Queue) run(ctx context.Context, job Job, f *flight) transport.Answer {
 		if err != nil {
 			return canceled()
 		}
-		ans := job.Run(ctx)
-		q.finish(t, ans)
+		ans := q.attempt(ctx, t, job)
 
 		if attempt >= 1 || !retryable(job.Kind, ans) {
 			return ans
@@ -238,9 +279,26 @@ func (q *Queue) run(ctx context.Context, job Job, f *flight) transport.Answer {
 			case <-q.clock.After(q.retryDelay):
 			case <-ctx.Done():
 				return canceled()
+			case <-q.life.Context().Done():
+				return canceled()
 			}
 		}
 	}
+}
+
+// attempt runs the job on its place. A panic in the job gives the place
+// back on its way up, so it is never lost.
+func (q *Queue) attempt(ctx context.Context, t *ticket, job Job) transport.Answer {
+	ran := false
+	defer func() {
+		if !ran {
+			q.release(t)
+		}
+	}()
+	ans := job.Run(ctx)
+	ran = true
+	q.finish(t, ans)
+	return ans
 }
 
 // retryable: a read on any temporary failure; a write only when the server
@@ -260,7 +318,15 @@ func retryable(kind Kind, ans transport.Answer) bool {
 // slip into the closed window in between. A later window never shortens an
 // earlier, longer one. A person already waiting is told.
 func (q *Queue) finish(t *ticket, ans transport.Answer) {
+	until, tell := q.giveBack(t, ans)
+	if tell && q.onPause != nil {
+		q.onPause(until)
+	}
+}
+
+func (q *Queue) giveBack(t *ticket, ans transport.Answer) (time.Time, bool) {
 	q.mu.Lock()
+	defer q.mu.Unlock()
 	paused := false
 	// Every received 429 pauses, whatever its class (a body too large, a
 	// caller that left); a window not in the future (Retry-After: 0, a past
@@ -281,11 +347,7 @@ func (q *Queue) finish(t *ticket, ans transport.Answer) {
 	}
 	q.dispatch()
 	until := q.pausedUntil
-	tell := paused && q.clock.Now().Before(until) && q.personWaits()
-	q.mu.Unlock()
-	if tell && q.onPause != nil {
-		q.onPause(until)
-	}
+	return until, paused && q.clock.Now().Before(until) && q.personWaits()
 }
 
 // personWaits reports a person's action waiting for a place. Called with q.mu
@@ -301,7 +363,29 @@ func (q *Queue) personWaits() bool {
 
 // acquire waits for a place.
 func (q *Queue) acquire(ctx context.Context, prio Priority, f *flight) (*ticket, error) {
+	t, prio, paused, until := q.enqueue(prio, f)
+	if paused && prio == User && q.onPause != nil {
+		q.onPause(until)
+	}
+
+	select {
+	case <-t.ready:
+		q.clearTicket(f)
+		return t, nil
+	case <-ctx.Done():
+		q.abandon(t)
+		q.clearTicket(f)
+		return nil, ctx.Err()
+	case <-q.life.Context().Done():
+		q.abandon(t)
+		q.clearTicket(f)
+		return nil, context.Canceled
+	}
+}
+
+func (q *Queue) enqueue(prio Priority, f *flight) (*ticket, Priority, bool, time.Time) {
 	q.mu.Lock()
+	defer q.mu.Unlock()
 	if f != nil {
 		prio = f.prio
 	}
@@ -312,29 +396,23 @@ func (q *Queue) acquire(ctx context.Context, prio Priority, f *flight) (*ticket,
 	q.waiting = append(q.waiting, t)
 	paused, until := q.clock.Now().Before(q.pausedUntil), q.pausedUntil
 	q.dispatch()
-	q.mu.Unlock()
+	return t, prio, paused, until
+}
 
-	if paused && prio == User && q.onPause != nil {
-		q.onPause(until)
-	}
-
-	select {
-	case <-t.ready:
-		q.clearTicket(f)
-		return t, nil
-	case <-ctx.Done():
-		q.mu.Lock()
-		if t.granted {
-			// Granted while the caller left: give the place back.
-			q.mu.Unlock()
-			q.release(t)
-		} else {
-			q.remove(t)
-			q.mu.Unlock()
+// abandon withdraws a wait whose caller left; a place granted meanwhile goes
+// back.
+func (q *Queue) abandon(t *ticket) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if t.granted {
+		q.running--
+		if t.background {
+			q.bgRunning--
 		}
-		q.clearTicket(f)
-		return nil, ctx.Err()
+		q.dispatch()
+		return
 	}
+	q.remove(t)
 }
 
 func (q *Queue) clearTicket(f *flight) {
@@ -342,8 +420,8 @@ func (q *Queue) clearTicket(f *flight) {
 		return
 	}
 	q.mu.Lock()
+	defer q.mu.Unlock()
 	f.ticket = nil
-	q.mu.Unlock()
 }
 
 func (q *Queue) release(t *ticket) {
@@ -375,9 +453,14 @@ func (q *Queue) dispatch() {
 			until := q.pausedUntil
 			q.timerFor = until
 			wake := q.clock.After(until.Sub(now))
-			go func() {
-				<-wake
+			q.life.Start("queue: pause", func(ctx context.Context) {
+				select {
+				case <-wake:
+				case <-ctx.Done():
+					return
+				}
 				q.mu.Lock()
+				defer q.mu.Unlock()
 				// A timer for an earlier, since extended window only
 				// dispatches; the marker belongs to the current one, so no
 				// second timer is started for the same window.
@@ -385,8 +468,7 @@ func (q *Queue) dispatch() {
 					q.timerFor = time.Time{}
 				}
 				q.dispatch()
-				q.mu.Unlock()
-			}()
+			})
 		}
 		return
 	}
@@ -423,6 +505,17 @@ func (q *Queue) next() *ticket {
 		}
 	}
 	return nil
+}
+
+// Sharers is the number of callers waiting for the shared read of key, for
+// tests that must know a caller joined before the answer comes.
+func (q *Queue) Sharers(key string) int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if f := q.shared[key]; f != nil {
+		return f.refs
+	}
+	return 0
 }
 
 // ReadKey identifies a read for sharing: the server, the token's identity,
