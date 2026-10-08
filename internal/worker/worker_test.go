@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -115,9 +116,56 @@ func TestStopWaitsForRunningCalls(t *testing.T) {
 	if s.Err() == nil {
 		t.Fatal("Stop returned before the running call's panic was recorded")
 	}
-	// Calls after Stop still run and count; a second Stop stays safe.
-	if v, ok := Run(s, "after", func() int { return 1 }); !ok || v != 1 {
-		t.Fatal("a call after Stop did not run")
+}
+
+// Review #9, round 2: once Stop began, Run admits nothing. A call that came
+// later would run unwatched: Stop has returned and the command has read
+// Err, so its panic could still end in exit 0. A second Stop then waits for
+// nothing it does not know of.
+func TestRunAdmitsNothingAfterStop(t *testing.T) {
+	s := New(context.Background())
+	if !s.Stop(limit) {
+		t.Fatal("an idle supervisor did not stop")
 	}
-	s.Stop(limit)
+	called := false
+	if v, ok := Run(s, "late command", func() int { called = true; panic("late") }); ok || v != 0 || called {
+		t.Fatalf("a call after Stop ran: %v %v %v", v, ok, called)
+	}
+	if s.Err() != nil {
+		t.Fatalf("a refused call is no fatal error: %v", s.Err())
+	}
+	if !s.Stop(limit) || s.Err() != nil {
+		t.Fatal("a second Stop found work")
+	}
+}
+
+// Work Start accepted runs, also when Stop comes before its goroutine is
+// scheduled: the queue's shared read wakes its waiters only from inside it.
+func TestStartedWorkRunsEvenIfStopComesFirst(t *testing.T) {
+	for range 200 {
+		s := New(context.Background())
+		var ran atomic.Bool
+		if !s.Start("queue: shared read", func(context.Context) { ran.Store(true) }) {
+			t.Fatal("Start refused")
+		}
+		if !s.Stop(limit) {
+			t.Fatal("Stop gave up")
+		}
+		if !ran.Load() {
+			t.Fatal("accepted work never ran")
+		}
+	}
+}
+
+// Review #9, round 2: Stop with nothing running returns at once, not when
+// its limit runs out (every "q" would wait for it).
+func TestStopWithoutWorkReturnsAtOnce(t *testing.T) {
+	s := New(context.Background())
+	start := time.Now()
+	if !s.Stop(time.Minute) {
+		t.Fatal("an idle supervisor did not stop")
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("Stop waited %s with nothing running", took)
+	}
 }

@@ -40,8 +40,12 @@ func TestTheModelWatchesItsSupervisor(t *testing.T) {
 	if _, ok := message(t, watch).(worker.Fatal); !ok {
 		t.Fatal("no fatal message")
 	}
-	if _, ok := message(t, watchFatal(failing.Failed(), failing.Context().Done())).(worker.Fatal); !ok {
-		t.Fatal("an ended lifetime hid the fatal error")
+	// Both channels are closed, so select picks one at random: repeated,
+	// so an ended lifetime that hides the error is caught every time.
+	for range 200 {
+		if _, ok := message(t, watchFatal(failing.Failed(), failing.Context().Done())).(worker.Fatal); !ok {
+			t.Fatal("an ended lifetime hid the fatal error")
+		}
 	}
 	stopped := worker.New(context.Background())
 	watch = New(WithSupervisor(stopped)).Init()

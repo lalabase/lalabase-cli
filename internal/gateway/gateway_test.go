@@ -238,3 +238,20 @@ func TestAPanicInACommandBecomesTheFatalMessage(t *testing.T) {
 		t.Fatalf("recorded %v", life.Err())
 	}
 }
+
+// Review #9, round 2: a command that comes after Stop is not run. It is a
+// canceled read, not a fatal error: nothing failed.
+func TestACommandAfterStopIsACanceledRead(t *testing.T) {
+	life := worker.New(context.Background())
+	life.Stop(wall)
+	ns := confirmed(t)
+	ticket := NewScope(ns).Begin(Inbox, unreadPage(ns, "", 1), queue.User)
+	msg := result(t, run(New(life, panicDoer{}, nil).Inbox(context.Background(), ticket)))
+	r, ok := msg.(InboxResult)
+	if !ok || r.Ticket != ticket || r.Answer.Class != transport.Canceled || !reflect.DeepEqual(r.Page, api.NotificationPage{}) {
+		t.Fatalf("got %#v", msg)
+	}
+	if life.Err() != nil {
+		t.Fatalf("recorded %v", life.Err())
+	}
+}

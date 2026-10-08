@@ -64,7 +64,11 @@ func (g *Gateway) Inbox(ctx context.Context, t Ticket) tea.Cmd {
 			return InboxResult{Ticket: t, Page: page, Answer: ans}
 		})
 		if !ok {
-			return worker.Fatal{}
+			if g.sup.Err() != nil {
+				return worker.Fatal{}
+			}
+			// Not run: the session stopped before this command came.
+			return InboxResult{Ticket: t, Answer: transport.Answer{Class: transport.Canceled, Message: "canceled before it was sent"}}
 		}
 		return msg
 	}

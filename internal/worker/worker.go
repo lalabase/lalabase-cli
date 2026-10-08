@@ -38,7 +38,7 @@ type Supervisor struct {
 	mu       sync.Mutex
 	err      error
 	stopping bool
-	active   int           // calls of Run in progress, Start's included
+	active   int           // admitted calls of Run and Start in progress
 	idle     chan struct{} // closed when stopping and no work is left
 	idled    bool
 }
@@ -77,12 +77,25 @@ func (s *Supervisor) fail(where string) {
 // Run calls f on the caller's goroutine. A panic in f becomes the fatal
 // error: ok is false and v the zero value, never a half-made result. Stop
 // waits for calls in progress (a command on one of Bubble Tea's goroutines),
-// so their panic is recorded before the command reads Err.
+// so their panic is recorded before the command reads Err. Once Stop began,
+// Run admits nothing: f does not run, ok is false and no error is recorded.
+// A call that came later would run unwatched, after the command read Err.
 func Run[T any](s *Supervisor, where string, f func() T) (v T, ok bool) {
 	s.mu.Lock()
+	if s.stopping {
+		s.mu.Unlock()
+		return v, false
+	}
 	s.active++
 	s.mu.Unlock()
 	defer s.done()
+	return protect(s, where, f)
+}
+
+// protect calls f and turns its panic into the fatal error. It returns
+// before the caller's deferred done, so the error is recorded before the
+// work counts as finished and Stop can return.
+func protect[T any](s *Supervisor, where string, f func() T) (v T, ok bool) {
 	defer func() {
 		if recover() != nil {
 			s.fail(where)
@@ -95,18 +108,19 @@ func Run[T any](s *Supervisor, where string, f func() T) (v T, ok bool) {
 
 // Start runs f in a goroutine of its own, with the lifetime as its context.
 // It returns false, without running f, when the lifetime is over: the caller
-// then finishes what f would have finished.
+// then finishes what f would have finished. Once it returned true, f runs,
+// even when Stop comes before the goroutine does.
 func (s *Supervisor) Start(where string, f func(ctx context.Context)) bool {
 	s.mu.Lock()
 	if s.stopping || s.ctx.Err() != nil {
 		s.mu.Unlock()
 		return false
 	}
-	s.active++ // until the goroutine's Run counts itself
+	s.active++
 	s.mu.Unlock()
 	go func() {
 		defer s.done()
-		Run(s, where, func() struct{} { f(s.ctx); return struct{}{} })
+		protect(s, where, func() struct{} { f(s.ctx); return struct{}{} })
 	}()
 	return true
 }

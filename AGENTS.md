@@ -89,6 +89,10 @@ on a Mac before every merge, by running the tests here.
     allows `go` nowhere else in production code). The queue shares an
     answer, never a decoded value: every waiter decodes its own. A result is
     cached or shown only after `gateway.Scope.Receive` accepted it.
+    Where the interface and its work reach, production code imports only
+    from the guard's allowlist (`reachableImports`); a new import there is a
+    decision about writing and goroutines, not a fix for a red guard. No dot
+    imports anywhere.
 13. **No cgo.** macOS calls go through `golang.org/x/sys` (see `acl_darwin.go`).
     Platform code is split by build tags: `_unix`, `_darwin`, `_other`.
 

@@ -60,10 +60,15 @@ func TestTheRootControllerMayUseTheInfrastructureItsViewsMayNot(t *testing.T) {
 	deps := map[string]string{
 		"internal/ui/model.go":         root,
 		"internal/gateway/gateway.go":  `package gateway; import _ "` + clientModule + `internal/transport"`,
-		"internal/transport/client.go": `package transport; import ( _ "net/http"; _ "os" )`,
+		"internal/transport/client.go": `package transport; import _ "net/http"`,
 	}
 	if got := inspectUI(deps); len(got) != 0 {
 		t.Fatalf("the root controller's infrastructure was rejected: %v", got)
+	}
+	// What the root controller reaches is held to the allowlist.
+	deps["internal/transport/client.go"] = `package transport; import ( _ "net/http"; _ "os" )`
+	if got := inspectUI(deps); len(got) == 0 {
+		t.Error("the transport imported os unnoticed")
 	}
 	for _, imp := range []string{"os", "net/http", "syscall"} {
 		if got := inspectUI(map[string]string{"internal/ui/model.go": `package ui; import _ "` + imp + `"`}); len(got) == 0 {
@@ -151,5 +156,65 @@ func TestReviewGapsInTheGoroutineAndOutputRules(t *testing.T) {
 	// A package the worker paths do not reach may still log.
 	if got := inspectUI(map[string]string{"tools/update-contract/main.go": `package main; import "log"; func run() { log.Print("x") }`}); len(got) != 0 {
 		t.Fatalf("unrelated logging rejected: %v", got)
+	}
+}
+
+// Review #9, round 2: where the interface and its work reach, production
+// code imports from an allowlist; a dot import is barred everywhere. Each of
+// these passed the guard of round 1.
+func TestReachableCodeImportsFromAnAllowlist(t *testing.T) {
+	reach := `package gateway; import ( _ "` + clientModule + `internal/api"; _ "` + clientModule + `internal/transport"; _ "` + clientModule + `internal/cache" )`
+	for name, source := range map[string]string{
+		"internal/gateway/x.go#stack":     `package gateway; import "runtime/debug"; func run() { debug.PrintStack() }`,
+		"internal/api/x.go#syscall":       `package api; import "syscall"; func run() { syscall.Write(2, nil) }`,
+		"internal/transport/x.go#newfile": `package transport; import "os"; var out = os.NewFile(2, "stderr")`,
+		"internal/queue/x.go#fprintln":    `package queue; import ("fmt"; "io"); func run(w io.Writer) { fmt.Fprintln(w, "x") }`,
+		"internal/cache/x.go#writestring": `package cache; import "io"; func run(w io.Writer) { io.WriteString(w, "x") }`,
+		"internal/cache/x.go#copy":        `package cache; import "io"; func run(w io.Writer, r io.Reader) { io.Copy(w, r) }`,
+		"internal/gateway/x.go#encoder":   `package gateway; import ("encoding/json"; "io"); func run(w io.Writer) { json.NewEncoder(w) }`,
+		"internal/worker/x.go#bufio":      `package worker; import "bufio"; var _ bufio.Writer`,
+		"internal/ui/x.go#runtime":        `package ui; import "runtime"; var _ = runtime.NumGoroutine`,
+	} {
+		file, _, _ := strings.Cut(name, "#")
+		if got := inspectUI(map[string]string{"internal/gateway/reach.go": reach, file: source}); len(got) == 0 {
+			t.Errorf("missed %s", name)
+		}
+	}
+	for name, source := range map[string]string{
+		"cmd/lalabase/x.go#finalizer":    `package main; import "runtime"; func run(p *int) { runtime.SetFinalizer(p, nil) }`,
+		"internal/profile/x.go#cleanup":  `package profile; import rt "runtime"; func run(p *int) { rt.AddCleanup(p, func(int) {}, 0) }`,
+		"cmd/lalabase/x.go#dot tea":      `package main; import . "charm.land/bubbletea/v2"; var option = WithoutCatchPanics`,
+		"cmd/lalabase/x_test.go#dot":     `package main; import . "strings"; var _ = Contains`,
+		"tools/update-contract/x.go#dot": `package main; import . "fmt"; var _ = Sprint`,
+		"internal/clean/x_test.go#dot":   `package clean; import . "strings"; var _ = Contains`,
+	} {
+		file, _, _ := strings.Cut(name, "#")
+		if got := inspectUI(map[string]string{file: source}); len(got) == 0 {
+			t.Errorf("missed %s", name)
+		}
+	}
+	// What the allowlist allows, and where it does not apply.
+	if got := inspectUI(map[string]string{
+		"internal/gateway/reach.go":     reach,
+		"internal/transport/x.go":       `package transport; import ("encoding/json"; "fmt"; "io"; "net/http"); var _ = json.Marshal; var _ = fmt.Errorf; var _ io.Reader; var _ http.Client`,
+		"internal/transport/x_test.go":  `package transport; import "os"; var _ = os.ReadFile`,
+		"cmd/lalabase/x.go":             `package main; import ("bufio"; "os"); var _ = bufio.NewWriter(os.Stdout)`,
+		"tools/update-contract/main.go": `package main; import ("log"; "os"); var _ = log.Print; var _ = os.Args`,
+	}); len(got) != 0 {
+		t.Fatalf("allowed code was rejected: %v", got)
+	}
+}
+
+// Review #9, round 2: the repository scan reads the real files of the
+// worker paths, not only the examples above.
+func TestTheRepositoryScanCoversTheWorkerPaths(t *testing.T) {
+	scanned := map[string]bool{}
+	for name := range repositorySources(t) {
+		scanned[name] = true
+	}
+	for _, name := range []string{workerFile, "internal/gateway/gateway.go", "internal/gateway/scope.go", "internal/queue/queue.go", "internal/cache/store.go", "internal/transport/client.go"} {
+		if !scanned[name] {
+			t.Errorf("the repository scan skips %s", name)
+		}
 	}
 }

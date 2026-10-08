@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -57,6 +58,58 @@ func terminalAccess(p string) bool {
 	return p == "golang.org/x/sys/unix" || p == "golang.org/x/term" || p == "github.com/charmbracelet/x/term"
 }
 
+// reachableImports is everything production code may import where the
+// interface and its work reach, besides the client's own packages (checked
+// themselves). It is an allowlist: a package that writes to the terminal or
+// starts work of its own (os, log, syscall, runtime, runtime/debug, bufio,
+// ...) is refused without being named. nil allows every name of a package;
+// a list allows only these, for packages that can write to a writer they are
+// handed (fmt.Fprintln, io.Copy, json.NewEncoder). A new import here is a
+// decision: does it write, does it start a goroutine?
+//
+// Not seen, by design (a syntax guard; for the person reading the diff): a
+// method on a writer that was handed in (w.Write, buf.WriteTo(w)), and
+// packages the interface does not reach (cmd/lalabase, internal/profile).
+var reachableImports = map[string][]string{
+	"bytes": nil, "container/list": nil, "context": nil, "crypto/tls": nil, "crypto/x509": nil,
+	"errors": nil, "net": nil, "net/http": nil, "net/http/httptrace": nil, "net/url": nil, "path": nil,
+	"regexp": nil, "slices": nil, "strconv": nil, "strings": nil, "sync": nil, "sync/atomic": nil,
+	"time": nil, "unicode": nil, "unicode/utf8": nil,
+	"encoding/json": {"Decoder", "Marshal", "NewDecoder", "RawMessage", "Unmarshal", "Valid"},
+	"fmt":           {"Errorf", "Sprint", "Sprintf", "Sprintln"},
+	"io":            {"EOF", "LimitReader", "ReadAll", "ReadCloser", "Reader", "Writer"},
+	// Their writing names are refused below (Println, Fprint, Writer,
+	// WithoutCatchPanics).
+	"charm.land/bubbletea/v2": nil, "charm.land/bubbles/v2/help": nil, "charm.land/bubbles/v2/key": nil,
+	"charm.land/lipgloss/v2": nil, "github.com/charmbracelet/x/ansi": nil,
+}
+
+// inspectReachableImports applies reachableImports to a production file.
+func inspectReachableImports(name string, file *ast.File, aliases map[string]string) []string {
+	var findings []string
+	for _, imp := range file.Imports {
+		p, _ := strconv.Unquote(imp.Path.Value)
+		if _, ok := reachableImports[p]; !ok && !strings.HasPrefix(p, clientModule) {
+			findings = append(findings, name+": import "+p+" is not allowed where the interface reaches")
+		}
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		sel, ok := node.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		ident, ok := sel.X.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		if names := reachableImports[aliases[ident.Name]]; names != nil && !slices.Contains(names, sel.Sel.Name) {
+			findings = append(findings, name+": "+aliases[ident.Name]+"."+sel.Sel.Name+" is not allowed where the interface reaches")
+		}
+		return true
+	})
+	return findings
+}
+
 func inspectUI(sources map[string]string) []string {
 	var findings []string
 	graph := map[string][]string{}
@@ -77,7 +130,9 @@ func inspectUI(sources map[string]string) []string {
 			if !strings.HasSuffix(name, "_test.go") {
 				graph[path.Dir(name)] = append(graph[path.Dir(name)], p)
 			}
-			if surface(path.Dir(name)) && imp.Name != nil && imp.Name.Name == "." {
+			// Nowhere: a dot import turns every rule below that looks for a
+			// package's name into a bare name it does not see.
+			if imp.Name != nil && imp.Name.Name == "." {
 				findings = append(findings, name+": dot import")
 			}
 		}
@@ -113,9 +168,6 @@ func inspectUI(sources map[string]string) []string {
 			if direct || (reachable[path.Dir(name)] && (terminalAccess(p) || logging)) {
 				findings = append(findings, name+": forbidden direct import "+p)
 			}
-			if imp.Name != nil && imp.Name.Name == "." && (reachable[path.Dir(name)] || p == clientModule+"internal/ui") {
-				findings = append(findings, name+": dot import")
-			}
 			alias := path.Base(p)
 			if p == "charm.land/bubbletea/v2" {
 				alias = "tea"
@@ -147,6 +199,9 @@ func inspectUI(sources map[string]string) []string {
 		})
 		if !reachable[path.Dir(name)] {
 			continue
+		}
+		if !test {
+			findings = append(findings, inspectReachableImports(name, file, aliases)...)
 		}
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch n := node.(type) {
@@ -195,26 +250,16 @@ func inspectUI(sources map[string]string) []string {
 }
 
 // inspectWorkers reports every goroutine started outside the worker's Start:
-// a go statement, a method value Go (WaitGroup.Go, errgroup) and AfterFunc.
+// a go statement, a method value Go (WaitGroup.Go, errgroup), AfterFunc and
+// a finalizer or cleanup.
 func inspectWorkers(name string, file *ast.File, aliases map[string]string) []string {
 	var findings []string
-	// A dot import makes AfterFunc a bare name.
-	bareAfterFunc := false
-	for _, imp := range file.Imports {
-		if imp.Name != nil && imp.Name.Name == "." && (imp.Path.Value == `"time"` || imp.Path.Value == `"context"`) {
-			bareAfterFunc = true
-		}
-	}
 	for _, decl := range file.Decls {
 		allowed := name == workerFile && isWorkerStart(decl)
 		ast.Inspect(decl, func(node ast.Node) bool {
 			switch n := node.(type) {
 			case *ast.GoStmt:
 				if !allowed {
-					findings = append(findings, name+": application goroutine")
-				}
-			case *ast.Ident:
-				if bareAfterFunc && n.Name == "AfterFunc" {
 					findings = append(findings, name+": application goroutine")
 				}
 			case *ast.SelectorExpr:
@@ -225,6 +270,10 @@ func inspectWorkers(name string, file *ast.File, aliases map[string]string) []st
 					findings = append(findings, name+": application goroutine")
 				}
 				if ident, ok := n.X.(*ast.Ident); ok && n.Sel.Name == "AfterFunc" && (aliases[ident.Name] == "time" || aliases[ident.Name] == "context") {
+					findings = append(findings, name+": application goroutine")
+				}
+				// A finalizer or cleanup runs on the runtime's own goroutine.
+				if ident, ok := n.X.(*ast.Ident); ok && aliases[ident.Name] == "runtime" && (n.Sel.Name == "SetFinalizer" || n.Sel.Name == "AddCleanup") {
 					findings = append(findings, name+": application goroutine")
 				}
 			}
@@ -247,10 +296,12 @@ func isWorkerStart(decl ast.Decl) bool {
 	return ok && ident.Name == "Supervisor"
 }
 
-func TestRepositoryUIBoundaries(t *testing.T) {
+// repositorySources reads every tracked Go file: what the repository scan
+// inspects.
+func repositorySources(t *testing.T) map[string]string {
+	t.Helper()
 	root := repoRoot(t)
 	sources := map[string]string{}
-	protected := 0
 	for _, name := range trackedFiles(t, root) {
 		if !strings.HasSuffix(name, ".go") {
 			continue
@@ -260,6 +311,14 @@ func TestRepositoryUIBoundaries(t *testing.T) {
 			t.Fatal(err)
 		}
 		sources[filepath.ToSlash(name)] = string(data)
+	}
+	return sources
+}
+
+func TestRepositoryUIBoundaries(t *testing.T) {
+	sources := repositorySources(t)
+	protected := 0
+	for name := range sources {
 		if surface(path.Dir(name)) && !strings.HasSuffix(name, "_test.go") {
 			protected++
 		}

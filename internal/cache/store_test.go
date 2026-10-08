@@ -187,3 +187,27 @@ func TestRemoveNamespaceTakesOneIdentityOnly(t *testing.T) {
 		t.Fatalf("%d entries, %d bytes", s.Len(), s.Bytes())
 	}
 }
+
+// Review #9, round 2: over the byte limit, the least recently used entry
+// goes, never the newest or one just read.
+func TestTheByteLimitEvictsTheLeastRecentlyUsed(t *testing.T) {
+	ns := namespace(t, "default", "https://a.example", "tok")
+	s := NewStore()
+	big := bytes.Repeat([]byte("a"), MaxEntryBytes)
+	full := MaxBytes / MaxEntryBytes
+	for i := range full {
+		s.Apply(inbox(ns, "org-1", i+1), Replace, big, t0)
+	}
+	if _, ok := s.Get(inbox(ns, "org-1", 1)); !ok {
+		t.Fatal("the oldest entry is missing")
+	}
+	s.Apply(inbox(ns, "org-1", full+1), Replace, big, t0)
+	if s.Len() != full || s.Bytes() != MaxBytes {
+		t.Fatalf("%d bytes in %d entries", s.Bytes(), s.Len())
+	}
+	for page, want := range map[int]bool{1: true, 2: false, 3: true, full + 1: true} {
+		if _, ok := s.Get(inbox(ns, "org-1", page)); ok != want {
+			t.Errorf("page %d kept: %v, want %v", page, ok, want)
+		}
+	}
+}

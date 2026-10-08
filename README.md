@@ -153,9 +153,9 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   broke off, was too large or the caller left; a window not in the future
   pauses 5 seconds. A job is
   retried at most once: a read on a temporary failure, a write only after a
-  429 or when nothing was sent. A shared request belongs to the session, not
-  to its first caller: it is canceled when its last caller leaves or the
-  session ends.
+  429 or when nothing was sent. A shared request belongs to the program's
+  lifetime, not to its first caller: it is canceled when its last caller
+  leaves or the program stops its work (on quitting, or after a fatal error).
 * **Dependencies** must be permissive (MIT, Apache-2.0, BSD-2-Clause,
   BSD-3-Clause, ISC, 0BSD). CI checks the actual imports, including tests;
   a terminal library or its transitive dependency receives no exception.
