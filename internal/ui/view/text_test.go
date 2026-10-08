@@ -44,3 +44,20 @@ func TestTextGeometryPreservesGraphemes(t *testing.T) {
 		}
 	}
 }
+
+func TestBodyDimensionBoundaries(t *testing.T) {
+	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
+		for _, tc := range []struct {
+			width, height int
+			want          []string
+		}{
+			{5, -1, nil}, {5, 0, nil}, {-1, 3, nil}, {0, 3, nil},
+			{5, 1, []string{"one…"}}, {5, 2, []string{"one", "two…"}},
+			{5, 3, []string{"one", "two", "three"}}, {5, 4, []string{"one", "two", "three"}},
+		} {
+			if got := body(present.NewBody("one\ntwo\nthree"), tc.width, tc.height, method); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("method %d, %dx%d: got %q, want %q", method, tc.width, tc.height, got, tc.want)
+			}
+		}
+	}
+}

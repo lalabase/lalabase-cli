@@ -57,3 +57,54 @@ func TestResizePreservesRootState(t *testing.T) {
 		}
 	}
 }
+
+func TestShellDefaultsBeforeFirstMessage(t *testing.T) {
+	m := New()
+	if m.width != 0 || m.height != 0 || m.focus != view.List || m.mode != Navigate || m.widthMethod != ansi.WcWidth {
+		t.Fatalf("unexpected initial state: %+v", m)
+	}
+	if m.Init() != nil {
+		t.Fatal("initial model started work")
+	}
+	if !m.View().AltScreen {
+		t.Fatal("initial view did not request the alternate screen")
+	}
+}
+
+func TestWidthReportsIgnoreUnrelatedModes(t *testing.T) {
+	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
+		m := NewWithContent("organisation", "list", "object")
+		m.width, m.height, m.focus, m.mode, m.widthMethod = 119, 8, view.Navigation, TextEntry, method
+		for _, mode := range []ansi.DECMode{ansi.ModeTextCursorEnable, ansi.ModeBracketedPaste, ansi.ModeAltScreenSaveCursor} {
+			for _, value := range []ansi.ModeSetting{ansi.ModeNotRecognized, ansi.ModeReset, ansi.ModeSet, ansi.ModePermanentlySet, ansi.ModePermanentlyReset} {
+				next, cmd := step(t, m, tea.ModeReportMsg{Mode: mode, Value: value})
+				if next != m || cmd != nil {
+					t.Fatalf("unrelated mode %d value %d changed state from %+v to %+v", mode, value, m, next)
+				}
+			}
+		}
+		for _, value := range []ansi.ModeSetting{ansi.ModeNotRecognized, ansi.ModePermanentlyReset} {
+			next, cmd := step(t, m, tea.ModeReportMsg{Mode: ansi.ModeUnicodeCore, Value: value})
+			if next != m || cmd != nil {
+				t.Fatalf("unsupported Unicode mode %d changed width method %d", value, method)
+			}
+		}
+	}
+}
+
+func TestResizeClampsEachDimension(t *testing.T) {
+	m := NewWithContent("organisation", "list", "object")
+	m.focus, m.mode, m.widthMethod = view.Object, TextEntry, ansi.GraphemeWidth
+	for _, tc := range []struct{ width, height, wantWidth, wantHeight int }{
+		{-1, 24, 0, 24}, {80, -1, 80, 0}, {-1, -1, 0, 0}, {0, 0, 0, 0},
+		{24, 7, 24, 7}, {24, 8, 24, 8}, {25, 9, 25, 9}, {120, 24, 120, 24},
+	} {
+		want := m
+		want.width, want.height = tc.wantWidth, tc.wantHeight
+		next, cmd := step(t, m, tea.WindowSizeMsg{Width: tc.width, Height: tc.height})
+		if next != want || cmd != nil {
+			t.Errorf("resize %dx%d: got %+v, want %+v without command", tc.width, tc.height, next, want)
+		}
+		m = next
+	}
+}

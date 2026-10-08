@@ -107,3 +107,54 @@ func TestKeyRoutingHasOneMode(t *testing.T) {
 		}
 	}
 }
+
+func TestRootRoutesTextWithoutNavigation(t *testing.T) {
+	for _, width := range []int{23, 79, 80, 120} {
+		for _, focus := range []view.Pane{view.Navigation, view.List, view.Object} {
+			m := NewWithContent("organisation", "list", "object")
+			m.width, m.height, m.focus, m.mode = width, 24, focus, TextEntry
+			for _, name := range []string{"q", "r", "R", "/", "[", "]", "left", "right", "enter", "esc"} {
+				next, cmd := step(t, m, press(name))
+				if next != m || cmd != nil {
+					t.Fatalf("text mode at width %d focus %d: %s navigated or launched work", width, focus, name)
+				}
+			}
+			next, cmd := step(t, m, press("ctrl+c"))
+			if next != m || cmd == nil {
+				t.Fatal("text mode did not preserve state and emit an interrupt")
+			}
+			if msg := cmd(); msg != tea.Interrupt() {
+				t.Fatalf("text mode Ctrl-C emitted %T", msg)
+			}
+		}
+	}
+}
+
+func TestTextEntryKeyPayload(t *testing.T) {
+	for _, key := range []tea.KeyPressMsg{
+		{Code: 'q'}, {Code: '界'}, {Code: 'Q', Mod: tea.ModShift},
+		{Code: 'é', Text: "é"}, {Code: 'Q', Text: "Q", Mod: tea.ModShift},
+		{Text: "two words"}, {Code: 'e', Text: "e\u0301"},
+	} {
+		want := key.Text
+		if want == "" {
+			want = string(key.Code)
+		}
+		if got := routeKey(TextEntry, key); got != (keyAction{Kind: InsertText, Text: want}) {
+			t.Errorf("printable key %+v: got %+v, want text %q", key, got, want)
+		}
+	}
+	for _, text := range []string{"x\ny", "x\ry", "x\ty", "x\x00y", "x\x1by", "x\u009by", "x\u202ey", "x\u2066y"} {
+		if got := routeKey(TextEntry, tea.KeyPressMsg{Code: 'x', Text: text}); got != (keyAction{}) {
+			t.Errorf("non-printable text %q accepted: %+v", text, got)
+		}
+	}
+	for _, mod := range []tea.KeyMod{tea.ModAlt, tea.ModCtrl, tea.ModShift | tea.ModAlt, tea.ModShift | tea.ModCtrl} {
+		for _, text := range []string{"", "q"} {
+			key := tea.KeyPressMsg{Code: 'q', Text: text, Mod: mod}
+			if got := routeKey(TextEntry, key); got != (keyAction{}) {
+				t.Errorf("modified key %+v inserted text: %+v", key, got)
+			}
+		}
+	}
+}

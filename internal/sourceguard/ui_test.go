@@ -109,6 +109,9 @@ func inspectUI(sources map[string]string) []string {
 			case *ast.SelectorExpr:
 				if ident, ok := n.X.(*ast.Ident); ok {
 					p := aliases[ident.Name]
+					if p == "os" && (n.Sel.Name == "Stdout" || n.Sel.Name == "Stderr") {
+						findings = append(findings, name+": terminal output stream")
+					}
 					if (p == "fmt" || p == "charm.land/bubbletea/v2" || p == "charm.land/lipgloss/v2") && strings.HasPrefix(n.Sel.Name, "Print") {
 						findings = append(findings, name+": default output")
 					}
@@ -217,5 +220,62 @@ func TestUIHasNoDirectOutputOrUnguardedWorkers(t *testing.T) {
 	}
 	if got := inspectUI(map[string]string{"internal/ui/good.go": `package ui; import f "fmt"; var _ = f.Sprintf("%d", 1)`}); len(got) != 0 {
 		t.Fatal(got)
+	}
+}
+
+func TestUISurfaceProtectionIsScoped(t *testing.T) {
+	for _, dir := range []string{"internal/ui", "internal/ui/view", "internal/ui/view/detail", "internal/present", "internal/uitext", "internal/terminal"} {
+		for _, file := range []string{"probe.go", "probe_test.go", "probe_darwin.go", "probe_linux.go"} {
+			name := dir + "/" + file
+			for _, code := range []string{
+				`func bad(){ go func(){}() }`,
+				`import f "fmt"; var output = f.Printf`,
+				`import t "charm.land/bubbletea/v2"; var option = t.WithoutCatchPanics`,
+			} {
+				if got := inspectUI(map[string]string{name: "package probe; " + code}); len(got) == 0 {
+					t.Errorf("unprotected %s: %s", name, code)
+				}
+			}
+			if got := inspectUI(map[string]string{name: `package probe; import f "fmt"; var value = f.Sprintf("%s", "safe")`}); len(got) != 0 {
+				t.Errorf("safe formatting in %s was rejected: %v", name, got)
+			}
+		}
+	}
+	if got := inspectUI(map[string]string{
+		"internal/ui/view/pane.go": `package view`,
+		"internal/queue/worker.go": `package queue; func worker(){ go func(){}() }`,
+		"cmd/lalabase/main.go":     `package main; import sys "os"; var output = sys.Stderr`,
+	}); len(got) != 0 {
+		t.Fatalf("guard crossed into unrelated CLI or queue code: %v", got)
+	}
+}
+
+func TestUIReachableHelpersCannotAliasTerminalStreams(t *testing.T) {
+	for _, name := range []string{"helper.go", "helper_test.go", "helper_darwin.go", "helper_linux.go"} {
+		for _, alias := range []string{"os", "sys"} {
+			importName := ""
+			if alias != "os" {
+				importName = alias + " "
+			}
+			for _, stream := range []string{"Stdout", "Stderr"} {
+				files := map[string]string{
+					"internal/ui/view/pane.go":  "package view; import \"" + clientModule + "internal/bridge\"",
+					"internal/bridge/bridge.go": "package bridge; import \"" + clientModule + "internal/helper\"",
+					"internal/helper/" + name:   "package helper; import " + importName + "\"os\"; var output = " + alias + "." + stream,
+				}
+				if got := inspectUI(files); len(got) == 0 {
+					t.Errorf("missed terminal stream alias %s.%s through %s", alias, stream, name)
+				}
+			}
+		}
+	}
+	// Reading fixture files in a dependency's tests does not write to the terminal.
+	if got := inspectUI(map[string]string{
+		"internal/ui/view/pane.go":     "package view; import \"" + clientModule + "internal/helper\"",
+		"internal/helper/text.go":      `package helper`,
+		"internal/helper/text_test.go": `package helper; import sys "os"; var read = sys.ReadFile`,
+		"internal/unrelated/worker.go": `package unrelated; import sys "os"; var output = sys.Stdout`,
+	}); len(got) != 0 {
+		t.Fatalf("safe fixture access or unrelated package rejected: %v", got)
 	}
 }

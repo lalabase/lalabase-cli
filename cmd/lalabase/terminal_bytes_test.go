@@ -143,3 +143,71 @@ func TestPTYHostilePlaceholderBytes(t *testing.T) {
 		t.Fatalf("%v\n%q", err, output)
 	}
 }
+
+func TestTerminalOutputAllowsRendererGrammar(t *testing.T) {
+	allowed := []string{"plain 界 e\u0301", "\r\n\b\t", "\u200c\u200d\u00ad"}
+	for _, params := range []string{"", "0", "1", "22", "0;1;22"} {
+		allowed = append(allowed, "\x1b["+params+"m")
+	}
+	for _, mode := range []int{25, 1049, 2004, 2026, 2027} {
+		for _, final := range []byte{'h', 'l'} {
+			allowed = append(allowed, fmt.Sprintf("\x1b[?%d%c", mode, final))
+		}
+	}
+	allowed = append(allowed, "\x1b[?2026$p", "\x1b[?2027$p", "\x1b[?5W", "\x1b[?u", "\x1b[>1u", "\x1b[<1u", "\x1b[>4;2m", "\x1b[>4m")
+	for _, final := range []byte{'A', 'B', 'C', 'D', 'E', 'F', 'G', 'X', 'd'} {
+		for _, params := range []string{"", "0", "1", "4095", "4096"} {
+			allowed = append(allowed, "\x1b["+params+string(final))
+		}
+	}
+	for _, final := range []byte{'H', 'f'} {
+		for _, params := range []string{"", "0", "1", "0;0", "1;1", "4095;4096", "4096;4095"} {
+			allowed = append(allowed, "\x1b["+params+string(final))
+		}
+	}
+	for _, final := range []byte{'J', 'K'} {
+		for _, params := range []string{"", "0", "1", "2"} {
+			allowed = append(allowed, "\x1b["+params+string(final))
+		}
+	}
+	for _, sequence := range allowed {
+		if err := terminalOutputError(sequence); err != nil {
+			t.Errorf("renderer sequence %q rejected: %v", sequence, err)
+		}
+	}
+}
+
+func TestTerminalOutputRejectsControlFamilies(t *testing.T) {
+	// Keep cases separate so an early UTF-8 error cannot mask a missing handler.
+	forbidden := []string{
+		"\x1b_payload\x1b\\", "\x1b^payload\x1b\\", "\x1bXpayload\x1b\\",
+		// A following valid CSI must not hide a string command's rejection.
+		"\x1b_payload\x1b[0m", "\x1b^payload\x1b[0m", "\x1bXpayload\x1b[0m",
+		"\x1bPdata\x1b\\", "\x1b]52;c;YQ==\x1b\\", "\x1bc",
+		"\x00", "\x07", "\u009b", "\u202e", "\u2066", "\u2069", "\xff",
+		"\x1b[1:2m", "\x1b[1 m", "\x1b[?25$p", "\x1b[?2026;2027$p",
+		"\x1b[?1048h", "\x1b[?25;1049h", "\x1b[?4W", "\x1b[?1u",
+		"\x1b[>2u", "\x1b[<2u", "\x1b[>4;3m", "\x1b[2m", "\x1b[31m",
+		"\x1b[", "\x1b]52;c;YQ==", "\x1bPdata", "\x1b_payload", "\x1b^payload", "\x1bXpayload",
+	}
+	for _, final := range []byte{'A', 'B', 'C', 'D', 'E', 'F', 'G', 'X', 'd'} {
+		for _, params := range []string{"4097", "1;2"} {
+			forbidden = append(forbidden, "\x1b["+params+string(final))
+		}
+	}
+	for _, final := range []byte{'H', 'f'} {
+		for _, params := range []string{"4097;1", "1;4097", "1;2;3"} {
+			forbidden = append(forbidden, "\x1b["+params+string(final))
+		}
+	}
+	for _, final := range []byte{'J', 'K'} {
+		for _, params := range []string{"3", "1;2"} {
+			forbidden = append(forbidden, "\x1b["+params+string(final))
+		}
+	}
+	for _, sequence := range forbidden {
+		if err := terminalOutputError(sequence); err == nil {
+			t.Errorf("forbidden sequence %q accepted", sequence)
+		}
+	}
+}
