@@ -80,6 +80,13 @@ func WithClock(c Clock) Option { return func(q *Queue) { q.clock = c } }
 // window, and until when.
 func WithOnPause(f func(until time.Time)) Option { return func(q *Queue) { q.onPause = f } }
 
+// WithOnRateLimit is told of every received 429 that closes the window or
+// extends it, whatever is waiting: the interface shows every pause, also
+// one that only background work ran into. It runs outside the lock, after
+// the place was given back, so a panic in it loses nothing of the queue.
+// WithOnPause stays what it is: a person's own wait, for the auth commands.
+func WithOnRateLimit(f func(until time.Time)) Option { return func(q *Queue) { q.onRateLimit = f } }
+
 // WithLifetime runs the queue's goroutines under s: shared reads and pause
 // timers end with its lifetime, and a panic in them becomes its fatal error.
 // Without it the queue has a lifetime of its own that never ends.
@@ -103,6 +110,7 @@ type Queue struct {
 	clock       Clock
 	life        *worker.Supervisor
 	onPause     func(time.Time)
+	onRateLimit func(time.Time)
 	retryDelay  time.Duration
 	running     int
 	bgRunning   int
@@ -333,15 +341,21 @@ func retryable(kind Kind, ans transport.Answer) bool {
 // finish gives a place back after a job ran. A 429 sets the pause in the
 // same step, before the place goes to anybody: a job already waiting must not
 // slip into the closed window in between. A later window never shortens an
-// earlier, longer one. A person already waiting is told.
+// earlier, longer one. Every window that closed or grew is told to the
+// rate-limit observer; a person already waiting is told as well.
 func (q *Queue) finish(t *ticket, ans transport.Answer) {
-	until, tell := q.giveBack(t, ans)
+	until, tell, paused := q.giveBack(t, ans)
+	if paused && q.onRateLimit != nil {
+		q.onRateLimit(until)
+	}
 	if tell && q.onPause != nil {
 		q.onPause(until)
 	}
 }
 
-func (q *Queue) giveBack(t *ticket, ans transport.Answer) (time.Time, bool) {
+// giveBack returns the window's end, whether a waiting person is to be
+// told, and whether this answer closed or extended the window.
+func (q *Queue) giveBack(t *ticket, ans transport.Answer) (time.Time, bool, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	paused := false
@@ -364,7 +378,7 @@ func (q *Queue) giveBack(t *ticket, ans transport.Answer) (time.Time, bool) {
 	}
 	q.dispatch()
 	until := q.pausedUntil
-	return until, paused && q.clock.Now().Before(until) && q.personWaits()
+	return until, paused && q.clock.Now().Before(until) && q.personWaits(), paused
 }
 
 // personWaits reports a person's action waiting for a place. Called with q.mu
