@@ -45,7 +45,9 @@ func (throttledSource) NotificationsAnswer(context.Context, api.NotificationQuer
 
 type panicQueue struct{}
 
-func (panicQueue) Do(context.Context, queue.Job) transport.Answer { panic("C1b gateway fault") }
+func (panicQueue) DoShared(context.Context, queue.Job) (transport.Answer, queue.Flight) {
+	panic("C1b gateway fault")
+}
 
 // pauseClock panics once, at the first Now after a timer fired: the pause
 // worker asking whether the window is open.

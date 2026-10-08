@@ -222,23 +222,29 @@ func (c *Client) send(ctx context.Context, method string, target *url.URL, body 
 	// Counting too early is the safe side; a write is then reloaded, not
 	// sent again. handshake: a TLS connection was agreed, freshly or on a
 	// reused connection; after that, a TLS error is the network, not the setup.
+	// The hooks run on net/http's goroutines: wrapped, so a panic in them
+	// is raised here, after Do (and again when send returns, for a hook that
+	// ran late).
 	var sent, handshake atomic.Bool
+	var wire onWire
+	defer wire.raise()
 	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
-		WroteHeaders: func() { sent.Store(true) },
-		WroteRequest: func(httptrace.WroteRequestInfo) { sent.Store(true) },
-		TLSHandshakeDone: func(_ tls.ConnectionState, err error) {
+		WroteHeaders: onWire0(&wire, func() { sent.Store(true) }),
+		WroteRequest: onWire1(&wire, func(httptrace.WroteRequestInfo) { sent.Store(true) }),
+		TLSHandshakeDone: onWire2(&wire, func(_ tls.ConnectionState, err error) {
 			if err == nil {
 				handshake.Store(true)
 			}
-		},
-		GotConn: func(info httptrace.GotConnInfo) {
+		}),
+		GotConn: onWire1(&wire, func(info httptrace.GotConnInfo) {
 			if info.Reused {
 				handshake.Store(true)
 			}
-		},
+		}),
 	}))
 
 	resp, err := c.http.Do(req)
+	wire.raise()
 	if err != nil {
 		return 0, nil, nil, failure(ctx, err, sent.Load(), handshake.Load(), "no answer from the server"), false
 	}

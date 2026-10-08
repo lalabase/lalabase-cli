@@ -23,6 +23,7 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/transport"
@@ -135,6 +136,7 @@ type ticket struct {
 // still waiting: a person joining lifts it, the last person leaving lets it
 // fall back to background work.
 type flight struct {
+	id     Flight
 	ctx    context.Context
 	cancel context.CancelFunc
 	refs   int
@@ -170,13 +172,28 @@ func canceled() transport.Answer {
 
 // Do runs a job through the queue and returns its answer.
 func (q *Queue) Do(ctx context.Context, job Job) transport.Answer {
+	ans, _ := q.DoShared(ctx, job)
+	return ans
+}
+
+// Flight names one request a shared read sent. Its waiters get the same
+// flight; a later request under the same key gets another. 0 is no shared
+// read.
+type Flight uint64
+
+// flights numbers the shared reads of the process.
+var flights atomic.Uint64
+
+// DoShared is Do that also names the request the answer came from, so a
+// copy of one answer can be told from a separate answer under the same key.
+func (q *Queue) DoShared(ctx context.Context, job Job) (transport.Answer, Flight) {
 	if job.Kind == Read && job.Key != "" {
 		return q.doShared(ctx, job)
 	}
-	return q.run(ctx, job, nil)
+	return q.run(ctx, job, nil), 0
 }
 
-func (q *Queue) doShared(ctx context.Context, job Job) transport.Answer {
+func (q *Queue) doShared(ctx context.Context, job Job) (transport.Answer, Flight) {
 	f, fresh, tell, mustTell := q.join(job)
 	if fresh {
 		runCtx := f.ctx
@@ -196,10 +213,10 @@ func (q *Queue) doShared(ctx context.Context, job Job) transport.Answer {
 
 	select {
 	case <-f.done:
-		return f.ans
+		return f.ans, f.id
 	case <-ctx.Done():
 		q.leave(job, f)
-		return canceled()
+		return canceled(), f.id
 	}
 }
 
@@ -219,7 +236,7 @@ func (q *Queue) join(job Job) (f *flight, fresh bool, tell time.Time, mustTell b
 	}
 	// The request belongs to the queue's lifetime, never to its first caller.
 	runCtx, cancel := context.WithCancel(q.life.Context())
-	f = &flight{ctx: runCtx, cancel: cancel, refs: 1, prio: job.Priority, done: make(chan struct{})}
+	f = &flight{id: Flight(flights.Add(1)), ctx: runCtx, cancel: cancel, refs: 1, prio: job.Priority, done: make(chan struct{})}
 	if job.Priority == User {
 		f.users = 1
 	}

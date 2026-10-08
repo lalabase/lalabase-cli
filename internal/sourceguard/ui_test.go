@@ -72,16 +72,106 @@ func terminalAccess(p string) bool {
 // packages the interface does not reach (cmd/lalabase, internal/profile).
 var reachableImports = map[string][]string{
 	"bytes": nil, "container/list": nil, "context": nil, "crypto/tls": nil, "crypto/x509": nil,
-	"errors": nil, "net": nil, "net/http": nil, "net/http/httptrace": nil, "net/url": nil, "path": nil,
+	"errors": nil, "net": nil, "net/http": nil, "net/url": nil, "path": nil,
 	"regexp": nil, "slices": nil, "strconv": nil, "strings": nil, "sync": nil, "sync/atomic": nil,
 	"time": nil, "unicode": nil, "unicode/utf8": nil,
 	"encoding/json": {"Decoder", "Marshal", "NewDecoder", "RawMessage", "Unmarshal", "Valid"},
 	"fmt":           {"Errorf", "Sprint", "Sprintf", "Sprintln"},
 	"io":            {"EOF", "LimitReader", "ReadAll", "ReadCloser", "Reader", "Writer"},
+	// Its hooks run on net/http's goroutines: see foreignCallbacks.
+	"net/http/httptrace": {"ClientTrace", "GotConnInfo", "WithClientTrace", "WroteRequestInfo"},
 	// Their writing names are refused below (Println, Fprint, Writer,
 	// WithoutCatchPanics).
 	"charm.land/bubbletea/v2": nil, "charm.land/bubbles/v2/help": nil, "charm.land/bubbles/v2/key": nil,
 	"charm.land/lipgloss/v2": nil, "github.com/charmbracelet/x/ansi": nil,
+}
+
+// foreignCallbacks are the fields of standard library types whose function
+// runs on a goroutine of the library's own (a trace hook, a dial, a
+// handshake), where no supervisor recovers a panic. Where the interface
+// reaches, such a field is set only in the type's literal and only through
+// transport's onWire wrappers, which raise the panic again on the request's
+// goroutine. nil: every field; such a type is used only as a literal.
+// http.Client.CheckRedirect runs on the caller's goroutine and is not here.
+var foreignCallbacks = map[string][]string{
+	"net/http/httptrace.ClientTrace": nil,
+	"net/http.Transport":             {"Dial", "DialContext", "DialTLS", "DialTLSContext", "GetProxyConnectHeader", "OnProxyConnectResponse", "Proxy"},
+	"crypto/tls.Config":              {"GetCertificate", "GetClientCertificate", "GetConfigForClient", "UnwrapSession", "VerifyConnection", "VerifyPeerCertificate", "WrapSession"},
+	"net.Dialer":                     {"Control", "ControlContext"},
+}
+
+// onWireCall: a call of one of transport's wrappers (onWire0, onWire1, ...).
+func onWireCall(expr ast.Expr) bool {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	fun := call.Fun
+	if index, ok := fun.(*ast.IndexExpr); ok {
+		fun = index.X
+	}
+	if index, ok := fun.(*ast.IndexListExpr); ok {
+		fun = index.X
+	}
+	ident, ok := fun.(*ast.Ident)
+	return ok && strings.HasPrefix(ident.Name, "onWire")
+}
+
+// inspectForeignCallbacks applies foreignCallbacks to a production file.
+func inspectForeignCallbacks(name string, file *ast.File, aliases map[string]string) []string {
+	var findings []string
+	typeOf := func(expr ast.Expr) string {
+		if sel, ok := expr.(*ast.SelectorExpr); ok {
+			if ident, ok := sel.X.(*ast.Ident); ok && aliases[ident.Name] != "" {
+				return aliases[ident.Name] + "." + sel.Sel.Name
+			}
+		}
+		return ""
+	}
+	callbackField := map[string]bool{}
+	for _, fields := range foreignCallbacks {
+		for _, field := range fields {
+			callbackField[field] = true
+		}
+	}
+	literal := map[ast.Expr]bool{}
+	ast.Inspect(file, func(node ast.Node) bool {
+		switch n := node.(type) {
+		case *ast.CompositeLit:
+			fields, ok := foreignCallbacks[typeOf(n.Type)]
+			if !ok {
+				return true
+			}
+			literal[n.Type] = true
+			for _, elt := range n.Elts {
+				kv, ok := elt.(*ast.KeyValueExpr)
+				key, isIdent := kv.Key.(*ast.Ident)
+				if !ok || !isIdent {
+					findings = append(findings, name+": "+typeOf(n.Type)+" without field names")
+					continue
+				}
+				if (fields == nil || slices.Contains(fields, key.Name)) && !onWireCall(kv.Value) {
+					findings = append(findings, name+": "+typeOf(n.Type)+"."+key.Name+" runs on a foreign goroutine; set it through onWire")
+				}
+			}
+		case *ast.AssignStmt:
+			for _, lhs := range n.Lhs {
+				if sel, ok := lhs.(*ast.SelectorExpr); ok && callbackField[sel.Sel.Name] {
+					findings = append(findings, name+": "+sel.Sel.Name+" set outside its literal; set it there, through onWire")
+				}
+			}
+		}
+		return true
+	})
+	ast.Inspect(file, func(node ast.Node) bool {
+		if expr, ok := node.(ast.Expr); ok && !literal[expr] {
+			if fields, ok := foreignCallbacks[typeOf(expr)]; ok && fields == nil {
+				findings = append(findings, name+": "+typeOf(expr)+" is used only as a literal")
+			}
+		}
+		return true
+	})
+	return findings
 }
 
 // inspectReachableImports applies reachableImports to a production file.
@@ -202,6 +292,7 @@ func inspectUI(sources map[string]string) []string {
 		}
 		if !test {
 			findings = append(findings, inspectReachableImports(name, file, aliases)...)
+			findings = append(findings, inspectForeignCallbacks(name, file, aliases)...)
 		}
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch n := node.(type) {

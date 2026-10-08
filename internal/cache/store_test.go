@@ -211,3 +211,28 @@ func TestTheByteLimitEvictsTheLeastRecentlyUsed(t *testing.T) {
 		}
 	}
 }
+
+// Review #9, round 3: an ended session empties its own namespace only. The
+// same token id on another server or under another profile is another
+// identity, and its entries stay.
+func TestRemovingANamespaceKeepsTheSameTokenIDElsewhere(t *testing.T) {
+	ended := namespace(t, "default", "https://a.example", "tok")
+	others := []Namespace{
+		namespace(t, "default", "https://b.example", "tok"),
+		namespace(t, "work", "https://a.example", "tok"),
+	}
+	s := NewStore()
+	s.Apply(inbox(ended, "org-1", 1), Replace, []byte(`ended`), t0)
+	for _, ns := range others {
+		s.Apply(inbox(ns, "org-1", 1), Replace, []byte(`kept`), t0)
+	}
+	s.RemoveNamespace(ended)
+	if _, ok := s.Get(inbox(ended, "org-1", 1)); ok {
+		t.Fatal("the ended namespace kept its entry")
+	}
+	for _, ns := range others {
+		if e, ok := s.Get(inbox(ns, "org-1", 1)); !ok || string(e.Payload) != "kept" {
+			t.Errorf("%+v lost its entry", ns)
+		}
+	}
+}

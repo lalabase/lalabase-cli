@@ -92,7 +92,10 @@ on a Mac before every merge, by running the tests here.
     Where the interface and its work reach, production code imports only
     from the guard's allowlist (`reachableImports`); a new import there is a
     decision about writing and goroutines, not a fix for a red guard. No dot
-    imports anywhere.
+    imports anywhere. A function the standard library runs on a goroutine of
+    its own (an httptrace hook, a dial, a TLS callback) is set only through
+    transport's `onWire` wrappers (`foreignCallbacks` in the guard): they
+    raise its panic again on the request's goroutine, under the supervisor.
 13. **No cgo.** macOS calls go through `golang.org/x/sys` (see `acl_darwin.go`).
     Platform code is split by build tags: `_unix`, `_darwin`, `_other`.
 

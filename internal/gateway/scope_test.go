@@ -263,11 +263,11 @@ func TestEveryCopyOfARemovalIsAccepted(t *testing.T) {
 	}
 	older := s.Begin(Inbox, unreadPage(ns, "org-a", 2), queue.Background)
 	gone := transport.Answer{Class: transport.NoAccess, Status: 403}
-	if d, ok := s.Receive(store, InboxResult{Ticket: preview, Answer: gone}, now); !ok || d != cache.Remove {
+	if d, ok := s.Receive(store, InboxResult{Ticket: preview, Answer: gone, Flight: 7}, now); !ok || d != cache.Remove {
 		t.Fatalf("preview: %v %v", d, ok)
 	}
 	reload := s.Begin(Inbox, key, queue.User)
-	if d, ok := s.Receive(store, InboxResult{Ticket: open, Answer: gone}, now); !ok || d != cache.Remove {
+	if d, ok := s.Receive(store, InboxResult{Ticket: open, Answer: gone, Flight: 7}, now); !ok || d != cache.Remove {
 		t.Fatalf("open: %v %v", d, ok)
 	}
 	if reload.Epoch != preview.Epoch+1 || s.Begin(Inbox, key, queue.User).Epoch != reload.Epoch {
@@ -300,17 +300,18 @@ func TestAnOldRefusalChangesNothing(t *testing.T) {
 	}
 }
 
-// A later request under the share key of a removal is no copy of it: an
-// older object that arrives late stays out.
+// An object never passes as a copy of a removal, even naming its request.
 func TestOnlyRemovalsPassAsCopiesOfARemoval(t *testing.T) {
 	ns := confirmed(t)
 	s, store := NewScope(ns), cache.NewStore()
 	key := unreadPage(ns, "org-a", 1)
 	late, removing := s.Begin(Inbox, key, queue.User), s.Begin(Inbox, key, queue.User)
-	if d, ok := s.Receive(store, InboxResult{Ticket: removing, Answer: transport.Answer{Class: transport.NotFound}}, now); !ok || d != cache.Remove {
+	if d, ok := s.Receive(store, InboxResult{Ticket: removing, Answer: transport.Answer{Class: transport.NotFound}, Flight: 8}, now); !ok || d != cache.Remove {
 		t.Fatalf("%v %v", d, ok)
 	}
-	refused(t, s, store, object(late, `{"old":1}`), "an object under the removal's share key")
+	stale := object(late, `{"old":1}`)
+	stale.Flight = 8
+	refused(t, s, store, stale, "an object naming the removal's request")
 	if store.Len() != 0 {
 		t.Fatal("the removed resource was refilled")
 	}
@@ -323,11 +324,11 @@ func TestAWriteInvalidatesTheCopiesOfARemoval(t *testing.T) {
 	key := unreadPage(ns, "org-a", 1)
 	preview, open := s.Begin(Inbox, key, queue.Background), s.Begin(Inbox, key, queue.User)
 	gone := transport.Answer{Class: transport.NoAccess}
-	if _, ok := s.Receive(store, InboxResult{Ticket: preview, Answer: gone}, now); !ok {
+	if _, ok := s.Receive(store, InboxResult{Ticket: preview, Answer: gone, Flight: 9}, now); !ok {
 		t.Fatal("the removal was dropped")
 	}
 	s.Invalidate(key)
-	refused(t, s, store, InboxResult{Ticket: open, Answer: gone}, "a copy from before the write")
+	refused(t, s, store, InboxResult{Ticket: open, Answer: gone, Flight: 9}, "a copy from before the write")
 }
 
 // A copy of a removal reaches its waiter, not the cache: a reload begun
@@ -338,14 +339,57 @@ func TestACopyOfARemovalLeavesANewerReloadAlone(t *testing.T) {
 	key := unreadPage(ns, "org-a", 1)
 	preview, open := s.Begin(Inbox, key, queue.Background), s.Begin(Inbox, key, queue.User)
 	gone := transport.Answer{Class: transport.NoAccess}
-	if _, ok := s.Receive(store, InboxResult{Ticket: preview, Answer: gone}, now); !ok {
+	if _, ok := s.Receive(store, InboxResult{Ticket: preview, Answer: gone, Flight: 10}, now); !ok {
 		t.Fatal("the removal was dropped")
 	}
 	accepted(t, s, store, object(s.Begin(Inbox, key, queue.User), `{"reload":1}`))
-	if d, ok := s.Receive(store, InboxResult{Ticket: open, Answer: gone}, now); !ok || d != cache.Remove {
+	if d, ok := s.Receive(store, InboxResult{Ticket: open, Answer: gone, Flight: 10}, now); !ok || d != cache.Remove {
 		t.Fatalf("the copy: %v %v", d, ok)
 	}
 	if e, ok := store.Get(key); !ok || string(e.Payload) != `{"reload":1}` {
 		t.Fatal("the copy removed the newer reload")
 	}
+}
+
+// Review #9, round 3: two requests under one share key are two answers,
+// whatever their class. The newer removal is carried out; the older answer
+// that arrives after it is no copy and stays out, also with the same class.
+func TestASeparateRequestUnderTheSameKeyIsNoCopy(t *testing.T) {
+	ns := confirmed(t)
+	for _, class := range []transport.Class{transport.NotFound, transport.NoAccess} {
+		s, store := NewScope(ns), cache.NewStore()
+		key := unreadPage(ns, "org-a", 1)
+		older, newer := s.Begin(Inbox, key, queue.Background), s.Begin(Inbox, key, queue.User)
+		if older.ShareKey() != newer.ShareKey() {
+			t.Fatal("the two waiters do not share a key")
+		}
+		if d, ok := s.Receive(store, InboxResult{Ticket: newer, Answer: transport.Answer{Class: transport.NoAccess}, Flight: 2}, now); !ok || d != cache.Remove {
+			t.Fatalf("%v: the newer removal: %v %v", class, d, ok)
+		}
+		accepted(t, s, store, object(s.Begin(Inbox, key, queue.User), `{"reload":1}`))
+		refused(t, s, store, InboxResult{Ticket: older, Answer: transport.Answer{Class: class}, Flight: 1}, class.String()+" from an older request")
+		if e, ok := store.Get(key); !ok || string(e.Payload) != `{"reload":1}` {
+			t.Fatalf("%v: the reload is gone", class)
+		}
+	}
+}
+
+// Review #9, round 3: a second removal of the resource ends the copies of
+// the first, and a removal for another page from another request is no copy.
+func TestOnlyTheLastRemovalHasCopies(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	p1, p2 := unreadPage(ns, "org-a", 1), unreadPage(ns, "org-a", 2)
+	preview, open := s.Begin(Inbox, p1, queue.Background), s.Begin(Inbox, p1, queue.User)
+	otherPage := s.Begin(Inbox, p2, queue.Background)
+	gone := transport.Answer{Class: transport.NoAccess}
+	if _, ok := s.Receive(store, InboxResult{Ticket: preview, Answer: gone, Flight: 1}, now); !ok {
+		t.Fatal("the first removal was dropped")
+	}
+	refused(t, s, store, InboxResult{Ticket: otherPage, Answer: gone, Flight: 3}, "another page, another request")
+	second := s.Begin(Inbox, p2, queue.User)
+	if d, ok := s.Receive(store, InboxResult{Ticket: second, Answer: gone, Flight: 2}, now); !ok || d != cache.Remove {
+		t.Fatalf("the second removal: %v %v", d, ok)
+	}
+	refused(t, s, store, InboxResult{Ticket: open, Answer: gone, Flight: 1}, "a copy of the first removal")
 }

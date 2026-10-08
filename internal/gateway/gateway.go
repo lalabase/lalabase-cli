@@ -19,9 +19,10 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
-// Doer runs a job; *queue.Queue in the program.
+// Doer runs a shared read and names its request; *queue.Queue in the
+// program.
 type Doer interface {
-	Do(ctx context.Context, job queue.Job) transport.Answer
+	DoShared(ctx context.Context, job queue.Job) (transport.Answer, queue.Flight)
 }
 
 // Source sends the inbox request; *api.API in the program.
@@ -46,6 +47,9 @@ type InboxResult struct {
 	Ticket
 	Page   api.NotificationPage
 	Answer transport.Answer
+	// Flight is the request the answer came from: the waiters that shared
+	// one request carry the same flight.
+	Flight queue.Flight
 }
 
 // Inbox reads the inbox page t names, for the waiter whose context ctx is.
@@ -58,10 +62,10 @@ func (g *Gateway) Inbox(ctx context.Context, t Ticket) tea.Cmd {
 	}}
 	return func() tea.Msg {
 		msg, ok := worker.Run(g.sup, "gateway: inbox", func() tea.Msg {
-			ans := g.queue.Do(ctx, job)
+			ans, flight := g.queue.DoShared(ctx, job)
 			ans.Payload = bytes.Clone(ans.Payload) // the waiters share the answer
 			page, ans := api.DecodeNotifications(ans)
-			return InboxResult{Ticket: t, Page: page, Answer: ans}
+			return InboxResult{Ticket: t, Page: page, Answer: ans, Flight: flight}
 		})
 		if !ok {
 			if g.sup.Err() != nil {

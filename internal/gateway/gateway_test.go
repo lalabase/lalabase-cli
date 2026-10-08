@@ -171,6 +171,9 @@ func TestPreviewAndOpenGetFilledResultsFromOneRequest(t *testing.T) {
 	if n := f.srv.requests.Load(); n != 1 {
 		t.Fatalf("%d HTTP requests", n)
 	}
+	if a.Flight == 0 || a.Flight != b.Flight {
+		t.Fatalf("one request, flights %d and %d", a.Flight, b.Flight)
+	}
 	a.Page.Data[0].Message = "changed"
 	a.Answer.Payload[0] = 'X'
 	if b.Page.Data[0].Message == "changed" || b.Answer.Payload[0] == 'X' {
@@ -220,7 +223,9 @@ func TestLeavingWaitersCancelOnlyAsTheLast(t *testing.T) {
 
 type panicDoer struct{}
 
-func (panicDoer) Do(context.Context, queue.Job) transport.Answer { panic("gateway fault") }
+func (panicDoer) DoShared(context.Context, queue.Job) (transport.Answer, queue.Flight) {
+	panic("gateway fault")
+}
 
 // A panic in a command is recovered there and becomes the fatal error and
 // its message; nothing of the panic is passed on.
@@ -253,5 +258,42 @@ func TestACommandAfterStopIsACanceledRead(t *testing.T) {
 	}
 	if life.Err() != nil {
 		t.Fatalf("recorded %v", life.Err())
+	}
+}
+
+// Review #9, round 3, end to end: preview and open share one request that
+// answers "not found". Both waiters get the removal, the cache keeps a
+// reload filed in between, and a later separate request is another flight.
+func TestBothWaitersOfARemovingRequestGetIt(t *testing.T) {
+	f := setup(t, "not_found")
+	key := unreadPage(f.ns, "", 1)
+	preview, open := f.scope.Begin(Inbox, key, queue.Background), f.scope.Begin(Inbox, key, queue.User)
+	first := run(f.gw.Inbox(context.Background(), preview))
+	waitFor(t, "the request", func() bool { return f.srv.requests.Load() == 1 })
+	second := run(f.gw.Inbox(context.Background(), open))
+	waitFor(t, "the second waiter joining", func() bool { return f.queue.Sharers(open.ShareKey()) == 2 })
+	close(f.srv.release)
+	a, _ := result(t, first).(InboxResult)
+	b, _ := result(t, second).(InboxResult)
+	if a.Flight == 0 || a.Flight != b.Flight || f.srv.requests.Load() != 1 {
+		t.Fatalf("flights %d and %d from %d requests", a.Flight, b.Flight, f.srv.requests.Load())
+	}
+	store := cache.NewStore()
+	if d, ok := f.scope.Receive(store, a, time.Now()); !ok || d != cache.Remove {
+		t.Fatalf("preview: %v %v (%v)", d, ok, a.Answer.Class)
+	}
+	reload := f.scope.Begin(Inbox, key, queue.User)
+	if _, ok := f.scope.Receive(store, object(reload, `{"reload":1}`), time.Now()); !ok {
+		t.Fatal("the reload was dropped")
+	}
+	if d, ok := f.scope.Receive(store, b, time.Now()); !ok || d != cache.Remove {
+		t.Fatalf("open: %v %v", d, ok)
+	}
+	if e, ok := store.Get(key); !ok || string(e.Payload) != `{"reload":1}` {
+		t.Fatal("the copy removed the reload")
+	}
+	later := run(f.gw.Inbox(context.Background(), f.scope.Begin(Inbox, key, queue.User)))
+	if c, _ := result(t, later).(InboxResult); c.Flight == 0 || c.Flight == a.Flight {
+		t.Fatalf("a separate request reused flight %d", c.Flight)
 	}
 }

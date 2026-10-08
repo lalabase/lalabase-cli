@@ -305,3 +305,45 @@ func TestNoJobStartsAfterTheLifetimeEnded(t *testing.T) {
 	}
 	idle(t, q)
 }
+
+// Review #9, round 3: DoShared names the request an answer came from. The
+// waiters of one request get one flight; a later request under the same key
+// is another flight, so a copy of an answer is never mistaken for a
+// separate answer that happens to share its key. Unshared work has none.
+func TestDoSharedNamesTheRequest(t *testing.T) {
+	q := New()
+	g := newGate()
+	type got struct {
+		ans    transport.Answer
+		flight Flight
+	}
+	shared := func() <-chan got {
+		out := make(chan got, 1)
+		go func() {
+			ans, f := q.DoShared(context.Background(), Job{Priority: User, Kind: Read, Key: "k", Run: g.run})
+			out <- got{ans, f}
+		}()
+		return out
+	}
+	first := shared()
+	waitStarted(t, g)
+	second := shared()
+	for q.Sharers("k") != 2 {
+		time.Sleep(time.Millisecond)
+	}
+	g.release <- ok()
+	a, b := <-first, <-second
+	if a.flight == 0 || a.flight != b.flight || !a.ans.OK() || !b.ans.OK() {
+		t.Fatalf("one request, flights %d and %d", a.flight, b.flight)
+	}
+	later := shared()
+	waitStarted(t, g)
+	g.release <- ok()
+	if c := <-later; c.flight == 0 || c.flight == a.flight {
+		t.Fatalf("a separate request reused flight %d", c.flight)
+	}
+	if _, f := q.DoShared(context.Background(), Job{Priority: User, Kind: Write, Run: func(context.Context) transport.Answer { return ok() }}); f != 0 {
+		t.Fatalf("a write got flight %d", f)
+	}
+	idle(t, q)
+}

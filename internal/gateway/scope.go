@@ -58,16 +58,17 @@ type Scope struct {
 	session uint64
 	area    [areas]uint64
 	epochs  map[cache.Key]uint64
-	// removed holds, per resource, the share key of the answer that removed
-	// it last: its other copies are the same answer, not older ones.
-	removed map[cache.Key]string
+	// removed holds, per resource, the request whose answer removed it
+	// last: the other waiters of that request carry the same answer, not an
+	// older one.
+	removed map[cache.Key]queue.Flight
 	pending map[Waiter]Ticket
 	next    Waiter
 }
 
 // NewScope starts a session for a confirmed identity.
 func NewScope(ns cache.Namespace) *Scope {
-	return &Scope{id: scopes.Add(1), ns: ns, epochs: map[cache.Key]uint64{}, removed: map[cache.Key]string{}, pending: map[Waiter]Ticket{}}
+	return &Scope{id: scopes.Add(1), ns: ns, epochs: map[cache.Key]uint64{}, removed: map[cache.Key]queue.Flight{}, pending: map[Waiter]Ticket{}}
 }
 
 // Begin issues a ticket for a new waiter.
@@ -117,10 +118,8 @@ func (s *Scope) EndSession(store *cache.Store) {
 // up by the first result that names it exactly, accepted or not.
 //
 // After a removal, the copies of its answer (the waiters that shared its
-// request) still carry the old epoch. They are accepted when their share
-// key is the removal's and they are a removal themselves: copies of one
-// answer have one class, so an older object under the same key stays out.
-func (s *Scope) accept(t Ticket, removal bool) bool {
+// request) still carry the old epoch; sameAnswer says a result is one of them.
+func (s *Scope) accept(t Ticket, sameAnswer bool) bool {
 	issued, ok := s.pending[t.Waiter]
 	known := ok && issued == t
 	if known {
@@ -136,7 +135,7 @@ func (s *Scope) accept(t Ticket, removal bool) bool {
 		return false
 	}
 	res := t.Key.Resource()
-	return t.Epoch == s.epochs[res] || (removal && s.removed[res] != "" && t.ShareKey() == s.removed[res])
+	return t.Epoch == s.epochs[res] || sameAnswer
 }
 
 // Receive is the one way an inbox result reaches the cache: checked first,
@@ -145,15 +144,19 @@ func (s *Scope) accept(t Ticket, removal bool) bool {
 // session.
 func (s *Scope) Receive(store *cache.Store, r InboxResult, now time.Time) (cache.Decision, bool) {
 	d := cache.Decide(r.Answer.Class, cache.Read)
-	if !s.accept(r.Ticket, d == cache.Remove) {
+	res := r.Key.Resource()
+	// A copy of the last removal: a removal from the very request that
+	// removed the resource. A share key cannot tell this: two requests under
+	// one key are two answers.
+	sameAnswer := d == cache.Remove && r.Flight != 0 && r.Flight == s.removed[res]
+	if !s.accept(r.Ticket, sameAnswer) {
 		return cache.Drop, false
 	}
 	if r.Answer.Class == transport.Unauthenticated {
 		s.EndSession(store)
 		return d, true
 	}
-	res := r.Key.Resource()
-	if d == cache.Remove && r.ShareKey() == s.removed[res] {
+	if sameAnswer {
 		// A copy of a removal already carried out (a waiter that shared its
 		// request): it reaches its waiter, not the cache, which may hold a
 		// reload begun since. It invalidates nothing again.
@@ -164,7 +167,7 @@ func (s *Scope) Receive(store *cache.Store, r InboxResult, now time.Time) (cache
 		// A removal is an invalidation: an older answer for another page
 		// of the resource must not bring back what the server took away.
 		s.Invalidate(r.Key)
-		s.removed[res] = r.ShareKey()
+		s.removed[res] = r.Flight
 	}
 	return d, true
 }

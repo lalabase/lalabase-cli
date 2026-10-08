@@ -218,3 +218,34 @@ func TestTheRepositoryScanCoversTheWorkerPaths(t *testing.T) {
 		}
 	}
 }
+
+// Review #9, round 3: a function the standard library runs on a goroutine
+// of its own (a trace hook, a dial, a handshake) is set only through
+// transport's onWire wrappers, where the interface reaches.
+func TestCallbacksOnForeignGoroutinesAreWrapped(t *testing.T) {
+	reach := `package gateway; import _ "` + clientModule + `internal/transport"`
+	for name, source := range map[string]string{
+		"bare hook":      `package transport; import "net/http/httptrace"; var _ = &httptrace.ClientTrace{WroteHeaders: func() { panic(1) }}`,
+		"aliased hook":   `package transport; import ht "net/http/httptrace"; var _ = ht.ClientTrace{GotConn: func(ht.GotConnInfo) {}}`,
+		"named hook":     `package transport; import "net/http/httptrace"; func hook() {}; var _ = &httptrace.ClientTrace{WroteHeaders: hook}`,
+		"trace variable": `package transport; import "net/http/httptrace"; func set() { var tr httptrace.ClientTrace; tr.WroteHeaders = func() {} }`,
+		"dial":           `package transport; import "net/http"; var _ = &http.Transport{DialContext: nil}`,
+		"dial assigned":  `package transport; import "net/http"; func set(tr *http.Transport) { tr.DialContext = nil }`,
+		"tls verify":     `package transport; import "crypto/tls"; var _ = &tls.Config{VerifyConnection: func(tls.ConnectionState) error { return nil }}`,
+		"dialer control": `package transport; import "net"; var _ = net.Dialer{Control: nil}`,
+		"other wrapper":  `package transport; import "net/http/httptrace"; func wrap(f func()) func() { return f }; var _ = &httptrace.ClientTrace{WroteHeaders: wrap(func() {})}`,
+	} {
+		if got := inspectUI(map[string]string{"internal/gateway/reach.go": reach, "internal/transport/x.go": source}); len(got) == 0 {
+			t.Errorf("missed %s", name)
+		}
+	}
+	for name, source := range map[string]string{
+		"wrapped hooks": `package transport; import "net/http/httptrace"; var w onWire; var _ = &httptrace.ClientTrace{WroteHeaders: onWire0(&w, func() {}), GotConn: onWire1(&w, func(httptrace.GotConnInfo) {})}`,
+		"plain fields":  `package transport; import ("net/http"; "time"); var _ = &http.Transport{MaxIdleConns: 2, IdleConnTimeout: time.Second}`,
+		"caller's hook": `package transport; import "net/http"; var _ = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return nil }}`,
+	} {
+		if got := inspectUI(map[string]string{"internal/gateway/reach.go": reach, "internal/transport/x.go": source}); len(got) != 0 {
+			t.Errorf("%s rejected: %v", name, got)
+		}
+	}
+}
