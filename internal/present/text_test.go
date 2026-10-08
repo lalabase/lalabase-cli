@@ -28,6 +28,10 @@ func TestPresentationConstructorsCleanEveryField(t *testing.T) {
 }
 
 func TestPresentationTypesCannotBeForged(t *testing.T) {
+	inline, body := reflect.TypeFor[present.Inline](), reflect.TypeFor[present.Body]()
+	if inline.ConvertibleTo(body) || body.ConvertibleTo(inline) {
+		t.Fatal("Inline and Body must not allow cross-conversion")
+	}
 	for _, typ := range []reflect.Type{reflect.TypeFor[present.Inline](), reflect.TypeFor[present.Body]()} {
 		if typ.Kind() != reflect.Struct {
 			t.Fatalf("%s must be a struct, got %s", typ.Name(), typ.Kind())
