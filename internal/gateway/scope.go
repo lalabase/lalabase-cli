@@ -69,17 +69,18 @@ func (s *Scope) Begin(area Area, key cache.Key, prio queue.Priority) Ticket {
 }
 
 // Move says the selection of an area moved on (another organisation, another
-// page). Its waiters are dropped and returned, for the caller to cancel.
+// page). Its waiters are returned, for the caller to cancel. They stay
+// pending: their results still arrive (canceled or late) and are refused by
+// the generation, a check of its own.
 func (s *Scope) Move(area Area) []Waiter {
 	s.area[area]++
-	var dropped []Waiter
+	var moved []Waiter
 	for w, t := range s.pending {
-		if t.Area == area {
-			dropped = append(dropped, w)
-			delete(s.pending, w)
+		if t.Area == area && t.Gens.Area != s.area[area] {
+			moved = append(moved, w)
 		}
 	}
-	return dropped
+	return moved
 }
 
 // Leave drops a waiter that gave up.
@@ -93,22 +94,28 @@ func (s *Scope) Invalidate(resource cache.Key) { s.epochs[resource.Resource()]++
 // cache (the token is no longer accepted).
 func (s *Scope) EndSession(store *cache.Store) {
 	s.session++
-	clear(s.pending)
 	store.RemoveNamespace(s.ns)
 }
 
-// accept checks a result's ticket: session, waiter and data, generation,
-// epoch. A waiter gets one result; its ticket is used up either way.
+// accept checks a result's ticket, each check on its own: session, waiter
+// and data, generation, epoch. A waiter gets one result: its ticket is used
+// up by the first result that names it exactly, accepted or not.
 func (s *Scope) accept(t Ticket) bool {
+	issued, ok := s.pending[t.Waiter]
+	known := ok && issued == t
+	if known {
+		delete(s.pending, t.Waiter)
+	}
 	if t.Gens.Session != s.session || t.Key.Namespace() != s.ns {
 		return false
 	}
-	issued, ok := s.pending[t.Waiter]
-	if !ok || issued != t {
+	if !known {
 		return false
 	}
-	delete(s.pending, t.Waiter)
-	return t.Gens.Area == s.area[t.Area] && t.Epoch == s.epochs[t.Key.Resource()]
+	if t.Gens.Area != s.area[t.Area] {
+		return false
+	}
+	return t.Epoch == s.epochs[t.Key.Resource()]
 }
 
 // Receive is the one way an inbox result reaches the cache: checked first,
