@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -38,6 +39,7 @@ func TestTextFilesCarryNoInvisibleCharacters(t *testing.T) {
 		"internal/contract", "internal/contract/testdata", "internal/sourceguard", "tools/update-contract",
 		"internal/api", "internal/cache", "internal/features", "internal/transport",
 		"internal/claudecfg", "internal/profile", "internal/queue", "internal/safefile",
+		"internal/ui", "internal/ui/view", "internal/present", "internal/uitext", "internal/terminal",
 	} {
 		if !seen[dir] {
 			t.Errorf("no file of %s was checked", dir)
@@ -155,7 +157,10 @@ func TestATrackedLinkIsAFinding(t *testing.T) {
 // file is checked before its first commit too.
 func trackedFiles(t *testing.T, root string) []string {
 	t.Helper()
-	cmd := exec.CommandContext(context.Background(), "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	cmd.WaitDelay = time.Second
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git ls-files: %v", err)

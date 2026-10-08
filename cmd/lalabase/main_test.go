@@ -28,13 +28,6 @@ func TestUnknownCommandFailsWithUsage(t *testing.T) {
 	}
 }
 
-func TestNoArgumentsShowsUsageForNow(t *testing.T) {
-	var out, errOut bytes.Buffer
-	if code := run(nil, &out, &errOut); code != 2 {
-		t.Fatalf("exit %d, want 2", code)
-	}
-}
-
 func TestHelpSucceedsAndPrintsUsage(t *testing.T) {
 	for _, args := range [][]string{{"help"}, {"--help"}, {"-h"}} {
 		var out, errOut bytes.Buffer

@@ -1,11 +1,11 @@
 // Command lalabase is Lalabase from the terminal.
 //
-// This is slice C0 of the terminal client plan: the foundation (cleaning of
-// foreign text, the contract, transport, profiles, the request queue). The
-// full-screen interface arrives in C1, the commands for agents in C4.
+// The terminal shell is slice C1a. Data views arrive in C1b and C1c,
+// and the commands for agents in C4.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -19,6 +19,7 @@ import (
 var version = ""
 
 const usage = `Usage:
+  lalabase [--profile default]
   lalabase [--profile NAME] <command>
 
 Commands:
@@ -33,14 +34,17 @@ Commands:
 // Env is what a command reads and writes: the process's own in main, a test's
 // otherwise.
 type Env struct {
-	Stdin  io.Reader
-	Stdout io.Writer
-	Stderr io.Writer
-	Getenv func(string) string
-	Home   string
-	Cwd    string
+	Context context.Context
+	Stdin   io.Reader
+	Stdout  io.Writer
+	Stderr  io.Writer
+	Getenv  func(string) string
+	Home    string
+	Cwd     string
 	// Interactive: stdin is a terminal, so a question can be asked.
-	Interactive bool
+	Interactive    bool
+	OutputTerminal bool
+	runUI          func(context.Context, io.Reader, io.Writer, []string) error
 }
 
 func main() {
@@ -48,7 +52,7 @@ func main() {
 	cwd, _ := os.Getwd()
 	env := Env{
 		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv,
-		Home: home, Cwd: cwd, Interactive: isTerminal(os.Stdin),
+		Home: home, Cwd: cwd, Interactive: isTerminal(os.Stdin), OutputTerminal: isTerminal(os.Stdout),
 	}
 	os.Exit(runWith(os.Args[1:], env))
 }
@@ -72,13 +76,13 @@ func runWith(args []string, env Env) int {
 	global.SetOutput(io.Discard)
 	profileName := global.String("profile", "", "profile to use")
 	if err := global.Parse(args); err != nil {
-		fmt.Fprintf(env.Stderr, "lalabase: %v\n\n%s", err, usage)
+		// Locale validation has not run. Quote even non-ASCII flag bytes.
+		fmt.Fprintf(env.Stderr, "lalabase: %+q\n\n%s", err.Error(), usage)
 		return 2
 	}
 	args = global.Args()
 	if len(args) == 0 {
-		fmt.Fprint(env.Stderr, usage)
-		return 2
+		return runInteractive(*profileName, env)
 	}
 	switch args[0] {
 	case "version":
@@ -90,7 +94,7 @@ func runWith(args []string, env Env) int {
 	case "auth":
 		return runAuth(args[1:], *profileName, env)
 	default:
-		fmt.Fprintf(env.Stderr, "lalabase: unknown command %q\n\n%s", args[0], usage)
+		fmt.Fprintf(env.Stderr, "lalabase: unknown command %+q\n\n%s", args[0], usage)
 		return 2
 	}
 }

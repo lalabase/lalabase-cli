@@ -40,12 +40,18 @@ jobs:
       - name: fuzz the cleaning function briefly
         run: go test -run='^$' -fuzz=FuzzCleanedTextIsTerminalSafe -fuzztime=20s ./internal/clean/
 
-  # No macOS job (decided 06.10.2026, to save macOS minutes): the code that
-  # only macOS runs (access lists, file locks and FIFOs, the terminal) is
-  # tested on a Mac before every merge, see README "Development". Bring the
-  # job back (go test on macos-latest for ./internal/profile/,
-  # ./internal/safefile/, ./cmd/lalabase/) as soon as anybody develops
-  # without a Mac.
+  terminal-macos:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: test terminal and platform boundaries
+        run: go test -race -count=1 -timeout 5m ./cmd/lalabase/ ./internal/ui/... ./internal/present/ ./internal/uitext/ ./internal/terminal/ ./internal/sourceguard/ ./internal/profile/ ./internal/safefile/
 
   lint:
     runs-on: ubuntu-latest
