@@ -56,7 +56,9 @@ func terminalOutputError(output string) error {
 			}
 			if prefix == '?' && (final == 'h' || final == 'l') && len(values) == 1 {
 				switch values[0] {
-				case 25, 1049, 2004, 2026, 2027:
+				// 7 is auto-wrap, which the renderer switches off while it
+				// draws (seen on Linux during a resize).
+				case 7, 25, 1049, 2004, 2026, 2027:
 					return
 				}
 			}
@@ -162,7 +164,7 @@ func TestTerminalOutputAllowsRendererGrammar(t *testing.T) {
 	for _, params := range []string{"", "0", "1", "22", "0;1;22"} {
 		allowed = append(allowed, "\x1b["+params+"m")
 	}
-	for _, mode := range []int{25, 1049, 2004, 2026, 2027} {
+	for _, mode := range []int{7, 25, 1049, 2004, 2026, 2027} {
 		for _, final := range []byte{'h', 'l'} {
 			allowed = append(allowed, fmt.Sprintf("\x1b[?%d%c", mode, final))
 		}
