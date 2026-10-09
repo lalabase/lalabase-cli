@@ -171,6 +171,9 @@ type app struct {
 	directory []api.Ref
 	counters  map[string]count
 	global    count
+	// countersSeq is the sequence of the last result that settled the
+	// counters step.
+	countersSeq uint64
 
 	seq     uint64
 	ops     map[string]*op
@@ -200,7 +203,7 @@ func (a *app) reset() {
 	a.steps = [stepCount]stage{}
 	a.me, a.server, a.report = api.Me{}, transport.ServerInfo{}, nil
 	a.ns, a.scope, a.store = cache.Namespace{}, nil, nil
-	a.directory, a.counters, a.global = nil, map[string]count{}, count{}
+	a.directory, a.counters, a.global, a.countersSeq = nil, map[string]count{}, count{}, 0
 	a.ops, a.waiters = map[string]*op{}, map[gateway.Waiter]*op{}
 	a.highlight, a.active, a.remembered = "", nil, map[string]position{}
 	a.pause = time.Time{}

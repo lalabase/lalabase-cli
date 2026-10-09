@@ -183,6 +183,13 @@ func (m Model) allowed() map[Action]bool {
 			set[second] = true
 		}
 	}
+	// The page keys share one help entry; each direction acts only at its
+	// own side of the boundary.
+	if a := m.app; a != nil && a.active != nil && set[PrevPage] {
+		v := a.active
+		set[PrevPage] = v.page > 1
+		set[NextPage] = v.known && v.page < lastPage(v.total, v.perPage)
+	}
 	return set
 }
 

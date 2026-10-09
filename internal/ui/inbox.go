@@ -107,11 +107,12 @@ func (m Model) receiveInbox(r gateway.InboxResult) (Model, tea.Cmd) {
 	case cache.Remove:
 		a.forgetCounters(o.seq, r.Key)
 	}
+	if r.Key.Global {
+		// Any consumer of a global page settles the counters step.
+		a.countersResult(o.seq, d, r)
+	}
 	var cmd tea.Cmd
-	switch w.purpose {
-	case forCounters:
-		a.countersResult(d, r)
-	case forInbox:
+	if w.purpose == forInbox {
 		m, cmd = m.inboxResult(o.seq, w.ticket, r, d)
 	}
 	return m, tea.Batch(follow, cmd)

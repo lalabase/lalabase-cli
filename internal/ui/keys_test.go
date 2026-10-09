@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
 
@@ -22,9 +23,9 @@ func press(name string) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: []rune(name)[0], Text: name}
 }
 
-// helpText is the help as shown for the model, one string.
+// helpText is the help as shown for the model, one plain string.
 func helpText(m Model) string {
-	return strings.Join(view.HelpLines(m.help(), max(m.width, 1), m.widthMethod), "\n")
+	return ansi.Strip(strings.Join(view.HelpLines(m.help(), max(m.width, 1), m.widthMethod), "\n"))
 }
 
 func TestShellKeysAndHelpAgree(t *testing.T) {

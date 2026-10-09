@@ -98,8 +98,14 @@ func (a *app) countOf(org string) count {
 	return a.counters[org]
 }
 
-// countersResult settles the counters step after its result.
-func (a *app) countersResult(d cache.Decision, r gateway.InboxResult) {
+// countersResult settles the counters step after its result. A result of
+// an older sequence than the one settled (a late copy of a shared
+// removal) changes nothing.
+func (a *app) countersResult(seq uint64, d cache.Decision, r gateway.InboxResult) {
+	if seq <= a.countersSeq {
+		return
+	}
+	a.countersSeq = seq
 	s := &a.steps[stepCounters]
 	if d == cache.Replace {
 		s.state, s.err = ready, present.Inline{}

@@ -137,7 +137,11 @@ func idOf(n int) string {
 func pageAnswer(page, perPage, total, unreadTotal int, rows []api.Notification, counts map[string]int) transport.Answer {
 	var p api.NotificationPage
 	p.Data = rows
+	if p.Data == nil {
+		p.Data = []api.Notification{} // an empty list, never null: the spec requires the list
+	}
 	p.Meta.Page, p.Meta.PerPage, p.Meta.Total, p.Meta.UnreadTotal = page, perPage, total, unreadTotal
+	p.Meta.ByOrganisation = []api.OrganisationCount{}
 	for id, n := range counts {
 		p.Meta.ByOrganisation = append(p.Meta.ByOrganisation, api.OrganisationCount{ID: id, Name: "Org " + id[len(id)-1:], Unread: n})
 	}
@@ -174,7 +178,12 @@ type fakes struct {
 	initCall int
 	toolCall int
 	queries  []api.NotificationQuery
-	gate     chan struct{} // when set, the inbox source waits for it
+	// gate, when set, holds the inbox source for queries of gateOrg; with
+	// ignoreCancel the source answers after the gate even when the request
+	// was canceled meanwhile (a server whose answer is already on its way).
+	gate         chan struct{}
+	gateOrg      string
+	ignoreCancel bool
 }
 
 func (f *fakes) Me(context.Context) (api.Me, transport.Answer) {
@@ -207,15 +216,19 @@ func (f *fakes) ListTools(context.Context) ([]transport.Tool, transport.Answer) 
 
 func (f *fakes) NotificationsAnswer(ctx context.Context, q api.NotificationQuery) transport.Answer {
 	f.mu.Lock()
-	gate := f.gate
+	gate, gateOrg, ignoreCancel := f.gate, f.gateOrg, f.ignoreCancel
 	f.queries = append(f.queries, q)
 	answer := f.inbox
 	f.mu.Unlock()
-	if gate != nil {
-		select {
-		case <-gate:
-		case <-ctx.Done():
-			return transport.Answer{Class: transport.Canceled, Message: "canceled"}
+	if gate != nil && q.OrganisationID == gateOrg {
+		if ignoreCancel {
+			<-gate
+		} else {
+			select {
+			case <-gate:
+			case <-ctx.Done():
+				return transport.Answer{Class: transport.Canceled, Message: "canceled"}
+			}
 		}
 	}
 	return answer(q)
@@ -249,10 +262,18 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 	d := recorded(t)
 	f := &fakes{
-		me:    func() (api.Me, transport.Answer) { return d.me, transport.Answer{Class: transport.Object, Status: 200, Sent: true} },
-		orgs:  func() ([]api.Ref, transport.Answer) { return d.orgs, transport.Answer{Class: transport.Object, Status: 200, Sent: true} },
-		init:  func() (transport.ServerInfo, transport.Answer) { return d.server, transport.Answer{Class: transport.Object, Status: 200, Sent: true} },
-		tools: func() ([]transport.Tool, transport.Answer) { return d.tools, transport.Answer{Class: transport.Object, Status: 200, Sent: true} },
+		me: func() (api.Me, transport.Answer) {
+			return d.me, transport.Answer{Class: transport.Object, Status: 200, Sent: true}
+		},
+		orgs: func() ([]api.Ref, transport.Answer) {
+			return d.orgs, transport.Answer{Class: transport.Object, Status: 200, Sent: true}
+		},
+		init: func() (transport.ServerInfo, transport.Answer) {
+			return d.server, transport.Answer{Class: transport.Object, Status: 200, Sent: true}
+		},
+		tools: func() ([]transport.Tool, transport.Answer) {
+			return d.tools, transport.Answer{Class: transport.Object, Status: 200, Sent: true}
+		},
 	}
 	f.inbox = func(q api.NotificationQuery) transport.Answer {
 		return d.defaultInbox(q)

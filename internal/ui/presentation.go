@@ -207,14 +207,16 @@ func listNotice(v *inboxView) present.Inline {
 	switch {
 	case v.err.String() != "":
 		return v.err
-	case v.loading && !v.known:
-		return uitext.Inline(uitext.Loading)
-	case v.loading:
-		return uitext.Inline(uitext.Refreshing)
+	// A cached page says so while its one reload runs; "Refreshing" is for
+	// a page the server gave.
 	case v.cached && v.stale:
 		return uitext.Inline(uitext.CachedStale)
 	case v.cached:
 		return uitext.Inline(uitext.Cached)
+	case v.loading && !v.known:
+		return uitext.Inline(uitext.Loading)
+	case v.loading:
+		return uitext.Inline(uitext.Refreshing)
 	case v.stale:
 		return uitext.Inline(uitext.PossiblyStale)
 	case v.known && len(v.rows) == 0 && v.total == 0:
