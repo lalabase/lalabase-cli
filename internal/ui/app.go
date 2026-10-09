@@ -149,6 +149,9 @@ type app struct {
 	global    count
 	// countersSeq is the request that settled the counters step last.
 	countersSeq uint64
+	// snapshot is the newest global page applied: it spoke for every
+	// organisation, so no older filtered answer may set a count.
+	snapshot uint64
 
 	waiters map[gateway.Waiter]*waiter
 	// filed is, per key, the newest request whose answer was filed in the
@@ -181,7 +184,7 @@ func (a *app) reset() {
 	a.steps = [stepCount]stage{}
 	a.me, a.server, a.report = api.Me{}, transport.ServerInfo{}, nil
 	a.ns, a.scope, a.store = cache.Namespace{}, nil, nil
-	a.directory, a.counters, a.global, a.countersSeq = nil, map[string]count{}, count{}, 0
+	a.directory, a.counters, a.global, a.countersSeq, a.snapshot = nil, map[string]count{}, count{}, 0, 0
 	a.waiters, a.filed = map[gateway.Waiter]*waiter{}, map[cache.Key]uint64{}
 	a.highlight, a.active, a.remembered = "", nil, map[string]position{}
 	a.pause = time.Time{}

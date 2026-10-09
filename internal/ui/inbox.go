@@ -66,10 +66,7 @@ func (m Model) receiveInbox(r gateway.InboxResult) (Model, tea.Cmd) {
 	}
 	delete(a.waiters, r.Waiter)
 	w.cancel()
-	if a.revoked() {
-		m.expire()
-		return m, nil
-	}
+	a.settleLoading()
 	seq, key := uint64(r.Flight), r.Key
 	removal := cache.Decide(r.Answer.Class, cache.Read) == cache.Remove
 	if seq < a.newestFiled(key, removal) {
@@ -102,6 +99,15 @@ func (m Model) receiveInbox(r gateway.InboxResult) (Model, tea.Cmd) {
 	return m.inboxResult(key, r, d)
 }
 
+// settleLoading makes the active view's loading state follow the waiters:
+// it loads while a read of its key is out for somebody, whatever became of
+// the answer that just arrived.
+func (a *app) settleLoading() {
+	if v := a.active; v != nil {
+		v.loading = a.pending(v.key)
+	}
+}
+
 // newestFiled is the newest request filed for the key or, for a removal,
 // for any key of the key's resource: a removal takes the whole resource,
 // and an older one must not take what a newer request brought.
@@ -120,16 +126,21 @@ func (a *app) newestFiled(key cache.Key, removal bool) uint64 {
 }
 
 // inboxResult applies an accepted result to the active view when it is the
-// view's key, whoever asked for it. The order of requests was kept before
-// (filed, per key): what arrives here is the newest answer with data, or a
-// failure, or a copy of the same answer, which applies the same thing again.
+// view's key, whoever asked for it, and a removal when it is the view's
+// resource: the server took every page of it. The order of requests was
+// kept before (filed): what arrives here is the newest answer with data, or
+// a failure, or a copy of the same answer, which applies the same thing
+// again.
 func (m Model) inboxResult(key cache.Key, r gateway.InboxResult, d cache.Decision) (Model, tea.Cmd) {
 	a := m.app
 	v := a.active
-	if v == nil || v.key != key {
+	if v == nil {
 		return m, nil
 	}
-	v.loading = a.pending(v.key)
+	sameResource := d == cache.Remove && v.key.Resource() == key.Resource()
+	if v.key != key && !sameResource {
+		return m, nil
+	}
 	switch d {
 	case cache.Replace:
 		v.rows, v.total, v.perPage = r.Page.Data, r.Page.Meta.Total, r.Page.Meta.PerPage
@@ -326,6 +337,12 @@ func (m Model) retryOrRefresh() (Model, tea.Cmd) {
 		}
 		if a.steps[stepCounters].state == failed {
 			cmds = append(cmds, a.issueCounters())
+		}
+		if m.focus != view.Navigation && a.active != nil {
+			// The active page as well: a failed page of the global inbox
+			// failed the counters step too, and R from the page must read
+			// the page, not only the counters.
+			cmds = append(cmds, a.refreshActive())
 		}
 		return m, tea.Batch(cmds...)
 	}

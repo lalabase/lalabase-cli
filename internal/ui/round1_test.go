@@ -7,6 +7,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/api"
+	"github.com/gboyke/lalabase-cli/internal/gateway"
+	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
@@ -50,16 +52,28 @@ func TestPagingBackJoinsThePendingGlobalRead(t *testing.T) {
 	if a.active == nil || a.active.page != 2 || a.active.loading {
 		t.Fatalf("return: %+v", a.active)
 	}
-	// Page 1 joins the read on the wire.
+	// Page 1 joins the read on the wire: two sharers of one flight, one
+	// request at the source.
 	back := h.background(h.press("["))
 	if a.active.page != 1 || !a.active.loading {
 		t.Fatalf("back: page %d, loading %v", a.active.page, a.active.loading)
 	}
+	share := a.active.waiterFor(a)
+	h.waitFor("the second sharer", func() bool { return h.q.Sharers(a.waiters[share].ticket.ShareKey()) == 2 })
 	close(gate)
+	var flights []queue.Flight
 	for _, ch := range refresh {
-		h.feed(h.receive(ch))
+		msg := h.receive(ch)
+		if r, ok := msg.(gateway.InboxResult); ok {
+			flights = append(flights, r.Flight)
+		}
+		h.feed(msg)
 	}
-	h.feed(h.receive(back))
+	r := h.receive(back).(gateway.InboxResult)
+	h.feed(r)
+	if len(flights) != 1 || flights[0] != r.Flight || len(h.f.inboxCalls()) != before+1 {
+		t.Fatalf("flights %v and %d, %d requests", flights, r.Flight, len(h.f.inboxCalls())-before)
+	}
 	if a.active.loading || len(a.active.rows) != 25 || a.active.page != 1 || a.active.cached {
 		t.Fatalf("stuck: loading %v, %d rows, page %d, cached %v", a.active.loading, len(a.active.rows), a.active.page, a.active.cached)
 	}
@@ -80,7 +94,11 @@ func TestARemovalThroughAnotherConsumerClearsTheView(t *testing.T) {
 	if len(a.active.rows) != 25 || a.active.opened == "" {
 		t.Fatal("the global inbox did not open")
 	}
+	h.press("esc") // the list
 	h.press("esc") // the chooser
+	if h.m.focus != view.Navigation {
+		t.Fatalf("focus %d, not the chooser", h.m.focus)
+	}
 	h.f.set(func(api.NotificationQuery) transport.Answer { return failing(transport.NoAccess, 200) })
 	h.drive(h.press("R")) // refreshes the directory and the counters: the global page 1
 	if len(a.active.rows) != 0 || a.active.opened != "" || a.countOf("").known {

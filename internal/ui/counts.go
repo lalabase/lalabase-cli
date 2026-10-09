@@ -9,10 +9,12 @@ import (
 )
 
 // Counters: organisation id → known, value, sequence. The sequence is the
-// request's, assigned when the read was issued and kept through retries and
-// additional consumers; a newer accepted observation wins, the order the
-// answers arrived in does not. A missing organisation is unknown, never
-// zero, and its sequence is recorded too. Cache hits replay nothing here.
+// request's flight; a newer accepted observation wins, the order the
+// answers arrived in does not. A global page is a snapshot of every
+// organisation: one it omits is unknown, and the snapshot's sequence
+// (snapshot) outranks every older filtered answer, also for an organisation
+// the snapshot and the directory did not list at the time. Cache hits
+// replay nothing here.
 
 // inboxKey is the cache key of one unread page: of one organisation, or
 // explicitly of all of them.
@@ -71,6 +73,7 @@ func (a *app) applyCounters(seq uint64, key cache.Key, page api.NotificationPage
 		v, known := observed[id]
 		a.setCount(id, known, v, seq)
 	}
+	a.snapshot = max(a.snapshot, seq)
 }
 
 // forgetCounters makes the counter of a removed resource unknown. The
@@ -86,6 +89,9 @@ func (a *app) forgetCounters(seq uint64, key cache.Key) {
 }
 
 func (a *app) setCount(id string, known bool, v int, seq uint64) {
+	if seq < a.snapshot {
+		return
+	}
 	if c := a.counters[id]; seq > c.seq {
 		a.counters[id] = count{known: known, value: v, seq: seq}
 	}

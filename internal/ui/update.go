@@ -11,6 +11,12 @@ import (
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if a := m.app; a != nil && !a.expired && a.revoked() {
+		// The mailbox knows the 401 before its wake-up reached the model:
+		// whatever this message is, nothing of the session is shown, read
+		// or asked any more.
+		m.expire()
+	}
 	switch msg := msg.(type) {
 	case worker.Fatal:
 		// The command reads the error after the terminal is restored.
@@ -70,12 +76,6 @@ func (m Model) key(key tea.KeyPressMsg) (Model, tea.Cmd) {
 	}
 	if action.Kind == Interrupt {
 		return m, tea.Interrupt
-	}
-	if a := m.app; a != nil && a.revoked() {
-		// The mailbox knows the 401 before its wake-up reached the model: no
-		// key may read the cache or ask the server any more.
-		m.expire()
-		return m, nil
 	}
 	if m.small() || !m.allowed()[action.Kind] {
 		return m, nil

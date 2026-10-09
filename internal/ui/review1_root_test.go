@@ -28,12 +28,18 @@ func TestR1AbandonedReissueDoesNotReadOrCache(t *testing.T) {
 	if a.active.org != orgB || cached || len(a.active.rows) != 3 {
 		t.Fatalf("active=%s cachedA=%v rows=%d", a.active.org, cached, len(a.active.rows))
 	}
-	// The canceled results issued nothing of their own: every read after
-	// the last choice is B's own.
+	// The canceled results issued nothing of their own: after the last
+	// choice at most the two canceled commands of A themselves reach the
+	// source (the fake answers a canceled context; a transport would not
+	// send it), and their answers went nowhere (cachedA above).
+	readsOfA := 0
 	for _, q := range h.f.inboxCalls()[before:] {
-		if q.OrganisationID == orgA && !cached {
-			continue // the canceled request of A still ran in the queue; its answer went nowhere
+		if q.OrganisationID == orgA {
+			readsOfA++
 		}
+	}
+	if readsOfA > 2 {
+		t.Fatalf("%d reads of A went out after the last choice, more than the two canceled commands", readsOfA)
 	}
 	if n := len(a.waiters); n != 0 {
 		t.Fatalf("%d waiters left behind", n)

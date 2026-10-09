@@ -106,20 +106,23 @@ type binding struct {
 }
 
 // pairs says which second key a binding's help covers: "up/down" is one
-// entry of the help, two keys of the dispatch; at an end of the list one of
-// the two does nothing, the other still moves.
+// entry of the help, two keys of the dispatch. A pair is offered when there
+// is somewhere to go in at least one direction; at an end, the other key
+// does nothing, which is what a cursor key means there (a decision, not a
+// gap: keys offered one by one would change the help on every move).
 var pairs = map[Action]Action{Up: Down, PageUp: PageDown, Left: Right}
 
 // tooSmall is the terminal below the size anything can be shown in.
 func (m Model) tooSmall() bool { return m.width < 24 || m.height < 8 }
 
 // small is the terminal too small for anything but leaving: by its size,
-// or because the help of the state would leave no line for the body.
+// or because the help of the state would leave the body no room for a
+// title and one row.
 func (m Model) small() bool {
 	if m.tooSmall() {
 		return true
 	}
-	return len(view.HelpLines(toHelp(m.bindings(false)), m.width, m.widthMethod)) > m.height-3
+	return len(view.HelpLines(toHelp(m.bindings(false)), m.width, m.widthMethod)) > m.height-4
 }
 
 // actions are the bindings that act in the current state.
@@ -163,10 +166,7 @@ func (m Model) bindings(small bool) []binding {
 		}
 	case view.List:
 		if v != nil && len(v.rows) > 1 {
-			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp})
-			if m.overflows(out, m.listColumn(), view.List) {
-				out = append(out, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
-			}
+			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
 		}
 		if v != nil && v.selected != "" {
 			out = append(out, binding{OpenList, uitext.EnterKey, uitext.DetailsHelp})
@@ -182,7 +182,7 @@ func (m Model) bindings(small bool) []binding {
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.OrganisationsHelp})
 	case view.Object:
-		if v != nil && v.opened != "" && m.overflows(out, m.objectColumn(), view.Object) {
+		if v != nil && v.opened != "" {
 			out = append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.CloseHelp})
@@ -194,15 +194,33 @@ func (m Model) bindings(small bool) []binding {
 		}
 		out = append(out, binding{Refresh, uitext.RefreshKey, help})
 	}
-	return append(out, binding{Left, uitext.FocusKey, uitext.FocusHelp})
+	return m.withoutIdleScroll(append(out, binding{Left, uitext.FocusKey, uitext.FocusHelp}))
 }
 
-// overflows reports whether a column holds more than its pane shows, in
-// the geometry the bindings so far leave; a scroll binding is offered only
-// then.
-func (m Model) overflows(sofar []binding, c present.Column, which view.Pane) bool {
-	g := layoutWith(m.width, m.height, len(view.HelpLines(toHelp(sofar), m.width, m.widthMethod)))
-	return view.Extent(c, g, which, m.widthMethod) > view.Capacity(c, g)
+// withoutIdleScroll drops the scroll binding of the focused column when the
+// column fits its pane. The pane is measured in the geometry of the whole
+// help with the binding in it: if the column fits there, it fits in the
+// larger pane the help without the binding leaves, so help and dispatch
+// agree either way.
+func (m Model) withoutIdleScroll(out []binding) []binding {
+	at := -1
+	for i, b := range out {
+		if b.kind == PageUp {
+			at = i
+		}
+	}
+	if at < 0 {
+		return out
+	}
+	c, which := m.listColumn(), view.List
+	if m.focus == view.Object {
+		c, which = m.objectColumn(), view.Object
+	}
+	g := layoutWith(m.width, m.height, len(view.HelpLines(toHelp(out), m.width, m.widthMethod)))
+	if view.Extent(c, g, which, m.widthMethod) > view.Capacity(c, g) {
+		return out
+	}
+	return append(out[:at:at], out[at+1:]...)
 }
 
 // allowed is the set of actions the bindings cover.

@@ -145,7 +145,7 @@ type ticket struct {
 // still waiting: a person joining lifts it, the last person leaving lets it
 // fall back to background work.
 type flight struct {
-	id     Flight
+	id     atomic.Uint64 // its number; a retry, a new send, gets a new one
 	ctx    context.Context
 	cancel context.CancelFunc
 	refs   int
@@ -222,10 +222,10 @@ func (q *Queue) doShared(ctx context.Context, job Job) (transport.Answer, Flight
 
 	select {
 	case <-f.done:
-		return f.ans, f.id
+		return f.ans, f.flight()
 	case <-ctx.Done():
 		q.leave(job, f)
-		return canceled(), f.id
+		return canceled(), f.flight()
 	}
 }
 
@@ -245,7 +245,8 @@ func (q *Queue) join(job Job) (f *flight, fresh bool, tell time.Time, mustTell b
 	}
 	// The request belongs to the queue's lifetime, never to its first caller.
 	runCtx, cancel := context.WithCancel(q.life.Context())
-	f = &flight{id: Flight(flights.Add(1)), ctx: runCtx, cancel: cancel, refs: 1, prio: job.Priority, done: make(chan struct{})}
+	f = &flight{ctx: runCtx, cancel: cancel, refs: 1, prio: job.Priority, done: make(chan struct{})}
+	f.id.Store(flights.Add(1))
 	if job.Priority == User {
 		f.users = 1
 	}
@@ -287,10 +288,17 @@ func (q *Queue) land(key string, f *flight, ans transport.Answer) {
 	close(f.done)
 }
 
+// flight is the read's current number.
+func (f *flight) flight() Flight { return Flight(f.id.Load()) }
+
 // run performs a job with at most one retry. f is the shared read it runs
-// for, or nil.
+// for, or nil. The retry is a later send and carries a later number: its
+// answer is the server's newer word, whatever arrived in between.
 func (q *Queue) run(ctx context.Context, job Job, f *flight) transport.Answer {
 	for attempt := 0; ; attempt++ {
+		if attempt > 0 && f != nil {
+			f.id.Store(flights.Add(1))
+		}
 		t, err := q.acquire(ctx, job.Priority, f)
 		if err != nil {
 			return canceled()

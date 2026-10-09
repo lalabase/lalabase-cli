@@ -40,7 +40,28 @@ func (g guarded) Init() tea.Cmd {
 	if !ok {
 		return tea.Quit
 	}
-	return tea.Batch(cmd, watchFatal(g.sup.Failed(), g.sup.Context().Done()))
+	return tea.Batch(g.guard(cmd), watchFatal(g.sup.Failed(), g.sup.Context().Done()))
+}
+
+// guard runs a command of the model under the supervisor as well: Bubble
+// Tea runs it on a goroutine of its own, outside Update, and would print
+// its panic. A batch is guarded command by command.
+func (g guarded) guard(cmd tea.Cmd) tea.Cmd {
+	if cmd == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		msg, ok := worker.Run(g.sup, "ui: command", cmd)
+		if !ok {
+			return nil
+		}
+		if batch, isBatch := msg.(tea.BatchMsg); isBatch {
+			for i := range batch {
+				batch[i] = g.guard(batch[i])
+			}
+		}
+		return msg
+	}
 }
 
 // stepped is one Update's outcome.
@@ -66,7 +87,7 @@ func (g guarded) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return g, tea.Quit
 	}
 	g.model = s.model
-	return g, s.cmd
+	return g, g.guard(s.cmd)
 }
 
 func (g guarded) View() tea.View {

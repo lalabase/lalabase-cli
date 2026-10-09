@@ -249,6 +249,16 @@ func rowSecondary(n api.Notification) present.Inline {
 
 func messageOf(n api.Notification) string { return textOr(n.Message, uitext.NoMessage) }
 
+// messageBody is the message of the details: a body, cleaned once as one,
+// its lines kept; the row's one-line form is messageOf.
+func messageBody(n api.Notification) string {
+	text := present.NewBody(n.Message).String()
+	if strings.TrimSpace(text) == "" {
+		return uitext.Inline(uitext.NoMessage).String()
+	}
+	return text
+}
+
 func actorOf(n api.Notification) string {
 	if n.Actor == nil {
 		return uitext.Inline(uitext.UnknownActor).String()
@@ -306,7 +316,7 @@ func (m Model) objectColumn() present.Column {
 		state = uitext.StateRead
 	}
 	lines := []string{
-		messageOf(n),
+		messageBody(n),
 		"",
 		label(uitext.LabelActor, actorOf(n)),
 		label(uitext.LabelOrganisation, textOr(n.Organisation.Name, uitext.UnnamedOrganisation)),
