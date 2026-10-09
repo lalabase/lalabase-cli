@@ -22,6 +22,7 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -80,6 +81,13 @@ func WithClock(c Clock) Option { return func(q *Queue) { q.clock = c } }
 // window, and until when.
 func WithOnPause(f func(until time.Time)) Option { return func(q *Queue) { q.onPause = f } }
 
+// WithOnRateLimit is told of every received 429 that closes the window or
+// extends it, whatever is waiting: the interface shows every pause, also
+// one that only background work ran into. It runs outside the lock, after
+// the place was given back, so a panic in it loses nothing of the queue.
+// WithOnPause stays what it is: a person's own wait, for the auth commands.
+func WithOnRateLimit(f func(until time.Time)) Option { return func(q *Queue) { q.onRateLimit = f } }
+
 // WithLifetime runs the queue's goroutines under s: shared reads and pause
 // timers end with its lifetime, and a panic in them becomes its fatal error.
 // Without it the queue has a lifetime of its own that never ends.
@@ -103,6 +111,7 @@ type Queue struct {
 	clock       Clock
 	life        *worker.Supervisor
 	onPause     func(time.Time)
+	onRateLimit func(time.Time)
 	retryDelay  time.Duration
 	running     int
 	bgRunning   int
@@ -136,7 +145,7 @@ type ticket struct {
 // still waiting: a person joining lifts it, the last person leaving lets it
 // fall back to background work.
 type flight struct {
-	id     Flight
+	id     atomic.Uint64 // its number, given at each send; 0 before the first
 	ctx    context.Context
 	cancel context.CancelFunc
 	refs   int
@@ -176,12 +185,14 @@ func (q *Queue) Do(ctx context.Context, job Job) transport.Answer {
 	return ans
 }
 
-// Flight names one request a shared read sent. Its waiters get the same
-// flight; a later request under the same key gets another. 0 is no shared
-// read.
+// Flight names one request a shared read sent, numbered at the moment the
+// request is handed to the transport (so the numbers follow the order of
+// sending, as far as two goroutines at that moment can be told apart). Its
+// waiters get the same flight; a later request under the same key, and a
+// retry, get another. 0 is no shared read, or one not sent yet.
 type Flight uint64
 
-// flights numbers the shared reads of the process.
+// flights numbers the requests of the process's shared reads.
 var flights atomic.Uint64
 
 // DoShared is Do that also names the request the answer came from, so a
@@ -213,10 +224,10 @@ func (q *Queue) doShared(ctx context.Context, job Job) (transport.Answer, Flight
 
 	select {
 	case <-f.done:
-		return f.ans, f.id
+		return f.ans, f.flight()
 	case <-ctx.Done():
 		q.leave(job, f)
-		return canceled(), f.id
+		return canceled(), f.flight()
 	}
 }
 
@@ -236,7 +247,7 @@ func (q *Queue) join(job Job) (f *flight, fresh bool, tell time.Time, mustTell b
 	}
 	// The request belongs to the queue's lifetime, never to its first caller.
 	runCtx, cancel := context.WithCancel(q.life.Context())
-	f = &flight{id: Flight(flights.Add(1)), ctx: runCtx, cancel: cancel, refs: 1, prio: job.Priority, done: make(chan struct{})}
+	f = &flight{ctx: runCtx, cancel: cancel, refs: 1, prio: job.Priority, done: make(chan struct{})}
 	if job.Priority == User {
 		f.users = 1
 	}
@@ -278,13 +289,21 @@ func (q *Queue) land(key string, f *flight, ans transport.Answer) {
 	close(f.done)
 }
 
+// flight is the read's current number.
+func (f *flight) flight() Flight { return Flight(f.id.Load()) }
+
 // run performs a job with at most one retry. f is the shared read it runs
-// for, or nil.
+// for, or nil. Each send, the retry too, gets the number of its moment:
+// an answer is ranked by when its request went out, not by when the read
+// was created or joined.
 func (q *Queue) run(ctx context.Context, job Job, f *flight) transport.Answer {
 	for attempt := 0; ; attempt++ {
 		t, err := q.acquire(ctx, job.Priority, f)
 		if err != nil {
 			return canceled()
+		}
+		if f != nil {
+			f.id.Store(flights.Add(1))
 		}
 		ans := q.attempt(ctx, t, job)
 
@@ -321,7 +340,9 @@ func (q *Queue) attempt(ctx context.Context, t *ticket, job Job) transport.Answe
 // retryable: a read on any temporary failure; a write only when the server
 // cannot have acted on it.
 func retryable(kind Kind, ans transport.Answer) bool {
-	if ans.Class != transport.Temporary {
+	// A 401 is never tried again, whatever became of its body (a broken one
+	// is "temporary" by class): the token is gone.
+	if ans.Class != transport.Temporary || ans.Status == http.StatusUnauthorized {
 		return false
 	}
 	if kind == Read {
@@ -333,15 +354,21 @@ func retryable(kind Kind, ans transport.Answer) bool {
 // finish gives a place back after a job ran. A 429 sets the pause in the
 // same step, before the place goes to anybody: a job already waiting must not
 // slip into the closed window in between. A later window never shortens an
-// earlier, longer one. A person already waiting is told.
+// earlier, longer one. Every window that closed or grew is told to the
+// rate-limit observer; a person already waiting is told as well.
 func (q *Queue) finish(t *ticket, ans transport.Answer) {
-	until, tell := q.giveBack(t, ans)
+	until, tell, paused := q.giveBack(t, ans)
+	if paused && q.onRateLimit != nil {
+		q.onRateLimit(until)
+	}
 	if tell && q.onPause != nil {
 		q.onPause(until)
 	}
 }
 
-func (q *Queue) giveBack(t *ticket, ans transport.Answer) (time.Time, bool) {
+// giveBack returns the window's end, whether a waiting person is to be
+// told, and whether this answer closed or extended the window.
+func (q *Queue) giveBack(t *ticket, ans transport.Answer) (time.Time, bool, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	paused := false
@@ -364,7 +391,7 @@ func (q *Queue) giveBack(t *ticket, ans transport.Answer) (time.Time, bool) {
 	}
 	q.dispatch()
 	until := q.pausedUntil
-	return until, paused && q.clock.Now().Before(until) && q.personWaits()
+	return until, paused && q.clock.Now().Before(until) && q.personWaits(), paused
 }
 
 // personWaits reports a person's action waiting for a place. Called with q.mu

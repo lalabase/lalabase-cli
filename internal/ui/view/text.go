@@ -40,20 +40,8 @@ func fit(text string, width int, method ansi.Method) string {
 	return out.String()
 }
 
+// body wraps free text into at most height lines of width cells; an
+// overflow is marked on the last line.
 func body(value present.Body, width, height int, method ansi.Method) []string {
-	if width <= 0 || height <= 0 {
-		return nil
-	}
-	text := strings.ReplaceAll(value.String(), "\t", "    ")
-	lines := wrapBody(text, width, method)
-	overflow := len(lines) > height
-	lines = lines[:min(len(lines), height)]
-	for i := range lines {
-		lines[i] = fit(lines[i], width, method)
-	}
-	if overflow {
-		last := len(lines) - 1
-		lines[last] = fit(lines[last]+uitext.Inline(uitext.Ellipsis).String(), width, method)
-	}
-	return lines
+	return scrolled(present.Column{Text: value}, width, height, method)
 }

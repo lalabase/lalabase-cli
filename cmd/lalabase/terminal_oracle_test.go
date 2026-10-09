@@ -25,7 +25,7 @@ func TestPTYReadinessRejectsIncompleteModes(t *testing.T) {
 	}
 	ready := "No data loaded\x1b[?1049h\x1b[?2004h\x1b[?25l"
 	for _, missing := range []string{"", "No data loaded", "\x1b[?1049h", "\x1b[?2004h", "\x1b[?25l"} {
-		c := &terminalProcess{slave: slave, deadline: time.Now().Add(60 * time.Millisecond)}
+		c := &terminalProcess{slave: slave, deadline: time.Now().Add(60 * time.Millisecond), marker: "No data loaded"}
 		if missing == "" {
 			c.deadline = time.Now().Add(readyLimit)
 		}

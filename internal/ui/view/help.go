@@ -5,43 +5,56 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/gboyke/lalabase-cli/internal/uitext"
+	"github.com/gboyke/lalabase-cli/internal/present"
 )
 
-func Help(width int, focus Pane, small bool, method ansi.Method) string {
-	if width <= 0 {
-		return ""
+// HelpLines renders the bindings, as many per line as fit, on as many
+// lines as it takes: an active binding is never cut away. A binding wider
+// than the line stands alone and is clipped there.
+func HelpLines(bindings []present.KeyHelp, width int, method ansi.Method) []string {
+	if width <= 0 || len(bindings) == 0 {
+		return nil
 	}
-	ids := [][2]uitext.ID{{uitext.QuitKey, uitext.QuitHelp}, {uitext.InterruptKey, uitext.InterruptHelp}}
-	if !small {
-		ids = append(ids, [2]uitext.ID{uitext.FocusKey, uitext.FocusHelp}, [2]uitext.ID{uitext.EscapeKey, uitext.EscapeHelp})
-		if focus == Navigation {
-			ids = append(ids, [2]uitext.ID{uitext.EnterKey, uitext.EnterHelp})
-		}
-	}
-	bindings := make([]key.Binding, 0, len(ids))
+	var lines []string
+	var line []key.Binding
 	used := 0
-	for _, pair := range ids {
-		label, description := uitext.Inline(pair[0]).String(), uitext.Inline(pair[1]).String()
-		cells := method.StringWidth(label) + 1 + method.StringWidth(description)
-		if len(bindings) > 0 {
-			cells += 2
+	flush := func() {
+		if len(line) > 0 {
+			lines = append(lines, helpLine(line, width))
 		}
-		// Select complete entries before Bubbles styles them; help v2.2.1
-		// can overflow when its ellipsis has no room.
-		if used+cells > width {
-			break
+		line, used = nil, 0
+	}
+	for _, b := range bindings {
+		label, description := b.Key.String(), b.Help.String()
+		cells := method.StringWidth(label) + 1 + method.StringWidth(description)
+		if len(line) > 0 && used+2+cells > width {
+			flush()
+		}
+		if len(line) > 0 {
+			used += 2
 		}
 		used += cells
-		bindings = append(bindings, key.NewBinding(key.WithKeys(label), key.WithHelp(label, description)))
+		line = append(line, key.NewBinding(key.WithKeys(label), key.WithHelp(label, description)))
 	}
-	if len(bindings) == 0 {
-		return inline(uitext.Inline(uitext.QuitKey), width, method)
+	flush()
+	return lines
+}
+
+// helpLine styles one line of bindings. The entries were selected to fit
+// before Bubbles styles them; help v2.2.1 can overflow when its ellipsis
+// has no room, and drops an entry wider than the line, so that one is
+// clipped here instead.
+func helpLine(bindings []key.Binding, width int) string {
+	if len(bindings) == 1 {
+		k := bindings[0].Help()
+		if plain := k.Key + " " + k.Desc; ansi.StringWidth(plain) > width {
+			return fit(plain, width, ansi.WcWidth)
+		}
 	}
 	h := help.New()
 	h.SetWidth(width)
 	h.ShortSeparator = "  "
-	h.Ellipsis = uitext.Inline(uitext.Ellipsis).String()
+	h.Ellipsis = ""
 	h.Styles = help.Styles{ShortKey: lipgloss.NewStyle().Bold(true)}
 	return h.ShortHelpView(bindings)
 }

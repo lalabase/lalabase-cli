@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
 
@@ -22,10 +23,15 @@ func press(name string) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: []rune(name)[0], Text: name}
 }
 
+// helpText is the help as shown for the model, one plain string.
+func helpText(m Model) string {
+	return ansi.Strip(strings.Join(view.HelpLines(m.help(), max(m.width, 1), m.widthMethod), "\n"))
+}
+
 func TestShellKeysAndHelpAgree(t *testing.T) {
 	m := New()
 	m.width, m.height = 120, 24
-	if help := view.Help(120, m.focus, false, m.widthMethod); !strings.Contains(help, "ctrl+c") || !strings.Contains(help, "left/right") || !strings.Contains(help, "q") {
+	if help := helpText(m); !strings.Contains(help, "ctrl+c") || !strings.Contains(help, "left/right") || !strings.Contains(help, "q") {
 		t.Fatalf("missing shell help: %q", help)
 	}
 	for _, name := range []string{"up", "down", "tab", "pgup", "pgdown", "[", "]", "/", "r", "R", "ctrl+s", "?", "j", "k", "v"} {
@@ -76,13 +82,15 @@ func TestShellKeysAndHelpAgree(t *testing.T) {
 	if m != before || cmd != nil {
 		t.Fatal("small terminal changed navigation")
 	}
-	if help := view.Help(120, view.List, true, m.widthMethod); strings.Contains(help, "focus") || strings.Contains(help, "enter") || strings.Contains(help, "esc") {
+	if help := helpText(m); strings.Contains(help, "focus") || strings.Contains(help, "enter") || strings.Contains(help, "esc") {
 		t.Fatalf("small help advertises frozen actions: %q", help)
 	}
-	if help := view.Help(120, view.List, false, m.widthMethod); strings.Contains(help, "enter") {
+	m.width, m.focus = 120, view.List
+	if help := helpText(m); strings.Contains(help, "enter") {
 		t.Fatalf("empty list advertises enter: %q", help)
 	}
-	if help := view.Help(120, view.Navigation, false, m.widthMethod); !strings.Contains(help, "enter") {
+	m.focus = view.Navigation
+	if help := helpText(m); !strings.Contains(help, "enter") {
 		t.Fatalf("chooser has no enter help: %q", help)
 	}
 }

@@ -56,7 +56,9 @@ func terminalOutputError(output string) error {
 			}
 			if prefix == '?' && (final == 'h' || final == 'l') && len(values) == 1 {
 				switch values[0] {
-				case 25, 1049, 2004, 2026, 2027:
+				// 7 is auto-wrap, which the renderer switches off while it
+				// draws (seen on Linux during a resize).
+				case 7, 25, 1049, 2004, 2026, 2027:
 					return
 				}
 			}
@@ -81,9 +83,22 @@ func terminalOutputError(output string) error {
 						}
 					}
 					return
-				case 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'X', 'd':
+				// Cursor moves, erasing, inserting and deleting cells or lines,
+				// scrolling: what the renderer writes when a line changes in
+				// the middle. Foreign text cannot reach these: it is cleaned.
+				case 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'X', 'd', 'P', '@', 'L', 'M', 'S', 'T':
 					if len(values) <= 1 && (len(values) == 0 || values[0] >= 0 && values[0] <= 4096) {
 						return
+					}
+				case 'r': // the scrolling region, top and bottom
+					if len(values) <= 2 {
+						valid := true
+						for _, n := range values {
+							valid = valid && n >= 0 && n <= 4096
+						}
+						if valid {
+							return
+						}
 					}
 				case 'H', 'f':
 					if len(values) <= 2 {
@@ -149,18 +164,18 @@ func TestTerminalOutputAllowsRendererGrammar(t *testing.T) {
 	for _, params := range []string{"", "0", "1", "22", "0;1;22"} {
 		allowed = append(allowed, "\x1b["+params+"m")
 	}
-	for _, mode := range []int{25, 1049, 2004, 2026, 2027} {
+	for _, mode := range []int{7, 25, 1049, 2004, 2026, 2027} {
 		for _, final := range []byte{'h', 'l'} {
 			allowed = append(allowed, fmt.Sprintf("\x1b[?%d%c", mode, final))
 		}
 	}
 	allowed = append(allowed, "\x1b[?2026$p", "\x1b[?2027$p", "\x1b[?5W", "\x1b[?u", "\x1b[>1u", "\x1b[<1u", "\x1b[>4;2m", "\x1b[>4m")
-	for _, final := range []byte{'A', 'B', 'C', 'D', 'E', 'F', 'G', 'X', 'd'} {
+	for _, final := range []byte{'A', 'B', 'C', 'D', 'E', 'F', 'G', 'X', 'd', 'P', '@', 'L', 'M', 'S', 'T'} {
 		for _, params := range []string{"", "0", "1", "4095", "4096"} {
 			allowed = append(allowed, "\x1b["+params+string(final))
 		}
 	}
-	for _, final := range []byte{'H', 'f'} {
+	for _, final := range []byte{'H', 'f', 'r'} {
 		for _, params := range []string{"", "0", "1", "0;0", "1;1", "4095;4096", "4096;4095"} {
 			allowed = append(allowed, "\x1b["+params+string(final))
 		}
@@ -190,12 +205,12 @@ func TestTerminalOutputRejectsControlFamilies(t *testing.T) {
 		"\x1b[>2u", "\x1b[<2u", "\x1b[>4;3m", "\x1b[2m", "\x1b[31m",
 		"\x1b[", "\x1b]52;c;YQ==", "\x1bPdata", "\x1b_payload", "\x1b^payload", "\x1bXpayload",
 	}
-	for _, final := range []byte{'A', 'B', 'C', 'D', 'E', 'F', 'G', 'X', 'd'} {
+	for _, final := range []byte{'A', 'B', 'C', 'D', 'E', 'F', 'G', 'X', 'd', 'P', '@', 'L', 'M', 'S', 'T'} {
 		for _, params := range []string{"4097", "1;2"} {
 			forbidden = append(forbidden, "\x1b["+params+string(final))
 		}
 	}
-	for _, final := range []byte{'H', 'f'} {
+	for _, final := range []byte{'H', 'f', 'r'} {
 		for _, params := range []string{"4097;1", "1;4097", "1;2;3"} {
 			forbidden = append(forbidden, "\x1b["+params+string(final))
 		}

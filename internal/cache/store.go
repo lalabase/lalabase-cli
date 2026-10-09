@@ -163,6 +163,12 @@ func (s *Store) remove(k Key) {
 	delete(s.items, k)
 }
 
+// Forget drops one entry the root cannot use any more: one that does not
+// decode, or a page a refresh showed no longer exists. The other pages of
+// the resource stay; refusing results begun before is the scope's step
+// (Invalidate), not the store's.
+func (s *Store) Forget(k Key) { s.remove(k) }
+
 // RemoveNamespace drops every entry of an identity (the session ended).
 func (s *Store) RemoveNamespace(n Namespace) {
 	for key := range s.items {

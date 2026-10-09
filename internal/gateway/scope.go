@@ -48,6 +48,10 @@ func (t Ticket) ShareKey() string {
 // scopes numbers the scopes of the process.
 var scopes atomic.Uint64
 
+// waiters numbers the tickets of the process: a result of another scope
+// (an ended session) can never name a waiter of this one.
+var waiters atomic.Uint64
+
 // Scope decides which results may still be accepted. The root model owns it
 // and changes it only in its update step. Generations and epochs only grow:
 // returning to an organisation gives a new generation, and epochs live apart
@@ -63,7 +67,6 @@ type Scope struct {
 	// older one.
 	removed map[cache.Key]queue.Flight
 	pending map[Waiter]Ticket
-	next    Waiter
 }
 
 // NewScope starts a session for a confirmed identity.
@@ -73,8 +76,7 @@ func NewScope(ns cache.Namespace) *Scope {
 
 // Begin issues a ticket for a new waiter.
 func (s *Scope) Begin(area Area, key cache.Key, prio queue.Priority) Ticket {
-	s.next++
-	t := Ticket{Scope: s.id, Waiter: s.next, Area: area, Key: key, Gens: Gens{Session: s.session, Area: s.area[area]},
+	t := Ticket{Scope: s.id, Waiter: Waiter(waiters.Add(1)), Area: area, Key: key, Gens: Gens{Session: s.session, Area: s.area[area]},
 		Epoch: s.epochs[key.Resource()], Priority: prio}
 	s.pending[t.Waiter] = t
 	return t

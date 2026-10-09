@@ -1,6 +1,13 @@
+// Package uitext holds every text of the interface, in English, in one
+// place. A text reaches the screen only as a present value, so a mislabelled
+// foreign string in the catalogue could still not bypass the cleaning.
 package uitext
 
-import "github.com/gboyke/lalabase-cli/internal/present"
+import (
+	"fmt"
+
+	"github.com/gboyke/lalabase-cli/internal/present"
+)
 
 type ID uint8
 
@@ -32,11 +39,95 @@ const (
 	LocaleError
 	ProfileError
 	RunError
+	// C1b-2: organisations, counters and the unread inbox.
+	Organisations
+	Inbox
+	Details
+	AllOrganisations
+	UnknownCount
+	CountValue
+	VerifyingIdentity
+	CanWriteYes
+	CanWriteNo
+	CanWriteUnknown
+	UnknownUser
+	UnnamedOrganisation
+	IdentityFailed
+	CapabilitiesFailed
+	OrganisationsFailed
+	CountsFailed
+	UnexpectedResponse
+	RefusedWith
+	ServerUnreachable
+	SessionExpired
+	BelowTested
+	InboxUnsupported
+	FilterUnavailable
+	RateLimited
+	LoadingOrganisations
+	ReadingCapabilities
+	Loading
+	Refreshing
+	Cached
+	CachedStale
+	PossiblyStale
+	NoUnread
+	NoneOnPage
+	NoOrganisations
+	PageOf
+	NotFoundRemoved
+	InboxShrank
+	NoMessage
+	UnknownActor
+	NoProject
+	UnnamedProject
+	NoTicket
+	UntitledTicket
+	TimeUnknown
+	TicketNumber
+	LabelMessage
+	LabelActor
+	LabelOrganisation
+	LabelProject
+	LabelTicket
+	LabelEvent
+	LabelNotification
+	LabelState
+	LabelLastEvent
+	StateUnread
+	StateRead
+	UTC
+	UpDownKey
+	HighlightHelp
+	SelectHelp
+	OpenHelp
+	DetailsHelp
+	PageKey
+	PageHelp
+	PrevPageKey
+	PrevPageHelp
+	NextPageKey
+	NextPageHelp
+	RefreshKey
+	RefreshHelp
+	RetryHelp
+	PageUpDownKey
+	ScrollHelp
+	MoveHelp
+	CloseHelp
+	OrganisationsHelp
+	InboxHelp
 	count
 )
 
 func Inline(id ID) present.Inline { return present.NewInline(english[id]) }
 func Body(id ID) present.Body     { return present.NewBody(english[id]) }
+
+// Fill fills a template's placeholders (%s, %d) and cleans the result like
+// every other text: an argument is foreign as often as not.
+func Fill(id ID, args ...any) present.Inline {
+	return present.NewInline(fmt.Sprintf(english[id], args...))
+}
 
 var english = map[ID]string{
 	App: "lalabase", DefaultProfile: "default", NotLoaded: "Not loaded",
@@ -51,4 +142,37 @@ var english = map[ID]string{
 	LocaleError:      "lalabase: interactive mode requires a UTF-8 locale. Check LC_ALL, LC_CTYPE and LANG.",
 	ProfileError:     "lalabase: cannot load the default profile. Run 'lalabase auth import', or check the configuration and its permissions.",
 	RunError:         "lalabase: terminal interface failed.",
+
+	Organisations: "Organisations", Inbox: "Inbox", Details: "Details",
+	AllOrganisations: "All organisations", UnknownCount: "?", CountValue: "%d",
+	VerifyingIdentity: "Verifying identity…",
+	CanWriteYes:       "Token can write: yes", CanWriteNo: "Token can write: no", CanWriteUnknown: "Token can write: unknown",
+	UnknownUser: "Unknown user", UnnamedOrganisation: "Unnamed organisation",
+	IdentityFailed:       "Cannot verify identity. R retry.",
+	CapabilitiesFailed:   "Cannot read server capabilities. R retry.",
+	OrganisationsFailed:  "Cannot load organisations. R retry.",
+	CountsFailed:         "Cannot load unread counts. R retry.",
+	UnexpectedResponse:   "Unexpected server response: %s",
+	RefusedWith:          "Refused: %s",
+	ServerUnreachable:    "Could not reach the server. R retry.",
+	SessionExpired:       "Session expired. Restart lalabase.",
+	BelowTested:          "Server %s is older than the tested %s; its schemas decide what works.",
+	InboxUnsupported:     "Inbox is not supported by this server.",
+	FilterUnavailable:    "Showing the first page only; organisation filtering is unavailable.",
+	RateLimited:          "Rate limited until %s UTC",
+	LoadingOrganisations: "Loading organisations…", ReadingCapabilities: "Reading server capabilities…",
+	Loading: "Loading…", Refreshing: "Refreshing…",
+	Cached: "Cached", CachedStale: "Cached, possibly stale", PossiblyStale: "Possibly stale",
+	NoUnread: "No unread notifications.", NoneOnPage: "No notifications on this page.",
+	NoOrganisations: "No organisations.", PageOf: "page %d of %d",
+	NotFoundRemoved: "Not found or no longer accessible.", InboxShrank: "The inbox shrank again. R refresh.",
+	NoMessage: "No message", UnknownActor: "Unknown actor", NoProject: "No project", UnnamedProject: "Unnamed project",
+	NoTicket: "No ticket", UntitledTicket: "Untitled ticket", TimeUnknown: "Time unknown", TicketNumber: "#%d",
+	LabelMessage: "Message", LabelActor: "Actor", LabelOrganisation: "Organisation", LabelProject: "Project",
+	LabelTicket: "Ticket", LabelEvent: "Event", LabelNotification: "Notification", LabelState: "State",
+	LabelLastEvent: "Last event", StateUnread: "unread", StateRead: "read", UTC: "UTC",
+	UpDownKey: "up/down", HighlightHelp: "highlight", SelectHelp: "select", OpenHelp: "open inbox", DetailsHelp: "details",
+	PageKey: "[/]", PageHelp: "page", PrevPageKey: "[", PrevPageHelp: "prev page", NextPageKey: "]", NextPageHelp: "next page", RefreshKey: "R", RefreshHelp: "refresh", RetryHelp: "retry",
+	PageUpDownKey: "pgup/pgdn", ScrollHelp: "scroll", MoveHelp: "move", CloseHelp: "close",
+	OrganisationsHelp: "organisations", InboxHelp: "inbox",
 }

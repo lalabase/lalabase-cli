@@ -46,7 +46,7 @@ func TestResizePreservesRootState(t *testing.T) {
 		t.Fatal("shell started work")
 	}
 	m.focus, m.mode, m.widthMethod = view.Object, TextEntry, ansi.GraphemeWidth
-	m.content = presentation("kept", "list sentinel", "object sentinel")
+	m.shell = [3]string{"kept", "list sentinel", "object sentinel"}
 	want := m
 	for _, width := range []int{120, 119, 80, 79, 23, 0, 120} {
 		var cmd tea.Cmd

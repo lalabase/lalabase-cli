@@ -11,8 +11,16 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
+// where is the place of the supervisor's fatal error. The waiters of a
+// shared read are released by the deferred landing before the panic reaches
+// the supervisor's recovery, so the record may come a moment after them.
 func where(t *testing.T, s *worker.Supervisor) string {
 	t.Helper()
+	select {
+	case <-s.Failed():
+	case <-time.After(2 * time.Second):
+		t.Fatalf("no fatal error: %v", s.Err())
+	}
 	var fatal *worker.FatalError
 	if !errors.As(s.Err(), &fatal) {
 		t.Fatalf("no fatal error: %v", s.Err())

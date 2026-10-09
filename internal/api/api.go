@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/url"
 	"regexp"
 	"slices"
@@ -188,6 +190,52 @@ func DecodeNotifications(ans transport.Answer) (NotificationPage, transport.Answ
 		return NotificationPage{}, ans
 	}
 	return page, ans
+}
+
+// CheckNotificationPage checks what the spec cannot say about a page: the
+// numbers the paging divides by are above zero, no total or count is
+// negative, the page holds no more rows than its size or its total, every
+// row and every count has an id, and no row's id comes twice (it would be
+// selected twice). Each one is a protocol error, never a page that looks
+// fine with a zero in it.
+func CheckNotificationPage(p NotificationPage) error {
+	m := p.Meta
+	switch {
+	case m.Page <= 0:
+		return errors.New("list_notifications: meta.page is not above zero")
+	case m.PerPage <= 0:
+		return errors.New("list_notifications: meta.per_page is not above zero")
+	case m.Total < 0:
+		return errors.New("list_notifications: meta.total is negative")
+	case m.UnreadTotal < 0:
+		return errors.New("list_notifications: meta.unread_total is negative")
+	case len(p.Data) > m.PerPage:
+		return errors.New("list_notifications: more rows than meta.per_page")
+	case len(p.Data) > m.Total:
+		return errors.New("list_notifications: more rows than meta.total")
+	}
+	for i, c := range m.ByOrganisation {
+		if c.ID == "" {
+			return fmt.Errorf("list_notifications: meta.by_organisation[%d] has no id", i)
+		}
+		if c.Unread < 0 {
+			return fmt.Errorf("list_notifications: meta.by_organisation[%d].unread is negative", i)
+		}
+	}
+	seen := map[string]bool{}
+	for i, row := range p.Data {
+		if row.ID == "" {
+			return fmt.Errorf("list_notifications: data[%d] has no id", i)
+		}
+		if row.Organisation.ID == "" {
+			return fmt.Errorf("list_notifications: data[%d] has no organisation id", i)
+		}
+		if seen[row.ID] {
+			return fmt.Errorf("list_notifications: data[%d] carries an id twice", i)
+		}
+		seen[row.ID] = true
+	}
+	return nil
 }
 
 var MarkReadSpec = Spec{

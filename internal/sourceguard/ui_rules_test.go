@@ -46,8 +46,8 @@ func TestUIEntryRequiresProtectedRoot(t *testing.T) {
 	imports := `package main; import shell "github.com/gboyke/lalabase-cli/internal/ui"; import "github.com/gboyke/lalabase-cli/internal/inbox"; `
 	for _, file := range []string{"main.go", "main_linux.go", "main_darwin.go"} {
 		for _, code := range []string{
-			`func run(){ shell.Run(ctx, in, out, env, inbox.New()) }`,
-			`func run(){ model := inbox.New(); shell.Run(ctx, in, out, env, model) }`,
+			`func run(){ shell.Run(ctx, in, out, env, inbox.New(), sup) }`,
+			`func run(){ model := inbox.New(); shell.Run(ctx, in, out, env, model, sup) }`,
 			`var start = shell.Run`,
 		} {
 			if got := inspectUI(map[string]string{"cmd/lalabase/" + file: imports + code}); len(got) == 0 {
@@ -56,13 +56,13 @@ func TestUIEntryRequiresProtectedRoot(t *testing.T) {
 		}
 	}
 	for _, constructor := range []string{`shell.New()`, `shell.NewWithContent("a", "b", "c")`} {
-		if got := inspectUI(map[string]string{"cmd/lalabase/main.go": imports + `func run(){ shell.Run(ctx, in, out, env, ` + constructor + `) }`}); len(got) != 0 {
+		if got := inspectUI(map[string]string{"cmd/lalabase/main.go": imports + `func run(){ shell.Run(ctx, in, out, env, ` + constructor + `, sup) }`}); len(got) != 0 {
 			t.Errorf("protected root rejected: %v", got)
 		}
 	}
 	// PTY tests intentionally decorate the root to inject faults. Runtime
 	// callers must use a protected root constructor directly.
-	if got := inspectUI(map[string]string{"cmd/lalabase/terminal_test.go": imports + `func test(){ shell.Run(ctx, in, out, env, faultModel{}) }`}); len(got) != 0 {
+	if got := inspectUI(map[string]string{"cmd/lalabase/terminal_test.go": imports + `func test(){ shell.Run(ctx, in, out, env, faultModel{}, sup) }`}); len(got) != 0 {
 		t.Fatal(got)
 	}
 }
