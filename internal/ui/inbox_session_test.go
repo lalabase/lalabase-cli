@@ -227,10 +227,17 @@ func TestSelectionIsByIDAcrossReorderAndResize(t *testing.T) {
 	if h.m.screen().List.Cursor != 22 {
 		t.Fatalf("cursor %d", h.m.screen().List.Cursor)
 	}
+	reads := len(h.f.inboxCalls())
 	for _, width := range []int{79, 80, 119, 120, 79} {
-		h.feed(tea.WindowSizeMsg{Width: width, Height: 24})
+		if cmds := h.feed(tea.WindowSizeMsg{Width: width, Height: 24}); len(cmds) != 0 {
+			t.Fatalf("resize to %d issued a command", width)
+		}
+		h.m.View()
 		if a.active.page != 1 || a.active.selected != third || a.active.opened != third || h.m.focus != view.Object {
 			t.Fatalf("resize to %d lost state", width)
+		}
+		if len(h.f.inboxCalls()) != reads {
+			t.Fatalf("resize to %d asked the server", width)
 		}
 		if got := ansi.Strip(h.m.View().Content); !strings.Contains(got, "Message 0003") {
 			t.Fatalf("resize to %d lost the details:\n%s", width, got)
@@ -443,12 +450,16 @@ func TestALateCopyOfARemovalLeavesNewerDataAlone(t *testing.T) {
 	if r1.Waiter == a.active.waiterFor(a) {
 		inboxResult, copyResult = r1, r2
 	}
+	key := a.active.key
+	epochBefore := a.scope.Begin(gateway.Inbox, key, 0).Epoch
 	h.feed(inboxResult)
 	if len(a.active.rows) != 0 || a.countOf("").known || h.m.screen().List.Notice.String() != "Not found or no longer accessible." {
 		t.Fatal("the removal was not applied")
 	}
-	key := a.active.key
-	epoch := a.scope.Begin(gateway.Inbox, key, 0).Epoch // after the removal's invalidation
+	epoch := a.scope.Begin(gateway.Inbox, key, 0).Epoch
+	if epoch != epochBefore+1 {
+		t.Fatalf("the removal moved the epoch from %d to %d: invalidated more than once", epochBefore, epoch)
+	}
 	// R is held back while the other consumer's result is still out; a
 	// return to the inbox reads it anew, under the new epoch.
 	if cmd := h.press("R"); cmd != nil {
