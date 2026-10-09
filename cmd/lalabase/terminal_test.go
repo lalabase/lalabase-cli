@@ -643,7 +643,11 @@ func TestPTYResizePreservesFocus(t *testing.T) {
 		if width == 79 {
 			marker = "Organisation > List > Object"
 		}
-		if err := c.until(fmt.Sprintf("resize to %d", width), readyLimit, func() bool { return strings.Contains(c.bytes()[offset:], marker) }); err != nil {
+		// Read the screen, not the byte stream: the renderer writes only
+		// the cells that changed, so a marker can arrive in fragments
+		// (" > List > Object" after an "Organisation" that was already
+		// there), and whether it does depends on the frames before.
+		if err := c.until(fmt.Sprintf("resize to %d", width), readyLimit, func() bool { return c.screenShows(width, marker) }); err != nil {
 			t.Fatalf("%v: %q", err, c.bytes()[offset:])
 		}
 	}
