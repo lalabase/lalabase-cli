@@ -22,6 +22,7 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -329,7 +330,9 @@ func (q *Queue) attempt(ctx context.Context, t *ticket, job Job) transport.Answe
 // retryable: a read on any temporary failure; a write only when the server
 // cannot have acted on it.
 func retryable(kind Kind, ans transport.Answer) bool {
-	if ans.Class != transport.Temporary {
+	// A 401 is never tried again, whatever became of its body (a broken one
+	// is "temporary" by class): the token is gone.
+	if ans.Class != transport.Temporary || ans.Status == http.StatusUnauthorized {
 		return false
 	}
 	if kind == Read {

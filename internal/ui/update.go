@@ -71,6 +71,12 @@ func (m Model) key(key tea.KeyPressMsg) (Model, tea.Cmd) {
 	if action.Kind == Interrupt {
 		return m, tea.Interrupt
 	}
+	if a := m.app; a != nil && a.revoked() {
+		// The mailbox knows the 401 before its wake-up reached the model: no
+		// key may read the cache or ask the server any more.
+		m.expire()
+		return m, nil
+	}
 	if m.small() || !m.allowed()[action.Kind] {
 		return m, nil
 	}
@@ -140,7 +146,10 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 			}
 		case view.Object:
 			if v != nil {
-				v.detailOffset = max(0, v.detailOffset+delta*max(1, view.Capacity(m.objectColumn(), g)))
+				c := m.objectColumn()
+				capacity := max(1, view.Capacity(c, g))
+				top := max(0, view.Extent(c, g, view.Object, m.widthMethod)-capacity)
+				v.detailOffset = max(0, min(top, v.detailOffset+delta*capacity))
 			}
 		}
 	case OpenList:

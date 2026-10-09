@@ -120,6 +120,16 @@ func TestPTYInboxFlow(t *testing.T) {
 			c.expect(t, "the directory and the counters", width, "All organisations", "Nordlicht GmbH", "Südwind AG", "33", "30")
 			c.act(t, keyDown, width, "> Nordlicht GmbH")
 			c.act(t, keyEnter, width, "#1 Benachrichtigung", "Nordlicht GmbH | Inbox | page 1 of 2")
+			if width == 120 {
+				// Highlighting another organisation relabels nothing: the
+				// heading is the open inbox's, not the cursor's.
+				c.act(t, keyEsc, width, "esc inbox")
+				c.act(t, keyDown, width, "> Südwind AG")
+				if !c.screenShows(width, "Nordlicht GmbH | Inbox | page 1 of 2") {
+					t.Fatalf("the heading followed the cursor:\n%s", strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+				}
+				c.act(t, keyEsc, width, "esc organisations")
+			}
 			c.act(t, "]", width, "Could not reach the server") // clipped to the column at 80
 			c.act(t, "R", width, "#26 Benachrichtigung", "page 2 of 2")
 			c.act(t, keyEnter, width, "000000100026", "State: unread", "Last event: 2026-01-05 09:25:00 UTC", "esc close")

@@ -47,8 +47,8 @@ type stage struct {
 }
 
 // count is one unread counter: unknown until observed, and stamped with the
-// sequence of the request that observed it, so a newer observation wins
-// whatever order the answers arrive in.
+// request that observed it, so a newer request's observation wins whatever
+// order the answers arrive in.
 type count struct {
 	known bool
 	value int
@@ -63,39 +63,14 @@ const (
 	forInbox
 )
 
-// op is one logical read in flight, keyed by its share key: its sequence,
-// and its waiters (an additional consumer joins the operation and its
-// sequence). When every waiter was canceled and a new read of the same
-// data is asked for, the read is issued after the canceled result arrived,
-// so a joined old request is never taken for newly issued work.
-type op struct {
-	key     cache.Key
-	share   string
-	seq     uint64
-	waiters map[gateway.Waiter]*waiter
-	reissue *issue
-}
-
+// waiter is one consumer of a read in flight: its ticket, how to cancel it,
+// and what it was issued for. The queue shares the request between the
+// waiters of one key; the model does not need to.
 type waiter struct {
 	ticket   gateway.Ticket
 	cancel   context.CancelFunc
 	canceled bool
 	purpose  purpose
-}
-
-type issue struct {
-	area    gateway.Area
-	key     cache.Key
-	purpose purpose
-}
-
-func (o *op) allCanceled() bool {
-	for _, w := range o.waiters {
-		if !w.canceled {
-			return false
-		}
-	}
-	return true
 }
 
 // position is where the person was in an organisation's inbox: remembered
@@ -107,7 +82,10 @@ type position struct {
 
 // inboxView is the active inbox: one organisation (or all), one page.
 type inboxView struct {
-	org            string // "" for all organisations
+	org string // "" for all organisations
+	// name is the organisation's name when the inbox was opened: the
+	// heading keeps it when the directory no longer lists the organisation.
+	name           string
 	page           int
 	key            cache.Key
 	rows           []api.Notification
@@ -120,10 +98,8 @@ type inboxView struct {
 	cached, stale        bool
 	err                  present.Inline
 	loadedAt             time.Time
-	// appliedSeq is the sequence of the last result applied to this view: a
-	// late copy of an older result changes nothing.
-	appliedSeq uint64
-	// corrected: the one page correction after a shrink was done.
+	// corrected: the one page correction after a shrink was done; an
+	// explicit R frees it again.
 	corrected bool
 }
 
@@ -171,13 +147,15 @@ type app struct {
 	directory []api.Ref
 	counters  map[string]count
 	global    count
-	// countersSeq is the sequence of the last result that settled the
-	// counters step.
+	// countersSeq is the request that settled the counters step last.
 	countersSeq uint64
 
-	seq     uint64
-	ops     map[string]*op
-	waiters map[gateway.Waiter]*op
+	waiters map[gateway.Waiter]*waiter
+	// filed is, per key, the newest request whose answer was filed in the
+	// cache: an older request's answer that arrives later is not filed
+	// over it. The scope orders by generation and epoch; within one epoch
+	// the requests are ordered by their flight.
+	filed map[cache.Key]uint64
 
 	// highlight is the id of the organisation the cursor is on in the
 	// chooser; "" is the entry for all organisations.
@@ -204,7 +182,7 @@ func (a *app) reset() {
 	a.me, a.server, a.report = api.Me{}, transport.ServerInfo{}, nil
 	a.ns, a.scope, a.store = cache.Namespace{}, nil, nil
 	a.directory, a.counters, a.global, a.countersSeq = nil, map[string]count{}, count{}, 0
-	a.ops, a.waiters = map[string]*op{}, map[gateway.Waiter]*op{}
+	a.waiters, a.filed = map[gateway.Waiter]*waiter{}, map[cache.Key]uint64{}
 	a.highlight, a.active, a.remembered = "", nil, map[string]position{}
 	a.pause = time.Time{}
 }
@@ -217,7 +195,7 @@ func (a *app) wait() tea.Cmd {
 }
 
 // revoked is the durable state of the mailbox: checked before any result
-// is acted on.
+// is acted on and before any key does anything.
 func (a *app) revoked() bool {
 	return a.deps.Events != nil && a.deps.Events.State().Revoked
 }

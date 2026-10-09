@@ -90,6 +90,20 @@ func Capacity(c present.Column, g Geometry) int {
 	return max(1, body/rowHeight(c, body))
 }
 
+// Extent is what a column holds: its rows, or the lines its text wraps
+// into at the pane's width. More than Capacity means there is something
+// to scroll to.
+func Extent(c present.Column, g Geometry, which Pane, method ansi.Method) int {
+	if c.Rows != nil {
+		return len(c.Rows)
+	}
+	width := ColumnWidth(g, which)
+	if width <= 0 {
+		return 0
+	}
+	return len(wrapBody(strings.ReplaceAll(c.Text.String(), "\t", "    "), width, method))
+}
+
 // compactBelow is the body height below which rows show their first line
 // only: on a short terminal two lines per row leave too few rows.
 const compactBelow = 8

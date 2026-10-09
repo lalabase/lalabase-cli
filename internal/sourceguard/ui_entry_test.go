@@ -17,7 +17,7 @@ func inspectUIEntry(name string, file *ast.File, aliases map[string]string) []st
 	allowed := map[ast.Expr]bool{}
 	ast.Inspect(file, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
-		if !ok || !fromUI(call.Fun, "Run") || len(call.Args) != 5 {
+		if !ok || !fromUI(call.Fun, "Run") || len(call.Args) != 6 {
 			return true
 		}
 		root, ok := call.Args[4].(*ast.CallExpr)

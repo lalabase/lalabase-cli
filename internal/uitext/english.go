@@ -104,6 +104,10 @@ const (
 	DetailsHelp
 	PageKey
 	PageHelp
+	PrevPageKey
+	PrevPageHelp
+	NextPageKey
+	NextPageHelp
 	RefreshKey
 	RefreshHelp
 	RetryHelp
@@ -168,7 +172,7 @@ var english = map[ID]string{
 	LabelTicket: "Ticket", LabelEvent: "Event", LabelNotification: "Notification", LabelState: "State",
 	LabelLastEvent: "Last event", StateUnread: "unread", StateRead: "read", UTC: "UTC",
 	UpDownKey: "up/down", HighlightHelp: "highlight", SelectHelp: "select", OpenHelp: "open inbox", DetailsHelp: "details",
-	PageKey: "[/]", PageHelp: "page", RefreshKey: "R", RefreshHelp: "refresh", RetryHelp: "retry",
+	PageKey: "[/]", PageHelp: "page", PrevPageKey: "[", PrevPageHelp: "prev page", NextPageKey: "]", NextPageHelp: "next page", RefreshKey: "R", RefreshHelp: "refresh", RetryHelp: "retry",
 	PageUpDownKey: "pgup/pgdn", ScrollHelp: "scroll", MoveHelp: "move", CloseHelp: "close",
 	OrganisationsHelp: "organisations", InboxHelp: "inbox",
 }

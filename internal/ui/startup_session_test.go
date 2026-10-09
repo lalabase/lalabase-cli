@@ -363,7 +363,7 @@ func TestA401EndsTheSessionForGood(t *testing.T) {
 		t.Helper()
 		a := h.m.app
 		if !a.expired || a.scope != nil || a.store != nil || a.report != nil || a.directory != nil || len(a.counters) != 0 ||
-			a.global.known || a.active != nil || len(a.remembered) != 0 || len(a.ops) != 0 || len(a.waiters) != 0 || a.me.User.ID != "" {
+			a.global.known || a.active != nil || len(a.remembered) != 0 || len(a.waiters) != 0 || a.me.User.ID != "" {
 			t.Fatalf("not cleared: %+v", a)
 		}
 		s := h.m.screen()

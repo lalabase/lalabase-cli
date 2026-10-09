@@ -386,26 +386,26 @@ func TestTerminalChild(t *testing.T) {
 	}
 	if scenario == "resize" {
 		// The shell's geometry alone, as C1a tested it.
-		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, _ *worker.Supervisor) error {
-			return ui.Run(ctx, in, out, environment, ui.New())
+		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, sup *worker.Supervisor) error {
+			return ui.Run(ctx, in, out, environment, ui.New(), sup)
 		}
 	}
 	if scenario == "panic-update" || scenario == "panic-view" || scenario == "hang" {
-		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, _ *worker.Supervisor) error {
-			return ui.Run(ctx, in, out, environment, faultModel{Model: ui.New(), scenario: scenario})
+		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, sup *worker.Supervisor) error {
+			return ui.Run(ctx, in, out, environment, faultModel{Model: ui.New(), scenario: scenario}, sup)
 		}
 	}
 	if _, ok := fatalScenarios[scenario]; ok || scenario == "worker-hang" {
 		env.runUI = fatalRunner(scenario)
 	}
 	if scenario == "hostile" {
-		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, _ *worker.Supervisor) error {
-			return ui.Run(ctx, in, out, environment, ui.NewWithContent("SAFE_INLINE"+terminalHostile, "No data loaded\nSAFE_LIST"+terminalHostile, "SAFE_OBJECT"+terminalHostile))
+		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, sup *worker.Supervisor) error {
+			return ui.Run(ctx, in, out, environment, ui.NewWithContent("SAFE_INLINE"+terminalHostile, "No data loaded\nSAFE_LIST"+terminalHostile, "SAFE_OBJECT"+terminalHostile), sup)
 		}
 	}
 	if scenario == "environment" {
-		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, _ *worker.Supervisor) error {
-			return ui.Run(ctx, in, out, environment, environmentModel{Model: ui.New()})
+		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, sup *worker.Supervisor) error {
+			return ui.Run(ctx, in, out, environment, environmentModel{Model: ui.New()}, sup)
 		}
 	}
 	code := runWith(nil, env)
@@ -487,8 +487,15 @@ func TestPTYRestoresAfterPanic(t *testing.T) {
 				t.Fatal(err)
 			}
 			c.finish(t, 1)
-			if !strings.Contains(c.bytes(), "C1a ") {
-				t.Fatal("fault did not reach panic handler")
+			// Round 1 of #10: the panic is recovered under the supervisor,
+			// its value (foreign text, perhaps) never reaches the terminal;
+			// the one fixed line does.
+			out := c.bytes()
+			if strings.Contains(out, "C1a ") || strings.Contains(out, "Caught panic") || strings.Contains(out, "goroutine ") {
+				t.Fatalf("the panic reached the terminal:\n%q", out)
+			}
+			if !strings.Contains(out, "lalabase: terminal interface failed.") {
+				t.Fatal("the safe text is missing")
 			}
 		})
 	}

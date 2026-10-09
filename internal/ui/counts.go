@@ -73,12 +73,13 @@ func (a *app) applyCounters(seq uint64, key cache.Key, page api.NotificationPage
 	}
 }
 
-// forgetCounters makes the counter of a removed resource unknown.
+// forgetCounters makes the counter of a removed resource unknown. The
+// removal is not older than any answer filed for its resource (checked
+// before it is received), so the global count needs no order of its own;
+// an organisation's count does, a global snapshot may have set it since.
 func (a *app) forgetCounters(seq uint64, key cache.Key) {
 	if key.Global {
-		if seq > a.global.seq {
-			a.global = count{seq: seq}
-		}
+		a.global = count{seq: seq}
 		return
 	}
 	a.setCount(key.Organisation, false, 0, seq)

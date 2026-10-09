@@ -27,6 +27,17 @@ func placeholder() [3]string {
 	return [3]string{uitext.Inline(uitext.NotLoaded).String(), uitext.Body(uitext.NoData).String(), uitext.Body(uitext.NoItem).String()}
 }
 
+// textOr is a foreign one-line value, cleaned, or the fallback when
+// nothing readable is left of it: a name of spaces or of invisible
+// characters alone is no name.
+func textOr(raw string, fallback uitext.ID) string {
+	text := present.NewInline(raw).String()
+	if strings.TrimSpace(text) == "" {
+		return uitext.Inline(fallback).String()
+	}
+	return text
+}
+
 // entry is one row of the chooser: all organisations, or one.
 type entry struct {
 	org  string
@@ -38,11 +49,7 @@ type entry struct {
 func (a *app) entries() []entry {
 	out := []entry{{org: "", name: uitext.Inline(uitext.AllOrganisations).String()}}
 	for _, o := range a.directory {
-		name := o.Name
-		if strings.TrimSpace(name) == "" {
-			name = uitext.Inline(uitext.UnnamedOrganisation).String()
-		}
-		out = append(out, entry{org: o.ID, name: name})
+		out = append(out, entry{org: o.ID, name: textOr(o.Name, uitext.UnnamedOrganisation)})
 	}
 	return out
 }
@@ -79,10 +86,6 @@ func (m Model) identity() present.Inline {
 	case a.expired:
 		return uitext.Inline(uitext.SessionExpired)
 	case a.steps[stepMe].state == ready:
-		name := a.me.User.DisplayName
-		if strings.TrimSpace(name) == "" {
-			name = uitext.Inline(uitext.UnknownUser).String()
-		}
 		write := uitext.CanWriteUnknown
 		if a.me.Token.ReadOnly != nil {
 			write = uitext.CanWriteYes
@@ -90,13 +93,16 @@ func (m Model) identity() present.Inline {
 				write = uitext.CanWriteNo
 			}
 		}
-		return present.NewInline(name + " | " + uitext.Inline(write).String())
+		return present.NewInline(textOr(a.me.User.DisplayName, uitext.UnknownUser) + " | " + uitext.Inline(write).String())
 	case a.steps[stepMe].state == failed:
 		return a.steps[stepMe].err
 	}
 	return uitext.Inline(uitext.VerifyingIdentity)
 }
 
+// context names where the person is: the active inbox's organisation (by
+// the name it had when it was opened, when the directory lost it), the
+// section and the page.
 func (m Model) context() present.Inline {
 	a := m.app
 	v := a.active
@@ -104,10 +110,10 @@ func (m Model) context() present.Inline {
 		return uitext.Inline(uitext.Organisations)
 	}
 	name := uitext.Inline(uitext.AllOrganisations).String()
-	if o := a.organisation(v.org); o != nil {
-		name = o.Name
-		if strings.TrimSpace(name) == "" {
-			name = uitext.Inline(uitext.UnnamedOrganisation).String()
+	if v.org != "" {
+		name = textOr(v.name, uitext.UnnamedOrganisation)
+		if o := a.organisation(v.org); o != nil {
+			name = textOr(o.Name, uitext.UnnamedOrganisation)
 		}
 	}
 	text := name + " | " + uitext.Inline(uitext.Inbox).String()
@@ -241,39 +247,27 @@ func rowSecondary(n api.Notification) present.Inline {
 	return present.NewInline(actorOf(n) + " | " + projectOf(n) + " | " + timeOf(n.LastEventAt, false))
 }
 
-func messageOf(n api.Notification) string {
-	if strings.TrimSpace(n.Message) == "" {
-		return uitext.Inline(uitext.NoMessage).String()
-	}
-	return n.Message
-}
+func messageOf(n api.Notification) string { return textOr(n.Message, uitext.NoMessage) }
 
 func actorOf(n api.Notification) string {
-	if n.Actor == nil || strings.TrimSpace(n.Actor.Name) == "" {
+	if n.Actor == nil {
 		return uitext.Inline(uitext.UnknownActor).String()
 	}
-	return n.Actor.Name
+	return textOr(n.Actor.Name, uitext.UnknownActor)
 }
 
 func projectOf(n api.Notification) string {
-	switch {
-	case n.Project == nil:
+	if n.Project == nil {
 		return uitext.Inline(uitext.NoProject).String()
-	case strings.TrimSpace(n.Project.Name) == "":
-		return uitext.Inline(uitext.UnnamedProject).String()
 	}
-	return n.Project.Name
+	return textOr(n.Project.Name, uitext.UnnamedProject)
 }
 
 func ticketOf(n api.Notification) string {
 	if n.Ticket == nil {
 		return uitext.Inline(uitext.NoTicket).String()
 	}
-	title := n.Ticket.Title
-	if strings.TrimSpace(title) == "" {
-		title = uitext.Inline(uitext.UntitledTicket).String()
-	}
-	return uitext.Fill(uitext.TicketNumber, n.Ticket.Number).String() + " " + title
+	return uitext.Fill(uitext.TicketNumber, n.Ticket.Number).String() + " " + textOr(n.Ticket.Title, uitext.UntitledTicket)
 }
 
 // timeOf shows a server time in UTC: minutes in a row, seconds in the
@@ -311,15 +305,11 @@ func (m Model) objectColumn() present.Column {
 	if n.Read {
 		state = uitext.StateRead
 	}
-	org := n.Organisation.Name
-	if strings.TrimSpace(org) == "" {
-		org = uitext.Inline(uitext.UnnamedOrganisation).String()
-	}
 	lines := []string{
 		messageOf(n),
 		"",
 		label(uitext.LabelActor, actorOf(n)),
-		label(uitext.LabelOrganisation, org),
+		label(uitext.LabelOrganisation, textOr(n.Organisation.Name, uitext.UnnamedOrganisation)),
 		label(uitext.LabelProject, projectOf(n)),
 		label(uitext.LabelTicket, ticketOf(n)),
 		label(uitext.LabelEvent, n.EventType),

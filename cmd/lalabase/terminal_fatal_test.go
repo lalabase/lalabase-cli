@@ -107,7 +107,7 @@ func (m triggerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // where the fatal error was recorded once the terminal is restored.
 func fatalRunner(scenario string) func(context.Context, io.Reader, io.Writer, []string, *worker.Supervisor) error {
 	return func(ctx context.Context, in io.Reader, out io.Writer, environment []string, sup *worker.Supervisor) error {
-		err := ui.Run(ctx, in, out, environment, triggerModel{Model: ui.New(ui.WithSupervisor(sup)), trigger: fatalScenario(scenario, sup)})
+		err := ui.Run(ctx, in, out, environment, triggerModel{Model: ui.New(ui.WithSupervisor(sup)), trigger: fatalScenario(scenario, sup)}, sup)
 		var fatal *worker.FatalError
 		if errors.As(sup.Err(), &fatal) {
 			_, _ = fmt.Fprintf(os.Stdout, "C1B_FATAL=%s\n", fatal.Where)

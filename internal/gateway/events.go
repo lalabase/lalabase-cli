@@ -164,6 +164,11 @@ func (e *Events) Observe(run func(context.Context) transport.Answer) func(contex
 		return run
 	}
 	return func(ctx context.Context) transport.Answer {
+		if e.State().Revoked {
+			// The token is gone: nothing goes out any more, not even the
+			// queue's retry or a read issued before the model woke up.
+			return transport.Answer{Class: transport.Canceled, Message: "the session is revoked"}
+		}
 		ans := run(ctx)
 		if ans.Class == transport.Unauthenticated || ans.Status == http.StatusUnauthorized {
 			e.Revoke()

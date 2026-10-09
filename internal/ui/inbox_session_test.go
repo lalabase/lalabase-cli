@@ -58,29 +58,34 @@ func TestCountersFollowTheRequestSequence(t *testing.T) {
 			return pageAnswer(q.Page, q.PerPage, 8, 8, h.d.rows(orgA, 1, 5), global)
 		})
 	}
+	// The order of the requests is the order they were sent in (the
+	// queue's flight), the global one first here; the answers arrive in
+	// either order.
 	for _, globalFirst := range []bool{false, true} {
 		h := newHarness(t)
 		serve(h)
-		counters := h.startHolding() // the global read, sequence 1
-		inbox := h.choose(orgA)      // the filtered read, sequence 2
+		counters := h.startHolding()        // the global read
+		inbox := h.choose(orgA)             // the filtered read
+		globalMsgs := messages(t, counters) // sent first
+		inboxMsgs := messages(t, inbox)     // sent second
 		if globalFirst {
-			h.feed(messages(t, counters)...)
-			if c := h.m.app.countOf(orgA); !c.known || c.value != 5 || c.seq != 1 {
+			h.feed(globalMsgs...)
+			if c := h.m.app.countOf(orgA); !c.known || c.value != 5 {
 				t.Fatalf("global first, A: %+v", c)
 			}
-			h.feed(messages(t, inbox)...)
+			h.feed(inboxMsgs...)
 		} else {
-			h.feed(messages(t, inbox)...)
+			h.feed(inboxMsgs...)
 			if c := h.m.app.countOf(orgB); c.known {
 				t.Fatalf("filtered A touched B: %+v", c)
 			}
-			h.feed(messages(t, counters)...)
+			h.feed(globalMsgs...)
 		}
 		a := h.m.app
-		if c := a.countOf(orgA); !c.known || c.value != 7 || c.seq != 2 {
+		if c := a.countOf(orgA); !c.known || c.value != 7 {
 			t.Fatalf("global first %v, A: %+v", globalFirst, c)
 		}
-		if c := a.countOf(orgB); !c.known || c.value != 3 || c.seq != 1 {
+		if c := a.countOf(orgB); !c.known || c.value != 3 || c.seq >= a.countOf(orgA).seq {
 			t.Fatalf("global first %v, B: %+v", globalFirst, c)
 		}
 		if c := a.countOf(""); !c.known || c.value != 8 {
@@ -98,7 +103,7 @@ func TestCountersFollowTheRequestSequence(t *testing.T) {
 	if c := a.countOf(orgA); !c.known || c.value != 0 {
 		t.Fatalf("zero: %+v", c)
 	}
-	if c := a.countOf(orgB); c.known || c.seq != 1 {
+	if c := a.countOf(orgB); c.known || c.seq == 0 {
 		t.Fatalf("omitted B: %+v", c)
 	}
 	if got := h.m.screen().Chooser.Rows[2].Trailing.String(); got != "?" {
@@ -108,7 +113,7 @@ func TestCountersFollowTheRequestSequence(t *testing.T) {
 		return transport.Answer{Class: transport.NotFound, Status: 200, Sent: true, Message: "gone"}
 	})
 	h.drive(h.choose(orgA))
-	if c := a.countOf(orgA); c.known || c.seq != 2 {
+	if c := a.countOf(orgA); c.known || c.seq <= a.countOf(orgB).seq {
 		t.Fatalf("a removal left A known: %+v", c)
 	}
 	if got := h.m.screen().List.Notice.String(); got != "Not found or no longer accessible." {
@@ -430,12 +435,12 @@ func TestALateCopyOfARemovalLeavesNewerDataAlone(t *testing.T) {
 	counters := h.startHolding()
 	inbox := h.choose("") // joins the pending global read
 	a := h.m.app
-	if len(a.ops) != 1 {
-		t.Fatalf("%d operations", len(a.ops))
+	if len(a.waiters) != 2 {
+		t.Fatalf("%d waiters", len(a.waiters))
 	}
 	var share string
-	for k := range a.ops {
-		share = k
+	for _, w := range a.waiters {
+		share = w.ticket.ShareKey()
 	}
 	first := h.background(counters)
 	h.waitFor("the first waiter", func() bool { return h.q.Sharers(share) == 1 })
@@ -490,9 +495,9 @@ func TestALateCopyOfARemovalLeavesNewerDataAlone(t *testing.T) {
 // waiterFor is the waiter of the active view's pending read, for the test
 // above to tell the two results apart.
 func (v *inboxView) waiterFor(a *app) gateway.Waiter {
-	for w, o := range a.waiters {
-		if wt := o.waiters[w]; wt != nil && wt.purpose == forInbox && o.key == v.key {
-			return w
+	for id, w := range a.waiters {
+		if w.purpose == forInbox && w.ticket.Key == v.key {
+			return id
 		}
 	}
 	return 0
@@ -555,32 +560,35 @@ func TestRowsAndDetailsFallBackForMissingValues(t *testing.T) {
 }
 
 // Plan test 19: the help names exactly the keys that act, in every focus
-// and state: a key that acts is in the help, and every help entry has a
-// key that acts.
+// and state: a key that acts is in the help, and every help entry's own
+// key acts (for a pair, one of its two keys). Every press starts from a
+// fresh model in the state, so nothing of one press leaks into the next.
 func TestHelpNamesExactlyTheKeysThatAct(t *testing.T) {
 	keys := map[string]Action{"up": Up, "down": Down, "pgup": PageUp, "pgdown": PageDown, "[": PrevPage, "]": NextPage, "R": Refresh, "enter": OpenList, "esc": Back, "left": Left, "right": Right}
-	check := func(t *testing.T, h *harness, state string) {
+	acted := func(h *harness, key string) bool {
+		before := ansi.Strip(h.m.View().Content)
+		focus := h.m.focus
+		m, cmd := step(t, h.m, press(key))
+		h.m = m
+		return cmd != nil || ansi.Strip(h.m.View().Content) != before || h.m.focus != focus
+	}
+	check := func(t *testing.T, state string, build func() *harness) {
 		t.Helper()
+		h := build()
 		allowed := h.m.allowed()
 		help := helpText(h.m)
+		bindings := h.m.actions()
 		for key, action := range keys {
-			before := h.m
-			snapshot := ansi.Strip(h.m.View().Content)
-			calls := len(h.f.inboxCalls())
-			m, cmd := step(t, h.m, press(key))
-			acted := cmd != nil || ansi.Strip(m.View().Content) != snapshot || m.focus != before.focus
-			h.m = before
-			if acted && !allowed[action] {
-				t.Errorf("%s: %s acted but is not offered (%q)", state, key, help)
-			}
-			if acted && !strings.Contains(help, keyLabel(key)) {
-				t.Errorf("%s: %s acted but the help does not name it: %q", state, key, help)
-			}
-			if cmd != nil && len(h.f.inboxCalls()) > calls {
-				h.f.set(h.d.defaultInbox)
+			if acted(build(), key) {
+				if !allowed[action] {
+					t.Errorf("%s: %s acted but is not offered (%q)", state, key, help)
+				}
+				if !strings.Contains(help, keyLabel(key)) {
+					t.Errorf("%s: %s acted but the help does not name it: %q", state, key, help)
+				}
 			}
 		}
-		for _, b := range h.m.actions() {
+		for _, b := range bindings {
 			if b.kind == Quit || b.kind == Interrupt {
 				continue
 			}
@@ -589,56 +597,55 @@ func TestHelpNamesExactlyTheKeysThatAct(t *testing.T) {
 				if action != b.kind && pairs[b.kind] != action {
 					continue
 				}
-				before := h.m
-				snapshot := ansi.Strip(h.m.View().Content)
-				m, cmd := step(t, h.m, press(key))
-				if cmd != nil || ansi.Strip(m.View().Content) != snapshot || m.focus != before.focus {
+				if acted(build(), key) {
 					acts = true
 				}
-				h.m = before
 			}
 			if !acts {
 				t.Errorf("%s: the help offers %v but no key of it acts", state, b.kind)
 			}
 		}
 	}
-	h := newHarness(t)
-	h.m.width, h.m.height = 20, 5
-	check(t, h, "small")
-	h.m.width, h.m.height = 120, 24
-	check(t, h, "before /me")
-	h.f.me = func() (api.Me, transport.Answer) { return api.Me{}, failing(transport.Refused, 200) }
-	h.start()
-	check(t, h, "/me failed")
-	h.f.me = func() (api.Me, transport.Answer) {
-		return h.d.me, transport.Answer{Class: transport.Object, Status: 200, Sent: true}
+	started := func() *harness {
+		h := newHarness(t)
+		h.m.width, h.m.height = 120, 24
+		h.start()
+		return h
 	}
-	h.drive(h.press("R"))
-	h.m.focus = view.Navigation
-	check(t, h, "chooser")
-	h.drive(h.choose(orgA))
-	check(t, h, "inbox page 1")
-	h.drive(h.press("]"))
-	check(t, h, "inbox page 2")
-	h.m.focus = view.Object
-	check(t, h, "object without details")
-	h.m.focus = view.List
-	h.drive(h.press("enter"))
-	check(t, h, "details")
-	h.m.focus = view.Navigation
-	check(t, h, "chooser with an inbox")
-	h.m.width = 80
-	check(t, h, "two columns")
-	h.m.width = 79
-	check(t, h, "one column")
-	h.m.width = 120
-	h.m.focus = view.List
-	held := h.press("R")
-	check(t, h, "inbox loading")
-	h.feed(messages(t, held)...)
-	h.events.Revoke()
-	h.feed(gateway.Wake{Session: h.events.Session()})
-	check(t, h, "expired")
+	check(t, "small", func() *harness { h := newHarness(t); h.m.width, h.m.height = 20, 5; return h })
+	check(t, "before /me", func() *harness { return newHarness(t) })
+	check(t, "/me failed", func() *harness {
+		h := newHarness(t)
+		h.f.me = func() (api.Me, transport.Answer) { return api.Me{}, failing(transport.Refused, 200) }
+		h.start()
+		return h
+	})
+	check(t, "chooser", func() *harness { h := started(); h.m.focus = view.Navigation; return h })
+	check(t, "inbox page 1", func() *harness { h := started(); h.drive(h.choose(orgA)); return h })
+	check(t, "inbox page 2", func() *harness { h := started(); h.drive(h.choose(orgA)); h.drive(h.press("]")); return h })
+	check(t, "object without details", func() *harness { h := started(); h.drive(h.choose(orgA)); h.m.focus = view.Object; return h })
+	check(t, "details", func() *harness { h := started(); h.drive(h.choose(orgA)); h.drive(h.press("enter")); return h })
+	check(t, "long details", func() *harness {
+		h := started()
+		h.f.set(func(q api.NotificationQuery) transport.Answer {
+			rows := h.d.rows(orgA, 1, 2)
+			rows[0].Message = strings.Repeat("A long message that wraps onto many lines of the details pane. ", 40)
+			return pageAnswer(q.Page, q.PerPage, 2, 2, rows, map[string]int{orgA: 2})
+		})
+		h.drive(h.choose(orgA))
+		h.drive(h.press("enter"))
+		return h
+	})
+	check(t, "chooser with an inbox", func() *harness { h := started(); h.drive(h.choose(orgA)); h.m.focus = view.Navigation; return h })
+	check(t, "two columns", func() *harness { h := started(); h.drive(h.choose(orgA)); h.m.width = 80; return h })
+	check(t, "one column", func() *harness { h := started(); h.drive(h.choose(orgA)); h.m.width = 79; return h })
+	check(t, "inbox loading", func() *harness { h := started(); h.drive(h.choose(orgA)); h.press("R"); return h })
+	check(t, "expired", func() *harness {
+		h := started()
+		h.events.Revoke()
+		h.feed(gateway.Wake{Session: h.events.Session()})
+		return h
+	})
 }
 
 func keyLabel(key string) string {
@@ -647,8 +654,10 @@ func keyLabel(key string) string {
 		return "up/down"
 	case "pgup", "pgdown":
 		return "pgup/pgdn"
-	case "[", "]":
-		return "[/]"
+	case "[":
+		return "[ prev page"
+	case "]":
+		return "] next page"
 	case "left", "right":
 		return "left/right"
 	}

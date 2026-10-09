@@ -106,16 +106,30 @@ type binding struct {
 }
 
 // pairs says which second key a binding's help covers: "up/down" is one
-// entry of the help, two keys of the dispatch.
-var pairs = map[Action]Action{Up: Down, PageUp: PageDown, PrevPage: NextPage, Left: Right}
+// entry of the help, two keys of the dispatch; at an end of the list one of
+// the two does nothing, the other still moves.
+var pairs = map[Action]Action{Up: Down, PageUp: PageDown, Left: Right}
 
-// small is the terminal too small for anything but leaving.
-func (m Model) small() bool { return m.width < 24 || m.height < 8 }
+// tooSmall is the terminal below the size anything can be shown in.
+func (m Model) tooSmall() bool { return m.width < 24 || m.height < 8 }
+
+// small is the terminal too small for anything but leaving: by its size,
+// or because the help of the state would leave no line for the body.
+func (m Model) small() bool {
+	if m.tooSmall() {
+		return true
+	}
+	return len(view.HelpLines(toHelp(m.bindings(false)), m.width, m.widthMethod)) > m.height-3
+}
 
 // actions are the bindings that act in the current state.
-func (m Model) actions() []binding {
+func (m Model) actions() []binding { return m.bindings(m.small()) }
+
+// bindings are the actions of the state, with or without the room for
+// them (small).
+func (m Model) bindings(small bool) []binding {
 	out := []binding{{Quit, uitext.QuitKey, uitext.QuitHelp}, {Interrupt, uitext.InterruptKey, uitext.InterruptHelp}}
-	if m.small() {
+	if small {
 		return out
 	}
 	a := m.app
@@ -149,17 +163,26 @@ func (m Model) actions() []binding {
 		}
 	case view.List:
 		if v != nil && len(v.rows) > 1 {
-			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
+			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp})
+			if m.overflows(out, m.listColumn(), view.List) {
+				out = append(out, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
+			}
 		}
 		if v != nil && v.selected != "" {
 			out = append(out, binding{OpenList, uitext.EnterKey, uitext.DetailsHelp})
 		}
-		if v != nil && a.pagingOn() && !v.loading && (v.page > 1 || (v.known && v.page < lastPage(v.total, v.perPage))) {
-			out = append(out, binding{PrevPage, uitext.PageKey, uitext.PageHelp})
+		// The page keys one by one: each only where its page exists.
+		if v != nil && a.pagingOn() && !v.loading {
+			if v.page > 1 {
+				out = append(out, binding{PrevPage, uitext.PrevPageKey, uitext.PrevPageHelp})
+			}
+			if v.known && v.page < lastPage(v.total, v.perPage) {
+				out = append(out, binding{NextPage, uitext.NextPageKey, uitext.NextPageHelp})
+			}
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.OrganisationsHelp})
 	case view.Object:
-		if v != nil && v.opened != "" {
+		if v != nil && v.opened != "" && m.overflows(out, m.objectColumn(), view.Object) {
 			out = append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.CloseHelp})
@@ -174,6 +197,14 @@ func (m Model) actions() []binding {
 	return append(out, binding{Left, uitext.FocusKey, uitext.FocusHelp})
 }
 
+// overflows reports whether a column holds more than its pane shows, in
+// the geometry the bindings so far leave; a scroll binding is offered only
+// then.
+func (m Model) overflows(sofar []binding, c present.Column, which view.Pane) bool {
+	g := layoutWith(m.width, m.height, len(view.HelpLines(toHelp(sofar), m.width, m.widthMethod)))
+	return view.Extent(c, g, which, m.widthMethod) > view.Capacity(c, g)
+}
+
 // allowed is the set of actions the bindings cover.
 func (m Model) allowed() map[Action]bool {
 	set := map[Action]bool{}
@@ -183,22 +214,16 @@ func (m Model) allowed() map[Action]bool {
 			set[second] = true
 		}
 	}
-	// The page keys share one help entry; each direction acts only at its
-	// own side of the boundary.
-	if a := m.app; a != nil && a.active != nil && set[PrevPage] {
-		v := a.active
-		set[PrevPage] = v.page > 1
-		set[NextPage] = v.known && v.page < lastPage(v.total, v.perPage)
-	}
 	return set
 }
 
-// help is the help line's content: the bindings, in order.
-func (m Model) help() []present.KeyHelp {
-	bindings := m.actions()
+func toHelp(bindings []binding) []present.KeyHelp {
 	out := make([]present.KeyHelp, 0, len(bindings))
 	for _, b := range bindings {
 		out = append(out, present.KeyHelp{Key: uitext.Inline(b.key), Help: uitext.Inline(b.help)})
 	}
 	return out
 }
+
+// help is the help line's content: the bindings, in order.
+func (m Model) help() []present.KeyHelp { return toHelp(m.actions()) }

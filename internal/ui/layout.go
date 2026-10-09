@@ -27,7 +27,10 @@ func layoutWith(width, height, helpLines int) view.Geometry {
 }
 
 // geometry is the frame of the current state: the help's lines are counted
-// first, so every active binding is shown.
+// first, so every active binding is shown; a terminal the help would not
+// leave a body line in is small, whatever its size.
 func (m Model) geometry() view.Geometry {
-	return layoutWith(m.width, m.height, len(view.HelpLines(m.help(), m.width, m.widthMethod)))
+	g := layoutWith(m.width, m.height, len(view.HelpLines(m.help(), m.width, m.widthMethod)))
+	g.Small = g.Small || m.small()
+	return g
 }

@@ -178,11 +178,13 @@ type fakes struct {
 	initCall int
 	toolCall int
 	queries  []api.NotificationQuery
-	// gate, when set, holds the inbox source for queries of gateOrg; with
+	// gate, when set, holds the inbox source for queries of gateOrg (and of
+	// gatePage, when that is set); with
 	// ignoreCancel the source answers after the gate even when the request
 	// was canceled meanwhile (a server whose answer is already on its way).
 	gate         chan struct{}
 	gateOrg      string
+	gatePage     int
 	ignoreCancel bool
 }
 
@@ -216,11 +218,11 @@ func (f *fakes) ListTools(context.Context) ([]transport.Tool, transport.Answer) 
 
 func (f *fakes) NotificationsAnswer(ctx context.Context, q api.NotificationQuery) transport.Answer {
 	f.mu.Lock()
-	gate, gateOrg, ignoreCancel := f.gate, f.gateOrg, f.ignoreCancel
+	gate, gateOrg, gatePage, ignoreCancel := f.gate, f.gateOrg, f.gatePage, f.ignoreCancel
 	f.queries = append(f.queries, q)
 	answer := f.inbox
 	f.mu.Unlock()
-	if gate != nil && q.OrganisationID == gateOrg {
+	if gate != nil && q.OrganisationID == gateOrg && (gatePage == 0 || q.Page == gatePage) {
 		if ignoreCancel {
 			<-gate
 		} else {

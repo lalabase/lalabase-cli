@@ -74,7 +74,7 @@ func runInteractive(name string, env Env) int {
 				Events:  ev,
 				Profile: p.Name,
 				Server:  p.URL,
-			})))
+			})), sup)
 		}
 	}
 	sup := worker.New(ctx)

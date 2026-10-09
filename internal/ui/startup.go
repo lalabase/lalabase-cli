@@ -186,10 +186,8 @@ func (m *Model) expire() {
 			a.steps[i].cancel()
 		}
 	}
-	for _, o := range a.ops {
-		for _, w := range o.waiters {
-			w.cancel()
-		}
+	for _, w := range a.waiters {
+		w.cancel()
 	}
 	if a.scope != nil {
 		a.scope.EndSession(a.store)

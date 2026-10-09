@@ -14,37 +14,24 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
-// issue asks the gateway for one read, of the person's priority: a new
-// operation, or one more consumer of the operation already pending for the
-// same data. When that operation's waiters were all canceled, the read is
-// held back until the canceled result arrived (op.reissue).
+// issue asks the gateway for one read, of the person's priority, under a
+// ticket of its own. Two reads of the same data in flight share one
+// request in the queue; the result names the request (its flight), and the
+// flights order the requests of one epoch.
 func (a *app) issue(area gateway.Area, key cache.Key, p purpose) tea.Cmd {
 	if a.expired || a.scope == nil || a.deps.Gateway == nil {
 		return nil
 	}
 	t := a.scope.Begin(area, key, queue.User)
-	share := t.ShareKey()
-	o := a.ops[share]
-	if o != nil && o.allCanceled() {
-		a.scope.Leave(t.Waiter)
-		o.reissue = &issue{area: area, key: key, purpose: p}
-		return nil
-	}
-	if o == nil {
-		a.seq++
-		o = &op{key: key, share: share, seq: a.seq, waiters: map[gateway.Waiter]*waiter{}}
-		a.ops[share] = o
-	}
 	ctx, cancel := context.WithCancel(a.base)
-	o.waiters[t.Waiter] = &waiter{ticket: t, cancel: cancel, purpose: p}
-	a.waiters[t.Waiter] = o
+	a.waiters[t.Waiter] = &waiter{ticket: t, cancel: cancel, purpose: p}
 	return a.deps.Gateway.Inbox(ctx, t)
 }
 
-// pending reports a read of key still in flight for somebody.
+// pending reports a read of key still out for somebody who waits for it.
 func (a *app) pending(key cache.Key) bool {
-	for _, o := range a.ops {
-		if o.key == key && !o.allCanceled() {
+	for _, w := range a.waiters {
+		if !w.canceled && w.ticket.Key == key {
 			return true
 		}
 	}
@@ -52,45 +39,44 @@ func (a *app) pending(key cache.Key) bool {
 }
 
 // moveInbox moves the inbox selection on and cancels the waiters it leaves
-// behind; they stay pending until their canceled result arrives.
+// behind; they stay known until their canceled result arrives.
 func (a *app) moveInbox() {
 	if a.scope == nil {
 		return
 	}
-	for _, w := range a.scope.Move(gateway.Inbox) {
-		if o := a.waiters[w]; o != nil {
-			if wt := o.waiters[w]; wt != nil && !wt.canceled {
-				wt.canceled = true
-				wt.cancel()
-			}
+	for _, id := range a.scope.Move(gateway.Inbox) {
+		if w := a.waiters[id]; w != nil && !w.canceled {
+			w.canceled = true
+			w.cancel()
 		}
 	}
 }
 
 // receiveInbox is the one way an inbox result reaches the state: the
-// mailbox's revocation first, then the scope's acceptance, then the data.
+// mailbox's revocation first, then the order of requests, then the scope's
+// acceptance, then counters and view, for any consumer of the key.
 func (m Model) receiveInbox(r gateway.InboxResult) (Model, tea.Cmd) {
 	a := m.app
 	if a == nil || a.expired || a.scope == nil {
 		return m, nil
 	}
-	o := a.waiters[r.Waiter]
-	if o == nil {
+	w := a.waiters[r.Waiter]
+	if w == nil {
 		return m, nil
 	}
-	w := o.waiters[r.Waiter]
 	delete(a.waiters, r.Waiter)
-	delete(o.waiters, r.Waiter)
 	w.cancel()
-	var follow tea.Cmd
-	if len(o.waiters) == 0 {
-		delete(a.ops, o.share)
-		if o.reissue != nil {
-			follow = a.issue(o.reissue.area, o.reissue.key, o.reissue.purpose)
-		}
-	}
 	if a.revoked() {
 		m.expire()
+		return m, nil
+	}
+	seq, key := uint64(r.Flight), r.Key
+	removal := cache.Decide(r.Answer.Class, cache.Read) == cache.Remove
+	if seq < a.newestFiled(key, removal) {
+		// An older request than the newest filed for the key (for a
+		// removal: for the resource): its answer is not filed over the
+		// newer one. The waiter's ticket is used up.
+		a.scope.Leave(r.Waiter)
 		return m, nil
 	}
 	d, ok := a.scope.Receive(a.store, r, a.now())
@@ -99,36 +85,51 @@ func (m Model) receiveInbox(r gateway.InboxResult) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if !ok {
-		return m, follow
+		return m, nil
 	}
 	switch d {
 	case cache.Replace:
-		a.applyCounters(o.seq, r.Key, r.Page)
+		a.applyCounters(seq, key, r.Page)
+		a.filed[key] = max(a.filed[key], seq)
 	case cache.Remove:
-		a.forgetCounters(o.seq, r.Key)
+		a.forgetCounters(seq, key)
+		a.filed[key] = max(a.filed[key], seq)
 	}
-	if r.Key.Global {
+	if key.Global {
 		// Any consumer of a global page settles the counters step.
-		a.countersResult(o.seq, d, r)
+		a.countersResult(seq, d, r)
 	}
-	var cmd tea.Cmd
-	if w.purpose == forInbox {
-		m, cmd = m.inboxResult(o.seq, w.ticket, r, d)
-	}
-	return m, tea.Batch(follow, cmd)
+	return m.inboxResult(key, r, d)
 }
 
-// inboxResult applies an accepted result to the active view. A result of
-// an older sequence than the one applied (a late copy of a shared removal)
-// leaves newer rows alone.
-func (m Model) inboxResult(seq uint64, t gateway.Ticket, r gateway.InboxResult, d cache.Decision) (Model, tea.Cmd) {
+// newestFiled is the newest request filed for the key or, for a removal,
+// for any key of the key's resource: a removal takes the whole resource,
+// and an older one must not take what a newer request brought.
+func (a *app) newestFiled(key cache.Key, removal bool) uint64 {
+	newest := a.filed[key]
+	if !removal {
+		return newest
+	}
+	res := key.Resource()
+	for k, seq := range a.filed {
+		if k.Resource() == res {
+			newest = max(newest, seq)
+		}
+	}
+	return newest
+}
+
+// inboxResult applies an accepted result to the active view when it is the
+// view's key, whoever asked for it. The order of requests was kept before
+// (filed, per key): what arrives here is the newest answer with data, or a
+// failure, or a copy of the same answer, which applies the same thing again.
+func (m Model) inboxResult(key cache.Key, r gateway.InboxResult, d cache.Decision) (Model, tea.Cmd) {
 	a := m.app
 	v := a.active
-	if v == nil || v.key != t.Key || seq <= v.appliedSeq {
+	if v == nil || v.key != key {
 		return m, nil
 	}
-	v.appliedSeq = seq
-	v.loading = false
+	v.loading = a.pending(v.key)
 	switch d {
 	case cache.Replace:
 		v.rows, v.total, v.perPage = r.Page.Data, r.Page.Meta.Total, r.Page.Meta.PerPage
@@ -227,7 +228,11 @@ func (m Model) activate(org string) (Model, tea.Cmd) {
 		page = pos.page
 	}
 	a.moveInbox()
-	a.active = &inboxView{org: org, page: page, key: a.inboxKey(org, page), selected: pos.selected}
+	name := ""
+	if o := a.organisation(org); o != nil {
+		name = o.Name
+	}
+	a.active = &inboxView{org: org, name: name, page: page, key: a.inboxKey(org, page), selected: pos.selected}
 	m.focus = view.List
 	return m, a.load()
 }
@@ -276,11 +281,13 @@ func (m Model) turnPage(delta int) (Model, tea.Cmd) {
 }
 
 // refreshActive reloads the active page, unless a read of it is pending.
+// An explicit refresh frees the page correction again.
 func (a *app) refreshActive() tea.Cmd {
 	v := a.active
 	if v == nil || a.pending(v.key) {
 		return nil
 	}
+	v.corrected = false
 	v.loading = true
 	return a.issue(gateway.Inbox, v.key, forInbox)
 }
