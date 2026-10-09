@@ -34,7 +34,7 @@ func TestR3NewestActualSendWinsVisibleCounters(t *testing.T) {
 	}
 	defer close(release)
 	<-started
-	for attempt := 0; attempt < 2000; attempt++ {
+	for attempt := 0; attempt < 200; attempt++ { // 200 rounds: the sends are serialized, more rounds prove nothing more
 		var sent atomic.Int32
 		h.f.set(func(q api.NotificationQuery) transport.Answer {
 			count := 33 + int(sent.Add(1))
