@@ -69,6 +69,9 @@ func New(opts ...Option) Model {
 		if m.supervisor != nil {
 			m.app.base = m.supervisor.Context()
 		}
+		// A session starts in the chooser: the first thing to do is to pick
+		// an organisation, and in two columns the chooser shows only then.
+		m.focus = view.Navigation
 	}
 	return m
 }

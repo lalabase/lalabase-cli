@@ -376,14 +376,13 @@ func TestA401EndsTheSessionForGood(t *testing.T) {
 		if len(h.m.actions()) != 2 {
 			t.Fatalf("actions %+v", h.m.actions())
 		}
-		calls := len(h.f.inboxCalls())
 		for _, key := range []string{"R", "enter", "down", "]", "esc", "left"} {
 			if cmd := h.press(key); cmd != nil {
 				t.Fatalf("%s acted after the expiry", key)
 			}
 		}
 		h.feed(tea.WindowSizeMsg{Width: 80, Height: 24})
-		if len(h.f.inboxCalls()) != calls || !h.m.app.expired {
+		if !h.m.app.expired || h.m.app.scope != nil {
 			t.Fatal("something reopened the session")
 		}
 	}

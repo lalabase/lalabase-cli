@@ -425,13 +425,3 @@ func (h *harness) waitFor(what string, cond func() bool) {
 		time.Sleep(time.Millisecond)
 	}
 }
-
-func (h *harness) rowIDs() []string {
-	var ids []string
-	if v := h.m.app.active; v != nil {
-		for _, r := range v.rows {
-			ids = append(ids, r.ID)
-		}
-	}
-	return ids
-}

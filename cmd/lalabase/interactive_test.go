@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -63,9 +64,17 @@ func TestExistingCommandsBypassUIPreflight(t *testing.T) {
 	}
 }
 
-func TestInteractiveStartsWithoutRequests(t *testing.T) {
+// The real runner starts, and the start asks nothing but /me (which fails
+// here, so nothing follows); a profile the transport refuses ends before
+// the terminal is touched.
+func TestInteractiveStartsWithMeAlone(t *testing.T) {
 	var requests atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { requests.Add(1); w.WriteHeader(http.StatusTeapot) }))
+	var paths sync.Map
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		paths.Store(r.Method+" "+r.URL.Path, true)
+		w.WriteHeader(http.StatusTeapot)
+	}))
 	defer srv.Close()
 	env, errOut := interactiveEnv(t, map[string]string{"LALABASE_URL": srv.URL, "LALABASE_TOKEN": "dummy"})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -79,11 +88,22 @@ func TestInteractiveStartsWithoutRequests(t *testing.T) {
 	if code != 0 || !strings.Contains(out.String(), "\x1b[?2004h") {
 		t.Fatalf("runner not started: exit %d, stdout %q, stderr %q", code, out.String(), errOut.String())
 	}
-	if requests.Load() != 0 {
-		t.Fatalf("startup made %d requests", requests.Load())
-	}
+	paths.Range(func(key, _ any) bool {
+		if key != "GET /api/v1/me" {
+			t.Errorf("the start asked %s", key)
+		}
+		return true
+	})
 	if ctx.Err() != nil {
 		t.Fatal("startup exceeded its deadline")
+	}
+	env, errOut = interactiveEnv(t, map[string]string{"LALABASE_URL": "http://example.invalid", "LALABASE_TOKEN": "dummy"})
+	env.runUI = func(context.Context, io.Reader, io.Writer, []string, *worker.Supervisor) error {
+		t.Fatal("an http address off this machine started the UI")
+		return nil
+	}
+	if code := runInteractive("", env); code != 1 || !strings.Contains(errOut.String(), "lalabase auth import") {
+		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
 }
 

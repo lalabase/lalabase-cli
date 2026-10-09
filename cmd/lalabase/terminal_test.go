@@ -21,6 +21,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
+	"github.com/gboyke/lalabase-cli/internal/inboxfixture"
 	"github.com/gboyke/lalabase-cli/internal/profile"
 	"github.com/gboyke/lalabase-cli/internal/ui"
 	"github.com/gboyke/lalabase-cli/internal/worker"
@@ -42,12 +43,27 @@ type terminalProcess struct {
 	readDone, waitDone chan struct{}
 	cancel             context.CancelFunc
 	cancelProcess      context.CancelFunc
+	marker             string
 	mu                 sync.Mutex
 	output             bytes.Buffer
 	readErr, errorExit error
 }
 
+// terminalOptions: the server the child's profile points at, the text that
+// says the interface is up, and the case limit.
+type terminalOptions struct {
+	url, marker string
+	limit       time.Duration
+}
+
 func startTerminal(t *testing.T, scenario string, width uint16) *terminalProcess {
+	t.Helper()
+	// The header is the one line every interface shows first, the shell and
+	// the session alike.
+	return startTerminalWith(t, scenario, width, terminalOptions{url: "http://127.0.0.1:1", marker: "lalabase | default", limit: caseLimit})
+}
+
+func startTerminalWith(t *testing.T, scenario string, width uint16, opts terminalOptions) *terminalProcess {
 	t.Helper()
 	master, slave, err := pty.Open()
 	if err != nil {
@@ -68,16 +84,20 @@ func startTerminal(t *testing.T, scenario string, width uint16) *terminalProcess
 		t.Fatal(err)
 	}
 	home := t.TempDir()
-	if err := profile.Save(filepath.Join(home, ".config", "lalabase", "config.toml"), profile.File{Profiles: map[string]profile.Entry{"default": {URL: "http://127.0.0.1:1", Token: "pty-dummy"}}}); err != nil {
+	token := "pty-dummy"
+	if opts.url != "http://127.0.0.1:1" {
+		token = inboxfixture.Token
+	}
+	if err := profile.Save(filepath.Join(home, ".config", "lalabase", "config.toml"), profile.File{Profiles: map[string]profile.Entry{"default": {URL: opts.url, Token: token}}}); err != nil {
 		t.Fatal(err)
 	}
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	processCtx, processCancel := context.WithTimeout(context.Background(), caseLimit)
+	processCtx, processCancel := context.WithTimeout(context.Background(), opts.limit)
 	t.Cleanup(processCancel)
-	cmd := exec.CommandContext(processCtx, executable, "-test.run=^TestTerminalChild$", "-test.timeout=20s", "--", scenario)
+	cmd := exec.CommandContext(processCtx, executable, "-test.run=^TestTerminalChild$", "-test.timeout="+(opts.limit+10*time.Second).String(), "--", scenario)
 	cmd.Env = []string{"C1A_PTY_CHILD=1", "HOME=" + home, "XDG_CONFIG_HOME=" + filepath.Join(home, ".config"), "TERM=xterm-256color", "LC_ALL=C.UTF-8", "RUNEWIDTH_EASTASIAN=0", "CI=1"}
 	cmd.Dir = home
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = slave, slave, slave
@@ -123,7 +143,7 @@ func startTerminal(t *testing.T, scenario string, width uint16) *terminalProcess
 		t.Cleanup(func() { _ = unix.Kill(-cmd.Process.Pid, unix.SIGKILL) })
 	}
 	ctx, cancel := context.WithCancel(processCtx)
-	c := &terminalProcess{cmd: cmd, master: master, slave: slave, before: before, deadline: time.Now().Add(caseLimit), readDone: make(chan struct{}), waitDone: make(chan struct{}), cancel: cancel}
+	c := &terminalProcess{cmd: cmd, master: master, slave: slave, before: before, deadline: time.Now().Add(opts.limit), readDone: make(chan struct{}), waitDone: make(chan struct{}), cancel: cancel, marker: opts.marker}
 	c.release = release
 	c.descendantFD, c.cancelProcess = descendantFD, processCancel
 	if d, ok := t.Deadline(); ok && d.Add(-cleanupLimit).Before(c.deadline) {
@@ -243,7 +263,7 @@ func (c *terminalProcess) ready() error {
 	return c.until("readiness", readyLimit, func() bool {
 		modes := terminalModes(c.bytes())
 		attrs, err := terminalAttributes(int(c.slave.Fd()))
-		return err == nil && attrs.Lflag&(unix.ECHO|unix.ICANON) == 0 && strings.Contains(c.bytes(), "No data loaded") && lastMode(modes, 1049, true) && lastMode(modes, 2004, true) && lastMode(modes, 25, false)
+		return err == nil && attrs.Lflag&(unix.ECHO|unix.ICANON) == 0 && strings.Contains(c.bytes(), c.marker) && lastMode(modes, 1049, true) && lastMode(modes, 2004, true) && lastMode(modes, 25, false)
 	})
 }
 
@@ -340,10 +360,14 @@ func TestTerminalChild(t *testing.T) {
 	if os.Getenv("C1A_PTY_CHILD") != "1" {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	scenario := os.Args[len(os.Args)-1]
+	limit := 12 * time.Second
+	if strings.HasPrefix(scenario, "inbox-") {
+		limit = inboxLimit + 10*time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	env := Env{Context: ctx, Home: os.Getenv("HOME"), Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv, Interactive: isTerminal(os.Stdin), OutputTerminal: isTerminal(os.Stdout)}
-	scenario := os.Args[len(os.Args)-1]
 	if scenario == "hang" {
 		// The inherited pipe stays open while this sleeping descendant lives.
 		// EOF proves group termination without relying on zombie reaping by
@@ -359,6 +383,12 @@ func TestTerminalChild(t *testing.T) {
 		}
 		go func() { _ = grandchild.Wait() }()
 		_, _ = fmt.Fprintln(os.Stdout, "C1A_DESCENDANT_STARTED")
+	}
+	if scenario == "resize" {
+		// The shell's geometry alone, as C1a tested it.
+		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, _ *worker.Supervisor) error {
+			return ui.Run(ctx, in, out, environment, ui.New())
+		}
 	}
 	if scenario == "panic-update" || scenario == "panic-view" || scenario == "hang" {
 		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, _ *worker.Supervisor) error {
