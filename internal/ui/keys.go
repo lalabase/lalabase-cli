@@ -116,13 +116,30 @@ var pairs = map[Action]Action{Up: Down, PageUp: PageDown, Left: Right}
 func (m Model) tooSmall() bool { return m.width < 24 || m.height < 8 }
 
 // small is the terminal too small for anything but leaving: by its size,
-// or because the help of the state would leave the body no room for a
-// title and one row.
+// or because the help of the state would leave the focused column no room
+// for one row (its title and a notice come first).
 func (m Model) small() bool {
 	if m.tooSmall() {
 		return true
 	}
-	return len(view.HelpLines(toHelp(m.bindings(false)), m.width, m.widthMethod)) > m.height-4
+	g := layoutWith(m.width, m.height, len(view.HelpLines(toHelp(m.bindings(false)), m.width, m.widthMethod)))
+	return view.Capacity(m.focusedColumn(), g) < 1
+}
+
+// focusedColumn is the column the focus is on, of the session or of the
+// shell.
+func (m Model) focusedColumn() present.Column {
+	if m.app == nil {
+		s := presentation(m.shell[0], m.shell[1], m.shell[2])
+		return [...]present.Column{view.Navigation: s.Chooser, view.List: s.List, view.Object: s.Object}[m.focus]
+	}
+	switch m.focus {
+	case view.List:
+		return m.listColumn()
+	case view.Object:
+		return m.objectColumn()
+	}
+	return m.chooserColumn()
 }
 
 // actions are the bindings that act in the current state.
@@ -166,6 +183,10 @@ func (m Model) bindings(small bool) []binding {
 		}
 	case view.List:
 		if v != nil && len(v.rows) > 1 {
+			// The page keys move the selection by a page, to the ends at
+			// the latest: they act whenever there is a second row, however
+			// many rows the pane shows (a pane's capacity is not monotone
+			// in the help's height, so nothing here reads the geometry).
 			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
 		}
 		if v != nil && v.selected != "" {
@@ -197,12 +218,16 @@ func (m Model) bindings(small bool) []binding {
 	return m.withoutIdleScroll(append(out, binding{Left, uitext.FocusKey, uitext.FocusHelp}))
 }
 
-// withoutIdleScroll drops the scroll binding of the focused column when the
-// column fits its pane. The pane is measured in the geometry of the whole
-// help with the binding in it: if the column fits there, it fits in the
-// larger pane the help without the binding leaves, so help and dispatch
+// withoutIdleScroll drops the scroll binding of the details when their text
+// fits the pane. The pane is measured in the geometry of the help without
+// the binding: if the text overflows there, it overflows the smaller pane
+// the binding's own line leaves (a text's lines depend on the width alone),
+// and if it fits there, that is the pane the person gets. Help and dispatch
 // agree either way.
 func (m Model) withoutIdleScroll(out []binding) []binding {
+	if m.focus != view.Object {
+		return out
+	}
 	at := -1
 	for i, b := range out {
 		if b.kind == PageUp {
@@ -212,15 +237,13 @@ func (m Model) withoutIdleScroll(out []binding) []binding {
 	if at < 0 {
 		return out
 	}
-	c, which := m.listColumn(), view.List
-	if m.focus == view.Object {
-		c, which = m.objectColumn(), view.Object
-	}
-	g := layoutWith(m.width, m.height, len(view.HelpLines(toHelp(out), m.width, m.widthMethod)))
-	if view.Extent(c, g, which, m.widthMethod) > view.Capacity(c, g) {
+	without := append(out[:at:at], out[at+1:]...)
+	g := layoutWith(m.width, m.height, len(view.HelpLines(toHelp(without), m.width, m.widthMethod)))
+	c := m.objectColumn()
+	if view.Extent(c, g, view.Object, m.widthMethod) > view.Capacity(c, g) {
 		return out
 	}
-	return append(out[:at:at], out[at+1:]...)
+	return without
 }
 
 // allowed is the set of actions the bindings cover.

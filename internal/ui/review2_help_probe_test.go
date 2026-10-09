@@ -30,7 +30,13 @@ func TestR2ScrollBindingsUseFinalGeometry(t *testing.T) {
 					c = h.m.listColumn()
 				}
 				extent, capacity := view.Extent(c, g, focus, h.m.widthMethod), view.Capacity(c, g)
-				if overflow, offered := extent > capacity, h.m.allowed()[PageDown]; overflow != offered {
+				// Adapted in round 3: the details' scroll pair follows the
+				// overflow; a list's page keys come with a second row.
+				expected := extent > capacity
+				if focus == view.List {
+					expected = len(c.Rows) > 1
+				}
+				if offered := h.m.allowed()[PageDown]; expected != offered {
 					t.Fatalf("focus=%d size=%dx%d final extent=%d capacity=%d help=%q offered=%v\n%s", focus, width, height, extent, capacity, helpText(h.m), offered, ansi.Strip(h.m.View().Content))
 				}
 			}

@@ -47,9 +47,11 @@ func TestPagingBackJoinsThePendingGlobalRead(t *testing.T) {
 		refresh = append(refresh, h.background(c))
 	}
 	h.waitFor("page 1 on the wire", func() bool { return len(h.f.inboxCalls()) == before+1 })
-	// Back to the inbox: page 2 is shown again, from a newer request.
-	h.drive(h.press("enter"))
-	if a.active == nil || a.active.page != 2 || a.active.loading {
+	// Back to the inbox (no request of its own), R: page 2 is read anew by
+	// a request sent after page 1's.
+	h.press("enter")
+	h.drive(h.press("R"))
+	if a.active == nil || a.active.page != 2 || a.active.loading || a.active.cached {
 		t.Fatalf("return: %+v", a.active)
 	}
 	// Page 1 joins the read on the wire: two sharers of one flight, one
@@ -71,7 +73,9 @@ func TestPagingBackJoinsThePendingGlobalRead(t *testing.T) {
 	}
 	r := h.receive(back).(gateway.InboxResult)
 	h.feed(r)
-	if len(flights) != 1 || flights[0] != r.Flight || len(h.f.inboxCalls()) != before+1 {
+	// Two requests since the chooser's R: page 1, shared by both, and the
+	// reload of page 2.
+	if len(flights) != 1 || flights[0] != r.Flight || len(h.f.inboxCalls()) != before+2 {
 		t.Fatalf("flights %v and %d, %d requests", flights, r.Flight, len(h.f.inboxCalls())-before)
 	}
 	if a.active.loading || len(a.active.rows) != 25 || a.active.page != 1 || a.active.cached {
@@ -94,10 +98,10 @@ func TestARemovalThroughAnotherConsumerClearsTheView(t *testing.T) {
 	if len(a.active.rows) != 25 || a.active.opened == "" {
 		t.Fatal("the global inbox did not open")
 	}
-	h.press("esc") // the list
-	h.press("esc") // the chooser
-	if h.m.focus != view.Navigation {
-		t.Fatalf("focus %d, not the chooser", h.m.focus)
+	h.press("left") // the list, the details stay open
+	h.press("left") // the chooser
+	if h.m.focus != view.Navigation || a.active.opened == "" {
+		t.Fatalf("focus %d, opened %q: not the chooser with the details open", h.m.focus, a.active.opened)
 	}
 	h.f.set(func(api.NotificationQuery) transport.Answer { return failing(transport.NoAccess, 200) })
 	h.drive(h.press("R")) // refreshes the directory and the counters: the global page 1

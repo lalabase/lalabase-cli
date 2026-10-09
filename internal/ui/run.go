@@ -70,13 +70,18 @@ type stepped struct {
 	cmd   tea.Cmd
 }
 
+// Update runs the model's Update under the supervisor. A fatal error is
+// given to the model like any message (it may have to end a session the
+// mailbox already revoked, so the final screen shows nothing of it) and
+// quits whatever the model answered.
 func (g guarded) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if _, ok := msg.(worker.Fatal); ok {
-		return g, tea.Quit
-	}
+	_, fatal := msg.(worker.Fatal)
 	if g.sup == nil {
 		next, cmd := g.model.Update(msg)
 		g.model = next
+		if fatal {
+			return g, tea.Quit
+		}
 		return g, cmd
 	}
 	s, ok := worker.Run(g.sup, "ui: update", func() stepped {
@@ -87,6 +92,9 @@ func (g guarded) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return g, tea.Quit
 	}
 	g.model = s.model
+	if fatal {
+		return g, tea.Quit
+	}
 	return g, g.guard(s.cmd)
 }
 

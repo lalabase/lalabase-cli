@@ -145,7 +145,7 @@ type ticket struct {
 // still waiting: a person joining lifts it, the last person leaving lets it
 // fall back to background work.
 type flight struct {
-	id     atomic.Uint64 // its number; a retry, a new send, gets a new one
+	id     atomic.Uint64 // its number, given at each send; 0 before the first
 	ctx    context.Context
 	cancel context.CancelFunc
 	refs   int
@@ -185,12 +185,14 @@ func (q *Queue) Do(ctx context.Context, job Job) transport.Answer {
 	return ans
 }
 
-// Flight names one request a shared read sent. Its waiters get the same
-// flight; a later request under the same key gets another. 0 is no shared
-// read.
+// Flight names one request a shared read sent, numbered at the moment the
+// request is handed to the transport (so the numbers follow the order of
+// sending, as far as two goroutines at that moment can be told apart). Its
+// waiters get the same flight; a later request under the same key, and a
+// retry, get another. 0 is no shared read, or one not sent yet.
 type Flight uint64
 
-// flights numbers the shared reads of the process.
+// flights numbers the requests of the process's shared reads.
 var flights atomic.Uint64
 
 // DoShared is Do that also names the request the answer came from, so a
@@ -246,7 +248,6 @@ func (q *Queue) join(job Job) (f *flight, fresh bool, tell time.Time, mustTell b
 	// The request belongs to the queue's lifetime, never to its first caller.
 	runCtx, cancel := context.WithCancel(q.life.Context())
 	f = &flight{ctx: runCtx, cancel: cancel, refs: 1, prio: job.Priority, done: make(chan struct{})}
-	f.id.Store(flights.Add(1))
 	if job.Priority == User {
 		f.users = 1
 	}
@@ -292,16 +293,17 @@ func (q *Queue) land(key string, f *flight, ans transport.Answer) {
 func (f *flight) flight() Flight { return Flight(f.id.Load()) }
 
 // run performs a job with at most one retry. f is the shared read it runs
-// for, or nil. The retry is a later send and carries a later number: its
-// answer is the server's newer word, whatever arrived in between.
+// for, or nil. Each send, the retry too, gets the number of its moment:
+// an answer is ranked by when its request went out, not by when the read
+// was created or joined.
 func (q *Queue) run(ctx context.Context, job Job, f *flight) transport.Answer {
 	for attempt := 0; ; attempt++ {
-		if attempt > 0 && f != nil {
-			f.id.Store(flights.Add(1))
-		}
 		t, err := q.acquire(ctx, job.Priority, f)
 		if err != nil {
 			return canceled()
+		}
+		if f != nil {
+			f.id.Store(flights.Add(1))
 		}
 		ans := q.attempt(ctx, t, job)
 

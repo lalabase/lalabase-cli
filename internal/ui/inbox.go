@@ -295,11 +295,16 @@ func (m Model) turnPage(delta int) (Model, tea.Cmd) {
 // An explicit refresh frees the page correction again.
 func (a *app) refreshActive() tea.Cmd {
 	v := a.active
-	if v == nil || a.pending(v.key) {
+	if v == nil {
 		return nil
 	}
 	v.corrected = false
 	v.loading = true
+	if a.pending(v.key) {
+		// A read of the key is out for somebody else (the counters, say):
+		// the view waits for that one and issues nothing of its own.
+		return nil
+	}
 	return a.issue(gateway.Inbox, v.key, forInbox)
 }
 
@@ -368,11 +373,20 @@ func (m Model) canRefresh() bool {
 	if a.steps[stepMe].state != ready {
 		return a.steps[stepMe].state == failed
 	}
+	// Mirrors retryOrRefresh: R is offered only when it would issue a read
+	// (a read already out for the same key is not issued again).
+	countersFree := !a.pending(a.inboxKey("", 1))
+	activeFree := m.focus != view.Navigation && a.active != nil && !a.pending(a.active.key)
 	if a.anyFailed() {
-		return true
+		for i := stepInitialize; i < stepCounters; i++ {
+			if a.steps[i].state == failed {
+				return true
+			}
+		}
+		return (a.steps[stepCounters].state == failed && countersFree) || activeFree
 	}
 	if m.focus != view.Navigation && a.active != nil {
-		return !a.pending(a.active.key)
+		return activeFree
 	}
-	return a.steps[stepOrganisations].state == ready || a.steps[stepCounters].state == ready
+	return a.steps[stepOrganisations].state == ready || (a.steps[stepCounters].state == ready && countersFree)
 }

@@ -40,6 +40,12 @@ func TestARetryCarriesALaterFlightNumber(t *testing.T) {
 	if !between.ans.OK() || between.flight == 0 {
 		t.Fatalf("b: %v, flight %d", between.ans.Class, between.flight)
 	}
+	for deadline := time.Now().Add(2 * time.Second); clock.pending() == 0; {
+		if time.Now().After(deadline) {
+			t.Fatal("the retry is not waiting on the clock")
+		}
+		time.Sleep(time.Millisecond)
+	}
 	clock.Advance(time.Second)
 	waitStarted(t, g) // the retry
 	g.release <- ok()
