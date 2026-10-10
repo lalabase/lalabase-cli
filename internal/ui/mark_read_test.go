@@ -999,3 +999,39 @@ func TestTheOutcomesAreToldApart(t *testing.T) {
 	}
 	_ = running
 }
+
+// The page correction after a mark keeps the ticket: the only row of the
+// last page is marked from the ticket opened out of it, the inbox moves to
+// the new last page, and the ticket stays open and focused with its
+// outcome; Esc then lands in the list.
+func TestThePageCorrectionAfterAMarkKeepsTheTicket(t *testing.T) {
+	h := newHarness(t)
+	h.f.set(func(q api.NotificationQuery) transport.Answer {
+		rows := slices2(h.d.rows(orgA, 1, 26), h.f.readIDs())
+		return pageAnswer(q.Page, q.PerPage, len(rows), len(rows), slice(rows, q.Page, q.PerPage), map[string]int{orgA: len(rows)})
+	})
+	h.start()
+	h.drive(h.choose(orgA))
+	h.drive(h.press("]"))
+	a := h.m.app
+	if a.active.page != 2 || len(a.active.rows) != 1 {
+		t.Fatalf("page %d with %d rows", a.active.page, len(a.active.rows))
+	}
+	h.drive(h.press("enter"))
+	h.drive(h.press("o"))
+	if a.origin == nil || a.detail == nil || !a.detail.known {
+		t.Fatal("the linked ticket is not open")
+	}
+	h.drive(h.press("r"))
+	if a.active.page != 1 || len(a.active.rows) != 25 {
+		t.Fatalf("after the correction: page %d with %d rows", a.active.page, len(a.active.rows))
+	}
+	if a.origin == nil || a.detail == nil || !a.detail.known || h.m.focus != view.Object {
+		t.Fatalf("the correction took the ticket: origin %v, detail %v, focus %d", a.origin, a.detail != nil, h.m.focus)
+	}
+	mustContain(t, h.paneText(), "#1 Login bricht ab", "Notification: unread · Marked as read")
+	h.drive(h.press("esc"))
+	if a.origin != nil || h.m.focus != view.List || a.active.opened != "" || a.active.selected == "" {
+		t.Fatalf("after esc: origin %v, focus %d, opened %q, selected %q", a.origin, h.m.focus, a.active.opened, a.active.selected)
+	}
+}

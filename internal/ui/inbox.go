@@ -213,9 +213,10 @@ func (m Model) correctPage() (Model, tea.Cmd) {
 	}
 	a.store.Apply(v.key, cache.Remove, nil, a.now())
 	a.scope.Invalidate(v.key)
-	a.leaveLinkedTicket()
 	v.rows, v.selected, v.opened, v.offset = nil, "", "", 0
-	if m.focus == view.Object {
+	if m.focus == view.Object && a.origin == nil {
+		// Details go with their page; a ticket opened from a row stays
+		// open (its row was marked as read, and the page shrank with it).
 		m.focus = view.List
 	}
 	if v.total == 0 {
