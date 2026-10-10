@@ -96,6 +96,9 @@ func (m *Model) receive(received gateway.Received) (cache.Decision, bool) {
 	if d == cache.Replace || d == cache.Remove {
 		a.filed[key] = max(a.filed[key], seq)
 	}
+	if d == cache.KeepStale {
+		a.diskReadsGoStale(key)
+	}
 	return d, true
 }
 

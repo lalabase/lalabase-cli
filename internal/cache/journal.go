@@ -12,6 +12,15 @@ package cache
 // room; when the bound is reached with removals alone, the namespace is
 // removed instead, in one op: a lost put is a miss later, a lost removal
 // would be stale data shown as fresh.
+//
+// Every change carries the number of the oldest change it stands for
+// (Mark, Settled): a read of the disk issued after a change is sent only
+// once that change, or the one that took its place, has been applied.
+//
+// A change the journal lets go is cleared from its backing array: the
+// slots would otherwise keep its payload alive until written again.
+
+import "slices"
 
 // ChangeKind is one kind of change.
 type ChangeKind uint8
@@ -52,6 +61,9 @@ type Change struct {
 	// for room, it leaves that forget behind: the file the forget was for
 	// must not stay on disk as if the put had been applied.
 	afterForget bool
+	// seq is the number of the oldest change this one stands for: its
+	// own, or that of an earlier change it superseded.
+	seq uint64
 }
 
 // MaxPending bounds the journal.
@@ -59,26 +71,50 @@ const MaxPending = 256
 
 // Journal is the bounded list of changes not yet replayed. Like the store it
 // has no lock: its owner changes it in the update step alone.
-type Journal struct{ ops []Change }
+type Journal struct {
+	ops []Change
+	// last is the number of the newest change added.
+	last uint64
+}
 
 func NewJournal() *Journal { return &Journal{} }
 
 // Len is the number of pending changes.
 func (j *Journal) Len() int { return len(j.ops) }
 
+// Mark is the number of the newest change added: a read issued now waits
+// for every change up to it (Settled).
+func (j *Journal) Mark() uint64 { return j.last }
+
+// Settled says whether every change up to mark has left the journal: none
+// pending stands for one of them.
+func (j *Journal) Settled(mark uint64) bool {
+	for _, op := range j.ops {
+		if op.seq <= mark {
+			return false
+		}
+	}
+	return true
+}
+
 // Add appends a change, dropping the earlier ones it supersedes, and keeps
-// the bound.
+// the bound. A change that supersedes others stands for the oldest of
+// them.
 func (j *Journal) Add(op Change) {
+	j.last++
+	op.seq = j.last
 	keep := j.ops[:0]
 	for _, old := range j.ops {
 		if !supersedes(op, old) {
 			keep = append(keep, old)
 			continue
 		}
+		op.seq = min(op.seq, old.seq)
 		if op.Kind == ChangePut && (old.Kind == ChangeForget || old.afterForget) {
 			op.afterForget = true
 		}
 	}
+	clear(j.ops[len(keep):])
 	j.ops = append(keep, op)
 	j.bound()
 }
@@ -111,10 +147,10 @@ func (j *Journal) bound() {
 				continue
 			}
 			if op.afterForget {
-				j.ops[i] = Change{Kind: ChangeForget, Key: op.Key}
+				j.ops[i] = Change{Kind: ChangeForget, Key: op.Key, seq: op.seq}
 				continue // no room gained; the next put is looked at
 			}
-			j.ops = append(j.ops[:i], j.ops[i+1:]...)
+			j.ops = slices.Delete(j.ops, i, i+1)
 			dropped = true
 			break
 		}
@@ -125,25 +161,25 @@ func (j *Journal) bound() {
 	}
 }
 
-// collapse replaces every pending change by one removal per namespace.
+// collapse replaces every pending change by one removal per namespace,
+// which stands for the oldest change of its namespace.
 func (j *Journal) collapse() {
-	var namespaces []Namespace
+	var removals []Change
 	for _, op := range j.ops {
 		ns := op.Key.Namespace()
 		seen := false
-		for _, n := range namespaces {
-			if n == ns {
+		for i, r := range removals {
+			if r.Key.Namespace() == ns {
+				removals[i].seq = min(r.seq, op.seq)
 				seen = true
 			}
 		}
 		if !seen {
-			namespaces = append(namespaces, ns)
+			removals = append(removals, Change{Kind: ChangeRemoveNamespace, Key: Key{ns: ns}, seq: op.seq})
 		}
 	}
-	j.ops = j.ops[:0]
-	for _, ns := range namespaces {
-		j.ops = append(j.ops, Change{Kind: ChangeRemoveNamespace, Key: Key{ns: ns}})
-	}
+	clear(j.ops)
+	j.ops = append(j.ops[:0], removals...)
 }
 
 // Take removes and returns up to n changes, the oldest first.
@@ -151,6 +187,6 @@ func (j *Journal) Take(n int) []Change {
 	n = min(n, len(j.ops))
 	out := make([]Change, n)
 	copy(out, j.ops[:n])
-	j.ops = append(j.ops[:0], j.ops[n:]...)
+	j.ops = slices.Delete(j.ops, 0, n)
 	return out
 }

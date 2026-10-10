@@ -197,9 +197,12 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
     profile is `env`). With one writer the disk is a replay of the
     memory's decisions in their order (a batch at a time, bounded): a
     removal journaled before a write is applied before it, a write journaled
-    before a removal never brings the data back, and a disk read that comes
-    after a newer network answer, after a removal of its resource or after
-    the selection moved on changes nothing.
+    before a removal never brings the data back, a disk read is made only
+    after every change journaled before it is on disk, and a disk read that
+    comes after a newer network answer, after a removal of its resource or
+    after the selection moved on changes nothing. A reload that failed for
+    a temporary reason before the disk answered leaves the entry the disk
+    brought "possibly stale" in memory and on disk, not only on screen.
   * **Failure:** when the directory cannot be made or is unsafe, or the file
     system fails while reading or writing, the run says "Disk cache
     unavailable; using memory only" once in the status line and goes on

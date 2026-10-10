@@ -22,7 +22,10 @@ import (
 // empty (opening a page, a list, a ticket, an expansion; a preview falling
 // due), under a ticket of the scope: its result passes the same checks as
 // a network result (session, generation, epoch), files nothing over a
-// network answer that landed since, and keeps its own load time.
+// network answer that landed since, and keeps its own load time. It is
+// sent once every change journaled before it has been applied, and a
+// reload of its key that failed for a temporary reason while it was out
+// marks what it brings as possibly stale, in memory and on disk.
 //
 // A failing file system switches the disk off for the session, once, with
 // one notice; a second lalabase on the same profile gets memory alone. A
@@ -62,9 +65,16 @@ type diskState struct {
 // result is for, and the request filed for the key when the read was
 // issued (a newer one filed since means a network answer came first).
 type diskRead struct {
-	ticket   gateway.Ticket
-	purpose  purpose
-	filed    uint64
+	ticket  gateway.Ticket
+	purpose purpose
+	filed   uint64
+	// mark is the journal's newest change when the read was issued: the
+	// read is sent once every change up to it is applied, so the disk
+	// answers after what memory decided before.
+	mark uint64
+	// stale: a reload of the key failed for a temporary reason while the
+	// read was out; the entry it brings is filed as possibly stale.
+	stale    bool
 	sent     bool
 	canceled bool
 }
@@ -153,7 +163,7 @@ func (a *app) diskRead(area gateway.Area, key cache.Key, p purpose) {
 		return
 	}
 	t := a.scope.Begin(area, key, 0)
-	d.reads[t.Waiter] = &diskRead{ticket: t, purpose: p, filed: a.filed[key]}
+	d.reads[t.Waiter] = &diskRead{ticket: t, purpose: p, filed: a.filed[key], mark: d.journal.Mark()}
 	d.order = append(d.order, t.Waiter)
 	waiting := 0
 	for _, w := range d.order {
@@ -188,6 +198,19 @@ func (a *app) cancelDiskReadsOf(key cache.Key) {
 		for w, r := range d.reads {
 			if r.ticket.Key == key {
 				a.cancelDiskRead(w)
+			}
+		}
+	}
+}
+
+// diskReadsGoStale follows a reload of key that failed for a temporary
+// reason: a read of the key still out brings an entry that the failure
+// leaves possibly stale, as it would have left the entry in memory.
+func (a *app) diskReadsGoStale(key cache.Key) {
+	if d := a.disk; d != nil {
+		for _, r := range d.reads {
+			if r.ticket.Key == key {
+				r.stale = true
 			}
 		}
 	}
@@ -238,7 +261,9 @@ func (a *app) flushDisk() tea.Cmd {
 	var waiters []gateway.Waiter
 	for _, w := range d.order {
 		r := d.reads[w]
-		if r == nil || r.sent || r.canceled {
+		if r == nil || r.sent || r.canceled || !d.journal.Settled(r.mark) {
+			// A read whose earlier changes are not all in this batch
+			// waits for a later one.
 			continue
 		}
 		r.sent = true
@@ -338,6 +363,11 @@ func (m Model) receiveDiskDone(msg diskDone) (Model, tea.Cmd) {
 		}
 		if !a.scope.Promote(a.store, read.ticket, r.entry) {
 			continue
+		}
+		if read.stale {
+			// The failed reload is a decision about the entry: memory and
+			// disk keep it, not only the view.
+			a.store.Apply(read.ticket.Key, cache.KeepStale, nil, a.now())
 		}
 		if a.showFromDisk(read.purpose, read.ticket.Key) && read.purpose == forTickets {
 			cmd = m.selectionChanged()
