@@ -244,7 +244,7 @@ func (m Model) movePage(delta int) (Model, tea.Cmd) {
 		case a.detail != nil:
 			// From where the pane is now, the anchor's place included; the
 			// scroll is the person's, the anchor is let go.
-			a.detail.offset = max(0, min(top, c.Offset+delta*capacity))
+			a.detail.offset = max(0, min(top, min(top, c.Offset)+delta*capacity))
 			a.detail.follow = anchorNone
 		}
 	}

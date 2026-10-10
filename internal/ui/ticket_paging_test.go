@@ -961,3 +961,100 @@ func TestLeavingATicketCancelsItsExpansion(t *testing.T) {
 		t.Fatal("the expansion was cached")
 	}
 }
+
+// Review round 1, finding 1: a missing comment answered for a newer read
+// must not block the removal an older plain read of the ticket brings.
+func TestR1AnOlderPlainRemovalAfterAMissingCommentStillRemoves(t *testing.T) {
+	h := newHarness(t)
+	h.openSix()
+	h.press("tab")
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		return transport.Answer{Class: transport.NotFound, Message: "No ticket found.", Status: 200, Sent: true}
+	})
+	h.press("R") // its command is held back: the plain read stays out
+	var plain gateway.Ticket
+	for _, w := range h.m.app.waiters {
+		if w.ticket.Area == gateway.Detail {
+			plain = w.ticket
+		}
+	}
+	if plain.Waiter == 0 {
+		t.Fatal("no plain read out")
+	}
+	var flight queue.Flight
+	for _, msg := range messages(t, h.press("e")) {
+		if r, ok := msg.(gateway.TicketResult); ok {
+			flight = r.Flight
+		}
+		h.drive(h.feed(msg)...)
+	}
+	if flight == 0 {
+		t.Fatal("the expansion was not answered")
+	}
+	h.feed(gateway.TicketResult{Ticket: plain, Answer: transport.Answer{Class: transport.NotFound, Message: "No ticket found.", Status: 200, Sent: true}, Flight: flight - 1})
+	if d := h.m.app.detail; d.known {
+		t.Fatal("the missing ticket stays shown")
+	}
+}
+
+// Review round 1, finding 2: a server that counts comments but no pages
+// gets page 1 asked, never page 0.
+func TestR1ZeroPagesBesideATotalCorrectsToPageOne(t *testing.T) {
+	h := newHarness(t)
+	h.openSix()
+	h.press("tab")
+	h.drive(h.press("]"))
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		r := h.d.ticketRecord(project, 6, o)
+		r.PostsPages = 0
+		return ticketAnswer(r)
+	})
+	before := len(h.f.detailReads())
+	h.drive(h.press("R"))
+	reads := h.f.detailReads()[before:]
+	if len(reads) != 2 || reads[1].o.PostsPage != 1 {
+		t.Fatalf("reads %+v", reads)
+	}
+	if k := h.m.app.detail.key; k.PostsPage != 1 || !pagedKey(k) {
+		t.Fatalf("key %+v", k)
+	}
+}
+
+// Review round 1, finding 3: pgup after Tab moves a screen from where the
+// pane really is, not from an anchor beyond the last screen.
+func TestR1PageUpAfterAnAnchorNearTheEndMovesAScreen(t *testing.T) {
+	h := newHarness(t)
+	h.m.width, h.m.height = 120, 20
+	h.openSix()
+	h.press("tab")
+	h.press("tab")
+	h.drive(h.press("]")) // attachments page 2: a short last section
+	h.press("tab")
+	h.press("tab")
+	h.press("tab") // attachments again, its heading the anchor
+	g := h.m.geometry()
+	c := h.m.objectColumn()
+	capacity := view.Capacity(c, g)
+	top := view.Extent(c, g, view.Object, h.m.widthMethod) - capacity
+	h.press("pgup")
+	if got := h.m.app.detail.offset; got != max(0, top-capacity) {
+		t.Fatalf("offset %d after pgup, want %d (top %d, capacity %d)", got, top-capacity, top, capacity)
+	}
+}
+
+// Review round 1, backlog: while another page of comments loads, its
+// comments are not shown, and up/down do not move a selection unseen.
+func TestR1NoCommentSelectionWhileTheirPageLoads(t *testing.T) {
+	h := newHarness(t)
+	h.openSix()
+	h.press("tab")
+	h.press("]") // not run: the page is out
+	if h.m.allowed()[Up] {
+		t.Fatal("up/down offered while the comments load")
+	}
+	post := h.m.app.detail.post
+	h.press("down")
+	if h.m.app.detail.post != post {
+		t.Fatal("the selection moved unseen")
+	}
+}

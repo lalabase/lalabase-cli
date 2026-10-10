@@ -342,7 +342,7 @@ func (m Model) ticketBindings() []binding {
 		return nil
 	}
 	out := []binding{{NextArea, uitext.TabKey, uitext.NextAreaHelp}}
-	if d.area == areaComments && len(d.record.Posts) > 1 {
+	if d.area == areaComments && len(d.record.Posts) > 1 && !d.commentsLoading() {
 		out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentHelp})
 	}
 	if m.canTurn(-1) {

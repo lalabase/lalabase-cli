@@ -219,13 +219,15 @@ func (m Model) correctDetailPage() (Model, tea.Cmd) {
 	case t.PostsTotal == 0:
 		fix.PostsPage = 1
 	case k.PostsPage > max(1, t.PostsPages):
-		fix.PostsPage, ask = t.PostsPages, true
+		// Never page 0: a server that counts comments but no pages is
+		// asked for the first (review round 1, finding 2).
+		fix.PostsPage, ask = max(1, t.PostsPages), true
 	}
 	switch {
 	case t.AttachmentsTotal == 0:
 		fix.AttachmentsPage = 1
 	case k.AttachmentsPage > max(1, t.AttachmentsPages):
-		fix.AttachmentsPage, ask = t.AttachmentsPages, true
+		fix.AttachmentsPage, ask = max(1, t.AttachmentsPages), true
 	}
 	if fix == k {
 		return m, nil
@@ -358,13 +360,14 @@ func (m Model) receiveExpansion(r gateway.TicketResult) (Model, tea.Cmd) {
 
 // commentMissing is the missing-comment rule: the cached expansion goes
 // and its text is hidden at once, no older answer for it is taken any
-// more, the ticket stays and says so, and it is read once without
-// post_id; only that read may remove it.
+// more (the area moves on), the ticket stays and says so, and it is read
+// once without post_id; only that read may remove it. The answer is not
+// filed as the newest of the ticket: a plain read sent before it must
+// still be able to remove the ticket (review round 1, finding 1).
 func (m Model) commentMissing(r gateway.TicketResult) (Model, tea.Cmd) {
 	a := m.app
 	d := a.detail
 	a.store.Forget(r.Key)
-	a.filed[r.Key] = max(a.filed[r.Key], uint64(r.Flight))
 	a.cancelArea(gateway.Expansion)
 	e := d.expansion
 	e.text, e.status, e.unavailable = "", status{}, true
