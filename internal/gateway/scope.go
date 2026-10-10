@@ -19,6 +19,10 @@ const (
 	Projects                  // the projects of one organisation (C1c)
 	Tickets                   // the tickets of one project: one page, one search (C1c)
 	Detail                    // the ticket in the object pane, previewed or opened (C1c)
+	// Expansion is the one text of the ticket read whole (C1d): the
+	// description or one comment. Closing it moves the area, so a late
+	// answer cannot open it again; the pages stay as they are.
+	Expansion
 	areas
 )
 

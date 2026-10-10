@@ -146,6 +146,13 @@ func (f *fakes) setTicket(fn func(project, id string, o api.TicketOptions) trans
 	f.ticket = fn
 }
 
+// setGate holds the reads of one ticket on gate from now on.
+func (f *fakes) setGate(gate chan struct{}, ticket string, ignoreCancel bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.gate, f.gateTicket, f.ignoreCancel = gate, ticket, ignoreCancel
+}
+
 func (f *fakes) setProjects(fn func(org string) transport.Answer) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -277,6 +284,13 @@ func (d recordedData) ticketRecord(project string, n int, o api.TicketOptions) a
 		for i := range 12 {
 			t.Attachments = append(t.Attachments, api.Attachment{Filename: fmt.Sprintf("file-%02d.txt", i+1)})
 		}
+	case 6:
+		t.DescriptionText = sixDescription
+		t.Posts = d.sixPosts(false)
+		t.Attachments = sixAttachments(d.sixFiles)
+	}
+	if o.FullText && n == 6 {
+		t.DescriptionText = sixDescriptionWhole
 	}
 	total, attachments := len(t.Posts), len(t.Attachments)
 	t.PostsTotal, t.AttachmentsTotal = total, attachments
@@ -341,7 +355,12 @@ func ticketAnswer(t api.Ticket) transport.Answer {
 	payload, _ := json.Marshal(t)
 	_ = json.Unmarshal(payload, &m)
 	if t.PostsPage == 0 {
-		for _, k := range []string{"posts_page", "posts_per_page", "posts_pages", "posts_order", "attachments_page", "attachments_pages"} {
+		drop := []string{"posts_page", "posts_per_page", "posts_pages", "posts_order"}
+		if t.PostID == "" {
+			// One comment carries the page of attachments (MCP 0.9.0).
+			drop = append(drop, "attachments_page", "attachments_pages")
+		}
+		for _, k := range drop {
 			delete(m, k)
 		}
 	}
@@ -353,9 +372,13 @@ func ticketAnswer(t api.Ticket) transport.Answer {
 
 func (d recordedData) defaultTicket(project, id string, o api.TicketOptions) transport.Answer {
 	for n := 1; n <= projectRows(project); n++ {
-		if ticketID(project, n) == id {
-			return ticketAnswer(d.ticketRecord(project, n, o))
+		if ticketID(project, n) != id {
+			continue
 		}
+		if o.PostID != "" {
+			return d.onePost(project, n, o.PostID)
+		}
+		return ticketAnswer(d.ticketRecord(project, n, o))
 	}
 	return transport.Answer{Class: transport.NotFound, Message: "No ticket found for " + id + ".", Status: 200, Sent: true}
 }
@@ -432,4 +455,78 @@ func headingRow(m Model, org string) present.Row {
 // all).
 func countShown(m Model, org string) string {
 	return chooserRow(m, org, sectionInbox).Trailing.String()
+}
+
+// Ticket #6 of a project (C1d): a description and two comments the
+// server shortened, 30 comments, 12 attachments with metadata of every
+// kind (known, missing, zero bytes).
+const (
+	sixDescription      = "Description of six, the first part" + api.TruncationMarker
+	sixDescriptionWhole = "Description of six, the first part and the whole rest."
+)
+
+// sixPostID is the id of comment i (1 the oldest) of ticket #6.
+func sixPostID(i int) string { return idOf(700000 + i) }
+
+// sixPosts are the comments of #6, oldest first; the two newest are
+// shortened, whole with post_id.
+func (d recordedData) sixPosts(whole bool) []api.Post {
+	n := d.sixComments
+	if n == 0 {
+		n = 30
+	}
+	var out []api.Post
+	for i := 1; i <= n; i++ {
+		p := d.recordedTicket.Posts[0]
+		p.ID, p.CreatedAt = sixPostID(i), fmt.Sprintf("2026-01-06T%02d:%02d:00Z", 10+i/60, i%60)
+		p.BodyText = fmt.Sprintf("Six comment %d", i)
+		if i >= 29 {
+			p.BodyText = fmt.Sprintf("Six comment %d begins", i) + api.TruncationMarker
+			if whole {
+				p.BodyText = fmt.Sprintf("Six comment %d begins and ends here.", i)
+			}
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+func sixAttachments(n int) []api.Attachment {
+	if n == 0 {
+		n = 12
+	}
+	var out []api.Attachment
+	for i := 1; i <= n; i++ {
+		a := api.Attachment{Filename: fmt.Sprintf("six-%02d.txt", i)}
+		if i%2 == 1 {
+			kind, status, size := "text/plain", "available", int64(i*1000)
+			a.ContentType, a.TextStatus, a.ByteSize = &kind, &status, &size
+		}
+		if i == 12 {
+			zero := int64(0)
+			a.ByteSize = &zero
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+// onePost is the answer to post_id: the one comment whole, the count of
+// readable comments beside it, the first page of attachments; a comment
+// the ticket does not have is "not found", as the server says it.
+func (d recordedData) onePost(project string, n int, postID string) transport.Answer {
+	t := d.ticketRecord(project, n, api.TicketOptions{})
+	posts := t.Posts
+	if n == 6 {
+		posts = d.sixPosts(true)
+	}
+	for _, p := range posts {
+		if p.ID != postID {
+			continue
+		}
+		t.Posts, t.PostsTotal, t.PostsTruncated, t.PostID = []api.Post{p}, len(posts), len(posts) > 1, postID
+		t.AttachmentsPage, t.AttachmentsPages = 1, (t.AttachmentsTotal+9)/10
+		return ticketAnswer(t)
+	}
+	return transport.Answer{Class: transport.NotFound, Message: "No comment found for " + postID + ".", Status: 200, Sent: true}
 }

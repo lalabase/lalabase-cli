@@ -38,7 +38,7 @@ func main() {
 func run(args []string, stdout, stderr io.Writer, serve func(http.Handler, net.Listener) error) int {
 	fs := flag.NewFlagSet("inbox-fixture", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	scenario := fs.String("scenario", string(inboxfixture.Normal), "one of normal, older, temporary, 429, 401")
+	scenario := fs.String("scenario", string(inboxfixture.Normal), "one of normal, older, temporary, 429, 401, vanished")
 	port := fs.Int("port", 18089, "the port on 127.0.0.1")
 	contractPath := fs.String("contract", "internal/contract/testdata/mcp_contract.json", "the contract copy")
 	if err := fs.Parse(args); err != nil {

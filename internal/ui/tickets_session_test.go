@@ -1115,7 +1115,8 @@ func TestHostileTicketTextFromServerAndCacheIsCleaned(t *testing.T) {
 // The help names exactly the keys that act, in every state of the tickets
 // section, the search line included.
 func TestHelpNamesExactlyTheKeysThatActInTheTicketsSection(t *testing.T) {
-	keys := map[string]Action{"up": Up, "down": Down, "pgup": PageUp, "pgdown": PageDown, "[": PrevPage, "]": NextPage, "R": Refresh, "enter": OpenList, "esc": Back, "left": Left, "right": Right, "/": Search}
+	keys := map[string]Action{"up": Up, "down": Down, "pgup": PageUp, "pgdown": PageDown, "[": PrevPage, "]": NextPage, "R": Refresh, "enter": OpenList, "esc": Back, "left": Left, "right": Right, "/": Search,
+		"tab": NextArea, "o": Order, "e": Expand}
 	entryKeys := map[string]Action{"enter": Submit, "esc": Cancel, "backspace": DeleteBack}
 	acted := func(h *harness, key string) bool {
 		before := ansi.Strip(h.m.View().Content)
@@ -1214,6 +1215,43 @@ func TestHelpNamesExactlyTheKeysThatActInTheTicketsSection(t *testing.T) {
 		return h
 	})
 	check(t, "small while typing", func() *harness { h := tickets(); h.press("/"); h.m.width, h.m.height = 20, 5; return h })
+	// C1d: the sections, pages, order and expansions of a ticket.
+	six := func() *harness { h := newHarness(t); h.openSix(); return h }
+	check(t, "ticket #6, description", six)
+	check(t, "ticket #6, comments", func() *harness { h := six(); h.press("tab"); return h })
+	check(t, "ticket #6, comments page 2", func() *harness { h := six(); h.press("tab"); h.drive(h.press("]")); return h })
+	check(t, "ticket #6, comments oldest first", func() *harness { h := six(); h.press("tab"); h.drive(h.press("o")); return h })
+	check(t, "ticket #6, attachments", func() *harness { h := six(); h.press("tab"); h.press("tab"); return h })
+	check(t, "ticket #6, attachments page 2", func() *harness { h := six(); h.press("tab"); h.press("tab"); h.drive(h.press("]")); return h })
+	check(t, "ticket #6, description whole", func() *harness { h := six(); h.drive(h.press("e")); return h })
+	check(t, "ticket #6, comment whole", func() *harness { h := six(); h.press("tab"); h.drive(h.press("e")); return h })
+	check(t, "ticket #6, page loading", func() *harness {
+		h := six()
+		h.press("tab")
+		h.press("]") // not run: the page is still out
+		return h
+	})
+	check(t, "ticket #6, expansion loading", func() *harness { h := six(); h.press("e"); return h })
+	check(t, "ticket #6, one column", func() *harness { h := six(); h.m.width = 79; h.press("tab"); return h })
+	check(t, "ticket #6, without paging", func() *harness {
+		h := newHarness(t)
+		tools := withoutArgument(h.d.tools, "get_ticket", "posts_page")
+		h.f.tools = func() ([]transport.Tool, transport.Answer) {
+			return tools, transport.Answer{Class: transport.Object, Status: 200, Sent: true}
+		}
+		h.openSix()
+		h.press("tab")
+		return h
+	})
+	check(t, "ticket #6, without full text", func() *harness {
+		h := newHarness(t)
+		tools := withoutArgument(h.d.tools, "get_ticket", "post_id")
+		h.f.tools = func() ([]transport.Tool, transport.Answer) {
+			return tools, transport.Answer{Class: transport.Object, Status: 200, Sent: true}
+		}
+		h.openSix()
+		return h
+	})
 }
 
 // A 401 on the projects read ends the session like any other.

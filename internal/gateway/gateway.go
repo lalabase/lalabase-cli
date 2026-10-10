@@ -201,9 +201,9 @@ func (g *Gateway) Tickets(ctx context.Context, t Ticket) tea.Cmd {
 	})
 }
 
-// Detail reads the ticket t names, with the options of its key (C1c). The
-// preview and the open of one ticket share the request; each decodes for
-// itself.
+// Detail reads the ticket t names, with the options of its key: a page
+// (C1c, C1d) or one text whole (C1d). The preview and the open of one
+// ticket share the request; each decodes for itself.
 func (g *Gateway) Detail(ctx context.Context, t Ticket) tea.Cmd {
 	if err := CheckDetailTicket(t); err != nil {
 		return func() tea.Msg { return TicketResult{Ticket: t, Answer: refusedTicket(err)} }
@@ -359,13 +359,16 @@ func CheckTicketsTicket(t Ticket) error {
 	return nil
 }
 
-// CheckDetailTicket: one ticket of one project, read plain or with the
-// first page of comments (newest first, PostsPageSize) and of attachments:
-// the two reads C1c sends. Later pages and expansions are C1d.
+// CheckDetailTicket: one ticket of one project, in one of the forms C1
+// sends. In the Detail area a page: the plain read of an older server, or
+// a page of comments (PostsPageSize, either order) with a page of
+// attachments. In the Expansion area one text whole: the description, with
+// the options of a page (or plain), or one comment alone. Anything else is
+// refused before a request is made.
 func CheckDetailTicket(t Ticket) error {
 	k := t.Key
 	plain := k.PostsPage == 0 && k.PostsPerPage == 0 && !k.Newest && k.AttachmentsPage == 0
-	first := k.PostsPage == 1 && k.PostsPerPage == PostsPageSize && k.Newest && k.AttachmentsPage == 1
+	paged := k.PostsPage >= 1 && k.PostsPerPage == PostsPageSize && k.AttachmentsPage >= 1
 	switch {
 	case k.Operation != api.TicketSpec.Tool:
 		return fmt.Errorf("ticket: a ticket of %q", k.Operation)
@@ -373,11 +376,22 @@ func CheckDetailTicket(t Ticket) error {
 		return errors.New("ticket: no project or no ticket id")
 	case k.Page != 0 || k.PerPage != 0 || k.Status != "" || k.Organisation != "" || k.Global || k.Query != "":
 		return errors.New("ticket: an option the read does not have")
-	case k.FullText || k.Post != "":
-		return errors.New("ticket: an expansion (C1d)")
-	case !plain && !first:
-		return errors.New("ticket: a page other than the first (C1d)")
-	case t.Area != Detail:
+	case !plain && !paged:
+		return errors.New("ticket: a page that is neither plain nor a whole page")
+	}
+	switch t.Area {
+	case Detail:
+		if k.FullText || k.Post != "" {
+			return errors.New("ticket: an expansion in the area of the pages")
+		}
+	case Expansion:
+		switch {
+		case k.FullText == (k.Post != ""):
+			return errors.New("ticket: an expansion is the description or one comment")
+		case k.Post != "" && !plain:
+			return errors.New("ticket: one comment with a page")
+		}
+	default:
 		return errors.New("ticket: another area")
 	}
 	return nil
@@ -442,7 +456,8 @@ func CheckTicketsPage(k cache.Key, p api.TicketPage) error {
 }
 
 // CheckDetail: the ticket answered is the one asked for, in its project,
-// with the page the key asked for (api.CheckTicket).
+// with the page the key asked for (api.CheckTicket), and for one comment
+// that comment alone.
 func CheckDetail(k cache.Key, t api.Ticket) error {
 	if err := api.CheckTicket(t, DetailOptions(k)); err != nil {
 		return err
@@ -452,6 +467,9 @@ func CheckDetail(k cache.Key, t api.Ticket) error {
 	}
 	if t.Project.ID != k.Project {
 		return errors.New("ticket: a ticket of another project answered")
+	}
+	if k.Post != "" && (t.PostID != k.Post || len(t.Posts) != 1 || t.Posts[0].ID != k.Post) {
+		return errors.New("ticket: not the one comment asked for")
 	}
 	return nil
 }

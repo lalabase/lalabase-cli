@@ -45,6 +45,11 @@ type recordedData struct {
 	projects       []api.Project
 	ticketTmpl     api.TicketRow
 	recordedTicket api.Ticket
+	// sixComments is the number of comments of ticket #6, 30 when zero
+	// (C1d): a test that shrinks the list sets it on its copy.
+	sixComments int
+	// sixFiles is the number of attachments of ticket #6, 12 when zero.
+	sixFiles int
 }
 
 func recorded(t *testing.T) recordedData {

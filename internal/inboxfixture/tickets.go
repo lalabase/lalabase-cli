@@ -21,9 +21,12 @@ import (
 //
 // Ticket #2 has nothing (no description, assignees, creator, status,
 // comments or attachments), #3 has 30 comments (two pages), #4 has 12
-// attachments (two pages); the rest carry the recorded two comments and
-// two attachments. The scenarios act on Website's page 2 as they do on
-// A's inbox page 2, and (401) on a read of ticket #2.
+// attachments (two pages); #6 (C1d) has a description and two comments the
+// server shortened, 30 comments and 12 attachments with metadata of every
+// kind; the rest carry the recorded two comments and two attachments. The
+// scenarios act on Website's page 2 as they do on A's inbox page 2, (401)
+// on a read of ticket #2, (temporary) on page 2 of #6's comments and
+// (vanished) on #6's newest comment read whole.
 
 const (
 	ProjectWebsite  = "00000000-0000-4000-8000-000000000031"
@@ -224,12 +227,17 @@ func (f *Fixture) ticket(w http.ResponseWriter, args map[string]any, reply func(
 		reply(http.StatusOK, toolError("invalid_input", "the inbox fixture reads tickets by ticket_id"), nil)
 		return
 	}
-	for _, name := range []string{"full_text", "post_id"} {
-		if _, ok := args[name]; ok {
-			reply(http.StatusOK, toolError("refused", "the inbox fixture has no "+name), nil)
-			return
+	if f.scenario == Older {
+		// A server before S1 does not know the arguments of C1d.
+		for _, name := range []string{"full_text", "post_id"} {
+			if _, ok := args[name]; ok {
+				reply(http.StatusOK, toolError("invalid_input", "unknown argument "+name), nil)
+				return
+			}
 		}
 	}
+	fullText, _ := args["full_text"].(bool)
+	postID, _ := args["post_id"].(string)
 	number := 0
 	for n := 1; n <= ticketCounts[project]; n++ {
 		if TicketID(project, n) == id {
@@ -254,7 +262,102 @@ func (f *Fixture) ticket(w http.ResponseWriter, args map[string]any, reply func(
 		return
 	}
 	perPage = min(perPage, 50)
-	reply(http.StatusOK, toolObject(f.ticketRecord(project, number, postsPage, perPage, order == "newest", attachmentsPage)), nil)
+	if number == 6 && postsPage == 2 && postID == "" && f.scenario == Temporary && f.scenarioOn(w, "T6P2", req) {
+		return
+	}
+	t := f.ticketRecord(project, number, postsPage, perPage, order == "newest", attachmentsPage)
+	if fullText && number == 6 {
+		t["description_html"], t["description_text"] = SixDescriptionWhole, SixDescriptionWhole
+	}
+	if postID != "" {
+		one, ok := f.onePost(project, number, postID, t)
+		if !ok {
+			reply(http.StatusOK, toolEmpty("No comment found for "+postID+"."), nil)
+			return
+		}
+		t = one
+	}
+	reply(http.StatusOK, toolObject(t), nil)
+}
+
+// The texts of ticket #6: the server's marker after a shortened text, and
+// the whole text a read with full_text or post_id brings.
+const (
+	truncationMarker    = "\n\n\u2026[truncated]"
+	SixDescription      = "Description of six, the first part" + truncationMarker
+	SixDescriptionWhole = "Description of six, the first part and the whole rest."
+)
+
+// SixPostID is the id of comment i (1 the oldest) of ticket #6.
+func SixPostID(i int) string { return fmt.Sprintf("00000000-0000-4000-8000-%012d", 700000+i) }
+
+// sixPosts are the comments of #6, oldest first: the two newest are
+// shortened, whole on post_id.
+func (f *Fixture) sixPosts(whole bool) []any {
+	recorded, _ := f.ticketTmpl["posts"].([]any)
+	var out []any
+	for i := 1; i <= 30; i++ {
+		p := copyMap(recorded[0].(map[string]any))
+		p["id"], p["created_at"] = SixPostID(i), fmt.Sprintf("2026-01-06T10:%02d:00Z", i)
+		body := fmt.Sprintf("Six comment %d", i)
+		if i >= 29 {
+			body = fmt.Sprintf("Six comment %d begins", i) + truncationMarker
+			if whole {
+				body = fmt.Sprintf("Six comment %d begins and ends here.", i)
+			}
+		}
+		p["body_html"], p["body_text"] = body, body
+		out = append(out, p)
+	}
+	return out
+}
+
+// sixAttachments have metadata of every kind: odd ones all of it, even
+// ones none (an older server), the last one zero bytes.
+func sixAttachments() []any {
+	var out []any
+	for i := 1; i <= 12; i++ {
+		a := map[string]any{"id": fmt.Sprintf("00000000-0000-4000-8000-%012d", 800000+i), "filename": fmt.Sprintf("six-%02d.txt", i)}
+		if i%2 == 1 {
+			a["content_type"], a["byte_size"], a["text_status"], a["text"] = "text/plain", i*1000, "available", "text of the file"
+		}
+		if i == 12 {
+			a["byte_size"] = 0
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+// onePost is the answer to post_id, in the server's shape: the comment
+// whole, the count of readable comments beside it, the page of
+// attachments, no page of comments. false: the ticket has no such comment,
+// or (vanished) its newest one is hidden.
+func (f *Fixture) onePost(project string, n int, postID string, page map[string]any) (map[string]any, bool) {
+	var posts []any
+	if n == 6 {
+		posts = f.sixPosts(true)
+		if f.scenario == Vanished && postID == SixPostID(30) {
+			return nil, false
+		}
+	} else {
+		posts, _ = f.ticketTmpl["posts"].([]any)
+		if n == 2 {
+			posts = nil
+		}
+	}
+	for _, p := range posts {
+		if p.(map[string]any)["id"] != postID {
+			continue
+		}
+		t := copyMap(page)
+		for _, k := range []string{"posts_page", "posts_per_page", "posts_pages", "posts_order"} {
+			delete(t, k)
+		}
+		t["posts"], t["posts_total"], t["posts_truncated"], t["post_id"] = []any{p}, len(posts), len(posts) > 1, postID
+		return t, true
+	}
+	return nil, false
 }
 
 // toolEmpty is the answer of a tool that found nothing, as the server
@@ -298,6 +401,9 @@ func (f *Fixture) ticketRecord(project string, n, postsPage, perPage int, newest
 		for i := range 12 {
 			attachments = append(attachments, map[string]any{"filename": fmt.Sprintf("file-%02d.txt", i+1), "content_type": "text/plain", "byte_size": 100})
 		}
+	case 6:
+		t["description_html"], t["description_text"] = SixDescription, SixDescription
+		posts, attachments = f.sixPosts(false), sixAttachments()
 	}
 	total, attachmentsTotal := len(posts), len(attachments)
 	if newest {

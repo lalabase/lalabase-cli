@@ -121,10 +121,21 @@ func (v *ticketsView) moveSelection(delta int) {
 // detailView is the ticket in the object pane.
 type detailView struct {
 	id, project string
-	key         cache.Key
-	record      api.Ticket
+	// key is the page asked for; shown the page the record answers. They
+	// differ while a page turn or a correction loads (C1d).
+	key, shown cache.Key
+	record     api.Ticket
 	status
 	offset int
+	// area is the active section, post the selected comment (by id),
+	// follow what the pane keeps in sight (C1d).
+	area   ticketArea
+	post   string
+	follow anchor
+	// corrected: the one page correction after a shrink was done; R and a
+	// page turn free it again.
+	corrected bool
+	expansion *expansion
 }
 
 // The keys of the section's reads: every option of a request is part of
@@ -188,9 +199,11 @@ func (a *app) leaveList() {
 	}
 }
 
-// dropDetail takes the ticket out of the object pane and cancels its read.
+// dropDetail takes the ticket out of the object pane and cancels its
+// reads, the expansion's included.
 func (a *app) dropDetail() {
 	a.cancelArea(gateway.Detail)
+	a.cancelArea(gateway.Expansion)
 	a.detail = nil
 }
 
@@ -475,7 +488,7 @@ func (m Model) openTicket() (Model, tea.Cmd) {
 	v.opened = v.selected
 	m.focus = view.Object
 	d := a.ensureDetail(v.project, v.selected)
-	d.offset = 0
+	d.offset, d.follow = 0, anchorNone
 	if d.holds() && !d.loading {
 		return m, nil
 	}
@@ -511,9 +524,10 @@ func (a *app) showCachedDetail(project, id string) bool {
 		a.store.Forget(d.key)
 		return false
 	}
-	d.record = record
+	d.record, d.shown = record, d.key
 	d.fromCache(e)
 	a.detail = d
+	a.settle(d)
 	return true
 }
 
@@ -537,7 +551,7 @@ func (m Model) refreshSection() tea.Cmd {
 	a := m.app
 	if m.focus == view.Object && a.detail != nil {
 		d := a.detail
-		d.loading = true
+		d.loading, d.corrected = true, false
 		if a.pending(d.key) {
 			return nil
 		}
@@ -700,18 +714,13 @@ func (m Model) receiveDetail(r gateway.TicketResult) (Model, tea.Cmd) {
 	}
 	switch d {
 	case cache.Replace:
-		v.record = r.Record
+		v.record, v.shown = r.Record, r.Key
 		v.fresh(a.now())
+		a.settle(v)
+		return m.correctDetailPage()
 	case cache.Remove:
 		// The ticket is gone: the pane says so, an open closes.
-		v.record = api.Ticket{}
-		v.removed()
-		if t := a.tickets; t != nil && t.opened == v.id {
-			t.opened = ""
-		}
-		if m.focus == view.Object {
-			m.focus = view.List
-		}
+		return m.detailRemoved(), nil
 	default:
 		v.failed(d, r.Answer)
 	}

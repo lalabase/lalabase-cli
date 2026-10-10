@@ -33,7 +33,9 @@ import (
 const Token = "lalabase-inbox-fixture-only" //nolint:gosec // synthetic: it opens nothing anywhere
 
 // Scenario is what the fixture does with the second page of organisation
-// A's inbox and of Website's tickets (and, for 401, with ticket #2).
+// A's inbox and of Website's tickets (and, for 401, with ticket #2; for a
+// temporary failure, with page 2 of the comments of ticket #6; for
+// vanished, with the newest comment of ticket #6).
 type Scenario string
 
 const (
@@ -48,10 +50,16 @@ const (
 	RateLimited Scenario = "429"
 	// Unauthorized: page 2 answers 401, and so does a read of ticket #2.
 	Unauthorized Scenario = "401"
+	// Vanished: the newest comment of ticket #6 is still on its page, but
+	// read whole (post_id) it is "not found", as for a comment that was
+	// made private meanwhile (C1d).
+	Vanished Scenario = "vanished"
 )
 
 // Scenarios lists them, for a tool's usage line.
-func Scenarios() []Scenario { return []Scenario{Normal, Older, Temporary, RateLimited, Unauthorized} }
+func Scenarios() []Scenario {
+	return []Scenario{Normal, Older, Temporary, RateLimited, Unauthorized, Vanished}
+}
 
 // The two organisations: A as the contract records it, B synthetic.
 const (
