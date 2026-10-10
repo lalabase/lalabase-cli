@@ -213,6 +213,10 @@ const (
 	UnknownShort
 	NotificationUnread
 	NotificationRead
+	// C1e: the disk cache.
+	DiskUnavailable
+	DiskBusy
+	SessionExpiredDiskKept
 	count
 )
 
@@ -316,4 +320,8 @@ var english = map[ID]string{
 	MarkUnsupported: "Marking as read is not supported by this server.",
 	MarkingShort:    "marking…", MarkedShort: "marked", NotMarkedShort: "not marked", UnknownShort: "unknown",
 	NotificationUnread: "unread", NotificationRead: "read",
+
+	DiskUnavailable:        "Disk cache unavailable; using memory only",
+	DiskBusy:               "Disk cache in use by another lalabase; using memory only",
+	SessionExpiredDiskKept: "Session expired. Restart lalabase. The disk cache could not be cleared; remove it by hand.",
 }

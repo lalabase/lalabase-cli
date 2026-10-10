@@ -29,8 +29,16 @@ func ReadRegularNoLink(path string, maxBytes int64) ([]byte, fs.FileInfo, error)
 	return read(path, maxBytes, false)
 }
 
-// ErrLink: the path is a link where none may be.
-var ErrLink = errors.New("is a link")
+// The three ways a file that exists is refused, for a caller that tells a
+// wrong file from a failing file system (the disk cache, C1e).
+var (
+	// ErrLink: the path is a link where none may be.
+	ErrLink = errors.New("is a link")
+	// ErrNotRegular: a directory, a FIFO, a device.
+	ErrNotRegular = errors.New("is no regular file")
+	// ErrTooLarge: larger than the caller's limit.
+	ErrTooLarge = errors.New("is larger than the limit")
+)
 
 func read(path string, maxBytes int64, follow bool) ([]byte, fs.FileInfo, error) {
 	f, err := openNoBlock(path, follow)
@@ -49,14 +57,14 @@ func read(path string, maxBytes int64, follow bool) ([]byte, fs.FileInfo, error)
 		return nil, nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, info, fmt.Errorf("%s is no regular file", path)
+		return nil, info, fmt.Errorf("%s %w", path, ErrNotRegular)
 	}
 	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
 	if err != nil {
 		return nil, info, err
 	}
 	if int64(len(data)) > maxBytes {
-		return nil, info, fmt.Errorf("%s is larger than %d bytes; not reading it", path, maxBytes)
+		return nil, info, fmt.Errorf("%s %w of %d bytes; not reading it", path, ErrTooLarge, maxBytes)
 	}
 	return data, info, nil
 }

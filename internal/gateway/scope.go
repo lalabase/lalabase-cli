@@ -147,6 +147,19 @@ func (s *Scope) accept(t Ticket, sameAnswer bool) bool {
 	return t.Epoch == s.epochs[res] || sameAnswer
 }
 
+// Promote files an entry the disk cache read (C1e) for the waiter's ticket,
+// after the checks every result passes: the session, the waiter, the
+// generation of its area, the epoch of its resource. The ticket is used up
+// by it. The store takes the entry only when it holds nothing for the key:
+// a network answer that landed since wins, and the entry keeps its own
+// load time. It reports whether the entry was filed.
+func (s *Scope) Promote(store *cache.Store, t Ticket, e cache.Entry) bool {
+	if !s.accept(t, false) {
+		return false
+	}
+	return store.Promote(t.Key, e)
+}
+
 // Result is what every result of a read carries: the waiter's ticket, the
 // answer and the request it came from. The typed results embed the ticket
 // and carry the rest beside their decoded value.

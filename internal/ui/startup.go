@@ -123,8 +123,10 @@ func (m Model) confirmIdentity(me api.Me) (Model, tea.Cmd) {
 		return m, nil
 	}
 	a.me, a.ns = me, ns
-	a.scope, a.store = gateway.NewScope(ns), cache.NewStore()
-	return m, tea.Batch(a.startStep(stepInitialize), a.startStep(stepOrganisations))
+	a.scope, a.store = gateway.NewScope(ns), cache.NewStore(cache.WithJournal(a.disk.journal))
+	// The disk cache opens now and not before: nothing of it is read or
+	// made for an identity the server did not confirm (C1e).
+	return m, tea.Batch(a.startStep(stepInitialize), a.startStep(stepOrganisations), a.openDisk())
 }
 
 // organisation finds a directory entry by id.
@@ -196,7 +198,9 @@ func (m *Model) expire() {
 		op.cancel()
 	}
 	if a.scope != nil {
+		// The store tells the journal: the namespace leaves the disk too.
 		a.scope.EndSession(a.store)
 	}
+	a.endDiskSession()
 	a.reset()
 }

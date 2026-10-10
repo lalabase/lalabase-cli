@@ -54,6 +54,9 @@ type terminalProcess struct {
 type terminalOptions struct {
 	url, marker string
 	limit       time.Duration
+	// home is the child's home, when a run is to find what an earlier one
+	// left there (the disk cache, C1e); empty for a fresh one.
+	home string
 }
 
 func startTerminal(t *testing.T, scenario string, width uint16) *terminalProcess {
@@ -83,7 +86,10 @@ func startTerminalWith(t *testing.T, scenario string, width uint16, opts termina
 	if err := unix.SetNonblock(int(master.Fd()), true); err != nil {
 		t.Fatal(err)
 	}
-	home := t.TempDir()
+	home := opts.home
+	if home == "" {
+		home = t.TempDir()
+	}
 	token := "pty-dummy"
 	if opts.url != "http://127.0.0.1:1" {
 		token = inboxfixture.Token

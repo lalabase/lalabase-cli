@@ -3,8 +3,9 @@
 Lalabase from the terminal: one binary for a person with arrow keys (a
 full-screen interface) and for scripts and Claude Code (plain text or JSON).
 
-**Status:** organisations, the unread inbox, the tickets and marking as
-read (slices C1b to C1f). The interface verifies the token, lists the
+**Status:** organisations, the unread inbox, the tickets, marking as read
+and a disk cache between runs (slices C1b to C1f and C1e: C1 is complete).
+The interface verifies the token, lists the
 organisations with their unread counts, shows the unread notifications of
 one organisation page by page, opens the ticket a notification names, and
 per organisation its projects, the tickets of a project page by page with a
@@ -142,15 +143,69 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
   without its `q` there is no search; without `get_ticket` the list opens
   nothing. A counter is unknown until a read observed it, and a newer read
   wins whatever order the answers arrive in.
-* **The cache** (memory only) shows a page, a list or a ticket seen before
-  at once, marked "Cached", and reloads it exactly once (a ticket's reload
-  after the pause, as background work). Every option of a request is part
-  of its key: a search, a page, the page of comments. A temporary failure
-  keeps what was shown, marked "Possibly stale"; "not found" and "no
-  access" remove it (a project with every page and search of it, a ticket
-  with every variant); a refusal keeps it with the server's message; a 429
-  is shown with its deadline (UTC) while the queue waits. A page that no
-  longer exists after a refresh is corrected once to the last page.
+* **The cache** shows a page, a list or a ticket seen before at once,
+  marked "Cached", and reloads it exactly once (a ticket's reload after the
+  pause, as background work). Every option of a request is part of its key:
+  a search, a page, the page of comments. A temporary failure keeps what
+  was shown, marked "Possibly stale" ("Cached, possibly stale" when the
+  entry came from the cache); "not found" and "no access" remove it (a
+  project with every page and search of it, a ticket with every variant); a
+  refusal keeps it with the server's message; a 429 is shown with its
+  deadline (UTC) while the queue waits. A page that no longer exists after
+  a refresh is corrected once to the last page. The memory holds 64 entries
+  of at most 2 MiB each, 16 MiB in all; what it lets go stays on disk.
+* **The disk cache (C1e)** keeps those entries between runs, under
+  `~/.cache/lalabase/cli/<profile>/` (or `$XDG_CACHE_HOME/lalabase/cli/`
+  when that variable names an absolute path; on macOS too). It is opened
+  only after `/me` confirmed the identity, and an entry is filed under the
+  profile, the normalised server address and the token id the server
+  confirmed, never under a token or a fingerprint of one. There is no
+  offline start: a run whose `/me` fails shows nothing of an earlier one,
+  and the write permission comes from this run's `/me` alone. A page found
+  on disk shows as "Cached" and is reloaded once like a page from memory; a
+  hit, a restart or a failed reload extends no lifetime. The start makes
+  its five requests as before; the disk adds none and saves none.
+  * **Bounds:** 64 MiB per profile directory, 24 hours since the last
+    successful network read (an entry stamped in the future is expired),
+    2 MiB per payload, 2 MiB plus 64 KiB per file with its metadata, 1,024
+    files. An answer above a bound is shown, not kept, and what the key held
+    before goes with it. Pruning runs on open and when a write crosses a
+    bound, never on a timer, in this order: temporary files and names of
+    the cache's own that are no regular file; expired entries; then, while
+    the directory is over its size or file count, the oldest entry first.
+  * **Files:** the directory is the user's alone (0700, and the whole way to
+    it is checked like the config's, see below), the files 0600, one JSON
+    record per entry with the format version, the key with its identity
+    field by field, the time of the network read, the stale mark and the
+    answer. A file is written to a unique temporary file beside it, synced
+    and renamed over the old one; a reader sees the old or the new entry,
+    never half of one, and a temporary file a crash left behind is never an
+    entry. A file is used only when it is a regular file of the user's with
+    no right for others, its record reads, its key is exactly the one asked
+    for (a name proves nothing), it is young enough and its answer passes
+    the same checks as a network answer; anything else is a miss and the
+    file goes. Text from disk is cleaned on its way to the screen like text
+    from the network.
+  * **One lalabase at a time:** a run holds `lock` in the profile's
+    directory for as long as it runs and never waits for it. A second
+    lalabase on the same profile says "Disk cache in use by another
+    lalabase; using memory only" and runs on memory alone; another profile
+    is another directory. With one writer the disk is a replay of the
+    memory's decisions in their order (a batch at a time, bounded): a
+    removal journaled before a write is applied before it, a write journaled
+    before a removal never brings the data back, and a disk read that comes
+    after a newer network answer, after a removal of its resource or after
+    the selection moved on changes nothing.
+  * **Failure:** when the directory cannot be made or is unsafe, or the file
+    system fails while reading or writing, the run says "Disk cache
+    unavailable; using memory only" once in the status line and goes on
+    with the network and memory; a single bad file is removed and is no
+    such failure. A 401 removes every entry of the identity from the disk
+    with the session; when that cannot be done the expired session says
+    "The disk cache could not be cleared; remove it by hand".
+  * **Clearing it by hand:** quit lalabase (the lock file is held only while
+    it runs), then `rm -r ~/.cache/lalabase/cli/<profile>`. The next run
+    makes the directory again.
 * Startup profile errors and recovered panics exit with 1; terminal, locale
   and profile flag errors exit with 2. A panic in the client's background
   work (a shared request, the wake-up after a rate limit pause, a read for
@@ -185,9 +240,11 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
   Saving loads, merges and replaces the file under a lock (a regular file
   beside it, never a link), and only if the profile is still what was asked
   about; a file that would outgrow the read limit is not written.
-* **The config's way is checked** against one threat: another local user
-  without root, who can change only what is writable for them and replace
-  only entries they own. From `/` down, links resolved as the kernel does:
+* **The config's way is checked** (`internal/privatefs`, the same model for
+  the config, its lock file and the disk cache) against one threat: another
+  local user without root, who can change only what is writable for them
+  and replace only entries they own. From `/` down, links resolved as the
+  kernel does:
   a directory passed through belongs to the user or root and is not writable
   by group or others unless sticky (`/tmp`); a link passed through belongs to
   the user or root; the config's own directory, the config and its lock file
@@ -235,7 +292,9 @@ not write), `unknown-write` (`/me` without `read_only`), `no-mark-read`
 (the tool is missing), `refusals` (marking the first organisation's row #2
 is refused as archived, #3 is not found, #4 is not allowed), `lost` (every
 write is carried out and its answer is lost), `slow` (every write is
-answered after 1.5 s). Ticket #6 of Website-Relaunch has a description and
+answered after 1.5 s), `slow-reads` (every inbox page of one organisation
+and every ticket is answered after 1.5 s: what the disk cache shows
+meanwhile after a restart). Ticket #6 of Website-Relaunch has a description and
 two comments the server shortened, 30 comments and twelve attachments with
 metadata of every kind (known, missing, zero bytes).
 
@@ -257,8 +316,18 @@ rm -r "$fixture_dir"
 The PTY tests of `cmd/lalabase` run the same flow against the same handler
 at 80 and 120 columns, the whole C1 run included (start, organisation,
 inbox, details, the ticket a notification names, its pages and the
-expansion, `r`, back to the updated inbox). The shipped binary does not
-carry the fixture or the contract copy (`internal/sourceguard` holds that).
+expansion, `r`, back to the updated inbox), and the disk cache across two
+runs on one home (`slow-reads`: the inbox and the ticket "Cached" while
+the reload is out, then fresh; `temporary`: "Cached, possibly stale" and
+`R`; `401`: the directory cleared and nothing refilled; an unusable
+directory and a busy lock). The shipped binary does not carry the fixture
+or the contract copy (`internal/sourceguard` holds that).
+
+To see the disk cache by hand, run the fixture with `-scenario slow-reads`,
+start the client as above with a `$fixture_dir` of its own and
+`XDG_CACHE_HOME="$fixture_dir/cache"` added to its environment, open an
+inbox and a ticket, quit, and start it again: the pages show as "Cached"
+for 1.5 s. The entries lie in `$fixture_dir/cache/lalabase/cli/default/`.
 
 ## Build
 

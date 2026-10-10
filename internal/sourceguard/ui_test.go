@@ -34,6 +34,8 @@ const (
 
 func surface(dir string) bool { return dir == rootController || view(dir) }
 
+func test(name string) bool { return strings.HasSuffix(name, "_test.go") }
+
 func view(dir string) bool {
 	return strings.HasPrefix(dir, "internal/ui/") || dir == "internal/present" || dir == "internal/uitext" || dir == "internal/terminal"
 }
@@ -45,7 +47,8 @@ func outputRoot(dir string) bool {
 }
 
 func infrastructure(p string) bool {
-	for _, name := range []string{"internal/api", "internal/transport", "internal/cache", "internal/queue", "internal/gateway"} {
+	for _, name := range []string{"internal/api", "internal/transport", "internal/cache", "internal/queue", "internal/gateway",
+		"internal/diskcache", "internal/privatefs", "internal/safefile"} {
 		if p == clientModule+name || strings.HasPrefix(p, clientModule+name+"/") {
 			return true
 		}
@@ -89,6 +92,49 @@ var reachableImports = map[string][]string{
 	// WithoutCatchPanics).
 	"charm.land/bubbletea/v2": nil, "charm.land/bubbles/v2/help": nil, "charm.land/bubbles/v2/key": nil,
 	"charm.land/lipgloss/v2": nil, "github.com/charmbracelet/x/ansi": nil,
+}
+
+// fileSystemImports are what the three packages that keep the client's
+// files for it may import beyond reachableImports (C1e): the disk cache,
+// the threat model of private files, and the reader of files the client
+// does not control. Each import is named with the names it may use, so a
+// package that can also write to the terminal, end the process or read the
+// environment (os) gives only the file calls; nil allows every name of a
+// pure package. Nothing here allows an output stream, a goroutine or the
+// environment: those rules hold in these packages too, and no other
+// reachable package gets any of this. A new name here is a decision, not a
+// fix for a red guard.
+var fileSystemImports = map[string]map[string][]string{
+	"internal/safefile": {
+		"os":      {"File", "Open", "OpenFile", "O_RDONLY", "Lstat", "ModeSymlink", "PathError", "ErrInvalid"},
+		"io/fs":   nil,
+		"syscall": {"O_NONBLOCK", "O_NOFOLLOW"},
+	},
+	"internal/privatefs": {
+		"os":              {"OpenFile", "O_RDWR", "O_CREATE", "Getuid", "Lstat", "Readlink"},
+		"io/fs":           nil,
+		"path/filepath":   nil,
+		"syscall":         {"O_NONBLOCK", "O_NOFOLLOW", "Flock", "LOCK_EX", "LOCK_NB", "LOCK_UN", "Stat_t", "EWOULDBLOCK", "EAGAIN"},
+		"encoding/binary": {"NativeEndian"},
+		// The access list reader of macOS: getattrlist has no libSystem
+		// wrapper, so it is the one raw system call of the client.
+		"unsafe":                {"Pointer"},
+		"golang.org/x/sys/unix": {"BytePtrFromString", "Syscall6", "SYS_GETATTRLIST"},
+	},
+	"internal/diskcache": {
+		"os":            {"File", "MkdirAll", "Open", "Remove", "CreateTemp", "Chtimes", "Rename"},
+		"io/fs":         nil,
+		"path/filepath": nil,
+		"crypto/sha256": nil,
+		"encoding/hex":  nil,
+	},
+}
+
+// fileSystemNames: the names dir may use of p beyond reachableImports; ok
+// is false when dir has no such allowance for p.
+func fileSystemNames(dir, p string) (names []string, ok bool) {
+	names, ok = fileSystemImports[dir][p]
+	return names, ok
 }
 
 // foreignCallbackTypes are standard library types with fields whose value
@@ -188,12 +234,20 @@ func inspectForeignCallbacks(name string, file *ast.File, aliases map[string]str
 	return findings
 }
 
-// inspectReachableImports applies reachableImports to a production file.
+// inspectReachableImports applies reachableImports to a production file,
+// and fileSystemImports to the files of the three packages named there.
 func inspectReachableImports(name string, file *ast.File, aliases map[string]string) []string {
 	var findings []string
+	dir := path.Dir(name)
+	allowed := func(p string) (names []string, ok bool) {
+		if names, ok = reachableImports[p]; ok {
+			return names, true
+		}
+		return fileSystemNames(dir, p)
+	}
 	for _, imp := range file.Imports {
 		p, _ := strconv.Unquote(imp.Path.Value)
-		if _, ok := reachableImports[p]; !ok && !strings.HasPrefix(p, clientModule) {
+		if _, ok := allowed(p); !ok && !strings.HasPrefix(p, clientModule) {
 			findings = append(findings, name+": import "+p+" is not allowed where the interface reaches")
 		}
 	}
@@ -206,7 +260,7 @@ func inspectReachableImports(name string, file *ast.File, aliases map[string]str
 		if !ok {
 			return true
 		}
-		if names := reachableImports[aliases[ident.Name]]; names != nil && !slices.Contains(names, sel.Sel.Name) {
+		if names, _ := allowed(aliases[ident.Name]); names != nil && !slices.Contains(names, sel.Sel.Name) {
 			findings = append(findings, name+": "+aliases[ident.Name]+"."+sel.Sel.Name+" is not allowed where the interface reaches")
 		}
 		return true
@@ -269,7 +323,11 @@ func inspectUI(sources map[string]string) []string {
 			// The log packages write to stderr: barred wherever the
 			// interface or its work reaches, not only in the views.
 			logging := p == "log" || strings.HasPrefix(p, "log/")
-			if direct || (reachable[path.Dir(name)] && (terminalAccess(p) || logging)) {
+			// The one raw system call (the access list reader) is allowed
+			// by name in fileSystemImports; everywhere else x/sys/unix is
+			// terminal access.
+			_, fileSystem := fileSystemNames(path.Dir(name), p)
+			if direct || (reachable[path.Dir(name)] && ((terminalAccess(p) && (!fileSystem || test(name))) || logging)) {
 				findings = append(findings, name+": forbidden direct import "+p)
 			}
 			alias := path.Base(p)

@@ -35,6 +35,22 @@ func (s *status) fromCache(e cache.Entry) {
 	s.known, s.cached, s.stale, s.loadedAt = true, true, e.Stale, e.LoadedAt
 }
 
+// adoptCached records a load from an entry the disk brought after the view
+// was opened (C1e): the data is cached, and a reload that failed meanwhile
+// for a temporary reason leaves it possibly stale, not unreachable; a
+// refusal's message stays.
+func (s *status) adoptCached(e cache.Entry) {
+	unreachable := s.stale && !s.known
+	s.fromCache(e)
+	if unreachable {
+		s.stale, s.err = true, present.Inline{}
+	}
+}
+
+// holdsServerData: the view shows what the server answered in this run,
+// not a cached entry; a disk entry arriving later is not shown over it.
+func (s status) holdsServerData() bool { return s.known && !s.cached }
+
 // removed records that the server took the data away.
 func (s *status) removed() {
 	s.known, s.cached, s.stale, s.err = false, false, false, uitext.Inline(uitext.NotFoundRemoved)

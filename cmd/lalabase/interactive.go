@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/api"
+	"github.com/gboyke/lalabase-cli/internal/diskcache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/profile"
 	"github.com/gboyke/lalabase-cli/internal/queue"
@@ -74,6 +75,9 @@ func runInteractive(name string, env Env) int {
 				Events:  ev,
 				Profile: p.Name,
 				Server:  p.URL,
+				// The disk cache (C1e): under the user's cache directory,
+				// opened only after /me confirmed the identity.
+				Disk: &diskcache.Opener{Root: diskcache.Root(env.Getenv, env.Home)},
 			})), sup)
 		}
 	}

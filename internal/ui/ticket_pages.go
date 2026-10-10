@@ -190,15 +190,10 @@ func (a *app) showPage(k cache.Key) tea.Cmd {
 	d := a.detail
 	a.cancelArea(gateway.Detail)
 	d.key, d.corrected, d.err = k, false, present.Inline{}
-	if e, ok := a.store.Get(k); ok {
-		record, ans := api.DecodeTicket(transport.Answer{Class: transport.Object, Payload: e.Payload, Status: 200, Sent: true}, gateway.DetailOptions(k))
-		if ans.OK() && gateway.CheckDetail(k, record) == nil {
-			d.record, d.shown = record, k
-			d.fromCache(e)
-			a.settle(d)
-		} else {
-			a.store.Forget(k)
-		}
+	if e, ok := a.cachedPage(d, k); ok {
+		d.fromCache(e)
+	} else {
+		a.diskRead(gateway.Detail, k, forDetail)
 	}
 	d.loading = true
 	return a.issue(gateway.Detail, k, forDetail, queue.User)
@@ -233,7 +228,7 @@ func (m Model) correctDetailPage() (Model, tea.Cmd) {
 	if fix == k {
 		return m, nil
 	}
-	a.store.Forget(k)
+	a.forget(k)
 	if !ask {
 		// Nothing to read: an empty section looks the same on page 1.
 		d.key, d.shown = fix, fix
@@ -302,17 +297,29 @@ func (m Model) expand() (Model, tea.Cmd) {
 	}
 	e := &expansion{key: k, post: post}
 	d.expansion = e
-	if entry, ok := a.store.Get(k); ok {
-		record, ans := api.DecodeTicket(transport.Answer{Class: transport.Object, Payload: entry.Payload, Status: 200, Sent: true}, gateway.DetailOptions(k))
-		if ans.OK() && gateway.CheckDetail(k, record) == nil {
-			e.text = expandedText(record, post)
-			e.fromCache(entry)
-		} else {
-			a.store.Forget(k)
-		}
+	if entry, ok := a.cachedExpansion(e); ok {
+		e.fromCache(entry)
+	} else {
+		a.diskRead(gateway.Expansion, k, forExpansion)
 	}
 	e.loading = true
 	return m, a.issue(gateway.Expansion, k, forExpansion, queue.User)
+}
+
+// cachedExpansion puts the memory entry of the expansion's key into it, if
+// there is one that still reads.
+func (a *app) cachedExpansion(e *expansion) (cache.Entry, bool) {
+	entry, ok := a.store.Get(e.key)
+	if !ok {
+		return cache.Entry{}, false
+	}
+	record, ans := api.DecodeTicket(transport.Answer{Class: transport.Object, Payload: entry.Payload, Status: 200, Sent: true}, gateway.DetailOptions(e.key))
+	if !ans.OK() || gateway.CheckDetail(e.key, record) != nil {
+		a.forget(e.key)
+		return cache.Entry{}, false
+	}
+	e.text = expandedText(record, e.post)
+	return entry, true
 }
 
 // expandedText is the text an answer brings: the description, or the one
@@ -370,7 +377,7 @@ func (m Model) receiveExpansion(r gateway.TicketResult) (Model, tea.Cmd) {
 func (m Model) commentMissing(r gateway.TicketResult) (Model, tea.Cmd) {
 	a := m.app
 	d := a.detail
-	a.store.Forget(r.Key)
+	a.forget(r.Key)
 	a.cancelArea(gateway.Expansion)
 	e := d.expansion
 	e.text, e.status, e.unavailable = "", status{}, true

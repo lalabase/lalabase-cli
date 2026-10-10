@@ -10,7 +10,19 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
+// Update is one step: the message, then the disk's flush (C1e), which
+// sends what the step changed and the disk reads it issued, as one command.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	if a := next.app; a != nil {
+		if flush := a.flushDisk(); flush != nil {
+			cmd = tea.Batch(cmd, flush)
+		}
+	}
+	return next, cmd
+}
+
+func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	if a := m.app; a != nil && !a.expired && a.revoked() {
 		// The mailbox knows the 401 before its wake-up reached the model:
 		// whatever this message is, nothing of the session is shown, read
@@ -20,7 +32,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case worker.Fatal:
 		// The command reads the error after the terminal is restored.
+		m.app.closeDisk()
 		return m, tea.Quit
+	case diskOpened:
+		return m.receiveDiskOpened(msg)
+	case diskDone:
+		return m.receiveDiskDone(msg)
 	case tea.WindowSizeMsg:
 		m.width, m.height = max(0, msg.Width), max(0, msg.Height)
 		if m.app != nil {
@@ -95,9 +112,11 @@ func (m Model) wake(msg gateway.Wake) (Model, tea.Cmd) {
 func (m Model) key(key tea.KeyPressMsg) (Model, tea.Cmd) {
 	action := routeKey(m.mode, key)
 	if action.Kind == Quit {
+		m.app.closeDisk()
 		return m, tea.Quit
 	}
 	if action.Kind == Interrupt {
+		m.app.closeDisk()
 		return m, tea.Interrupt
 	}
 	// allowed is built from the bindings of the state, the small terminal

@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/contract"
+	"github.com/gboyke/lalabase-cli/internal/diskcache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/transport"
@@ -289,7 +290,12 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	d := recorded(t)
+	return buildHarness(t, nil, nil)
+}
+
+// defaultFakes are the fakes of a healthy server, built from the recorded
+// data.
+func defaultFakes(d recordedData) *fakes {
 	f := &fakes{
 		me: func() (api.Me, transport.Answer) {
 			return d.me, transport.Answer{Class: transport.Object, Status: 200, Sent: true}
@@ -310,6 +316,18 @@ func newHarness(t *testing.T) *harness {
 	}
 	f.writes.read, f.writes.mark = map[string]bool{}, f.defaultMark
 	f.projects, f.tickets, f.ticket = d.defaultProjects, d.defaultTickets, d.defaultTicket
+	return f
+}
+
+// buildHarness makes a session: with the fakes given (a restart keeps the
+// server as it was, C1e) or fresh ones, and with the disk cache opener
+// given or none.
+func buildHarness(t *testing.T, f *fakes, disk *diskcache.Opener) *harness {
+	t.Helper()
+	d := recorded(t)
+	if f == nil {
+		f = defaultFakes(d)
+	}
 	live := worker.New(context.Background())
 	t.Cleanup(func() { live.Stop(wall) })
 	// The mailbox's commands wait on a lifetime that is over, so a test can
@@ -325,8 +343,12 @@ func newHarness(t *testing.T) *harness {
 		Events:  ev,
 		Profile: "default",
 		Server:  "https://example.invalid",
+		Disk:    disk,
 	}), WithClock(func() time.Time { return h.now }))
 	h.m.width, h.m.height = 120, 24
+	// The disk is let go with the test: a session that never quit would
+	// hold the profile's lock against the next one.
+	t.Cleanup(func() { h.m.app.closeDisk() })
 	return h
 }
 
