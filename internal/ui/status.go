@@ -40,6 +40,10 @@ func (s *status) removed() {
 	s.known, s.cached, s.stale, s.err = false, false, false, uitext.Inline(uitext.NotFoundRemoved)
 }
 
+// awaitingReload: shown from the cache and its one reload not landed yet,
+// neither as data nor as a failure.
+func (s status) awaitingReload() bool { return s.cached && !s.stale && s.err.String() == "" }
+
 // failed records an answer that brought no data: temporary ones keep what
 // is shown, possibly stale; the rest keep it with the server's message.
 func (s *status) failed(d cache.Decision, ans transport.Answer) {

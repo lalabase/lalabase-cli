@@ -124,7 +124,8 @@ func TestPTYTicketsFlow(t *testing.T) {
 			c.resize(t, width)
 			c.expect(t, "the ticket after the resize back", width, "#2 Export als CSV", "No description", "esc back")
 			c.act(t, keyEsc, width, "esc projects")
-			if !c.screenShows(width, "#2 Export als CSV") {
+			// The pane's own lines, not the list row with the same title.
+			if !c.screenShows(width, "No description", "No comments") {
 				t.Fatal("esc dropped the preview")
 			}
 			c.act(t, "/", width, "Search: _")
@@ -159,7 +160,9 @@ func TestPTYTicketsFlow(t *testing.T) {
 			for _, r := range reqs.tickets {
 				reads = append(reads, fmt.Sprintf("%v/%v/%v/%v", r.Args["ticket_id"], r.Args["posts_page"], r.Args["posts_order"], r.Args["attachments_page"]))
 			}
-			// #1 previewed once, #2 previewed and opened in one request.
+			// #1 previewed once; #2 previewed once and found fresh by the
+			// Enter that came after the preview landed (the join of a
+			// pending preview is held by the ui tests).
 			if want := []string{inboxfixture.TicketLogin + "/1/newest/1", ticket2 + "/1/newest/1"}; strings.Join(reads, " ") != strings.Join(want, " ") {
 				t.Fatalf("ticket reads %v, want %v", reads, want)
 			}

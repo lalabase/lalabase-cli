@@ -43,10 +43,10 @@ func (m Model) ticketsColumn() present.Column {
 	} else {
 		empty := uitext.NoTickets
 		switch {
-		case v.query != "":
-			empty = uitext.NoMatches
 		case v.total > 0:
 			empty = uitext.NoneOnTicketPage
+		case v.query != "":
+			empty = uitext.NoMatches
 		}
 		c.Notice = v.notice(empty, len(v.rows) == 0)
 	}

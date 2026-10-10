@@ -74,7 +74,10 @@ func (m *Model) receive(received gateway.Received) (cache.Decision, bool) {
 	if seq < a.newestFiled(key, removal) {
 		// An older request than the newest filed for the key (for a
 		// removal: for the resource): its answer is not filed over the
-		// newer one. The waiter's ticket is used up.
+		// newer one. The waiter's ticket is used up. A read refused before
+		// it was sent carries flight 0 and lands here too once the key was
+		// filed: the model built a ticket the gateway does not read, which
+		// no state of it does; nothing of that is shown.
 		a.scope.Leave(r.Waiter)
 		return cache.Drop, false
 	}

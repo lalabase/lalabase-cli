@@ -1764,6 +1764,24 @@ func TestAnEmptyPageWithinRangeSaysSo(t *testing.T) {
 	if got := h.m.screen().List.Notice.String(); got != "No tickets match the search." {
 		t.Fatalf("notice %q", got)
 	}
+	// A search's empty page within range says so as well (round 3,
+	// question 3).
+	h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+		if q.Page == 2 {
+			return ticketPageAnswer(2, q.PerPage, 30, nil)
+		}
+		return h.d.defaultTickets(api.TicketQuery{ProjectID: q.ProjectID, Page: q.Page, PerPage: q.PerPage})
+	})
+	h.press("/")
+	for range 15 {
+		h.press("backspace")
+	}
+	h.typeText("Ticket")
+	h.drive(h.press("enter"))
+	h.drive(h.press("]"))
+	if got := h.m.screen().List.Notice.String(); got != "No tickets on this page." {
+		t.Fatalf("search page 2: notice %q", got)
+	}
 }
 
 // Review round 2, question 4: the projects' failure states show through
@@ -1793,5 +1811,194 @@ func TestTheProjectsFailureStates(t *testing.T) {
 	h.drive(h.press("R"))
 	if got := h.m.screen().List.Notice.String(); got != "Refused: refused: archived" || len(h.m.app.projects.rows) != 4 {
 		t.Fatalf("refused: notice %q", got)
+	}
+}
+
+// cachedThen puts the ticket of row 0 into the cache (a preview that
+// landed), moves the cursor down and back up so the pane shows it from the
+// cache, then makes its one reload answer with the given answer. After the
+// Due the pane holds a cached record whose reload failed.
+func cachedThen(t *testing.T, reload transport.Answer) (*harness, *app) {
+	t.Helper()
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	h.press("down")
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	h.press("up")
+	if d := a.detail; d == nil || !d.cached || d.id != login {
+		t.Fatalf("setup: not shown from the cache: %+v", d)
+	}
+	h.f.setTicket(func(string, string, api.TicketOptions) transport.Answer { return reload })
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	// Three reads, four for a temporary failure (the queue's one retry).
+	if n := len(h.f.detailReads()); n < 3 || n > 4 {
+		t.Fatalf("setup: %d reads", n)
+	}
+	return h, a
+}
+
+// Review round 3, finding 2 (the reviewer's R3A and R3B): a cached record
+// whose reload failed, temporarily or with a refusal, is not read again
+// on a focus change or a resize on the same row.
+func TestACachedRecordWhoseReloadFailedIsNotReReadOnAFocusChange(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		reload transport.Answer
+		notice string
+	}{
+		{"stale", failing(transport.Temporary, 503), "Cached, possibly stale"},
+		{"refused", transport.Answer{Class: transport.Refused, Reason: "archived", Message: "archived", Status: 200, Sent: true}, "Refused: refused: archived"},
+	} {
+		h, a := cachedThen(t, tc.reload)
+		d := a.detail
+		if !d.cached || d.loading || d.awaitingReload() {
+			t.Fatalf("%s: after the failed reload: %+v", tc.name, d)
+		}
+		if got := h.m.screen().Object.Notice.String(); got != tc.notice {
+			t.Fatalf("%s: notice %q", tc.name, got)
+		}
+		token := a.previewToken
+		reads := len(h.f.detailReads())
+		for _, key := range []string{"right", "left", "right", "left"} {
+			if cmd := h.press(key); cmd != nil || a.previewToken != token {
+				t.Errorf("%s: %s armed a timer for a cached record whose reload failed", tc.name, key)
+			}
+			h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+		}
+		if cmds := h.feed(tea.WindowSizeMsg{Width: 80, Height: 24}); len(cmds) != 0 || a.previewToken != token {
+			t.Errorf("%s: a resize armed a timer for a cached record whose reload failed", tc.name)
+		}
+		h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+		if n := len(h.f.detailReads()); n != reads {
+			t.Errorf("%s: %d more read(s) after four focus changes and a resize on one row", tc.name, n-reads)
+		}
+		// Enter reads it again as the person; the cursor leaving and
+		// returning as a preview.
+		h.f.setTicket(h.d.defaultTicket)
+		h.drive(h.press("enter"))
+		if n := len(h.f.detailReads()); n != reads+1 || !a.detail.holds() {
+			t.Fatalf("%s: enter: %d reads, detail %+v", tc.name, n-reads, a.detail)
+		}
+	}
+}
+
+// Review round 3, question 1: the list's reload does not take the focus
+// off a pane that holds a preview; it does off an empty pane.
+func TestTheListsReloadLeavesTheFocusOnAPreview(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	h.press("esc") // the projects
+	reload := h.openProject(website)
+	if !a.tickets.cached || a.detail == nil || !a.detail.cached {
+		t.Fatalf("setup: list cached %v, detail %+v", a.tickets.cached, a.detail)
+	}
+	h.press("right") // reading the cached preview
+	h.drive(reload)
+	if h.m.focus != view.Object || a.tickets.cached {
+		t.Fatalf("after the list's reload: focus %d, cached %v", h.m.focus, a.tickets.cached)
+	}
+	// An empty pane does lose the focus.
+	h.m.focus = view.List
+	h.press("esc")
+	cmd := h.openProject(handbuch)
+	h.m.focus = view.Object
+	h.drive(cmd)
+	if h.m.focus != view.List || a.detail != nil {
+		t.Fatalf("empty pane: focus %d, detail %v", h.m.focus, a.detail != nil)
+	}
+}
+
+// Review round 3 probes: the pane counts as hidden when the help's own
+// height makes the terminal small, not only its size; in one column the
+// pane is on the screen exactly when it is focused; a wake-up while the
+// cached record's reload is out adds no second waiter.
+func TestThePaneIsHiddenWhenTheHelpMakesTheTerminalSmall(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	// A size above the minimum where the help of the ticket list takes
+	// the body's lines: found by looking, so the test does not depend on
+	// the exact wrapping of the help.
+	found := false
+	for width := 24; width <= 60 && !found; width++ {
+		for height := 8; height <= 14 && !found; height++ {
+			h.m.width, h.m.height = width, height
+			found = h.m.small() && !layoutWith(width, height, 1).Small
+		}
+	}
+	if !found {
+		t.Fatal("setup: no size where the help alone makes the terminal small")
+	}
+	token := a.previewToken
+	if cmd := h.press("right"); cmd != nil || a.previewToken != token {
+		t.Fatal("a timer while the help leaves no room for the pane")
+	}
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if n := len(h.f.detailReads()); n != 0 {
+		t.Fatalf("%d reads while the help leaves no room for the pane", n)
+	}
+}
+
+func TestInOneColumnThePaneIsOnTheScreenWhenFocused(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	h.feed(tea.WindowSizeMsg{Width: 79, Height: 24})
+	token := a.previewToken
+	if cmd := h.press("left"); cmd != nil || a.previewToken != token {
+		t.Fatal("the chooser armed a timer in one column")
+	}
+	h.press("right") // the list
+	if a.previewToken != token {
+		t.Fatal("the list armed a timer in one column")
+	}
+	cmd := h.press("right") // the pane
+	if cmd == nil || a.previewToken == token {
+		t.Fatal("the pane did not arm a timer in one column")
+	}
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if len(h.f.detailReads()) != 1 || a.detail == nil || !a.detail.known {
+		t.Fatalf("%d reads, detail %+v", len(h.f.detailReads()), a.detail)
+	}
+	if !strings.Contains(ansi.Strip(h.m.View().Content), "Nach dem Absenden") {
+		t.Fatal("the preview is not on the one-column screen")
+	}
+}
+
+func TestAWakeUpWhileTheReloadIsOutAddsNoWaiter(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	h.press("down")
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	h.press("up")
+	gate := make(chan struct{})
+	h.f.gate, h.f.gateTicket = gate, login
+	reload := h.background(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})[0])
+	h.waitFor("the reload on the wire", func() bool { return len(h.f.detailReads()) == 3 })
+	waiters := func() int {
+		n := 0
+		for _, w := range a.waiters {
+			if w.ticket.Area == gateway.Detail && !w.canceled {
+				n++
+			}
+		}
+		return n
+	}
+	if waiters() != 1 {
+		t.Fatalf("%d waiters", waiters())
+	}
+	if cmds := h.feed(gateway.Due{Session: a.session, Token: a.previewToken}); len(cmds) != 0 || waiters() != 1 {
+		t.Fatalf("a wake-up while the reload is out: %d commands, %d waiters", len(cmds), waiters())
+	}
+	close(gate)
+	h.feed(h.receive(reload))
+	if len(h.f.detailReads()) != 3 || a.detail.cached || !a.detail.holds() {
+		t.Fatalf("after the reload: %d reads, detail %+v", len(h.f.detailReads()), a.detail)
 	}
 }

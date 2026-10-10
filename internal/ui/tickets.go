@@ -408,15 +408,16 @@ func (m Model) selectionChanged() tea.Cmd {
 // schedulePreview starts the timer for the preview of the selected row:
 // only with the object pane visible, the ticket tool on, no search line
 // open, no ticket opened, and only when the pane holds nothing of the
-// row yet or a cached record awaiting its one reload. A record that is
-// fresh, loading, stale or refused is left as it is until the cursor
-// leaves the row (no request per arrow key or resize) or R asks.
+// row yet or a cached record still awaiting its one reload. A record that
+// is fresh, loading, stale or refused (a cached one whose reload failed
+// included) is left as it is until the cursor leaves the row (no request
+// per arrow key or resize) or R asks.
 func (m Model) schedulePreview() tea.Cmd {
 	a := m.app
 	if !m.previewable() {
 		return nil
 	}
-	if d := a.detail; d != nil && d.id == a.tickets.selected && !d.cached {
+	if d := a.detail; d != nil && d.id == a.tickets.selected && (d.loading || !d.awaitingReload()) {
 		return nil
 	}
 	if a.deps.Events == nil {
@@ -451,7 +452,7 @@ func (m Model) due(msg gateway.Due) (Model, tea.Cmd) {
 		return m, nil
 	}
 	v := a.tickets
-	if d := a.detail; d != nil && d.id == v.selected && (d.loading || !d.cached) {
+	if d := a.detail; d != nil && d.id == v.selected && (d.loading || !d.awaitingReload()) {
 		// The pane holds the row's ticket already, fresh, loading, stale
 		// or refused: a wake-up reads nothing more (the same rule as the
 		// timer's).
@@ -626,7 +627,9 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 		v.rows, v.total, v.perPage = r.Page.Data, r.Page.Meta.Total, r.Page.Meta.PerPage
 		v.fresh(a.now())
 		v.reselect()
-		if m.focus == view.Object && v.opened == "" {
+		if m.focus == view.Object && v.opened == "" && a.detail == nil {
+			// A pane that holds nothing loses the focus; one that holds a
+			// preview the person may be reading keeps it.
 			m.focus = view.List
 		}
 		return m.correctTicketPage()
