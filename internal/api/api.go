@@ -398,8 +398,61 @@ type Post struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// Attachment is one file of a ticket. The file name is required; the
+// metadata beside it (core #701) is optional: an older server sends none of
+// it, and a value that does not read (another type, a fraction, a negative
+// size) is unknown, nil, never a reason to refuse a ticket that is valid
+// without it. The extracted text the server sends along is not read: the
+// client shows metadata only.
 type Attachment struct {
-	Filename string `json:"filename"`
+	Filename    string  `json:"filename"`
+	ContentType *string `json:"content_type,omitempty"`
+	ByteSize    *int64  `json:"byte_size,omitempty"`
+	TextStatus  *string `json:"text_status,omitempty"`
+}
+
+// UnmarshalJSON reads the file name strictly and the metadata leniently.
+func (a *Attachment) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Filename    string          `json:"filename"`
+		ContentType json.RawMessage `json:"content_type"`
+		ByteSize    json.RawMessage `json:"byte_size"`
+		TextStatus  json.RawMessage `json:"text_status"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*a = Attachment{Filename: raw.Filename, ContentType: optionalString(raw.ContentType), TextStatus: optionalString(raw.TextStatus)}
+	// A size is a whole number of bytes, written as one: 1e3 or 1.5 is not.
+	if n, err := strconv.ParseInt(string(raw.ByteSize), 10, 64); err == nil && n >= 0 {
+		a.ByteSize = &n
+	}
+	return nil
+}
+
+// optionalString is a JSON string, or nil for anything else (absent, null,
+// another type).
+func optionalString(raw json.RawMessage) *string {
+	var s string
+	if len(raw) == 0 || raw[0] != '"' || json.Unmarshal(raw, &s) != nil {
+		return nil
+	}
+	return &s
+}
+
+// TruncationMarker is what the server appends to a text it shortened
+// (core Tools::Base::TRUNCATION_MARKER). A person can type it too; explicit
+// metadata would be a contract change, accepted for C1.
+const TruncationMarker = "\n\n\u2026[truncated]"
+
+// Shortened says whether the server shortened a text, and returns the text
+// without its marker when it did, the text unchanged otherwise.
+func Shortened(text string) (string, bool) {
+	body, ok := strings.CutSuffix(text, TruncationMarker)
+	if !ok {
+		return text, false
+	}
+	return body, true
 }
 
 type Ticket struct {

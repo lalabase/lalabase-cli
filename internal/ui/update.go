@@ -43,6 +43,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case gateway.TicketsResult:
 		return m.receiveTickets(msg)
 	case gateway.TicketResult:
+		if msg.Area == gateway.Expansion {
+			return m.receiveExpansion(msg)
+		}
 		return m.receiveDetail(msg)
 	case gateway.Result:
 		// A read refused before it was sent: its waiter is freed, nothing
@@ -163,20 +166,28 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		return m.open()
 	case Back:
 		return m.back()
-	case PrevPage:
-		if a.tickets != nil {
-			return m.turnTicketPage(-1)
+	case PrevPage, NextPage:
+		delta := 1
+		if kind == PrevPage {
+			delta = -1
 		}
-		return m.turnPage(-1)
-	case NextPage:
-		if a.tickets != nil {
-			return m.turnTicketPage(1)
+		switch {
+		case m.focus == view.Object && a.detail != nil:
+			return m.turnArea(delta)
+		case a.tickets != nil:
+			return m.turnTicketPage(delta)
 		}
-		return m.turnPage(1)
+		return m.turnPage(delta)
 	case Refresh:
 		return m.retryOrRefresh()
 	case Search:
 		return m.startSearch(), nil
+	case NextArea:
+		return m.nextArea(), nil
+	case Order:
+		return m.switchOrder()
+	case Expand:
+		return m.expand()
 	}
 	return m, nil
 }
@@ -188,6 +199,10 @@ func (m Model) move(delta int) (Model, tea.Cmd) {
 	switch m.focus {
 	case view.Navigation:
 		a.moveHighlight(delta)
+	case view.Object:
+		if a.detail != nil && a.tickets != nil {
+			return m.moveComment(delta), nil
+		}
 	case view.List:
 		switch {
 		case a.active != nil:
@@ -227,7 +242,10 @@ func (m Model) movePage(delta int) (Model, tea.Cmd) {
 		case a.active != nil:
 			a.active.detailOffset = max(0, min(top, a.active.detailOffset+delta*capacity))
 		case a.detail != nil:
-			a.detail.offset = max(0, min(top, a.detail.offset+delta*capacity))
+			// From where the pane is now, the anchor's place included; the
+			// scroll is the person's, the anchor is let go.
+			a.detail.offset = max(0, min(top, c.Offset+delta*capacity))
+			a.detail.follow = anchorNone
 		}
 	}
 	return m, nil
@@ -282,6 +300,11 @@ func (m Model) back() (Model, tea.Cmd) {
 			a.active.opened = ""
 			m.focus = view.List
 		case a.tickets != nil:
+			if a.detail != nil && a.detail.expansion != nil {
+				// The expansion closes first, without a request.
+				a.closeExpansion()
+				return m, nil
+			}
 			m = m.closeTicket()
 			return m, m.selectionChanged()
 		default:

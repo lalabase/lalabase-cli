@@ -161,6 +161,36 @@ const (
 	CancelHelp
 	BackspaceKey
 	DeleteHelp
+	// C1d: the ticket's sections, pages, order and expansion.
+	Description
+	WholeText
+	NewestFirst
+	OldestFirst
+	TextShortened
+	CommentUnavailable
+	LoadingWholeText
+	LoadingPage
+	PageNotLoaded
+	ActiveArea
+	SelectedComment
+	TypeUnknown
+	SizeUnknown
+	SizeBytes
+	SizeKiB
+	SizeMiB
+	SizeGiB
+	TextAvailable
+	TextUnsupported
+	TextUnavailable
+	TextEmpty
+	TextStatusUnknown
+	TabKey
+	NextAreaHelp
+	OrderKey
+	ExpandKey
+	ExpandHelp
+	CollapseHelp
+	CommentHelp
 	count
 )
 
@@ -228,7 +258,7 @@ var english = map[ID]string{
 	Archived:         "archived", NoStatus: "No status", Unassigned: "Unassigned",
 	NoDescription: "No description", NoComments: "No comments", NoAttachments: "No attachments",
 	NoText: "No text", Private: "private", UnnamedFile: "Unnamed file",
-	CommentsPaged:    "Comments · newest first · page %d of %d · %d readable comments",
+	CommentsPaged:    "Comments · %s · page %d of %d · %d readable comments",
 	CommentsFirst:    "Comments · oldest first · first %d of %d comments",
 	CommentsAll:      "Comments · oldest first · %d comments",
 	AttachmentsPaged: "Attachments · page %d of %d · %d in all",
@@ -240,4 +270,16 @@ var english = map[ID]string{
 	OpenTicketsHelp: "open tickets", OpenTicketHelp: "open", TicketsHelp: "tickets", ProjectsHelp: "projects",
 	ListHelp: "list", BackHelp: "back",
 	SearchKey: "/", SearchHelp: "search", CancelHelp: "cancel", BackspaceKey: "backspace", DeleteHelp: "delete",
+
+	Description: "Description", WholeText: "whole text", NewestFirst: "newest first", OldestFirst: "oldest first",
+	TextShortened: "Text shortened by server", CommentUnavailable: "Comment unavailable",
+	LoadingWholeText: "Loading the whole text…", LoadingPage: "Loading this page…",
+	PageNotLoaded: "This page did not load. R retry.",
+	ActiveArea:    "» ", SelectedComment: "> ",
+	TypeUnknown: "type unknown", SizeUnknown: "size unknown",
+	SizeBytes: "%d B", SizeKiB: "%.1f KiB", SizeMiB: "%.1f MiB", SizeGiB: "%.1f GiB",
+	TextAvailable: "text available", TextUnsupported: "text not supported", TextUnavailable: "text unavailable",
+	TextEmpty: "no text", TextStatusUnknown: "text status unknown",
+	TabKey: "tab", NextAreaHelp: "next section", OrderKey: "o", ExpandKey: "e", ExpandHelp: "expand",
+	CollapseHelp: "collapse", CommentHelp: "comment",
 }

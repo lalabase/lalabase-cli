@@ -145,9 +145,6 @@ func TestEverythingButTheReadsOfC1IsRefused(t *testing.T) {
 	if _, ans := a.Tickets(ctx, api.TicketQuery{ProjectID: ProjectWebsite, Status: "new"}); ans.Class != transport.Refused {
 		t.Fatalf("a status filter: %v", ans.Class)
 	}
-	if _, ans := a.TicketWith(ctx, ProjectWebsite, TicketLogin, api.TicketOptions{FullText: true}); ans.Class != transport.Refused {
-		t.Fatalf("full text: %v", ans.Class)
-	}
 	if _, ans := a.TicketByNumber(ctx, ProjectWebsite, 1); ans.Class != transport.InvalidInput {
 		t.Fatalf("by number: %v", ans.Class)
 	}
@@ -353,4 +350,100 @@ func TestListenBindsTheLoopbackAddressOnly(t *testing.T) {
 	if got := Describe(Normal, ln.Addr()); !strings.HasPrefix(got, "inbox fixture: scenario normal at http://127.0.0.1:") {
 		t.Fatalf("describe %q", got)
 	}
+}
+
+// Ticket #6 (C1d) through the real adapters: pages in both orders, the
+// description and one comment whole, attachment metadata of every kind,
+// every answer passing the client's checks.
+func TestTicketSixWorksAgainstTheFixture(t *testing.T) {
+	_, a, _ := serve(t, Normal)
+	ctx := context.Background()
+	six := TicketID(ProjectWebsite, 6)
+	for _, o := range []api.TicketOptions{
+		{PostsPage: 1, PostsPerPage: 25, Newest: true, AttachmentsPage: 1},
+		{PostsPage: 2, PostsPerPage: 25, AttachmentsPage: 2},
+		{PostsPage: 1, PostsPerPage: 25, Newest: true, AttachmentsPage: 1, FullText: true},
+		{FullText: true},
+		{},
+	} {
+		ticket, ans := a.TicketWith(ctx, ProjectWebsite, six, o)
+		if !ans.OK() || api.CheckTicket(ticket, o) != nil || ticket.PostsTotal != 30 || ticket.AttachmentsTotal != 12 {
+			t.Fatalf("%+v: %v %s", o, ans.Class, ans.Message)
+		}
+		body, short := api.Shortened(ticket.DescriptionText)
+		if short == o.FullText || (o.FullText && body != SixDescriptionWhole) {
+			t.Fatalf("%+v: description %q", o, ticket.DescriptionText)
+		}
+	}
+	first, _ := a.TicketWith(ctx, ProjectWebsite, six, api.TicketOptions{PostsPage: 1, PostsPerPage: 25, Newest: true, AttachmentsPage: 1})
+	if first.Posts[0].ID != SixPostID(30) || len(first.Posts) != 25 {
+		t.Fatalf("newest first: %s", first.Posts[0].ID)
+	}
+	if _, short := api.Shortened(first.Posts[0].BodyText); !short {
+		t.Fatal("the newest comment is not shortened")
+	}
+	a1, a2, a12 := first.Attachments[0], first.Attachments[1], api.Attachment{}
+	if a1.ContentType == nil || *a1.ContentType != "text/plain" || a1.ByteSize == nil || *a1.ByteSize != 1000 || a1.TextStatus == nil || *a1.TextStatus != "available" {
+		t.Fatalf("attachment 1: %+v", a1)
+	}
+	if a2.ContentType != nil || a2.ByteSize != nil || a2.TextStatus != nil {
+		t.Fatalf("attachment 2: %+v", a2)
+	}
+	second, _ := a.TicketWith(ctx, ProjectWebsite, six, api.TicketOptions{PostsPage: 1, PostsPerPage: 25, Newest: true, AttachmentsPage: 2})
+	a12 = second.Attachments[1]
+	if a12.Filename != "six-12.txt" || a12.ByteSize == nil || *a12.ByteSize != 0 {
+		t.Fatalf("attachment 12: %+v", a12)
+	}
+	o := api.TicketOptions{PostID: SixPostID(30)}
+	one, ans := a.TicketWith(ctx, ProjectWebsite, six, o)
+	if !ans.OK() || api.CheckTicket(one, o) != nil || len(one.Posts) != 1 || one.Posts[0].BodyText != "Six comment 30 begins and ends here." || one.PostsTotal != 30 {
+		t.Fatalf("one comment: %v %+v", ans.Class, one.Posts)
+	}
+	if _, ans := a.TicketWith(ctx, ProjectWebsite, six, api.TicketOptions{PostID: SixPostID(99)}); ans.Class != transport.Refused || ans.Reason != api.CommentNotFound {
+		t.Fatalf("a missing comment: %v %q", ans.Class, ans.Reason)
+	}
+}
+
+// The scenarios of C1d: temporary fails page 2 of #6's comments twice;
+// vanished hides #6's newest comment read whole, and only that; older
+// refuses the arguments it does not know.
+func TestTheTicketSixScenarios(t *testing.T) {
+	ctx := context.Background()
+	six := TicketID(ProjectWebsite, 6)
+	p2 := api.TicketOptions{PostsPage: 2, PostsPerPage: 25, Newest: true, AttachmentsPage: 1}
+	t.Run("temporary", func(t *testing.T) {
+		_, a, _ := serve(t, Temporary)
+		for i := range 2 {
+			if _, ans := a.TicketWith(ctx, ProjectWebsite, six, p2); ans.Class != transport.Temporary {
+				t.Fatalf("attempt %d: %v", i+1, ans.Class)
+			}
+		}
+		if _, ans := a.TicketWith(ctx, ProjectWebsite, six, p2); !ans.OK() {
+			t.Fatalf("attempt 3: %v", ans.Class)
+		}
+	})
+	t.Run("vanished", func(t *testing.T) {
+		_, a, _ := serve(t, Vanished)
+		if _, ans := a.TicketWith(ctx, ProjectWebsite, six, api.TicketOptions{PostID: SixPostID(30)}); ans.Class != transport.Refused || ans.Reason != api.CommentNotFound {
+			t.Fatalf("the newest comment: %v %q", ans.Class, ans.Reason)
+		}
+		if _, ans := a.TicketWith(ctx, ProjectWebsite, six, api.TicketOptions{PostID: SixPostID(29)}); !ans.OK() {
+			t.Fatalf("comment 29: %v", ans.Class)
+		}
+		page, ans := a.TicketWith(ctx, ProjectWebsite, six, api.TicketOptions{PostsPage: 1, PostsPerPage: 25, Newest: true, AttachmentsPage: 1})
+		if !ans.OK() || page.Posts[0].ID != SixPostID(30) {
+			t.Fatalf("the page: %v", ans.Class)
+		}
+		if _, ans := a.TicketWith(ctx, ProjectWebsite, six, p2); !ans.OK() {
+			t.Fatalf("page 2: %v", ans.Class)
+		}
+	})
+	t.Run("older", func(t *testing.T) {
+		_, a, _ := serve(t, Older)
+		for _, o := range []api.TicketOptions{{FullText: true}, {PostID: SixPostID(30)}} {
+			if _, ans := a.TicketWith(ctx, ProjectWebsite, six, o); ans.Class != transport.InvalidInput {
+				t.Fatalf("%+v: %v", o, ans.Class)
+			}
+		}
+	})
 }

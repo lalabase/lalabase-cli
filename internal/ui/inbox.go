@@ -135,6 +135,9 @@ func (a *app) settleLoading() {
 	}
 	if v := a.detail; v != nil {
 		v.loading = a.pending(v.key)
+		if e := v.expansion; e != nil {
+			e.loading = a.pending(e.key)
+		}
 	}
 }
 

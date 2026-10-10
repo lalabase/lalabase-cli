@@ -3,13 +3,14 @@
 Lalabase from the terminal: one binary for a person with arrow keys (a
 full-screen interface) and for scripts and Claude Code (plain text or JSON).
 
-**Status:** organisations, the unread inbox and the tickets (slices C1b and
-C1c). The interface verifies the token, lists the organisations with their
+**Status:** organisations, the unread inbox and the tickets (slices C1b to
+C1d). The interface verifies the token, lists the organisations with their
 unread counts, shows the unread notifications of one organisation page by
 page, and per organisation its projects, the tickets of a project page by
-page with a search, and a ticket with its description and the first page of
-its comments and attachments. Further pages of comments, marking as read
-and writes come with C1d, C1f and C2.
+page with a search, and a ticket with its description, its comments page by
+page in either order and its attachments page by page, the description or
+one comment read whole on request. Marking as read and writes come with C1f
+and C2.
 
 ## Setting up
 
@@ -57,11 +58,40 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
   cursor moves on. `Enter` opens the ticket as the person's read and joins
   a pending preview: one request, both get the whole ticket. The pane shows
   the head, the description (cut by the server at 8,000 characters), the
-  comments newest first (page 1 of 25, with the number of readable
-  comments) and the attachments (page 1 of 10). On a server without the
-  paging arguments the first 50 comments come oldest first and the first
-  ten attachments, and the pane says how many there are in all. `Esc` goes
-  back to the list and keeps the pane.
+  comments newest first (25 a page, with the number of readable comments
+  the server counts) and the attachments (ten a page, each with its name,
+  type, size and whether the server has its text; what the server did not
+  send says "unknown", a missing size is never "0 B"). On a server without
+  the paging arguments the first 50 comments come oldest first and the
+  first ten attachments, and the pane says how many there are in all.
+  `Esc` goes back to the list and keeps the pane.
+* **Paging the ticket (C1d).** `Tab` moves between the description, the
+  comments and the attachments and brings the section's heading into
+  sight; `[`/`]` turn the page of that section, `o` switches the comments
+  between newest and oldest first (back to their page 1; the attachments'
+  page stays), `↑`/`↓` select a comment (kept by its id across a reload,
+  else the first). A text the server shortened ends with "Text shortened
+  by server"; `e` reads it whole: the description (`full_text`, with the
+  options of the page shown) or the selected comment (`post_id`). One
+  expansion at a time; it is a read of its own and replaces no page; `Esc`
+  closes it first, without a request, and a late answer does not open it
+  again. A whole text can still be shortened by the server (100,000
+  characters). Nothing is read by moving, previewing or switching
+  sections: every page, order and expansion is the person's action, once
+  per key (a key pressed again while its read is out does nothing). A page
+  shown before comes from the cache at once and is read once again; one
+  beyond the server's last page (the list shrank) is corrected once, both
+  sections in one request, a second shrink stops and offers `R`, an empty
+  section goes to page 1 without a request. `R` reloads the page shown; an
+  open expansion stays as it is.
+* **A comment that is gone.** When the server answers a comment read whole
+  with "not found" (it was deleted or made private), its cached text goes
+  and is hidden at once, the ticket stays and says "Comment unavailable",
+  and the ticket is read once without `post_id`: only that read may say
+  the ticket is gone. "No access", or "not found" for the whole
+  description, removes the ticket with every cached page and expansion.
+  Without `full_text` and `post_id` there is no `e`; without the paging
+  arguments no `[`/`]`/`o` in the ticket; each works without the other.
 * **What the server supports** comes from its tool schemas, never from its
   version: without `organisation_id` only "All organisations" opens, first
   page only; without `list_notifications` the inbox is off and the counts
@@ -141,13 +171,18 @@ contract copy: two organisations, two pages of unread notifications for the
 first, rows without a project, a ticket or an actor among them; the first
 organisation's four recorded projects (the second has none), 30 tickets in
 Website-Relaunch (two pages; #1 is the recorded ticket, #2 has nothing, #3
-has 30 comments, #4 twelve attachments), 3 in Handbuch, 5 in Archiv. It
+has 30 comments, #4 twelve attachments, #6 everything C1d pages and
+expands), 3 in Handbuch, 5 in Archiv. It
 binds to 127.0.0.1 only, accepts one synthetic token (`inboxfixture.Token`)
 and refuses everything but the reads of C1. Scenarios: `normal`, `older`
-(no organisation filter, no paging of comments), `temporary` (page 2 of the
+(no organisation filter, no paging of comments, no expansion), `temporary` (page 2 of the
 first organisation's inbox and of Website-Relaunch's tickets fails twice,
-`R` succeeds), `429` (one short pause), `401` (the session expires, also on
-a preview of ticket #2).
+`R` succeeds; so does page 2 of ticket #6's comments), `429` (one short
+pause), `401` (the session expires, also on a preview of ticket #2),
+`vanished` (ticket #6's newest comment is still on its page, but read whole
+it is "not found"). Ticket #6 of Website-Relaunch has a description and
+two comments the server shortened, 30 comments and twelve attachments with
+metadata of every kind (known, missing, zero bytes).
 
 ```sh
 go run ./tools/inbox-fixture -scenario temporary -port 18089

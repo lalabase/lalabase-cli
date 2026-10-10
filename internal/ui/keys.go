@@ -38,6 +38,10 @@ const (
 	Refresh
 	Search
 	DeleteBack
+	// C1d: the ticket's sections, order and expansion.
+	NextArea
+	Order
+	Expand
 )
 
 type keyAction struct {
@@ -104,6 +108,12 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: Refresh}
 	case "/":
 		return keyAction{Kind: Search}
+	case "tab":
+		return keyAction{Kind: NextArea}
+	case "o":
+		return keyAction{Kind: Order}
+	case "e":
+		return keyAction{Kind: Expand}
 	}
 	return keyAction{}
 }
@@ -308,11 +318,12 @@ func (m Model) objectBindings() []binding {
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.CloseHelp})
 	case a.tickets != nil:
-		if a.detail != nil && a.detail.known {
-			out = append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
-		}
+		out = append(out, m.ticketBindings()...)
 		help := uitext.ListHelp
-		if a.tickets.opened != "" {
+		switch {
+		case a.detail != nil && a.detail.expansion != nil:
+			help = uitext.CollapseHelp
+		case a.tickets.opened != "":
 			help = uitext.BackHelp
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, help})
@@ -320,6 +331,37 @@ func (m Model) objectBindings() []binding {
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.ListHelp})
 	}
 	return out
+}
+
+// ticketBindings are the keys of the ticket in the pane (C1d): the
+// sections, the comment selection, the pages and the order of the active
+// section, the expansion, the scroll. Each is offered only where it acts.
+func (m Model) ticketBindings() []binding {
+	d := m.app.detail
+	if d == nil || !d.known {
+		return nil
+	}
+	out := []binding{{NextArea, uitext.TabKey, uitext.NextAreaHelp}}
+	if d.area == areaComments && len(d.record.Posts) > 1 {
+		out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentHelp})
+	}
+	if m.canTurn(-1) {
+		out = append(out, binding{PrevPage, uitext.PrevPageKey, uitext.PrevPageHelp})
+	}
+	if m.canTurn(1) {
+		out = append(out, binding{NextPage, uitext.NextPageKey, uitext.NextPageHelp})
+	}
+	if m.canOrder() {
+		help := uitext.OldestFirst
+		if !d.key.Newest {
+			help = uitext.NewestFirst
+		}
+		out = append(out, binding{Order, uitext.OrderKey, help})
+	}
+	if _, ok := m.expandTarget(); ok {
+		out = append(out, binding{Expand, uitext.ExpandKey, uitext.ExpandHelp})
+	}
+	return append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
 }
 
 // withoutIdleScroll drops the scroll binding of the details when their text

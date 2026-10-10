@@ -255,7 +255,8 @@ func TestAnAnswerToAnotherQuestionIsAProtocolError(t *testing.T) {
 }
 
 // The checks of the tickets C1c sends: anything else is refused before a
-// request is made.
+// request is made. Later pages, the order and the expansions are C1d's
+// (TestTheChecksOfTheTicketsC1dSends).
 func TestTheChecksOfTheTicketsC1cSends(t *testing.T) {
 	ns := confirmed(t)
 	s := NewScope(ns)
@@ -282,10 +283,7 @@ func TestTheChecksOfTheTicketsC1cSends(t *testing.T) {
 		"tickets in another area":          s.Begin(Detail, ticketsKey(ns, website, "", 1), queue.User),
 		"a ticket without an id":           s.Begin(Detail, detailKey(ns, website, "", true), queue.User),
 		"a ticket without a project":       s.Begin(Detail, detailKey(ns, "", login, true), queue.User),
-		"a ticket of another page":         s.Begin(Detail, func() cache.Key { k := detailKey(ns, website, login, true); k.PostsPage = 2; return k }(), queue.User),
-		"a ticket of another attach. page": s.Begin(Detail, func() cache.Key { k := detailKey(ns, website, login, true); k.AttachmentsPage = 2; return k }(), queue.User),
 		"a ticket of another page size":    s.Begin(Detail, func() cache.Key { k := detailKey(ns, website, login, true); k.PostsPerPage = 10; return k }(), queue.User),
-		"a ticket oldest first":            s.Begin(Detail, func() cache.Key { k := detailKey(ns, website, login, true); k.Newest = false; return k }(), queue.User),
 		"a ticket with full text":          s.Begin(Detail, func() cache.Key { k := detailKey(ns, website, login, true); k.FullText = true; return k }(), queue.User),
 		"a ticket with one comment":        s.Begin(Detail, func() cache.Key { k := detailKey(ns, website, login, true); k.Post = "c-1"; return k }(), queue.User),
 		"a ticket in another area":         s.Begin(Tickets, detailKey(ns, website, login, true), queue.User),

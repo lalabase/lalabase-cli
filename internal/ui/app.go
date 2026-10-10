@@ -64,6 +64,7 @@ const (
 	forProjects
 	forTickets
 	forDetail
+	forExpansion
 )
 
 // waiter is one consumer of a read in flight: its ticket, how to cancel it,
@@ -234,6 +235,9 @@ func (a *app) ticketsOn() bool { return a.on("tickets") }
 func (a *app) searchOn() bool  { return a.on("tickets_search") }
 func (a *app) ticketOn() bool  { return a.on("ticket") }
 func (a *app) pagedOn() bool   { return a.on("ticket_posts_paged") }
+
+// fullTextOn: the description or one comment can be read whole (C1d).
+func (a *app) fullTextOn() bool { return a.on("ticket_full_text") }
 
 // canOpen says whether the entry of org ("" for all) and section can be
 // opened: the capabilities are known and allow it. Without the organisation
