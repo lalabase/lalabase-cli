@@ -1230,3 +1230,91 @@ func TestADueWithoutASessionIsIgnored(t *testing.T) {
 		t.Fatal("a wake-up without a session acted")
 	}
 }
+
+// A preview timer set before the person opened a ticket and moved the
+// cursor on reads nothing when it wakes up: the opened ticket stays in the
+// pane, its read is not canceled. (A mutation probe survived without it.)
+func TestAWakeUpWhileATicketIsOpenedReadsNothing(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	token := a.previewToken // the timer of row 0, not yet due
+	gate := make(chan struct{})
+	h.f.gate, h.f.gateTicket = gate, login
+	open := h.background(h.press("enter")) // the person's read of #1 is pending
+	h.waitFor("the open on the wire", func() bool { return len(h.f.detailReads()) == 1 })
+	h.m.focus = view.List
+	h.press("down") // the cursor moves on; #1 stays opened
+	cmds := h.feed(gateway.Due{Session: a.session, Token: token})
+	if len(cmds) != 0 || a.detail == nil || a.detail.id != login || !a.detail.loading || a.tickets.opened != login {
+		t.Fatalf("the wake-up acted: %d commands, detail %+v, opened %q", len(cmds), a.detail, a.tickets.opened)
+	}
+	close(gate)
+	r := h.receive(open).(gateway.TicketResult)
+	if r.Answer.Class != transport.Object {
+		t.Fatalf("the open was canceled: %v", r.Answer.Class)
+	}
+	h.feed(r)
+	if a.detail.record.ID != login || len(h.f.detailReads()) != 1 {
+		t.Fatalf("after the open: %+v, %d reads", a.detail.record.ID, len(h.f.detailReads()))
+	}
+}
+
+// Leaving the tickets section cancels a pending read of its projects, and a
+// 401 while the search line is open ends the session in navigation mode,
+// so q quits at once. (Mutation probes survived without these.)
+func TestLeavingCancelsTheProjectsReadAndA401WhileTypingLeavesTheLine(t *testing.T) {
+	h := newHarness(t)
+	h.start()
+	gate := make(chan struct{})
+	h.f.gate, h.f.gateProjects = gate, true
+	pending := h.background(h.chooseTickets(orgA))
+	h.waitFor("the projects on the wire", func() bool { return len(h.f.projectReads()) == 1 })
+	h.drive(h.choose(orgA)) // the inbox: the section is left
+	r := h.receive(pending).(gateway.ProjectsResult)
+	if r.Answer.Class != transport.Canceled {
+		t.Fatalf("the projects read was not canceled: %v", r.Answer.Class)
+	}
+	h.feed(r)
+	if h.m.app.active == nil || h.m.app.projects != nil {
+		t.Fatal("the late result changed the section")
+	}
+
+	h2 := newHarness(t)
+	h2.openTickets(website)
+	h2.press("/")
+	h2.typeText("ab")
+	h2.events.Observe(func(context.Context) transport.Answer { return failing(transport.Unauthenticated, 401) })(context.Background())
+	h2.feed(gateway.Wake{Session: h2.events.Session()})
+	if !h2.m.app.expired || h2.m.mode != Navigate {
+		t.Fatalf("expired %v, mode %d", h2.m.app.expired, h2.m.mode)
+	}
+	cmd := h2.press("q")
+	if cmd == nil {
+		t.Fatal("q did not quit after the expiry")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("q did not quit after the expiry")
+	}
+}
+
+// An organisation that leaves the directory while its tickets entry is
+// highlighted: the cursor goes to the inbox of all organisations, an entry
+// that exists, so it is shown and Enter opens it.
+func TestAVanishedOrganisationResetsTheHighlightToAnEntryThatExists(t *testing.T) {
+	h := newHarness(t)
+	h.start()
+	h.m.focus = view.Navigation
+	h.m.app.highlight, h.m.app.highlightSection = orgA, sectionTickets
+	h.f.orgs = func() ([]api.Ref, transport.Answer) {
+		return []api.Ref{{ID: orgB, Name: "B"}}, transport.Answer{Class: transport.Object, Status: 200, Sent: true}
+	}
+	h.drive(h.press("R"))
+	a := h.m.app
+	if a.highlight != "" || a.highlightSection != sectionInbox {
+		t.Fatalf("highlight %q section %d", a.highlight, a.highlightSection)
+	}
+	if h.m.screen().Chooser.Cursor != 1 || !h.m.allowed()[OpenList] {
+		t.Fatalf("cursor %d, enter offered %v", h.m.screen().Chooser.Cursor, h.m.allowed()[OpenList])
+	}
+}
