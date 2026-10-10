@@ -234,8 +234,10 @@ func TestPTYMarkReadWithALostAnswer(t *testing.T) {
 	openInboxA(t, c, 120)
 	before := len(f.Requests())
 	c.act(t, "r", 120, "29", "32")
-	// The first row left; nothing claims a success.
-	if c.screenShows(120, "#1 Benachrichtigung") || c.screenShows(120, "marked") {
+	// Both reloads land in either order: wait for the row to leave too.
+	c.rowGone(t, 120, "#1 Benachrichtigung")
+	// Nothing claims a success.
+	if c.screenShows(120, "marked") {
 		t.Fatalf("the screen after the lost answer:\n%s", strings.Join(renderScreen(c.bytes(), 24, 120), "\n"))
 	}
 	// R reads again, writes nothing.

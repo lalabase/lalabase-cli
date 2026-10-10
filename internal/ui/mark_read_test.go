@@ -183,9 +183,13 @@ func TestTheTargetIsTheRowOrTheTicketOpenedFromIt(t *testing.T) {
 		t.Fatalf("after esc: origin %v, focus %d, opened %q", a.origin, h.m.focus, a.active.opened)
 	}
 	mustContain(t, h.detailsText(), "Mark as read: Marked as read")
-	// The same ticket from the tickets section: the cache holds it from
-	// the inbox visit, and still there is no target.
-	h.press("esc")
+	// The same ticket from the tickets section, straight from the open
+	// linked ticket: the cache holds it from the inbox visit, and still
+	// there is no target.
+	h.drive(h.press("o"))
+	if a.origin == nil {
+		t.Fatal("setup: the linked ticket is not open")
+	}
 	h.drive(h.chooseTickets(orgA))
 	h.drive(h.openProject(website))
 	a.tickets.selected = login
