@@ -80,7 +80,8 @@ func (d *detailView) selectedPost() *api.Post {
 
 // settle follows a new record: the selected comment is kept by its id or
 // moves to the first one; an expanded comment no longer on the page
-// closes (a missing one stays marked until Esc).
+// closes, a missing one's marker too (nothing stays open that the pane
+// does not show; review round 2).
 func (a *app) settle(d *detailView) {
 	posts := d.record.Posts
 	if !slices.ContainsFunc(posts, func(p api.Post) bool { return p.ID == d.post }) {
@@ -89,7 +90,7 @@ func (a *app) settle(d *detailView) {
 			d.post = posts[0].ID
 		}
 	}
-	if e := d.expansion; e != nil && e.post != "" && !e.unavailable &&
+	if e := d.expansion; e != nil && e.post != "" &&
 		!slices.ContainsFunc(posts, func(p api.Post) bool { return p.ID == e.post }) {
 		a.closeExpansion()
 	}
@@ -361,7 +362,8 @@ func (m Model) receiveExpansion(r gateway.TicketResult) (Model, tea.Cmd) {
 // commentMissing is the missing-comment rule: the cached expansion goes
 // and its text is hidden at once, no older answer for it is taken any
 // more (the area moves on), the ticket stays and says so, and it is read
-// once without post_id; only that read may remove it. The answer is not
+// once without post_id, sent after the answer; only that read may remove
+// it. The answer is not
 // filed as the newest of the ticket: a plain read sent before it must
 // still be able to remove the ticket (review round 1, finding 1).
 func (m Model) commentMissing(r gateway.TicketResult) (Model, tea.Cmd) {
@@ -371,10 +373,13 @@ func (m Model) commentMissing(r gateway.TicketResult) (Model, tea.Cmd) {
 	a.cancelArea(gateway.Expansion)
 	e := d.expansion
 	e.text, e.status, e.unavailable = "", status{}, true
+	// The read that may remove the ticket is sent now: a read of the page
+	// that left before (its answer may predate the deletion, or it waits
+	// for the background budget as a preview) is canceled, and the new
+	// epoch keeps the queue from joining it (review round 2, finding 1).
+	a.cancelArea(gateway.Detail)
+	a.scope.Invalidate(d.key)
 	d.loading = true
-	if a.pending(d.key) {
-		return m, nil
-	}
 	return m, a.issue(gateway.Detail, d.key, forDetail, queue.User)
 }
 

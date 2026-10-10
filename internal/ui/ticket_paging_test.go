@@ -2,6 +2,7 @@ package ui
 
 import (
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -619,6 +620,9 @@ func TestAMissingCommentHidesItsTextAndReadsTheTicketOnce(t *testing.T) {
 		// later flight.
 		whole := h.d.onePost(website, 6, sixPostID(30))
 		record, _ := api.DecodeTicket(whole, api.TicketOptions{PostID: sixPostID(30)})
+		if w := h.m.app.waiters[oldTicket.Waiter]; w == nil || !w.canceled {
+			t.Fatal("the older read of the expansion was not canceled")
+		}
 		h.feed(gateway.TicketResult{Ticket: oldTicket, Record: record, Answer: whole, Flight: 1 << 40})
 		if strings.Contains(h.paneText(), "begins and ends here") {
 			t.Fatal("the older answer brought the text back")
@@ -1056,5 +1060,433 @@ func TestR1NoCommentSelectionWhileTheirPageLoads(t *testing.T) {
 	h.press("down")
 	if h.m.app.detail.post != post {
 		t.Fatal("the selection moved unseen")
+	}
+}
+
+// Review round 2, finding 1: the read after a missing comment is sent
+// after it, never a read that left before (whose answer may predate the
+// deletion).
+func TestR2TheReloadAfterAMissingCommentIsSentAfterIt(t *testing.T) {
+	h := newHarness(t)
+	h.openSix()
+	h.press("tab")
+	h.press("tab")
+	older := messages(h.t, h.press("]")) // answered (the ticket exists), not delivered yet
+	h.press("tab")
+	h.press("tab")
+	h.f.setTicket(func(p, id string, o api.TicketOptions) transport.Answer {
+		if o.PostID != "" {
+			return transport.Answer{Class: transport.NotFound, Message: "No comment found for " + o.PostID + ".", Status: 200, Sent: true}
+		}
+		return transport.Answer{Class: transport.NotFound, Message: "No ticket found.", Status: 200, Sent: true}
+	})
+	before := len(h.f.detailReads())
+	h.drive(h.press("e"))
+	h.drive(h.feed(older...)...)
+	plain := 0
+	for _, r := range h.f.detailReads()[before:] {
+		if r.o.PostID == "" {
+			plain++
+		}
+	}
+	if plain != 1 {
+		t.Fatalf("%d plain reads after the missing comment", plain)
+	}
+	if h.m.app.detail.known {
+		t.Fatal("the deleted ticket stays shown")
+	}
+}
+
+// driveWithin runs commands on supervised goroutines, each answer within
+// the harness's wall time: a read held by the background budget (a
+// minute) fails the test instead of passing late.
+func (h *harness) driveWithin(cmds ...tea.Cmd) {
+	h.t.Helper()
+	for len(cmds) > 0 {
+		var next []tea.Cmd
+		for _, c := range cmds {
+			if c == nil {
+				continue
+			}
+			switch msg := h.receive(h.background(c)).(type) {
+			case nil:
+			case tea.BatchMsg:
+				next = append(next, msg...)
+			default:
+				next = append(next, h.feed(msg)...)
+			}
+		}
+		cmds = next
+	}
+}
+
+// Review round 2, probes: every read of C1d is the person's, also with the
+// background budget spent: the page turn, the order, the expansion, the
+// correction and the reload after a missing comment come at once.
+func TestR2NoReadOfTheTicketWaitsForTheBudget(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	for i := range 6 {
+		if i > 0 {
+			h.press("down")
+		}
+		h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	}
+	h.press("down")
+	a.tickets.selected = ticketID(website, 6)
+	h.driveWithin(h.press("enter"))
+	h.driveWithin(h.press("e"))
+	mustContain(t, h.paneText(), "the whole rest")
+	h.press("esc")
+	h.press("tab")
+	h.driveWithin(h.press("]"))
+	h.driveWithin(h.press("o"))
+	h.driveWithin(h.press("o"))
+	mustContain(t, h.paneText(), "newest first · page 1 of 2")
+	// A shrink: the correction.
+	h.driveWithin(h.press("]"))
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		d := h.d
+		d.sixComments = 20
+		return d.defaultTicket(project, id, o)
+	})
+	h.driveWithin(h.press("R"))
+	mustContain(t, h.paneText(), "page 1 of 1 · 20 readable comments")
+	// A missing comment: the reload.
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		if o.PostID != "" {
+			return transport.Answer{Class: transport.NotFound, Message: "No comment found.", Status: 200, Sent: true}
+		}
+		return h.d.defaultTicket(project, id, o)
+	})
+	h.driveWithin(h.press("R")) // 30 comments again
+	for range 10 {
+		h.press("up")
+	}
+	if a.detail.post != sixPostID(30) {
+		t.Fatalf("selected %q", a.detail.post)
+	}
+	before := len(h.f.detailReads())
+	h.driveWithin(h.press("e"))
+	if reads := h.f.detailReads()[before:]; len(reads) != 2 || reads[1].o.PostID != "" {
+		t.Fatalf("reads %+v", reads)
+	}
+}
+
+// Review round 2, probes: the comments say they load as soon as another
+// order or page is asked, and offer no expansion of the old page then.
+func TestR2TheCommentsLoadOnAnOrderAndOfferNothingMeanwhile(t *testing.T) {
+	h := newHarness(t)
+	h.openSix()
+	h.press("tab")
+	if !h.m.allowed()[Expand] {
+		t.Fatal("comment 30 is not offered for e")
+	}
+	h.press("o") // not run
+	mustContain(t, h.paneText(), "Loading this page")
+	mustNotContain(t, h.paneText(), "Six comment 30")
+	if h.m.allowed()[Expand] {
+		t.Fatal("e offered for a comment of the page being replaced")
+	}
+}
+
+// Review round 2, probes: with one comment there is nothing to order or to
+// select.
+func TestR2OneCommentHasNoOrderAndNoSelection(t *testing.T) {
+	h := newHarness(t)
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		d := h.d
+		d.sixComments = 1
+		return d.defaultTicket(project, id, o)
+	})
+	h.openSix()
+	h.press("tab")
+	if a := h.m.allowed(); a[Order] || a[Up] || a[Down] {
+		t.Fatalf("offered: order %v, up %v", a[Order], a[Up])
+	}
+}
+
+// Review round 2, probes: a page turn frees the correction (a new shrink
+// found by the page read is corrected again), clears an error, and the
+// corrected page leaves the cache.
+func TestR2APageTurnFreesTheCorrectionAndClearsTheError(t *testing.T) {
+	h := newHarness(t)
+	comments := 80
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		d := h.d
+		d.sixComments = comments
+		return d.defaultTicket(project, id, o)
+	})
+	h.openSix()
+	h.press("tab")
+	for range 3 {
+		h.drive(h.press("]"))
+	}
+	beyond := h.m.app.detail.key // page 4
+	comments = 60
+	h.drive(h.press("R")) // corrected to page 3
+	if _, ok := h.m.app.store.Get(beyond); ok {
+		t.Fatal("the page beyond the last stays cached")
+	}
+	comments = 20
+	before := len(h.f.detailReads())
+	h.drive(h.press("[")) // page 2, beyond the one page left
+	reads := h.f.detailReads()[before:]
+	if len(reads) != 2 || reads[1].o.PostsPage != 1 {
+		t.Fatalf("reads %+v", reads)
+	}
+	mustContain(t, h.paneText(), "page 1 of 1 · 20 readable comments")
+	// An error of a page goes with the next page turn.
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		return transport.Answer{Class: transport.Refused, Message: "no", Status: 200, Sent: true}
+	})
+	h.press("tab")
+	h.drive(h.press("]")) // attachments page 2, refused
+	if !strings.Contains(h.m.screen().Object.Notice.String(), "Refused") {
+		t.Fatalf("notice %q", h.m.screen().Object.Notice.String())
+	}
+	h.press("[") // page 1 from the cache; its reload not run
+	if n := h.m.screen().Object.Notice.String(); strings.Contains(n, "Refused") {
+		t.Fatalf("the old error stays: %q", n)
+	}
+}
+
+// Review round 2, probes: attachments shrink like comments: a section with
+// none left goes to page 1 without a read, the second shrink stops with
+// the page asked in the heading; ] never goes past the last page.
+func TestR2AttachmentsShrinkLikeComments(t *testing.T) {
+	h := newHarness(t)
+	files := func(o api.TicketOptions) int { return 30 }
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		d := h.d
+		d.sixFiles = files(o)
+		return d.defaultTicket(project, id, o)
+	})
+	h.openSix()
+	h.press("tab")
+	h.press("tab")
+	h.drive(h.press("]"))
+	h.drive(h.press("]"))
+	if h.m.allowed()[NextPage] || h.press("]") != nil {
+		t.Fatal("] past the last attachments page")
+	}
+	files = func(o api.TicketOptions) int {
+		if o.AttachmentsPage == 3 {
+			return 20
+		}
+		return 5
+	}
+	before := len(h.f.detailReads())
+	h.drive(h.press("R"))
+	if reads := h.f.detailReads()[before:]; len(reads) != 2 || reads[1].o.AttachmentsPage != 2 {
+		t.Fatalf("reads %+v", reads)
+	}
+	mustContain(t, h.paneText(), "Attachments · page 2 of 2 · 5 in all")
+	// None left: page 1 without a read, and the section says so.
+	files = func(api.TicketOptions) int { return -1 }
+	before = len(h.f.detailReads())
+	h.drive(h.press("R"))
+	if n := len(h.f.detailReads()) - before; n != 1 || h.m.app.detail.key.AttachmentsPage != 1 {
+		t.Fatalf("%d reads, page %d", n, h.m.app.detail.key.AttachmentsPage)
+	}
+	mustContain(t, h.paneText(), "No attachments")
+	mustNotContain(t, h.paneText(), "Loading this page", "did not load")
+}
+
+// Review round 2, probes: the comments' second shrink keeps the page asked
+// in the heading; a total of zero leaves no section loading.
+func TestR2TheCommentHeadingNamesThePageAsked(t *testing.T) {
+	h := newHarness(t)
+	comments := func(o api.TicketOptions) int { return 80 }
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		d := h.d
+		d.sixComments = comments(o)
+		return d.defaultTicket(project, id, o)
+	})
+	h.openSix()
+	h.press("tab")
+	h.drive(h.press("]"))
+	h.drive(h.press("]"))
+	comments = func(o api.TicketOptions) int {
+		if o.PostsPage == 3 {
+			return 40
+		}
+		return 20
+	}
+	h.drive(h.press("R"))
+	mustContain(t, h.paneText(), "page 2 of 2 · 20 readable comments")
+	comments = func(api.TicketOptions) int { return -1 }
+	h.drive(h.press("R"))
+	mustContain(t, h.paneText(), "No comments")
+	mustNotContain(t, h.paneText(), "Loading this page", "did not load")
+}
+
+// Review round 2, probes: a cached entry that is not the answer to its key
+// is neither shown nor kept, for a page and for an expansion.
+func TestR2ACachedEntryIsCheckedBeforeItIsShown(t *testing.T) {
+	h := newHarness(t)
+	h.openSix()
+	a := h.m.app
+	h.press("tab")
+	page2 := a.detail.key
+	page2.PostsPage = 2
+	other := h.d.ticketRecord(website, 5, gateway.DetailOptions(page2))
+	a.store.Apply(page2, cache.Replace, ticketAnswer(other).Payload, h.now)
+	h.press("]") // not run
+	if d := a.detail; d.cached || d.record.ID != ticketID(website, 6) {
+		t.Fatalf("another ticket's page was shown: %s", d.record.ID)
+	}
+	if _, ok := a.store.Get(page2); ok {
+		t.Fatal("the wrong entry stays")
+	}
+	h = newHarness(t)
+	h.openSix()
+	a = h.m.app
+	h.press("tab")
+	key := a.detail.key
+	key.PostsPage, key.PostsPerPage, key.Newest, key.AttachmentsPage, key.Post = 0, 0, false, 0, sixPostID(30)
+	wrong := h.d.onePost(website, 6, sixPostID(29))
+	a.store.Apply(key, cache.Replace, wrong.Payload, h.now)
+	h.press("e") // not run
+	if strings.Contains(h.paneText(), "Six comment 29 begins and ends here.") {
+		t.Fatal("another comment was shown as the expansion")
+	}
+	if _, ok := a.store.Get(key); ok {
+		t.Fatal("the wrong entry stays")
+	}
+}
+
+// Review round 2, probes: a reopened ticket starts at the top, whatever
+// the pane followed before.
+func TestR2AReopenedTicketStartsAtTheTopAfterTab(t *testing.T) {
+	h := newHarness(t)
+	h.m.width, h.m.height = 120, 20
+	h.openSix()
+	h.press("tab")
+	h.press("tab")
+	if h.m.objectColumn().Offset == 0 {
+		t.Fatal("Tab did not move the pane")
+	}
+	h.press("esc")
+	h.drive(h.press("enter"))
+	if off := h.m.objectColumn().Offset; off != 0 {
+		t.Fatalf("offset %d after reopening", off)
+	}
+}
+
+// Review round 2, probes: the states of an expansion: loading says so and
+// is not "whole" yet; a cached one reloading says nothing more; one whose
+// reload failed says it may be stale.
+func TestR2TheStatesOfAnExpansion(t *testing.T) {
+	h := newHarness(t)
+	h.openSix()
+	cmd := h.press("e")
+	text := h.paneText()
+	mustContain(t, text, "Loading the whole text")
+	mustNotContain(t, text, "whole text\n", "Description · whole text")
+	h.drive(cmd)
+	h.press("esc")
+	cmd = h.press("e") // from the cache, its reload not run
+	mustContain(t, h.paneText(), "Description · whole text")
+	mustNotContain(t, h.paneText(), "Loading the whole text")
+	h.drive(cmd)
+	h.press("esc")
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		if o.FullText {
+			return failing(transport.Temporary, 503)
+		}
+		return h.d.defaultTicket(project, id, o)
+	})
+	h.drive(h.press("e"))
+	mustContain(t, h.paneText(), "Description · whole text", "Possibly stale")
+}
+
+// Review round 2, probes: metadata edge cases: a blank type is unknown, a
+// long one is bounded, 1 MiB is named so.
+func TestR2AttachmentMetadataEdges(t *testing.T) {
+	blank, long := "   ", strings.Repeat("x", 200)
+	if got := attachmentLine(api.Attachment{Filename: "f", ContentType: &blank}); !strings.Contains(got, "type unknown") {
+		t.Fatalf("blank: %q", got)
+	}
+	if got := attachmentLine(api.Attachment{Filename: "f", ContentType: &long}); strings.Contains(got, long) || !strings.Contains(got, "…") {
+		t.Fatalf("long: %q", got)
+	}
+	if got := sizeOf(1 << 20); got != "1.0 MiB" {
+		t.Fatalf("1 MiB: %q", got)
+	}
+}
+
+// Review round 2, probes: after a missing comment e is not offered for it
+// again until Esc; a reload without the comment closes the marker (no
+// state the person cannot see, Esc goes back at once).
+func TestR2AMissingCommentIsNotOfferedAgainAndLeavesWithIt(t *testing.T) {
+	h := newHarness(t)
+	h.openSix()
+	h.press("tab")
+	gone := false
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		if o.PostID != "" {
+			return transport.Answer{Class: transport.NotFound, Message: "No comment found.", Status: 200, Sent: true}
+		}
+		d := h.d
+		if gone {
+			d.sixComments = 29
+		}
+		return d.defaultTicket(project, id, o)
+	})
+	h.drive(h.press("e"))
+	mustContain(t, h.paneText(), "Comment unavailable")
+	if h.m.allowed()[Expand] {
+		t.Fatal("e offered again for the missing comment")
+	}
+	gone = true
+	h.drive(h.press("R"))
+	if h.m.app.detail.expansion != nil {
+		t.Fatal("the marker of a comment no longer on the page stays")
+	}
+	if !strings.Contains(helpText(h.m), "esc back") {
+		t.Fatalf("help %q", helpText(h.m))
+	}
+}
+
+// Review round 2, finding 1, in flight: a read of the page still out when
+// the comment is found missing is canceled, and the reload is a request of
+// its own (another share key), not a join of it.
+func TestR2TheReloadDoesNotJoinAReadStillOut(t *testing.T) {
+	h := newHarness(t)
+	h.openSix()
+	h.press("tab")
+	release := make(chan struct{})
+	var held atomic.Bool
+	h.f.setTicket(func(p, id string, o api.TicketOptions) transport.Answer {
+		if o.PostID != "" {
+			return transport.Answer{Class: transport.NotFound, Message: "No comment found.", Status: 200, Sent: true}
+		}
+		if held.CompareAndSwap(false, true) {
+			<-release // the read that left before: the ticket still existed
+			return h.d.defaultTicket(p, id, o)
+		}
+		return transport.Answer{Class: transport.NotFound, Message: "No ticket found.", Status: 200, Sent: true}
+	})
+	older := h.background(h.press("R"))
+	h.waitFor("the older read on the wire", held.Load)
+	var olderShare string
+	for _, w := range h.m.app.waiters {
+		if w.ticket.Area == gateway.Detail {
+			olderShare = w.ticket.ShareKey()
+		}
+	}
+	cmds := h.feed(messages(t, h.press("e"))...)
+	for _, w := range h.m.app.waiters {
+		if w.ticket.Area == gateway.Detail && !w.canceled && w.ticket.ShareKey() == olderShare {
+			t.Fatal("the reload shares the request that left before")
+		}
+	}
+	h.driveWithin(cmds...)
+	close(release)
+	h.feed(h.receive(older))
+	if h.m.app.detail.known {
+		t.Fatal("the deleted ticket stays shown")
 	}
 }
