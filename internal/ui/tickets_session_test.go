@@ -1719,11 +1719,16 @@ func TestAFailedPreviewIsNotReReadOnAFocusChange(t *testing.T) {
 	if len(h.f.detailReads()) != 1 || a.detail == nil || a.detail.err.String() == "" {
 		t.Fatalf("setup: %d reads, detail %+v", len(h.f.detailReads()), a.detail)
 	}
+	token := a.previewToken
 	for _, key := range []string{"right", "left", "right", "left"} {
-		h.drive(h.press(key))
+		if cmd := h.press(key); cmd != nil || a.previewToken != token {
+			t.Fatalf("%s armed a timer for a refused preview", key)
+		}
 		h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
 	}
-	h.drive(h.feed(tea.WindowSizeMsg{Width: 80, Height: 24})...)
+	if cmds := h.feed(tea.WindowSizeMsg{Width: 80, Height: 24}); len(cmds) != 0 || a.previewToken != token {
+		t.Fatal("a resize armed a timer for a refused preview")
+	}
 	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
 	if n := len(h.f.detailReads()); n != 1 {
 		t.Fatalf("%d reads after focus changes and a resize on one row", n)
