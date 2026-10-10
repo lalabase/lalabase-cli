@@ -1920,9 +1920,20 @@ func TestThePaneIsHiddenWhenTheHelpMakesTheTerminalSmall(t *testing.T) {
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
-	// A size above the minimum where the help of the ticket list takes
-	// the body's lines: found by looking, so the test does not depend on
-	// the exact wrapping of the help.
+	// The pane holds the first row's ticket from the cache, its reload
+	// not yet out: the one state a resize could read something in.
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	h.press("down")
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	h.press("up")
+	if d := a.detail; d == nil || !d.awaitingReload() || len(h.f.detailReads()) != 2 {
+		t.Fatalf("setup: detail %+v, %d reads", a.detail, len(h.f.detailReads()))
+	}
+	// A size above the minimum where the help of the focused pane takes
+	// the body's lines: found by looking (with the pane focused, as the
+	// help is the focused column's), so the test does not depend on the
+	// exact wrapping of the help.
+	h.m.focus = view.Object
 	found := false
 	for width := 24; width <= 60 && !found; width++ {
 		for height := 8; height <= 14 && !found; height++ {
@@ -1937,23 +1948,22 @@ func TestThePaneIsHiddenWhenTheHelpMakesTheTerminalSmall(t *testing.T) {
 	// The pane focused in a terminal large enough, then the resize to
 	// the size the help alone makes small: no timer, no read.
 	h.m.width, h.m.height = 120, 24
-	h.m.focus = view.Object
 	token := a.previewToken
 	if cmds := h.feed(tea.WindowSizeMsg{Width: width, Height: height}); len(cmds) != 0 || a.previewToken != token {
 		t.Fatalf("a timer while the help leaves no room for the pane (%dx%d)", width, height)
 	}
 	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
-	if n := len(h.f.detailReads()); n != 0 {
-		t.Fatalf("%d reads while the help leaves no room for the pane", n)
+	if n := len(h.f.detailReads()); n != 2 {
+		t.Fatalf("%d reads while the help leaves no room for the pane", n-2)
 	}
-	// Large again: the preview comes.
+	// Large again: the reload comes, once.
 	cmds := h.feed(tea.WindowSizeMsg{Width: 120, Height: 24})
 	if len(cmds) == 0 {
 		t.Fatal("no timer after the terminal grew")
 	}
 	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
-	if n := len(h.f.detailReads()); n != 1 {
-		t.Fatalf("%d reads after the terminal grew", n)
+	if n := len(h.f.detailReads()); n != 3 || !a.detail.holds() {
+		t.Fatalf("%d reads after the terminal grew, detail %+v", n-2, a.detail)
 	}
 }
 
