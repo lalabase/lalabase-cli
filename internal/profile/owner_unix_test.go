@@ -12,31 +12,9 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/gboyke/lalabase-cli/internal/privatefs"
 )
-
-// fakeInfo is file metadata with a chosen owner, so the owner check can be
-// tested without a file of another user.
-type fakeInfo struct {
-	fs.FileInfo
-	uid uint32
-}
-
-func (f fakeInfo) Sys() any { return &syscall.Stat_t{Uid: f.uid} }
-
-func TestAFileOfAnotherUserIsRefused(t *testing.T) {
-	path := writeConfig(t, twoProfiles, 0o600)
-	real, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	me := uint32(os.Getuid()) //nolint:gosec // a uid fits
-	if err := checkOwner(fakeInfo{real, me}); err != nil {
-		t.Errorf("own file: %v", err)
-	}
-	if err := checkOwner(fakeInfo{real, me + 1}); err == nil || !strings.Contains(err.Error(), "another user") {
-		t.Errorf("another user's file: %v", err)
-	}
-}
 
 // A FIFO in place of the config must not block the open: a size limit on the
 // read comes too late for that.
@@ -64,10 +42,10 @@ func TestAFIFOInPlaceOfTheConfigDoesNotBlock(t *testing.T) {
 // Load itself refuses the file of another user, not only checkOwner.
 func TestLoadRefusesAConfigOfAnotherUser(t *testing.T) {
 	path := writeConfig(t, twoProfiles, 0o600)
-	me := currentUID
-	currentUID = func() int { return me() + 1 }
+	me := privatefs.CurrentUID
+	privatefs.CurrentUID = func() int { return me() + 1 }
 	dirsOf = func(string) error { return nil } // the file's own check, not its directory's
-	t.Cleanup(func() { currentUID, dirsOf = me, checkDirs })
+	t.Cleanup(func() { privatefs.CurrentUID, dirsOf = me, privatefs.CheckDirs })
 	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), path+": belongs to another user") {
 		t.Fatalf("got %v", err)
 	}
@@ -224,9 +202,9 @@ func TestAStickyDirectoryOnTheWayIsAccepted(t *testing.T) {
 // A directory of another user is no chmod away: the message says so.
 func TestADirectoryOfAnotherUserIsRefused(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "lalabase", "config.toml")
-	me := currentUID
-	currentUID = func() int { return me() + 1 }
-	t.Cleanup(func() { currentUID = me })
+	me := privatefs.CurrentUID
+	privatefs.CurrentUID = func() int { return me() + 1 }
+	t.Cleanup(func() { privatefs.CurrentUID = me })
 	err := Save(path, File{Profiles: map[string]Entry{}})
 	if err == nil || !strings.Contains(err.Error(), "belongs to another user") || strings.Contains(err.Error(), "chmod") {
 		t.Fatalf("got %v", err)
@@ -353,14 +331,14 @@ func TestALockFileOfOthersIsRefused(t *testing.T) {
 // foreignAt makes the entry at path look owned by another user.
 func foreignAt(t *testing.T, path string) {
 	t.Helper()
-	old := ownerOf
-	ownerOf = func(p string, info fs.FileInfo) uint32 {
+	old := privatefs.OwnerOf
+	privatefs.OwnerOf = func(p string, info fs.FileInfo) uint32 {
 		if p == path {
-			return uint32(currentUID()) + 1 //nolint:gosec // a uid fits
+			return uint32(privatefs.CurrentUID()) + 1 //nolint:gosec // a uid fits
 		}
 		return old(p, info)
 	}
-	t.Cleanup(func() { ownerOf = old })
+	t.Cleanup(func() { privatefs.OwnerOf = old })
 }
 
 // A link on the way that belongs to somebody else can be pointed elsewhere
@@ -380,73 +358,6 @@ func TestALinkOfAnotherUserIsRefused(t *testing.T) {
 	path := filepath.Join(link, "config.toml")
 	if err := Save(path, File{Profiles: map[string]Entry{}}); err == nil || !strings.Contains(err.Error(), "link of another user") {
 		t.Fatalf("got %v", err)
-	}
-}
-
-// Links are resolved as the kernel resolves them: a ".." after a link goes
-// up from where the link led, not from where it lies.
-func TestDotDotAfterALinkGoesUpFromItsTarget(t *testing.T) {
-	root := t.TempDir()
-	mk := func(rel string, mode os.FileMode) {
-		t.Helper()
-		p := filepath.Join(root, rel)
-		if err := os.MkdirAll(p, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(p, mode); err != nil {
-			t.Fatal(err)
-		}
-	}
-	mk("far/deep", 0o700)
-	mk("far/leaf", 0o777) // where the kernel arrives
-	mk("leaf", 0o700)     // where a lexical shortcut would arrive
-	if err := os.Symlink("far/deep", filepath.Join(root, "hop")); err != nil {
-		t.Fatal(err)
-	}
-	dir := filepath.Join(root, "L")
-	if err := os.Symlink("hop/../leaf", dir); err != nil {
-		t.Fatal(err)
-	}
-	got, err := os.Stat(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want, err := os.Stat(filepath.Join(root, "far", "leaf"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !os.SameFile(got, want) {
-		t.Fatal("the kernel resolves the link elsewhere; the test's premise is wrong")
-	}
-	if err := checkDirs(dir); err == nil || !strings.Contains(err.Error(), "far/leaf") {
-		t.Fatalf("got %v", err)
-	}
-}
-
-// At most 40 links on the way, as Linux allows (macOS stops at 32, and then
-// the open fails on its own).
-func TestTheLinkLimitIsForty(t *testing.T) {
-	chain := func(n int) string {
-		root := realTempDir(t)
-		end := filepath.Join(root, "end")
-		if err := os.Mkdir(end, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		prev := end
-		for i := range n {
-			l := filepath.Join(root, fmt.Sprintf("l%d", i))
-			if err := os.Symlink(prev, l); err != nil {
-				t.Fatal(err)
-			}
-			prev = l
-		}
-		return prev
-	}
-	if err := checkDirs(chain(40)); err != nil {
-		t.Fatalf("40 links: %v", err)
-	}
-	if err := checkDirs(chain(41)); err == nil || !strings.Contains(err.Error(), "too many links") {
-		t.Fatalf("41 links: %v", err)
 	}
 }
 

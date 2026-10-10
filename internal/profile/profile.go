@@ -28,6 +28,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/gboyke/lalabase-cli/internal/api"
+	"github.com/gboyke/lalabase-cli/internal/privatefs"
 	"github.com/gboyke/lalabase-cli/internal/safefile"
 )
 
@@ -116,10 +117,10 @@ func Load(path string) (File, error) {
 	if info.Mode().Perm()&0o077 != 0 {
 		return File{}, fmt.Errorf("%s holds tokens and others may read or change it (mode %o); run: chmod 600 %s", path, info.Mode().Perm(), path)
 	}
-	if err := checkOwner(info); err != nil {
+	if err := privatefs.CheckOwner(info); err != nil {
 		return File{}, fmt.Errorf("%s: %w", path, err)
 	}
-	if err := checkACL(path, private); err != nil {
+	if err := privatefs.CheckACL(path, privatefs.Private); err != nil {
 		return File{}, err
 	}
 
@@ -183,7 +184,7 @@ var rename = os.Rename
 
 // dirsOf checks the directories on the way to the config (tests replace it
 // to reach the checks of the file itself).
-var dirsOf = checkDirs
+var dirsOf = privatefs.CheckDirs
 
 // Update loads the config file, lets change modify it and saves it, all under
 // an exclusive lock on a lock file beside it: two updates at the same time
@@ -198,7 +199,7 @@ func Update(path string, change func(*File) error) error {
 	if err := dirsOf(filepath.Dir(path)); err != nil {
 		return err
 	}
-	unlock, err := lock(path + ".lock")
+	unlock, err := privatefs.Lock(path + ".lock")
 	if err != nil {
 		return err
 	}

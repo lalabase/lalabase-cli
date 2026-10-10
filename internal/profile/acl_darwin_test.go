@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gboyke/lalabase-cli/internal/privatefs"
 )
 
 // setACL adds an access control entry, as a person or an admin would.
@@ -105,9 +107,9 @@ func TestALockFileWithAnAccessListIsRefused(t *testing.T) {
 // An access list that cannot be read is no access list: refused.
 func TestAnAccessListThatCannotBeReadIsRefused(t *testing.T) {
 	path := writeConfig(t, twoProfiles, 0o600)
-	old := readACLOf
-	readACLOf = func(string) ([]ace, error) { return nil, errors.New("ENOSYS") }
-	t.Cleanup(func() { readACLOf = old })
+	old := privatefs.ReadACL
+	privatefs.ReadACL = func(string) ([]privatefs.ACE, error) { return nil, errors.New("ENOSYS") }
+	t.Cleanup(func() { privatefs.ReadACL = old })
 	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "reading its access list") {
 		t.Fatalf("got %v", err)
 	}
