@@ -140,10 +140,13 @@ type Cache struct {
 	dir    string
 	faults func(step, path string) error
 
-	// state guards closed; unlock is released once, by Close or by the
-	// batch that was running when Close came.
+	// state guards closed and running; unlock is released once, by Close
+	// when no batch runs, else by the batch that was running when Close
+	// came. Who does it is decided under state, so the two cannot miss
+	// each other.
 	state   sync.Mutex
 	closed  bool
+	running bool
 	release sync.Once
 	unlock  func()
 
@@ -233,10 +236,10 @@ func (c *Cache) Bytes() int64 {
 func (c *Cache) Close() error {
 	c.state.Lock()
 	c.closed = true
+	running := c.running
 	c.state.Unlock()
-	if c.mu.TryLock() {
+	if !running {
 		c.letGo()
-		c.mu.Unlock()
 	}
 	return nil
 }
@@ -251,20 +254,30 @@ func (c *Cache) isClosed() bool {
 // letGo releases the lock once.
 func (c *Cache) letGo() { c.release.Do(c.unlock) }
 
-// enter takes mu for an Apply or a Read, unless the cache is closed; leave
-// gives it back and, when Close came meanwhile, lets the lock go.
+// enter takes mu for an Apply or a Read, unless the cache is closed, and
+// marks a batch as running; leave gives mu back and, when Close came while
+// the batch ran, lets the lock go: the one of the two that comes second
+// under state releases.
 func (c *Cache) enter() bool {
 	c.mu.Lock()
-	if c.isClosed() {
+	c.state.Lock()
+	if c.closed {
+		c.state.Unlock()
 		c.letGo()
 		c.mu.Unlock()
 		return false
 	}
+	c.running = true
+	c.state.Unlock()
 	return true
 }
 
 func (c *Cache) leave() {
-	if c.isClosed() {
+	c.state.Lock()
+	c.running = false
+	closed := c.closed
+	c.state.Unlock()
+	if closed {
 		c.letGo()
 	}
 	c.mu.Unlock()

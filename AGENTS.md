@@ -40,7 +40,7 @@ on a Mac before every merge, by running the tests here.
 | `internal/uitext` | every text of the interface, in English, in one place |
 | `internal/terminal` | the UTF-8 locale check before raw mode |
 | `internal/inboxfixture` | the loopback stand-in for a server, built from the contract copy; `tools/inbox-fixture` serves it for a person |
-| `internal/profile` | server plus token; the config file and its threat model |
+| `internal/profile` | server plus token; the config file, checked through `internal/privatefs` |
 | `internal/safefile` | reading files the client does not control |
 | `internal/claudecfg` | Lalabase entries in Claude Code's configuration (`auth import`) |
 | `internal/clean` | making foreign text safe for a terminal |

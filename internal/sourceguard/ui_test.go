@@ -111,23 +111,70 @@ var fileSystemImports = map[string]map[string][]string{
 		"syscall": {"O_NONBLOCK", "O_NOFOLLOW"},
 	},
 	"internal/privatefs": {
-		"os":              {"OpenFile", "O_RDWR", "O_CREATE", "Getuid", "Lstat", "Readlink"},
-		"io/fs":           nil,
-		"path/filepath":   nil,
+		"os":    {"OpenFile", "O_RDWR", "O_CREATE", "Getuid", "Lstat", "Readlink"},
+		"io/fs": nil,
+		// The path functions alone: Glob, Walk, WalkDir and EvalSymlinks
+		// read the file system and are not among them.
+		"path/filepath":   {"Abs", "Dir", "IsAbs", "Join"},
 		"syscall":         {"O_NONBLOCK", "O_NOFOLLOW", "Flock", "LOCK_EX", "LOCK_NB", "LOCK_UN", "Stat_t", "EWOULDBLOCK", "EAGAIN"},
 		"encoding/binary": {"NativeEndian"},
 		// The access list reader of macOS: getattrlist has no libSystem
-		// wrapper, so it is the one raw system call of the client.
+		// wrapper, so it is the one raw system call of the client. Syscall6
+		// is allowed with SYS_GETATTRLIST as its first argument alone
+		// (inspectRawSyscalls).
 		"unsafe":                {"Pointer"},
 		"golang.org/x/sys/unix": {"BytePtrFromString", "Syscall6", "SYS_GETATTRLIST"},
 	},
 	"internal/diskcache": {
 		"os":            {"File", "MkdirAll", "Open", "Remove", "CreateTemp", "Chtimes", "Rename"},
 		"io/fs":         nil,
-		"path/filepath": nil,
+		"path/filepath": {"Dir", "IsAbs", "Join"},
 		"crypto/sha256": nil,
 		"encoding/hex":  nil,
 	},
+}
+
+// rawSyscall is the one raw system call the client makes, and the number
+// it may carry: anything else by number would be any call at all.
+const (
+	rawSyscall       = "Syscall6"
+	rawSyscallNumber = "SYS_GETATTRLIST"
+)
+
+// inspectRawSyscalls: a call of x/sys/unix's Syscall6 names rawSyscallNumber
+// of the same package as its first argument; a number, a variable or
+// another constant is refused.
+func inspectRawSyscalls(name string, file *ast.File, aliases map[string]string) []string {
+	var findings []string
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != rawSyscall {
+			return true
+		}
+		pkg, ok := sel.X.(*ast.Ident)
+		if !ok || aliases[pkg.Name] != "golang.org/x/sys/unix" {
+			return true
+		}
+		if len(call.Args) == 0 {
+			findings = append(findings, name+": "+rawSyscall+" without a system call")
+			return true
+		}
+		named := false
+		if first, ok := call.Args[0].(*ast.SelectorExpr); ok {
+			if firstPkg, isIdent := first.X.(*ast.Ident); isIdent {
+				named = aliases[firstPkg.Name] == "golang.org/x/sys/unix" && first.Sel.Name == rawSyscallNumber
+			}
+		}
+		if !named {
+			findings = append(findings, name+": "+rawSyscall+" with a system call other than "+rawSyscallNumber)
+		}
+		return true
+	})
+	return findings
 }
 
 // fileSystemNames: the names dir may use of p beyond reachableImports; ok
@@ -346,6 +393,7 @@ func inspectUI(sources map[string]string) []string {
 		if !test {
 			findings = append(findings, inspectUIEntry(name, file, aliases)...)
 			findings = append(findings, inspectForeignCallbacks(name, file, aliases)...)
+			findings = append(findings, inspectRawSyscalls(name, file, aliases)...)
 		}
 		// Goroutines: production code anywhere starts one only in the
 		// worker's Start; a test harness may, except in the interface.

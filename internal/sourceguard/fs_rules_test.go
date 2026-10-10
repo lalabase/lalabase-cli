@@ -76,6 +76,16 @@ func TestTheFileSystemPackagesImportByName(t *testing.T) {
 		"safefile#remove":     `package safefile; import "os"; var rm = os.Remove`,
 		"safefile#filepath":   `package safefile; import "path/filepath"; var _ = filepath.Join`,
 		"safefile#flock":      `package safefile; import "syscall"; var _ = syscall.Flock`,
+		// Round 2: the path package by name (Glob, Walk and EvalSymlinks
+		// read the file system), and the raw system call with its one
+		// number alone.
+		"diskcache#glob":        `package diskcache; import "path/filepath"; var _ = filepath.Glob`,
+		"diskcache#walk":        `package diskcache; import "path/filepath"; var _ = filepath.WalkDir`,
+		"privatefs#evalsymlink": `package privatefs; import "path/filepath"; var _ = filepath.EvalSymlinks`,
+		"privatefs#syscall#num": `package privatefs; import "golang.org/x/sys/unix"; func f() { unix.Syscall6(4, 0, 0, 0, 0, 0, 0) }`,
+		"privatefs#syscall#var": `package privatefs; import "golang.org/x/sys/unix"; func f(n uintptr) { unix.Syscall6(n, 0, 0, 0, 0, 0, 0) }`,
+		"privatefs#syscall#oth": `package privatefs; import "golang.org/x/sys/unix"; func f() { unix.Syscall6(unix.SYS_WRITE, 0, 0, 0, 0, 0, 0) }`,
+		"privatefs#syscall#ali": `package privatefs; import u "golang.org/x/sys/unix"; func f() { u.Syscall6(u.SYS_WRITE, 0, 0, 0, 0, 0, 0) }`,
 	} {
 		pkg, _, _ := strings.Cut(name, "#")
 		if got := inspectUI(withFS(map[string]string{"internal/" + pkg + "/probe.go": source})); len(got) == 0 {

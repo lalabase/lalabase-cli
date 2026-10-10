@@ -214,7 +214,10 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
     entries on disk until they expire (a day at most; a 401 on the old token
     removes them, a new token does not know of them); a page opened in the
     first moments of a run, before the directory was opened, comes from the
-    network alone; a directory beyond 8,192 entries is refused as unusable.
+    network alone; a directory beyond 8,192 entries is refused as unusable;
+    a removal the file system refuses (other than a 401's) switches the
+    disk off with the notice and leaves the file, so the next run shows
+    that page as "Cached" once until its reload says again that it is gone.
 * Startup profile errors and recovered panics exit with 1; terminal, locale
   and profile flag errors exit with 2. A panic in the client's background
   work (a shared request, the wake-up after a rate limit pause, a read for

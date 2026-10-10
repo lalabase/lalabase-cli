@@ -324,6 +324,13 @@ func defaultFakes(d recordedData) *fakes {
 // given or none.
 func buildHarness(t *testing.T, f *fakes, disk *diskcache.Opener) *harness {
 	t.Helper()
+	return buildHarnessFor(t, f, disk, "default")
+}
+
+// buildHarnessFor is buildHarness with the profile's name (the disk cache
+// names its directory after it, C1e).
+func buildHarnessFor(t *testing.T, f *fakes, disk *diskcache.Opener, profile string) *harness {
+	t.Helper()
 	d := recorded(t)
 	if f == nil {
 		f = defaultFakes(d)
@@ -341,7 +348,7 @@ func buildHarness(t *testing.T, f *fakes, disk *diskcache.Opener) *harness {
 		Startup: gateway.NewStartup(live, q, f, f, ev),
 		Gateway: gateway.New(live, q, f, gateway.WithEvents(ev)),
 		Events:  ev,
-		Profile: "default",
+		Profile: profile,
 		Server:  "https://example.invalid",
 		Disk:    disk,
 	}), WithClock(func() time.Time { return h.now }))

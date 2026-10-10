@@ -1336,3 +1336,29 @@ func TestADiskMissLeavesNothingPending(t *testing.T) {
 		t.Fatalf("%d disk reads known", len(a.disk.reads))
 	}
 }
+
+// Review round 2: the profile the session runs with names the directory;
+// another profile is another directory (and another lock).
+func TestTheProfileNamesTheDirectory(t *testing.T) {
+	root := t.TempDir()
+	h := buildHarnessFor(t, nil, &diskcache.Opener{Root: root}, "work")
+	h.start()
+	if h.m.app.disk.cache == nil {
+		t.Fatal("no disk")
+	}
+	if !exists(t, filepath.Join(root, "work", "lock")) {
+		t.Fatal("no directory for the profile work")
+	}
+	if exists(t, filepath.Join(root, "default")) {
+		t.Fatal("a directory for a profile the session does not run with")
+	}
+	if got := h.m.app.disk.cache.Dir(); got != filepath.Join(root, "work") {
+		t.Fatalf("dir %s", got)
+	}
+	// The other profile opens beside it, with a lock of its own.
+	other := buildHarnessFor(t, nil, &diskcache.Opener{Root: root}, "default")
+	other.start()
+	if other.m.app.disk.cache == nil || other.m.app.disk.notice != 0 {
+		t.Fatalf("the other profile: cache %v, notice %d", other.m.app.disk.cache != nil, other.m.app.disk.notice)
+	}
+}

@@ -23,13 +23,23 @@ import (
 // terminal restored.
 
 // cacheDir is where the child keeps the cache of its default profile:
-// XDG_CACHE_HOME is not set for it, so under its home.
-func cacheDir(home string) string { return filepath.Join(home, ".cache", "lalabase", "cli", "default") }
+// under XDG_CACHE_HOME when the run sets it, else under its home.
+func cacheDir(home, cacheHome string) string {
+	if cacheHome != "" {
+		return filepath.Join(cacheHome, "lalabase", "cli", "default")
+	}
+	return filepath.Join(home, ".cache", "lalabase", "cli", "default")
+}
 
 // cacheEntries are the entry files in the child's cache directory.
 func cacheEntries(t *testing.T, home string) []string {
 	t.Helper()
-	list, err := os.ReadDir(cacheDir(home))
+	return cacheEntriesIn(t, cacheDir(home, ""))
+}
+
+func cacheEntriesIn(t *testing.T, dir string) []string {
+	t.Helper()
+	list, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
@@ -46,7 +56,13 @@ func cacheEntries(t *testing.T, home string) []string {
 // the child the longer limit.
 func startDisk(t *testing.T, scenario inboxfixture.Scenario, width uint16, url, home string) *terminalProcess {
 	t.Helper()
-	c := startTerminalWith(t, "inbox-disk-"+string(scenario), width, terminalOptions{url: url, marker: "Token can write: yes", limit: inboxLimit, home: home})
+	return startDiskIn(t, scenario, width, url, home, "")
+}
+
+// startDiskIn is startDisk with the child's XDG_CACHE_HOME.
+func startDiskIn(t *testing.T, scenario inboxfixture.Scenario, width uint16, url, home, cacheHome string) *terminalProcess {
+	t.Helper()
+	c := startTerminalWith(t, "inbox-disk-"+string(scenario), width, terminalOptions{url: url, marker: "Token can write: yes", limit: inboxLimit, home: home, cacheHome: cacheHome})
 	if err := c.ready(); err != nil {
 		t.Fatalf("%v\n%s", err, c.bytes())
 	}
@@ -84,9 +100,20 @@ func TestPTYDiskCacheRestartFlow(t *testing.T) {
 		t.Run(fmt.Sprintf("%d", width), func(t *testing.T) {
 			f, url := fixtureServer(t, inboxfixture.SlowReads)
 			home := t.TempDir()
-			c := startDisk(t, inboxfixture.SlowReads, width, url, home)
-			if n := len(cacheEntries(t, home)); n != 1 {
+			// At 80 columns the run sets XDG_CACHE_HOME: the cache lies there
+			// and nothing under the home (review round 2).
+			cacheHome := ""
+			if width == 80 {
+				cacheHome = filepath.Join(home, "xdg-cache")
+			}
+			dir := cacheDir(home, cacheHome)
+			entries := func() []string { return cacheEntriesIn(t, dir) }
+			c := startDiskIn(t, inboxfixture.SlowReads, width, url, home, cacheHome)
+			if n := len(entries()); n != 1 {
 				t.Fatalf("%d entries after the start (the counters' page)", n)
+			}
+			if cacheHome != "" && len(cacheEntries(t, home)) != 0 {
+				t.Fatal("entries under the home although XDG_CACHE_HOME is set")
 			}
 			openInboxA(t, c, width)
 			openRow6Details(t, c, width)
@@ -102,12 +129,12 @@ func TestPTYDiskCacheRestartFlow(t *testing.T) {
 			if first != 7 {
 				t.Fatalf("%d requests in the first run", first)
 			}
-			if n := len(cacheEntries(t, home)); n != 3 {
+			if n := len(entries()); n != 3 {
 				t.Fatalf("%d entries after the first run", n)
 			}
 			// The second run: /me again, the counters fresh, the inbox from
 			// disk while its slow reload is out.
-			c = startDisk(t, inboxfixture.SlowReads, width, url, home)
+			c = startDiskIn(t, inboxfixture.SlowReads, width, url, home, cacheHome)
 			if n := countTool(f, "", "/api/v1/me"); n != 2 {
 				t.Fatalf("/me was asked %d times", n)
 			}
@@ -151,16 +178,16 @@ func TestPTYDiskCacheRestartFlow(t *testing.T) {
 				}
 				t.Fatalf("%d requests in the second run:\n%s", n, strings.Join(lines, "\n"))
 			}
-			if n := len(cacheEntries(t, home)); n != 3 {
+			if n := len(entries()); n != 3 {
 				t.Fatalf("%d entries after the second run", n)
 			}
 			// The directory and its files are the user's alone.
-			info, err := os.Stat(cacheDir(home))
+			info, err := os.Stat(dir)
 			if err != nil || info.Mode().Perm() != 0o700 {
 				t.Fatalf("the cache directory: %v %v", info, err)
 			}
-			for _, name := range cacheEntries(t, home) {
-				info, err := os.Stat(filepath.Join(cacheDir(home), name))
+			for _, name := range entries() {
+				info, err := os.Stat(filepath.Join(dir, name))
 				if err != nil || info.Mode().Perm() != 0o600 {
 					t.Fatalf("%s: %v %v", name, info, err)
 				}
@@ -269,10 +296,10 @@ func TestPTYDiskCacheFallsBackToMemory(t *testing.T) {
 		_, url := fixtureServer(t, inboxfixture.Normal)
 		home := t.TempDir()
 		// A file where the directory should be: nothing can be made there.
-		if err := os.MkdirAll(filepath.Dir(cacheDir(home)), 0o700); err != nil {
+		if err := os.MkdirAll(filepath.Dir(cacheDir(home, "")), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(cacheDir(home), []byte("in the way"), 0o600); err != nil {
+		if err := os.WriteFile(cacheDir(home, ""), []byte("in the way"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		c := startDisk(t, inboxfixture.Normal, width, url, home)
