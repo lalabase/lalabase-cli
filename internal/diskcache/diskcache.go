@@ -131,16 +131,23 @@ type Opener struct {
 	Faults func(step, path string) error
 }
 
-// Cache is the open disk cache of one profile. Its methods take a lock:
-// the model closes it from its update step while a command may still be
-// applying a batch.
+// Cache is the open disk cache of one profile. Apply and Read serialise
+// on mu; Close never waits for them: it marks the cache closed and lets
+// the lock go itself when nothing is running, else the running batch lets
+// it go on its way out (the model closes from its update step, which must
+// not wait for a slow write).
 type Cache struct {
 	dir    string
 	faults func(step, path string) error
-	unlock func()
 
-	mu     sync.Mutex
-	closed bool
+	// state guards closed; unlock is released once, by Close or by the
+	// batch that was running when Close came.
+	state   sync.Mutex
+	closed  bool
+	release sync.Once
+	unlock  func()
+
+	mu sync.Mutex
 	// index is what the directory holds of ours: name, size, load time.
 	index map[string]fileMeta
 	bytes int64
@@ -219,16 +226,48 @@ func (c *Cache) Bytes() int64 {
 	return c.bytes
 }
 
-// Close releases the lock. Every call after it fails with ErrClosed.
+// Close marks the cache closed and lets the lock go: at once when no
+// batch runs, else as soon as the running batch returns (it stops before
+// its next change). It never waits. Every call after it fails with
+// ErrClosed.
 func (c *Cache) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
-		return nil
-	}
+	c.state.Lock()
 	c.closed = true
-	c.unlock()
+	c.state.Unlock()
+	if c.mu.TryLock() {
+		c.letGo()
+		c.mu.Unlock()
+	}
 	return nil
+}
+
+// isClosed says whether Close was called.
+func (c *Cache) isClosed() bool {
+	c.state.Lock()
+	defer c.state.Unlock()
+	return c.closed
+}
+
+// letGo releases the lock once.
+func (c *Cache) letGo() { c.release.Do(c.unlock) }
+
+// enter takes mu for an Apply or a Read, unless the cache is closed; leave
+// gives it back and, when Close came meanwhile, lets the lock go.
+func (c *Cache) enter() bool {
+	c.mu.Lock()
+	if c.isClosed() {
+		c.letGo()
+		c.mu.Unlock()
+		return false
+	}
+	return true
+}
+
+func (c *Cache) leave() {
+	if c.isClosed() {
+		c.letGo()
+	}
+	c.mu.Unlock()
 }
 
 // step asks the injected faults, if any.
@@ -417,12 +456,16 @@ func (c *Cache) remove(path string) error {
 // An entry too large for the bounds is not written, and what the key held
 // before goes, so nothing older comes back under it.
 func (c *Cache) Apply(changes []cache.Change, now time.Time) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
+	if !c.enter() {
 		return ErrClosed
 	}
+	defer c.leave()
 	for _, ch := range changes {
+		if c.isClosed() {
+			// Close came while the batch ran: nothing more is written, the
+			// lock goes with leave.
+			return ErrClosed
+		}
 		var err error
 		switch ch.Kind {
 		case cache.ChangePut:
@@ -541,11 +584,10 @@ func (c *Cache) write(tmp *os.File, name string, data []byte) error {
 // every check; ok is false for a miss. A file that fails a check is a miss
 // and is removed. err reports a failing file system, never a bad file.
 func (c *Cache) Read(k cache.Key, now time.Time) (e cache.Entry, ok bool, err error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
+	if !c.enter() {
 		return cache.Entry{}, false, ErrClosed
 	}
+	defer c.leave()
 	name := nameOf(k)
 	if _, known := c.index[name]; !known {
 		return cache.Entry{}, false, nil

@@ -48,6 +48,10 @@ type Change struct {
 	Kind  ChangeKind
 	Key   Key
 	Entry Entry // for ChangePut
+	// afterForget: this put took the place of a forget of its key. Dropped
+	// for room, it leaves that forget behind: the file the forget was for
+	// must not stay on disk as if the put had been applied.
+	afterForget bool
 }
 
 // MaxPending bounds the journal.
@@ -69,6 +73,10 @@ func (j *Journal) Add(op Change) {
 	for _, old := range j.ops {
 		if !supersedes(op, old) {
 			keep = append(keep, old)
+			continue
+		}
+		if op.Kind == ChangePut && (old.Kind == ChangeForget || old.afterForget) {
+			op.afterForget = true
 		}
 	}
 	j.ops = append(keep, op)
@@ -91,18 +99,24 @@ func supersedes(op, old Change) bool {
 	return false
 }
 
-// bound keeps at most MaxPending changes: the oldest puts go first; when
-// none is left to drop, every namespace still pending is removed as a
-// whole.
+// bound keeps at most MaxPending changes: the oldest puts go first (one
+// that took a forget's place becomes that forget again, so a file the
+// forget was for does not stay); when none is left to drop, every
+// namespace still pending is removed as a whole.
 func (j *Journal) bound() {
 	for len(j.ops) > MaxPending {
 		dropped := false
 		for i, op := range j.ops {
-			if op.Kind == ChangePut {
-				j.ops = append(j.ops[:i], j.ops[i+1:]...)
-				dropped = true
-				break
+			if op.Kind != ChangePut {
+				continue
 			}
+			if op.afterForget {
+				j.ops[i] = Change{Kind: ChangeForget, Key: op.Key}
+				continue // no room gained; the next put is looked at
+			}
+			j.ops = append(j.ops[:i], j.ops[i+1:]...)
+			dropped = true
+			break
 		}
 		if !dropped {
 			j.collapse()

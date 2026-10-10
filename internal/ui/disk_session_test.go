@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -1020,6 +1021,11 @@ func TestTicketsPagesAndExpansionsComeFromDisk(t *testing.T) {
 	if v := a.tickets; v == nil || !v.cached || len(v.rows) != 25 {
 		t.Fatalf("tickets from disk: %+v", v)
 	}
+	// The list from disk starts the preview of its first row, as a list
+	// from memory does (review round 1, B9).
+	if a.previewToken == 0 || a.tickets.selected != a.tickets.rows[0].ID {
+		t.Fatalf("no preview after the list from disk: token %d, selected %q", a.previewToken, a.tickets.selected)
+	}
 	h2.f.setGate(gate, ticketID(website, 6), false)
 	a.tickets.selected = ticketID(website, 6)
 	pending = append(pending, open(tea.Batch(h2.feed(press("enter"))...))...)
@@ -1057,4 +1063,276 @@ func TestTicketsPagesAndExpansionsComeFromDisk(t *testing.T) {
 	}
 	close(gate)
 	drain(pending)
+}
+
+// --- review round 1 ----------------------------------------------------------
+
+// gatedOpener holds the open at its first step until gate is closed, and
+// then fails it when *fail is set: a slow or failing disk at the start.
+func gatedOpener(root string, gate chan struct{}, fail *bool) *diskcache.Opener {
+	return &diskcache.Opener{Root: root, Faults: func(step, _ string) error {
+		if step == "mkdir" {
+			<-gate
+			if *fail {
+				return errors.New("injected open failure")
+			}
+		}
+		return nil
+	}}
+}
+
+// startGated runs the start with the open held: the /me result, then
+// initialize and the organisations and what follows them on the test's
+// goroutine, the open on a supervised one. It returns the open's channel.
+func (h *harness) startGated() <-chan tea.Msg {
+	h.t.Helper()
+	cmds := h.feed(messages(h.t, h.m.Init())...)
+	var opened <-chan tea.Msg
+	for _, ch := range h.spawn(tea.Batch(cmds...)) {
+		select {
+		case msg := <-ch:
+			h.drive(h.feed(msg)...)
+		case <-time.After(300 * time.Millisecond):
+			opened = ch
+		}
+	}
+	if opened == nil {
+		h.t.Fatal("the open was not held")
+	}
+	return opened
+}
+
+// Finding 1: a 401 on /me ends a session that confirmed no identity: no
+// directory was made, nothing is claimed about clearing one.
+func TestA401OnMeClaimsNothingAboutTheDisk(t *testing.T) {
+	root := t.TempDir()
+	h := newDiskHarness(t, root, nil)
+	h.f.me = func() (api.Me, transport.Answer) { return api.Me{}, failing(transport.Unauthenticated, 401) }
+	h.start()
+	a := h.m.app
+	if !a.expired || a.disk.clearing || a.disk.clearFailed {
+		t.Fatalf("expired %v, clearing %v, failed %v", a.expired, a.disk.clearing, a.disk.clearFailed)
+	}
+	if got := h.m.screen().Status.String(); got != "Session expired. Restart lalabase." {
+		t.Fatalf("status %q", got)
+	}
+	if exists(t, filepath.Join(root, "default")) {
+		t.Fatal("a directory was made without an identity")
+	}
+}
+
+// Finding 3: the disk commands run under the guarded root like every
+// command of the model: a panic in them is the supervisor's fatal error,
+// never Bubble Tea's print.
+func TestAPanicInADiskCommandIsTheSupervisorsFatalError(t *testing.T) {
+	root := t.TempDir()
+	explode := false
+	o := &diskcache.Opener{Root: root, Faults: func(step, _ string) error {
+		if explode && step == "create" {
+			panic("disk fault")
+		}
+		return nil
+	}}
+	h := buildHarness(t, nil, o)
+	h.start()
+	a := h.m.app
+	explode = true
+	// A change to write; the update's flush writes it, and the guarded root
+	// runs that command as it runs every command of the model.
+	cmds := h.feed(func() tea.Msg {
+		a.store.Apply(a.inboxKey(orgA, 1), cache.Replace, []byte(`{"data":[],"meta":{}}`), h.now)
+		return nil
+	}())
+	if len(cmds) == 0 {
+		t.Fatal("no flush")
+	}
+	sup := h.live
+	g := guarded{model: h.m, sup: sup}
+	msg := g.guard(tea.Batch(cmds...))()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, c := range batch {
+			if m := c(); m != nil {
+				t.Fatalf("a message after the panic: %+v", m)
+			}
+		}
+	} else if msg != nil {
+		t.Fatalf("a message after the panic: %+v", msg)
+	}
+	if err := sup.Err(); err == nil || !strings.Contains(err.Error(), "ui: command") {
+		t.Fatalf("the supervisor's error: %v", err)
+	}
+}
+
+// Probe M3: the reload fails for a temporary reason before the disk hit
+// lands: the page shows as cached and possibly stale, not as unreachable.
+func TestADiskHitAfterATemporaryFailureIsCachedAndStale(t *testing.T) {
+	root := t.TempDir()
+	h := newDiskHarness(t, root, nil)
+	h.start()
+	h.drive(h.choose(orgA))
+	h2 := h.restart(root)
+	h2.start()
+	a := h2.m.app
+	h2.f.set(func(q api.NotificationQuery) transport.Answer {
+		if q.OrganisationID == orgA {
+			return failing(transport.Temporary, 503)
+		}
+		return h2.d.inboxWithout(q, h2.f.readIDs())
+	})
+	var disk, network tea.Cmd
+	for _, ch := range h2.spawn(tea.Batch(h2.feed(func() tea.Msg {
+		h2.m.focus = view.Navigation
+		a.highlight, a.highlightSection = orgA, sectionInbox
+		return press("enter")
+	}())...)) {
+		msg := h2.receive(ch)
+		switch msg.(type) {
+		case diskDone:
+			disk = func() tea.Msg { return msg }
+		default:
+			network = func() tea.Msg { return msg }
+		}
+	}
+	h2.drive(network)
+	v := a.active
+	if v.known || !v.stale || v.err.String() == "" {
+		t.Fatalf("after the failure: %+v", v.status)
+	}
+	h2.drive(disk)
+	if !v.known || !v.cached || !v.stale || v.err.String() != "" || len(v.rows) != 25 {
+		t.Fatalf("after the disk hit: %+v", v.status)
+	}
+	if got := h2.m.listColumn().Notice.String(); got != "Cached, possibly stale" {
+		t.Fatalf("notice %q", got)
+	}
+}
+
+// Probe M4: changes journaled while the open is still out wait for it;
+// nothing is thrown away before the disk said whether it opens.
+func TestChangesWaitForTheOpen(t *testing.T) {
+	root := t.TempDir()
+	gate, fail := make(chan struct{}), false
+	h := buildHarness(t, nil, gatedOpener(root, gate, &fail))
+	opened := h.startGated()
+	a := h.m.app
+	if a.disk.cache != nil || !a.disk.opening {
+		t.Fatal("the open is not pending")
+	}
+	if a.disk.journal.Len() == 0 {
+		t.Fatal("the counters' page is not journaled")
+	}
+	h.drive(h.choose(orgA))
+	if a.disk.journal.Len() < 2 {
+		t.Fatalf("%d changes journaled while the open is out", a.disk.journal.Len())
+	}
+	close(gate)
+	h.drive(h.feed(h.receive(opened))...)
+	for a.disk.busy {
+		h.drive(h.feed(nil)...)
+	}
+	if _, ok, err := a.disk.cache.Read(a.inboxKey("", 1), h.now); !ok || err != nil {
+		t.Fatalf("the counters' page did not reach the disk: %v %v", ok, err)
+	}
+	if _, ok, _ := a.disk.cache.Read(a.inboxKey(orgA, 1), h.now); !ok {
+		t.Fatal("A's page did not reach the disk")
+	}
+}
+
+// Probes M5 and M23: a 401 while the open is out. When the open then
+// fails, the expired session says the disk was not cleared; when it
+// succeeds, the namespace leaves the disk and nothing of the kind is said.
+func TestA401WhileTheOpenIsOut(t *testing.T) {
+	for _, opens := range []bool{false, true} {
+		t.Run(map[bool]string{false: "the open fails", true: "the open succeeds"}[opens], func(t *testing.T) {
+			root := t.TempDir()
+			// An earlier run left an entry of the identity.
+			earlier := diskOf(t, root, t0ui())
+			tok := recorded(t).me.Token.ID
+			ns, _ := cache.Confirmed("default", "https://example.invalid", tok)
+			old := ns.Key(api.NotificationsSpec.Tool)
+			old.Organisation, old.Status, old.Page, old.PerPage = orgA, "unread", 2, 25
+			if err := earlier.Apply([]cache.Change{{Kind: cache.ChangePut, Key: old, Entry: cache.Entry{Payload: []byte(`{"old":true}`), LoadedAt: t0ui()}}}, t0ui()); err != nil {
+				t.Fatal(err)
+			}
+			_ = earlier.Close()
+			gate, fail := make(chan struct{}), !opens
+			h := buildHarness(t, nil, gatedOpener(root, gate, &fail))
+			opened := h.startGated()
+			a := h.m.app
+			h.events.Observe(func(context.Context) transport.Answer { return failing(transport.Unauthenticated, 401) })(context.Background())
+			h.feed(tea.WindowSizeMsg{Width: 120, Height: 24})
+			if !a.expired || !a.disk.clearing || a.disk.clearFailed {
+				t.Fatalf("expired %v, clearing %v, failed %v", a.expired, a.disk.clearing, a.disk.clearFailed)
+			}
+			close(gate)
+			h.drive(h.feed(h.receive(opened))...)
+			for a.disk.busy {
+				h.drive(h.feed(nil)...)
+			}
+			status := h.m.screen().Status.String()
+			d := diskOf(t, root, t0ui())
+			if opens {
+				if a.disk.clearing || a.disk.clearFailed || strings.Contains(status, "could not be cleared") {
+					t.Fatalf("clearing %v, failed %v, status %q", a.disk.clearing, a.disk.clearFailed, status)
+				}
+				if onDisk(t, d, old, t0ui()) {
+					t.Fatal("the earlier run's entry stayed")
+				}
+			} else {
+				if !a.disk.clearFailed || !strings.Contains(status, "could not be cleared") {
+					t.Fatalf("failed %v, status %q", a.disk.clearFailed, status)
+				}
+				if !onDisk(t, d, old, t0ui()) {
+					t.Fatal("the entry went although the open failed")
+				}
+			}
+		})
+	}
+}
+
+// t0ui is the harness's clock.
+func t0ui() time.Time { return time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC) }
+
+// Probe M18: the disk went off earlier (a write failed); a 401 then cannot
+// clear it, and the expired session says so.
+func TestA401AfterTheDiskWentOffSaysSo(t *testing.T) {
+	root := t.TempDir()
+	o := &diskcache.Opener{Root: root, Faults: func(step, _ string) error {
+		if step == "rename" {
+			return errors.New("injected rename")
+		}
+		return nil
+	}}
+	h := buildHarness(t, nil, o)
+	h.start()
+	a := h.m.app
+	if !a.disk.off {
+		t.Fatal("the disk is still on")
+	}
+	h.f.set(func(q api.NotificationQuery) transport.Answer { return failing(transport.Unauthenticated, 401) })
+	h.drive(h.press("R"))
+	if !a.expired || !a.disk.clearFailed {
+		t.Fatalf("expired %v, failed %v", a.expired, a.disk.clearFailed)
+	}
+	if got := h.m.screen().Status.String(); !strings.Contains(got, "could not be cleared") {
+		t.Fatalf("status %q", got)
+	}
+}
+
+// Probe M11: a disk miss gives its ticket back; nothing stays pending in
+// the scope for the session.
+func TestADiskMissLeavesNothingPending(t *testing.T) {
+	h := newDiskHarness(t, t.TempDir(), nil)
+	h.start()
+	a := h.m.app
+	h.drive(h.choose(orgA))
+	for a.disk.busy {
+		h.drive(h.feed(nil)...)
+	}
+	if n := a.scope.Pending(); n != 0 {
+		t.Fatalf("%d tickets pending after a disk miss", n)
+	}
+	if len(a.disk.reads) != 0 {
+		t.Fatalf("%d disk reads known", len(a.disk.reads))
+	}
 }

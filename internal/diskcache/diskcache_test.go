@@ -339,8 +339,10 @@ func TestTheSizeBoundsHoldAndTheOldestGoesFirst(t *testing.T) {
 	if got, ok := read(t, c, k, t0); !ok || len(got) != MaxEntryBytes {
 		t.Fatalf("a payload of MaxEntryBytes: %d %v", len(got), ok)
 	}
+	// One byte more, with a load time the age bound accepts (review round
+	// 1: the earlier case was refused for its time, not its size).
 	over := []byte(`"` + strings.Repeat("a", MaxEntryBytes-1) + `"`)
-	apply(t, c, t0, put(k, cache.Entry{Payload: over, LoadedAt: t0.Add(time.Minute)}))
+	apply(t, c, t0, put(k, cache.Entry{Payload: over, LoadedAt: t0}))
 	if _, ok := read(t, c, k, t0); ok || c.Files() != 0 {
 		t.Fatal("an oversized payload was kept, or the older entry came back")
 	}
@@ -438,6 +440,9 @@ func TestABadFileIsAMissAndGoes(t *testing.T) {
 		"another profile": func() []byte { r := good; r.Key.Profile = "work"; return marshal(t, r) },
 		"another server":  func() []byte { r := good; r.Key.Server = "https://b.example"; return marshal(t, r) },
 		"no identity":     func() []byte { r := good; r.Key.TokenID = ""; return marshal(t, r) },
+		"oversized payload": func() []byte {
+			return []byte(`{"format":1,"key":` + string(marshal(t, k.Record())) + `,"loaded_at":"2026-10-10T12:00:00Z","payload":"` + strings.Repeat("a", MaxEntryBytes-1) + `"}`)
+		},
 		"oversized file": func() []byte {
 			return append([]byte(`{"format":1,"pad":"`), append(bytes.Repeat([]byte("a"), MaxFileBytes), []byte(`"}`)...)...)
 		},
@@ -842,4 +847,97 @@ func TestASecondOpenOfTheSameProfileIsBusy(t *testing.T) {
 		t.Fatalf("after the close: %v", err)
 	}
 	_ = again.Close()
+}
+
+// A file stamped in the future is expired on open too (review round 1,
+// probe M6): it is removed, and it is not the "newest" that size pruning
+// keeps.
+func TestAFutureStampIsExpiredOnOpen(t *testing.T) {
+	root := t.TempDir()
+	c := open(t, root, t0)
+	k, k2 := inboxKey(nsA(t), "org-1", 1), inboxKey(nsA(t), "org-1", 2)
+	apply(t, c, t0, put(k, entry(`1`, t0)), put(k2, entry(`2`, t0)))
+	_ = c.Close()
+	future := t0.Add(time.Hour)
+	if err := os.Chtimes(fileOf(c, k), future, future); err != nil {
+		t.Fatal(err)
+	}
+	again := open(t, root, t0)
+	if again.Files() != 1 {
+		t.Fatalf("%d files after the open", again.Files())
+	}
+	if _, ok := read(t, again, k, t0); ok {
+		t.Fatal("the file from the future stayed")
+	}
+	if _, ok := read(t, again, k2, t0); !ok {
+		t.Fatal("the good file went")
+	}
+}
+
+// Close never waits for a batch (review round 1, finding 2): the model
+// closes from its update step, and a slow write must not hold the person's
+// q. The running batch stops before its next change and lets the lock go
+// on its way out; the next open gets it.
+func TestCloseNeverWaitsForABatch(t *testing.T) {
+	root := t.TempDir()
+	entered, release := make(chan struct{}), make(chan struct{})
+	o := Opener{Root: root, Faults: func(step, _ string) error {
+		if step == "sync" {
+			select {
+			case entered <- struct{}{}:
+			default:
+			}
+			<-release
+		}
+		return nil
+	}}
+	c, err := o.Open("default", t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k1, k2, k3 := inboxKey(nsA(t), "org-1", 1), inboxKey(nsA(t), "org-1", 2), inboxKey(nsA(t), "org-1", 3)
+	applied := make(chan error, 1)
+	go func() {
+		applied <- c.Apply([]cache.Change{put(k1, entry(`1`, t0)), put(k2, entry(`2`, t0)), put(k3, entry(`3`, t0))}, t0)
+	}()
+	select {
+	case <-entered:
+	case <-time.After(within):
+		t.Fatal("the batch did not start")
+	}
+	closed := make(chan struct{})
+	go func() { _ = c.Close(); close(closed) }()
+	select {
+	case <-closed:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("Close waited for the batch")
+	}
+	// The lock is still the batch's until it returns.
+	if _, err := (Opener{Root: root}).Open("default", t0); !errors.Is(err, ErrBusy) {
+		t.Fatalf("open while the batch holds the lock: %v", err)
+	}
+	close(release)
+	select {
+	case err := <-applied:
+		if !errors.Is(err, ErrClosed) {
+			t.Fatalf("the batch ended with %v, want ErrClosed", err)
+		}
+	case <-time.After(within):
+		t.Fatal("the batch did not return")
+	}
+	// The first change landed, the rest did not; the lock is free.
+	again, err := (Opener{Root: root}).Open("default", t0)
+	if err != nil {
+		t.Fatalf("open after the batch: %v", err)
+	}
+	defer func() { _ = again.Close() }()
+	if _, ok := read(t, again, k1, t0); !ok {
+		t.Fatal("the first change was lost")
+	}
+	if _, ok := read(t, again, k2, t0); ok {
+		t.Fatal("a change after the close was applied")
+	}
+	if got := names(t, again.Dir()); len(got) != 2 {
+		t.Fatalf("a temporary file was left: %v", got)
+	}
 }

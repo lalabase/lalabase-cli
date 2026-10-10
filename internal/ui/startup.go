@@ -197,10 +197,11 @@ func (m *Model) expire() {
 		// The session's writes end with it: a late answer fills nothing.
 		op.cancel()
 	}
-	if a.scope != nil {
+	confirmed := a.scope != nil
+	if confirmed {
 		// The store tells the journal: the namespace leaves the disk too.
 		a.scope.EndSession(a.store)
 	}
-	a.endDiskSession()
+	a.endDiskSession(confirmed)
 	a.reset()
 }

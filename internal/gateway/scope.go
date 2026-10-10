@@ -107,6 +107,10 @@ func (s *Scope) Move(area Area) []Waiter {
 // Leave drops a waiter that gave up.
 func (s *Scope) Leave(w Waiter) { delete(s.pending, w) }
 
+// Pending is the number of tickets issued and not yet used up (tests: a
+// read that is never answered or left would leak one for the session).
+func (s *Scope) Pending() int { return len(s.pending) }
+
 // Invalidate refuses every result for the resource begun before now (a
 // write changed it), copies of a removal included.
 func (s *Scope) Invalidate(resource cache.Key) {

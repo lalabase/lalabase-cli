@@ -173,8 +173,9 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
     bound, never on a timer, in this order: temporary files and names of
     the cache's own that are no regular file; expired entries; then, while
     the directory is over its size or file count, the oldest entry first.
-  * **Files:** the directory is the user's alone (0700, and the whole way to
-    it is checked like the config's, see below), the files 0600, one JSON
+  * **Files:** the directory is made 0700 and checked like the config's
+    directory (the whole way to it, see below; a directory others may list
+    but not change passes, as for the config), the files 0600, one JSON
     record per entry with the format version, the key with its identity
     field by field, the time of the network read, the stale mark and the
     answer. A file is written to a unique temporary file beside it, synced
@@ -187,10 +188,13 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
     file goes. Text from disk is cleaned on its way to the screen like text
     from the network.
   * **One lalabase at a time:** a run holds `lock` in the profile's
-    directory for as long as it runs and never waits for it. A second
-    lalabase on the same profile says "Disk cache in use by another
-    lalabase; using memory only" and runs on memory alone; another profile
-    is another directory. With one writer the disk is a replay of the
+    directory for as long as it runs and never waits for it; on `q`,
+    Ctrl-C or a fatal error it lets the lock go without waiting for a
+    write that may be out (the write finishes or stops, then the lock
+    goes). A second lalabase on the same profile says "Disk cache in use
+    by another lalabase; using memory only" and runs on memory alone;
+    another profile is another directory (with the environment pair the
+    profile is `env`). With one writer the disk is a replay of the
     memory's decisions in their order (a batch at a time, bounded): a
     removal journaled before a write is applied before it, a write journaled
     before a removal never brings the data back, and a disk read that comes
@@ -206,6 +210,11 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
   * **Clearing it by hand:** quit lalabase (the lock file is held only while
     it runs), then `rm -r ~/.cache/lalabase/cli/<profile>`. The next run
     makes the directory again.
+  * **Known limits:** a token replaced by another leaves the old token id's
+    entries on disk until they expire (a day at most; a 401 on the old token
+    removes them, a new token does not know of them); a page opened in the
+    first moments of a run, before the directory was opened, comes from the
+    network alone; a directory beyond 8,192 entries is refused as unusable.
 * Startup profile errors and recovered panics exit with 1; terminal, locale
   and profile flag errors exit with 2. A panic in the client's background
   work (a shared request, the wake-up after a rate limit pause, a read for

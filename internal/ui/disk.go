@@ -43,9 +43,8 @@ type diskState struct {
 	cache   *diskcache.Cache
 	opening bool
 	journal *cache.Journal
-	// busy: a batch is out; seq numbers the batches.
+	// busy: a batch is out.
 	busy bool
-	seq  uint64
 	// off: the file system failed, or the open did; memory alone from now
 	// on. notice is the one line that says so.
 	off    bool
@@ -81,7 +80,6 @@ type diskOpened struct {
 // failure of the file system, if any.
 type diskDone struct {
 	session gateway.Session
-	seq     uint64
 	reads   []diskReadResult
 	cleared bool // a namespace removal was in the batch and applied
 	err     error
@@ -118,13 +116,13 @@ func (a *app) openDisk() tea.Cmd {
 // receiveDiskOpened takes the opened cache, or the reason there is none.
 func (m Model) receiveDiskOpened(msg diskOpened) (Model, tea.Cmd) {
 	a := m.app
-	d := a.disk
-	if a == nil || d == nil || msg.session != a.session {
+	if a == nil || a.disk == nil || msg.session != a.session {
 		if msg.cache != nil {
 			_ = msg.cache.Close()
 		}
 		return m, nil
 	}
+	d := a.disk
 	d.opening = false
 	if msg.err != nil {
 		d.off = true
@@ -256,8 +254,7 @@ func (a *app) flushDisk() tea.Cmd {
 		return nil
 	}
 	d.busy = true
-	d.seq++
-	c, session, seq, now := d.cache, a.session, d.seq, a.now()
+	c, session, now := d.cache, a.session, a.now()
 	cleared := false
 	for _, ch := range changes {
 		if ch.Kind == cache.ChangeRemoveNamespace {
@@ -265,7 +262,7 @@ func (a *app) flushDisk() tea.Cmd {
 		}
 	}
 	return func() tea.Msg {
-		done := diskDone{session: session, seq: seq}
+		done := diskDone{session: session}
 		if err := c.Apply(changes, now); err != nil {
 			done.err = err
 			return done
@@ -297,13 +294,15 @@ func (a *app) dropDiskRead(w gateway.Waiter) {
 
 // receiveDiskDone takes a batch's outcome: a failure switches the disk off
 // (and says so once); the reads' hits are promoted into memory through the
-// scope and shown where their view still waits for them.
+// scope and shown where their view still waits for them. A ticket list
+// from disk starts the preview of its selected row, as one from memory
+// does through the open.
 func (m Model) receiveDiskDone(msg diskDone) (Model, tea.Cmd) {
 	a := m.app
-	d := a.disk
-	if a == nil || d == nil || msg.session != a.session {
+	if a == nil || a.disk == nil || msg.session != a.session {
 		return m, nil
 	}
+	d := a.disk
 	d.busy = false
 	if msg.cleared {
 		d.clearing = false
@@ -326,6 +325,7 @@ func (m Model) receiveDiskDone(msg diskDone) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	var cmd tea.Cmd
 	for _, r := range msg.reads {
 		read := d.reads[r.waiter]
 		a.dropDiskRead(r.waiter)
@@ -339,46 +339,55 @@ func (m Model) receiveDiskDone(msg diskDone) (Model, tea.Cmd) {
 		if !a.scope.Promote(a.store, read.ticket, r.entry) {
 			continue
 		}
-		a.showFromDisk(read.purpose, read.ticket.Key)
+		if a.showFromDisk(read.purpose, read.ticket.Key) && read.purpose == forTickets {
+			cmd = m.selectionChanged()
+		}
 	}
-	return m, nil
+	return m, cmd
 }
 
 // showFromDisk shows a promoted entry in the view that asked for it, when
-// that view still asks for the key and holds no data of the server's.
-func (a *app) showFromDisk(p purpose, key cache.Key) {
+// that view still asks for the key and holds no data of the server's. It
+// reports whether it did.
+func (a *app) showFromDisk(p purpose, key cache.Key) bool {
 	switch p {
 	case forInbox:
 		if v := a.active; v != nil && v.key == key && !v.holdsServerData() {
 			if e, ok := a.cachedInbox(v); ok {
 				v.adoptCached(e)
+				return true
 			}
 		}
 	case forProjects:
 		if v := a.projects; v != nil && v.key == key && !v.holdsServerData() {
 			if e, ok := a.cachedProjects(v); ok {
 				v.adoptCached(e)
+				return true
 			}
 		}
 	case forTickets:
 		if v := a.tickets; v != nil && v.key == key && !v.holdsServerData() {
 			if e, ok := a.cachedTickets(v); ok {
 				v.adoptCached(e)
+				return true
 			}
 		}
 	case forDetail:
 		if v := a.detail; v != nil && v.key == key && (v.shown != key || !v.holdsServerData()) {
 			if e, ok := a.cachedPage(v, key); ok {
 				v.adoptCached(e)
+				return true
 			}
 		}
 	case forExpansion:
 		if v := a.detail; v != nil && v.expansion != nil && v.expansion.key == key && !v.expansion.holdsServerData() {
 			if e, ok := a.cachedExpansion(v.expansion); ok {
 				v.expansion.adoptCached(e)
+				return true
 			}
 		}
 	}
+	return false
 }
 
 // closeDisk lets the disk go when the program ends: the lock is released
@@ -401,16 +410,21 @@ func (a *app) diskStatus() uitext.ID {
 }
 
 // endDiskSession follows the session's end: pending reads are dropped (an
-// answer of theirs fills nothing), and the namespace's removal, journaled
-// by the store, is what the disk does next. When the disk cannot do it,
-// the expired session says so.
-func (a *app) endDiskSession() {
+// answer of theirs fills nothing), and, when an identity was confirmed,
+// the namespace's removal, journaled by the store, is what the disk does
+// next. When the disk cannot do it, the expired session says so. A
+// session that never confirmed an identity (a 401 on /me) opened no
+// directory and has nothing to clear; nothing is claimed about it.
+func (a *app) endDiskSession(confirmed bool) {
 	d := a.disk
 	if d == nil || d.opener == nil {
 		return
 	}
 	for w := range d.reads {
 		a.cancelDiskRead(w)
+	}
+	if !confirmed {
+		return
 	}
 	d.clearing = true
 	if d.off || (d.cache == nil && !d.opening) {

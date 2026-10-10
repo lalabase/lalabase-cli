@@ -342,3 +342,45 @@ func TestPromotionKeepsTheEntryAndChangesNothingElse(t *testing.T) {
 		t.Fatalf("%d entries, %d ops", s.Len(), j.Len())
 	}
 }
+
+// Review round 1, backlog B1: a put that took a forget's place is dropped
+// for room only as that forget, never without a trace: the file the
+// forget was for would otherwise stay on disk as if the put had been
+// applied.
+func TestADroppedPutLeavesTheForgetItReplaced(t *testing.T) {
+	ns := namespace(t, "default", "https://a.example", "tok")
+	j := NewJournal()
+	k := inbox(ns, "org-1", 1)
+	j.Add(Change{Kind: ChangeForget, Key: k})
+	j.Add(put(k, "again"))
+	if j.Len() != 1 {
+		t.Fatalf("%d ops", j.Len())
+	}
+	for i := range MaxPending + 1 {
+		j.Add(put(inbox(ns, "org-2", i+1), "x"))
+	}
+	ops := j.Take(MaxPending)
+	if ops[0].Kind != ChangeForget || ops[0].Key != k {
+		t.Fatalf("the first op is %+v, want the forget of the dropped put", ops[0].Kind)
+	}
+	// A put after a put after a forget keeps the mark through the chain.
+	j = NewJournal()
+	j.Add(Change{Kind: ChangeForget, Key: k})
+	j.Add(put(k, "one"))
+	j.Add(put(k, "two"))
+	for i := range MaxPending + 1 {
+		j.Add(put(inbox(ns, "org-2", i+1), "x"))
+	}
+	if ops := j.Take(1); ops[0].Kind != ChangeForget || ops[0].Key != k {
+		t.Fatalf("the chain lost the mark: %+v", ops[0].Kind)
+	}
+	// A plain put (no forget before it) is dropped without a trace.
+	j = NewJournal()
+	j.Add(put(k, "plain"))
+	for i := range MaxPending + 1 {
+		j.Add(put(inbox(ns, "org-2", i+1), "x"))
+	}
+	if ops := j.Take(1); ops[0].Key == k {
+		t.Fatalf("a plain put left a trace: %+v", ops[0].Kind)
+	}
+}
