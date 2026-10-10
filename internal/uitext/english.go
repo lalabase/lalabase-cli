@@ -126,6 +126,7 @@ const (
 	NoProjects
 	NoTickets
 	NoMatches
+	NoneOnTicketPage
 	Archived
 	NoStatus
 	Unassigned
@@ -223,7 +224,8 @@ var english = map[ID]string{
 	TicketsUnsupported: "Tickets are not supported by this server.",
 	TicketUnsupported:  "Ticket details are not supported by this server.",
 	NoProjects:         "No projects.", NoTickets: "No tickets.", NoMatches: "No tickets match the search.",
-	Archived: "archived", NoStatus: "No status", Unassigned: "Unassigned",
+	NoneOnTicketPage: "No tickets on this page.",
+	Archived:         "archived", NoStatus: "No status", Unassigned: "Unassigned",
 	NoDescription: "No description", NoComments: "No comments", NoAttachments: "No attachments",
 	NoText: "No text", Private: "private", UnnamedFile: "Unnamed file",
 	CommentsPaged:    "Comments · newest first · page %d of %d · %d readable comments",

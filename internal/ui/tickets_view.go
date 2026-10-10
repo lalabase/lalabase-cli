@@ -42,8 +42,11 @@ func (m Model) ticketsColumn() present.Column {
 		c.Notice = present.NewInline(uitext.Inline(uitext.SearchLine).String() + v.entry + uitext.Inline(uitext.Caret).String())
 	} else {
 		empty := uitext.NoTickets
-		if v.query != "" {
+		switch {
+		case v.query != "":
 			empty = uitext.NoMatches
+		case v.total > 0:
+			empty = uitext.NoneOnTicketPage
 		}
 		c.Notice = v.notice(empty, len(v.rows) == 0)
 	}

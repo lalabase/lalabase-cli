@@ -325,6 +325,18 @@ func (m Model) showTicketPage(page int, query string) (Model, tea.Cmd) {
 
 // --- the search line ---------------------------------------------------------
 
+// closeSearch discards the search line, if one is open: its list is gone
+// (review round 2, finding 1). Every key is navigation again.
+func (m Model) closeSearch() Model {
+	if m.mode == TextEntry {
+		m.mode = Navigate
+		if v := m.app.tickets; v != nil {
+			v.entry = ""
+		}
+	}
+	return m
+}
+
 // startSearch opens the search line with the current search in it.
 func (m Model) startSearch() Model {
 	a := m.app
@@ -395,13 +407,16 @@ func (m Model) selectionChanged() tea.Cmd {
 
 // schedulePreview starts the timer for the preview of the selected row:
 // only with the object pane visible, the ticket tool on, no search line
-// open, no ticket opened, and no fresh or pending read of the ticket.
+// open, no ticket opened, and only when the pane holds nothing of the
+// row yet or a cached record awaiting its one reload. A record that is
+// fresh, loading, stale or refused is left as it is until the cursor
+// leaves the row (no request per arrow key or resize) or R asks.
 func (m Model) schedulePreview() tea.Cmd {
 	a := m.app
 	if !m.previewable() {
 		return nil
 	}
-	if d := a.detail; d != nil && d.id == a.tickets.selected && (d.loading || d.holds()) {
+	if d := a.detail; d != nil && d.id == a.tickets.selected && !d.cached {
 		return nil
 	}
 	if a.deps.Events == nil {
@@ -418,9 +433,11 @@ func (m Model) previewable() bool {
 	return v != nil && !a.expired && m.mode == Navigate && v.opened == "" && v.selected != "" && a.ticketOn() && m.objectVisible()
 }
 
-// objectVisible: the object pane is on the screen in the current geometry.
+// objectVisible: the object pane is on the screen in the current geometry;
+// a terminal too small to show anything shows no pane.
 func (m Model) objectVisible() bool {
-	return slices.Contains(view.Visible(m.geometry(), m.focus), view.Object)
+	g := m.geometry()
+	return !g.Small && slices.Contains(view.Visible(g, m.focus), view.Object)
 }
 
 // holds: the record came from the server and nothing failed since.
@@ -434,10 +451,13 @@ func (m Model) due(msg gateway.Due) (Model, tea.Cmd) {
 		return m, nil
 	}
 	v := a.tickets
-	d := a.ensureDetail(v.project, v.selected)
-	if d.loading || d.holds() {
+	if d := a.detail; d != nil && d.id == v.selected && (d.loading || !d.cached) {
+		// The pane holds the row's ticket already, fresh, loading, stale
+		// or refused: a wake-up reads nothing more (the same rule as the
+		// timer's).
 		return m, nil
 	}
+	d := a.ensureDetail(v.project, v.selected)
 	d.loading = true
 	return m, a.issue(gateway.Detail, d.key, forDetail, queue.Background)
 }
@@ -575,7 +595,8 @@ func (m Model) receiveProjects(r gateway.ProjectsResult) (Model, tea.Cmd) {
 		v.reselect()
 	case cache.Remove:
 		// The organisation is gone or out of reach: everything under it
-		// goes, the ticket list and the ticket with it.
+		// goes, the ticket list, the ticket and the search line with it.
+		m = m.closeSearch()
 		a.leaveList()
 		v.rows, v.selected = nil, ""
 		v.removed()
@@ -610,7 +631,9 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 		}
 		return m.correctTicketPage()
 	case cache.Remove:
-		// The project is gone: every page and the ticket shown with it.
+		// The project is gone: every page, the ticket shown with it and
+		// the search line (a search of it would answer the same).
+		m = m.closeSearch()
 		a.dropDetail()
 		v.rows, v.total, v.selected, v.opened = nil, 0, "", ""
 		v.removed()

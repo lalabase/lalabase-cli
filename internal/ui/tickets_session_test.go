@@ -905,8 +905,11 @@ func TestRInTheTicketsSectionReloadsWhatIsShown(t *testing.T) {
 		t.Fatal("the removed ticket stayed cached")
 	}
 	// A temporary failure keeps the ticket, possibly stale; a refusal keeps
-	// it with the message.
+	// it with the message. The removed ticket is read again when the
+	// cursor returns to its row (a wake-up on the same row reads nothing).
 	h.f.setTicket(h.d.defaultTicket)
+	h.press("down")
+	h.press("up")
 	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
 	h.f.setTicket(func(string, string, api.TicketOptions) transport.Answer { return failing(transport.Temporary, 503) })
 	h.drive(h.press("enter"))
@@ -1566,5 +1569,224 @@ func TestAReopenedTicketStartsAtTheTop(t *testing.T) {
 	h.press("enter")
 	if a.detail.offset != 0 {
 		t.Fatalf("offset %d", a.detail.offset)
+	}
+}
+
+// Review round 2, finding 1: the search line closes with its list. A
+// "not found" for the organisation's projects while the line is open
+// (opened by the round 1 fix), or for the project's tickets (question 2),
+// leaves navigation mode behind: q quits, nothing of the line is offered.
+func TestTheSearchLineClosesWithItsList(t *testing.T) {
+	for _, removal := range []string{"projects", "tickets"} {
+		h := newHarness(t)
+		h.openTickets(website)
+		a := h.m.app
+		h.press("/")
+		h.typeText("ab")
+		if h.m.mode != TextEntry {
+			t.Fatal("the line did not open")
+		}
+		switch removal {
+		case "projects":
+			h.f.setProjects(func(string) transport.Answer { return failing(transport.NotFound, 404) })
+			h.drive(a.issue(gateway.Projects, a.projects.key, forProjects, queue.User))
+			if a.tickets != nil || a.projects == nil {
+				t.Fatalf("tickets %v projects %v", a.tickets != nil, a.projects != nil)
+			}
+		case "tickets":
+			h.f.setTickets(func(api.TicketQuery) transport.Answer { return failing(transport.NotFound, 200) })
+			h.drive(a.issue(gateway.Tickets, a.tickets.key, forTickets, queue.User))
+			if a.tickets == nil || a.tickets.known || len(a.tickets.rows) != 0 {
+				t.Fatalf("tickets %+v", a.tickets)
+			}
+		}
+		if h.m.mode != Navigate {
+			t.Errorf("%s: the search line is still open after its list closed: mode %d", removal, h.m.mode)
+		}
+		if help := helpText(h.m); strings.Contains(help, "search") && removal == "projects" {
+			t.Errorf("%s: the help offers the search: %q", removal, help)
+		}
+		cmd := h.press("q")
+		if cmd == nil {
+			t.Errorf("%s: q did not quit: mode now %d", removal, h.m.mode)
+		} else if _, ok := cmd().(tea.QuitMsg); !ok {
+			t.Errorf("%s: q did not quit", removal)
+		}
+	}
+}
+
+// Review round 2, finding 2: no preview is read while the terminal is too
+// small to show the pane, whatever the geometry says about columns.
+func TestNoPreviewIsReadInATerminalTooSmallToShowIt(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	token := a.previewToken
+	cmds := h.feed(tea.WindowSizeMsg{Width: 120, Height: 5})
+	if plain := ansi.Strip(h.m.View().Content); !strings.Contains(plain, "small") {
+		t.Fatalf("not small:\n%s", plain)
+	}
+	if len(cmds) != 0 || a.previewToken != token {
+		t.Fatal("a timer was set at 120x5")
+	}
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if n := len(h.f.detailReads()); n != 0 {
+		t.Errorf("%d preview read(s) while the screen says it is too small", n)
+	}
+	// Back to a size with a pane: the preview comes.
+	cmds = h.feed(tea.WindowSizeMsg{Width: 120, Height: 24})
+	if len(cmds) == 0 {
+		t.Fatal("no timer after the terminal grew")
+	}
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if len(h.f.detailReads()) != 1 {
+		t.Fatalf("%d reads after the terminal grew", len(h.f.detailReads()))
+	}
+}
+
+// Review round 2, finding 3 (the reviewer's R2C2 and R2C): a shrink to
+// nothing with a ticket opened empties the pane; a correction with a
+// ticket opened closes it, remembers page 1 and drops page 2's cache.
+func TestAShrinkWithATicketOpened(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	h.drive(h.press("]"))
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	h.drive(h.press("enter"))
+	h.f.setTickets(func(q api.TicketQuery) transport.Answer { return ticketPageAnswer(q.Page, q.PerPage, 0, nil) })
+	h.m.focus = view.List
+	lists := len(h.f.ticketListReads())
+	h.drive(h.press("R"))
+	v := a.tickets
+	if len(h.f.ticketListReads()) != lists+1 || v.page != 1 || len(v.rows) != 0 || v.opened != "" {
+		t.Fatalf("reads %d page %d rows %d opened %q", len(h.f.ticketListReads())-lists, v.page, len(v.rows), v.opened)
+	}
+	if a.detail != nil || h.m.screen().Object.Text.String() != "No item opened" {
+		t.Fatalf("the pane still shows a ticket of an empty list: %+v", a.detail)
+	}
+
+	h = newHarness(t)
+	h.openTickets(website)
+	a = h.m.app
+	h.drive(h.press("]"))
+	v = a.tickets
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	h.drive(h.press("enter"))
+	opened := v.opened
+	// The server lost twenty tickets: page 2 is beyond the last.
+	h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+		rows := h.d.ticketRows(q.ProjectID, 10)
+		from := (q.Page - 1) * q.PerPage
+		var data []api.TicketRow
+		if from < len(rows) {
+			data = rows[from:min(len(rows), from+q.PerPage)]
+		}
+		return ticketPageAnswer(q.Page, q.PerPage, len(rows), data)
+	})
+	h.m.focus = view.List
+	lists = len(h.f.ticketListReads())
+	h.drive(h.press("R"))
+	reads := h.f.ticketListReads()
+	if len(reads) != lists+2 || reads[len(reads)-1].Page != 1 {
+		t.Fatalf("list reads after the correction: %+v", reads[lists:])
+	}
+	if v.page != 1 || len(v.rows) != 10 || v.opened != "" || h.m.focus != view.List || !v.corrected {
+		t.Fatalf("after the correction: page %d rows %d opened %q focus %d corrected %v", v.page, len(v.rows), v.opened, h.m.focus, v.corrected)
+	}
+	if d := a.detail; d != nil && d.id == opened {
+		t.Fatalf("the opened ticket stayed in the pane: %+v", d)
+	}
+	if pos := a.rememberedTickets[website]; pos.page != 1 {
+		t.Fatalf("remembered %+v", pos)
+	}
+	if _, ok := a.store.Get(a.ticketsKey(website, "", 2)); ok {
+		t.Fatal("page 2 stayed cached")
+	}
+}
+
+// Review round 2, finding 5: a preview whose read failed is not read again
+// on a focus change or a resize on the same row (no request per arrow
+// key); it is read again when the cursor returns to the row.
+func TestAFailedPreviewIsNotReReadOnAFocusChange(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	h.f.setTicket(func(string, string, api.TicketOptions) transport.Answer {
+		return transport.Answer{Class: transport.Refused, Message: "no", Status: 200, Sent: true}
+	})
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if len(h.f.detailReads()) != 1 || a.detail == nil || a.detail.err.String() == "" {
+		t.Fatalf("setup: %d reads, detail %+v", len(h.f.detailReads()), a.detail)
+	}
+	for _, key := range []string{"right", "left", "right", "left"} {
+		h.drive(h.press(key))
+		h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	}
+	h.drive(h.feed(tea.WindowSizeMsg{Width: 80, Height: 24})...)
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if n := len(h.f.detailReads()); n != 1 {
+		t.Fatalf("%d reads after focus changes and a resize on one row", n)
+	}
+	h.f.setTicket(h.d.defaultTicket)
+	h.press("down")
+	h.press("up")
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if n := len(h.f.detailReads()); n != 2 || !a.detail.known {
+		t.Fatalf("%d reads after the return to the row, detail %+v", n, a.detail)
+	}
+}
+
+// Review round 2, finding 8: an empty page within range says so, not "No
+// tickets"; with a search, that nothing matches.
+func TestAnEmptyPageWithinRangeSaysSo(t *testing.T) {
+	h := newHarness(t)
+	h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+		if q.Page == 2 {
+			return ticketPageAnswer(2, q.PerPage, 30, nil)
+		}
+		return h.d.defaultTickets(q)
+	})
+	h.openTickets(website)
+	h.drive(h.press("]"))
+	if got := h.m.screen().List.Notice.String(); got != "No tickets on this page." {
+		t.Fatalf("notice %q", got)
+	}
+	h.drive(h.press("["))
+	h.press("/")
+	h.typeText("nothing like it")
+	h.drive(h.press("enter"))
+	if got := h.m.screen().List.Notice.String(); got != "No tickets match the search." {
+		t.Fatalf("notice %q", got)
+	}
+}
+
+// Review round 2, question 4: the projects' failure states show through
+// the shared status: unreachable before anything was shown, possibly
+// stale after, a refusal with its message.
+func TestTheProjectsFailureStates(t *testing.T) {
+	h := newHarness(t)
+	h.start()
+	h.f.setProjects(func(string) transport.Answer { return failing(transport.Temporary, 503) })
+	h.drive(h.chooseTickets(orgA))
+	if got := h.m.screen().List.Notice.String(); got != "Could not reach the server. R retry." || !h.m.allowed()[Refresh] {
+		t.Fatalf("unreachable: notice %q, R %v", got, h.m.allowed()[Refresh])
+	}
+	h.f.setProjects(h.d.defaultProjects)
+	h.drive(h.press("R"))
+	if got := h.m.screen().List.Notice.String(); got != "" || len(h.m.app.projects.rows) != 4 {
+		t.Fatalf("after R: notice %q", got)
+	}
+	h.f.setProjects(func(string) transport.Answer { return failing(transport.Temporary, 503) })
+	h.drive(h.press("R"))
+	if got := h.m.screen().List.Notice.String(); got != "Possibly stale" || len(h.m.app.projects.rows) != 4 {
+		t.Fatalf("stale: notice %q", got)
+	}
+	h.f.setProjects(func(string) transport.Answer {
+		return transport.Answer{Class: transport.Refused, Reason: "archived", Message: "archived", Status: 200, Sent: true}
+	})
+	h.drive(h.press("R"))
+	if got := h.m.screen().List.Notice.String(); got != "Refused: refused: archived" || len(h.m.app.projects.rows) != 4 {
+		t.Fatalf("refused: notice %q", got)
 	}
 }
