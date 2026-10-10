@@ -109,8 +109,10 @@ func TestPTYDiskCacheRestartFlow(t *testing.T) {
 			dir := cacheDir(home, cacheHome)
 			entries := func() []string { return cacheEntriesIn(t, dir) }
 			c := startDiskIn(t, inboxfixture.SlowReads, width, url, home, cacheHome)
-			if n := len(entries()); n != 1 {
-				t.Fatalf("%d entries after the start (the counters' page)", n)
+			// The header shows before the counters' page landed and was
+			// written: wait for the one entry of the start.
+			if err := c.until("the counters' page on disk", readyLimit, func() bool { return len(entries()) == 1 }); err != nil {
+				t.Fatalf("%v: %d entries after the start", err, len(entries()))
 			}
 			if cacheHome != "" && len(cacheEntries(t, home)) != 0 {
 				t.Fatal("entries under the home although XDG_CACHE_HOME is set")
