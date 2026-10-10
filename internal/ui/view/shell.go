@@ -58,7 +58,7 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 		for i := range columns {
 			parts[i] = columns[i][row]
 		}
-		lines = append(lines, strings.Join(parts, "|"))
+		lines = append(lines, strings.Join(parts, lipgloss.NewStyle().Faint(true).Render(Separator)))
 	}
 	return strings.Join(append(lines, helpLines...), "\n")
 }
@@ -101,7 +101,7 @@ func Extent(c present.Column, g Geometry, which Pane, method ansi.Method) int {
 	if width <= 0 {
 		return 0
 	}
-	return len(wrapBody(strings.ReplaceAll(c.Text.String(), "\t", "    "), width, method))
+	return len(textLines(c, width, method))
 }
 
 // compactBelow is the body height below which rows show their first line
@@ -167,37 +167,76 @@ func rows(c present.Column, width, body int, method ansi.Method) []string {
 			offset = c.Cursor - capacity + 1
 		}
 	}
+	// The values at the end stand in one column, right-aligned, as wide as
+	// the widest of the list: a longer one does not move the titles' ends.
+	trailing := 0
+	for _, r := range c.Rows {
+		trailing = max(trailing, method.StringWidth(r.Trailing.String()))
+	}
 	var out []string
 	for i := offset; i < len(c.Rows) && len(out)+h <= body; i++ {
-		out = append(out, row(c.Rows[i], width, i == c.Cursor, h == 2, method)...)
+		out = append(out, row(c.Rows[i], width, trailing, i == c.Cursor, h == 2, method)...)
 	}
 	return out
 }
 
+// minAligned is the least room a column of values leaves for the text; in
+// a narrower list the value follows each entry's own text, which keeps
+// more of a title than the alignment is worth.
+const minAligned = 20
+
 // row is one entry: a marker, the first line with its trailing value at
-// the end, and the second line indented. The entry in use is bold.
-func row(r present.Row, width int, cursor, twoLines bool, method ansi.Method) []string {
+// the end, in a column trailingWidth wide, and the second line indented
+// and faint. The entry in use is bold, one with nothing to act on faint, a
+// value that asks for attention bold.
+func row(r present.Row, width, trailingWidth int, cursor, twoLines bool, method ansi.Method) []string {
 	marker := "  "
 	if cursor {
 		marker = "> "
 	}
 	trailing := r.Trailing.String()
+	if trailing == "" {
+		// An entry without a value (a heading) takes the whole width.
+		trailingWidth = 0
+	}
 	room := width - method.StringWidth(marker)
-	if trailing != "" {
-		room -= method.StringWidth(trailing) + 1
+	if trailingWidth > 0 {
+		room -= trailingWidth + 1
 	}
-	first := fit(r.Primary.String(), max(0, room), method)
-	if trailing != "" {
-		first += strings.Repeat(" ", max(0, room-method.StringWidth(first))) + " " + trailing
+	if room < minAligned {
+		// No room for a column of values: the value follows the text.
+		room = width - method.StringWidth(marker)
+		if trailing != "" {
+			room -= method.StringWidth(trailing) + 1
+		}
+		trailingWidth = method.StringWidth(trailing)
 	}
-	first = fit(marker+first, width, method)
-	if r.Active {
-		first = lipgloss.NewStyle().Bold(true).Render(first)
+	primary := fit(r.Primary.String(), max(0, room), method)
+	value := ""
+	if trailingWidth > 0 {
+		value = strings.Repeat(" ", max(0, trailingWidth-method.StringWidth(trailing))) + trailing
+		primary += strings.Repeat(" ", max(0, room-method.StringWidth(primary))) + " "
 	}
+	if method.StringWidth(marker+primary+value) > width {
+		primary, value = fit(marker+primary+value, width, method), ""
+		marker = ""
+	}
+	weight := present.Plain
+	switch {
+	case r.Active:
+		weight = present.Strong
+	case r.Quiet:
+		weight = present.Faint
+	}
+	valueWeight := weight
+	if r.Highlight {
+		valueWeight = present.Strong
+	}
+	first := styled(marker+primary, weight) + styled(value, valueWeight)
 	if !twoLines {
 		return []string{first}
 	}
-	return []string{first, fit("  "+r.Secondary.String(), width, method)}
+	return []string{first, "  " + styled(fit(r.Secondary.String(), max(0, width-2), method), present.Faint)}
 }
 
 // scrolled renders free text from its offset, clamped so the last line is
@@ -206,18 +245,18 @@ func scrolled(c present.Column, width, body int, method ansi.Method) []string {
 	if width <= 0 || body <= 0 {
 		return nil
 	}
-	text := strings.ReplaceAll(c.Text.String(), "\t", "    ")
-	lines := wrapBody(text, width, method)
-	offset := max(0, min(c.Offset, max(0, len(lines)-body)))
-	lines = lines[offset:]
-	overflow := len(lines) > body
-	lines = lines[:min(len(lines), body)]
-	for i := range lines {
-		lines[i] = fit(lines[i], width, method)
+	all := textLines(c, width, method)
+	offset := max(0, min(c.Offset, max(0, len(all)-body)))
+	all = all[offset:]
+	overflow := len(all) > body
+	all = all[:min(len(all), body)]
+	lines := make([]string, len(all))
+	for i, l := range all {
+		lines[i] = l.render(width, method)
 	}
-	if overflow && len(lines) > 0 {
-		last := len(lines) - 1
-		lines[last] = fit(lines[last]+uitext.Inline(uitext.Ellipsis).String(), width, method)
+	if overflow && len(all) > 0 {
+		last := len(all) - 1
+		lines[last] = fit(all[last].plain()+uitext.Inline(uitext.Ellipsis).String(), width, method)
 	}
 	return lines
 }

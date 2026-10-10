@@ -31,7 +31,19 @@ reads only the profile file, while `lalabase` also accepts the environment
 pair below. Other profile names are refused by the interface.
 
 The interface needs at least 24 columns and 8 rows, uses two columns from
-80 and three from 120, and keeps its state on resize.
+80 and three from 120, and keeps its state on resize. With three columns an
+opened ticket or notification takes the navigation's room: the list keeps
+its width, the object gets the rest, and `Esc` back to the list brings the
+navigation again.
+
+* **How it is drawn.** Panes stand apart by a faint line with a space on
+  either side. Lists keep their values (a status, a count) in one
+  right-aligned column, and the second line of an entry is faint; an inbox
+  without unread notifications is faint, an unread count bold. Free text
+  wraps at 80 columns at most, however wide the pane. Times are shown in
+  the computer's time zone, to the minute, as "28 Aug 15:45", with the year
+  when it is not the current one ("3 Nov 2025 09:12"). Bold and faint only
+  weigh the text: a terminal without them shows the same words.
 
 * **The start** asks `/api/v1/me` first; only after that succeeds it reads
   the server's capabilities (`initialize`, `tools/list`), the organisations
@@ -67,7 +79,11 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
   send says "unknown", a missing size is never "0 B"). On a server without
   the paging arguments the first 50 comments come oldest first and the
   first ten attachments, and the pane says how many there are in all.
-  `Esc` goes back to the list and keeps the pane.
+  `Esc` goes back to the list and keeps the pane. The head is the title in
+  bold and one faint line of its facts (status, project, assignees,
+  creator, last change); every section's heading is bold and ends in a
+  rule; a comment is its author in bold, its time faint, and its text
+  indented below; an attachment's type, size and text status are faint.
 * **Paging the ticket (C1d).** `Tab` moves between the description, the
   comments and the attachments and brings the section's heading into
   sight; `[`/`]` turn the page of that section, `o` switches the comments
@@ -151,7 +167,7 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
   entry came from the cache); "not found" and "no access" remove it (a
   project with every page and search of it, a ticket with every variant); a
   refusal keeps it with the server's message; a 429 is shown with its
-  deadline (UTC) while the queue waits. A page that no longer exists after
+  deadline (local time) while the queue waits. A page that no longer exists after
   a refresh is corrected once to the last page. The memory holds 64 entries
   of at most 2 MiB each, 16 MiB in all; what it lets go stays on disk.
 * **The disk cache (C1e)** keeps those entries between runs, under

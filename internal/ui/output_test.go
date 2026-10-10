@@ -16,7 +16,7 @@ func TestShellBodyColumnsStayAligned(t *testing.T) {
 		for _, tc := range []struct {
 			width      int
 			separators []int
-		}{{80, []int{31}}, {119, []int{47}}, {120, []int{24, 62}}, {121, []int{24, 63}}} {
+		}{{80, []int{31}}, {119, []int{47}}, {120, []int{25, 64}}, {121, []int{25, 64}}} {
 			for _, height := range []int{8, 24} {
 				for _, focus := range []view.Pane{view.Navigation, view.List, view.Object} {
 					m := NewWithContent("Büro", "Größe 👩\u200d👩\u200d👧\u200d👦\n界 e\u0301", "Änderung 🇩🇪\n👍🏽")
@@ -35,12 +35,17 @@ func TestShellBodyColumnsStayAligned(t *testing.T) {
 						var separators []int
 						plain := ansi.Strip(line)
 						for offset, r := range plain {
-							if r == '|' {
+							if r == '\u2502' {
 								separators = append(separators, method.StringWidth(plain[:offset]))
 							}
 						}
-						if !reflect.DeepEqual(separators, tc.separators) {
-							t.Fatalf("width %d, row %d: separators %v, want %v", tc.width, row, separators, tc.separators)
+						want := tc.separators
+						if len(want) == 2 && focus == view.Object {
+							// The object in focus takes the navigation's room.
+							want = []int{want[1] - want[0] - view.SeparatorWidth + 1}
+						}
+						if !reflect.DeepEqual(separators, want) {
+							t.Fatalf("width %d, focus %d, row %d: separators %v, want %v", tc.width, focus, row, separators, want)
 						}
 					}
 				}
@@ -74,8 +79,10 @@ func assertViewSafe(t *testing.T, text string) {
 				forbidden("non-SGR CSI")
 				return
 			}
+			// The view's own attributes: reset, bold, faint, and the end of
+			// bold and faint. Foreign text brings none (it is cleaned).
 			for _, param := range params {
-				if n := param.Param(0); n != 0 && n != 1 && n != 22 {
+				if n := param.Param(0); n != 0 && n != 1 && n != 2 && n != 22 {
 					forbidden("unexpected SGR")
 				}
 			}

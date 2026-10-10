@@ -505,7 +505,7 @@ func (v *inboxView) waiterFor(a *app) gateway.Waiter {
 	return 0
 }
 
-// Plan test 18: nullable references, blanks, an invalid time and the UTC
+// Plan test 18: nullable references, blanks, an invalid time and the zone
 // conversion, in the row and in the details; Enter adds no request.
 func TestRowsAndDetailsFallBackForMissingValues(t *testing.T) {
 	h := newHarness(t)
@@ -527,10 +527,10 @@ func TestRowsAndDetailsFallBackForMissingValues(t *testing.T) {
 	if got := s.List.Rows[0].Primary.String(); got != "No message" {
 		t.Fatalf("row 0 primary %q", got)
 	}
-	if got := s.List.Rows[0].Secondary.String(); got != "Unknown actor | No project | Time unknown" {
+	if got := s.List.Rows[0].Secondary.String(); got != "Unknown actor · No project · Time unknown" {
 		t.Fatalf("row 0 secondary %q", got)
 	}
-	if got := s.List.Rows[1].Secondary.String(); got != "Unknown actor | Unnamed project | 2026-01-05 08:30 UTC" {
+	if got := s.List.Rows[1].Secondary.String(); got != "Unknown actor · Unnamed project · 5 Jan 08:30" {
 		t.Fatalf("row 1 secondary %q", got)
 	}
 	before := len(h.f.inboxCalls())
@@ -548,7 +548,7 @@ func TestRowsAndDetailsFallBackForMissingValues(t *testing.T) {
 	h.press("down")
 	h.drive(h.press("enter"))
 	text = h.m.screen().Object.Text.String()
-	for _, want := range []string{"Organisation: Unnamed organisation", "Project: Unnamed project", "Ticket: #2 Untitled ticket", "Last event: 2026-01-05 08:30:00 UTC"} {
+	for _, want := range []string{"Organisation: Unnamed organisation", "Project: Unnamed project", "Ticket: #2 Untitled ticket", "Last event: 5 Jan 08:30"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("details lack %q:\n%s", want, text)
 		}

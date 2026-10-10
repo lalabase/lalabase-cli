@@ -35,6 +35,9 @@ type Column struct {
 	Cursor int
 	// Text is free text, wrapped by the view, when Rows is nil.
 	Text Body
+	// Styles says how each line of Text is drawn, one per line; a line
+	// without one is plain.
+	Styles []LineStyle
 	// Offset is the first visible row, or line of the text. The view clamps
 	// it to what fits and keeps the cursor in sight.
 	Offset int
@@ -48,6 +51,35 @@ type Row struct {
 	Trailing  Inline
 	Secondary Inline
 	Active    bool
+	// Quiet: the entry holds nothing to act on (an inbox without unread
+	// notifications) and is drawn faint.
+	Quiet bool
+	// Highlight: the value at the end asks for attention (unread
+	// notifications) and is drawn bold.
+	Highlight bool
+}
+
+// Style is how part of a line is drawn. Text stays readable on a terminal
+// without attributes: a style only weighs it, it never carries meaning
+// alone.
+type Style uint8
+
+const (
+	Plain Style = iota
+	Strong
+	Faint
+)
+
+// LineStyle is how one line of a column's text is drawn: its first Lead
+// bytes in LeadStyle, the rest in RestStyle, every screen line it wraps
+// into indented by Indent cells; a heading (Rule) ends in a faint rule to
+// the reading width.
+type LineStyle struct {
+	Lead      int
+	LeadStyle Style
+	RestStyle Style
+	Indent    int
+	Rule      bool
 }
 
 // KeyHelp is one binding of the help line.

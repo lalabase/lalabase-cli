@@ -105,7 +105,7 @@ func startTerminalWith(t *testing.T, scenario string, width uint16, opts termina
 	processCtx, processCancel := context.WithTimeout(context.Background(), opts.limit)
 	t.Cleanup(processCancel)
 	cmd := exec.CommandContext(processCtx, executable, "-test.run=^TestTerminalChild$", "-test.timeout="+(opts.limit+10*time.Second).String(), "--", scenario)
-	cmd.Env = []string{"C1A_PTY_CHILD=1", "HOME=" + home, "XDG_CONFIG_HOME=" + filepath.Join(home, ".config"), "TERM=xterm-256color", "LC_ALL=C.UTF-8", "RUNEWIDTH_EASTASIAN=0", "CI=1"}
+	cmd.Env = []string{"C1A_PTY_CHILD=1", "HOME=" + home, "XDG_CONFIG_HOME=" + filepath.Join(home, ".config"), "TERM=xterm-256color", "LC_ALL=C.UTF-8", "RUNEWIDTH_EASTASIAN=0", "CI=1", "TZ=UTC"}
 	if opts.cacheHome != "" {
 		cmd.Env = append(cmd.Env, "XDG_CACHE_HOME="+opts.cacheHome)
 	}
@@ -638,7 +638,12 @@ func TestPTYResizePreservesFocus(t *testing.T) {
 	if err := c.send("\x1b[C"); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.until("object focus", readyLimit, func() bool { return strings.Contains(c.bytes()[offset:], "\x1b[1mObject") }); err != nil {
+	// The title in bold; the renderer may join the bold with the end of
+	// the separator's faint ("\x1b[22;1m").
+	if err := c.until("object focus", readyLimit, func() bool {
+		out := c.bytes()[offset:]
+		return strings.Contains(out, "\x1b[1mObject") || strings.Contains(out, ";1mObject")
+	}); err != nil {
 		t.Fatalf("%v: %q", err, c.bytes()[offset:])
 	}
 	for _, width := range []uint16{79, 80, 119, 120, 79} {

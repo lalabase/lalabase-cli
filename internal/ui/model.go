@@ -63,6 +63,15 @@ func WithClock(now func() time.Time) Option {
 	}
 }
 
+// WithLocation replaces the zone times are shown in (tests).
+func WithLocation(loc *time.Location) Option {
+	return func(m *Model) {
+		if m.app != nil {
+			m.app.loc = loc
+		}
+	}
+}
+
 func New(opts ...Option) Model {
 	m := Model{focus: view.List, widthMethod: ansi.WcWidth, shell: placeholder()}
 	for _, opt := range opts {

@@ -133,13 +133,8 @@ func TestPTYMarkReadFlow(t *testing.T) {
 			if width == 120 {
 				other = 80
 			}
-			// r: the head says so, the counters follow the server (29; the
-			// chooser is on the screen at 120 columns), the ticket stays
-			// open and usable.
+			// r: the head says so, the ticket stays open and usable.
 			c.act(t, "r", width, "Marked as read")
-			if width == 120 {
-				c.expect(t, "the counters after the write", width, "29", "32")
-			}
 			// The pane keeps the description in sight (the head may be
 			// scrolled away at 80 columns after the Tabs).
 			if !c.screenShows(width, "Description of six", "esc notification") {
@@ -152,6 +147,11 @@ func TestPTYMarkReadFlow(t *testing.T) {
 			// Esc: the row left with the reload, so the list is where the
 			// person lands; the sixth row is now #7.
 			c.act(t, keyEsc, width, "esc organisations", "page 1 of 2")
+			if width == 120 {
+				// Back in the list the navigation is on the screen again,
+				// and its counters followed the server.
+				c.expect(t, "the counters after the write", width, "29", "32")
+			}
 			if c.screenShows(width, "#6 Benachrichtigung") || c.screenShows(width, "esc close") {
 				t.Fatalf("the marked row is still shown:\n%s", strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
 			}
@@ -410,11 +410,14 @@ func TestPTYASlowAnswerMarksTheRowItWasFor(t *testing.T) {
 	}
 	// The answer: the first row leaves with the reload, the second stays
 	// open and unmarked.
-	c.expect(t, "the answer", 120, "29", "32")
 	c.rowGone(t, 120, "#1 Benachrichtigung")
 	if c.screenShows(120, "Marked as read") || !c.screenShows(120, "State: unread") {
 		t.Fatalf("after the slow answer:\n%s", strings.Join(renderScreen(c.bytes(), 24, 120), "\n"))
 	}
+	// Back in the list the navigation shows the counters the reload
+	// brought.
+	c.act(t, keyEsc, 120, "esc organisations")
+	c.expect(t, "the answer's counters", 120, "29", "32")
 	if err := c.send("q"); err != nil {
 		t.Fatal(err)
 	}

@@ -351,7 +351,7 @@ func buildHarnessFor(t *testing.T, f *fakes, disk *diskcache.Opener, profile str
 		Profile: profile,
 		Server:  "https://example.invalid",
 		Disk:    disk,
-	}), WithClock(func() time.Time { return h.now }))
+	}), WithClock(func() time.Time { return h.now }), WithLocation(time.UTC))
 	h.m.width, h.m.height = 120, 24
 	// The disk is let go with the test: a session that never quit would
 	// hold the profile's lock against the next one.

@@ -42,7 +42,7 @@ func TestTheDetailsScrollIsNotOfferedWhereTheTextFitsWithoutIt(t *testing.T) {
 					without = append(without, b)
 				}
 			}
-			g := layoutWith(width, height, len(view.HelpLines(toHelp(without), width, h.m.widthMethod)))
+			g := layoutWith(width, height, len(view.HelpLines(toHelp(without), width, h.m.widthMethod)), h.m.focus)
 			c := h.m.objectColumn()
 			if view.Extent(c, g, view.Object, h.m.widthMethod) > view.Capacity(c, g) {
 				continue

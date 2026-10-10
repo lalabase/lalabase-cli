@@ -138,8 +138,10 @@ func (v *inboxView) reselect() {
 
 // app is the state of one session.
 type app struct {
-	deps    Session
-	now     func() time.Time
+	deps Session
+	now  func() time.Time
+	// loc is the zone times are shown in: the person's.
+	loc     *time.Location
 	base    context.Context
 	session gateway.Session
 
@@ -203,7 +205,7 @@ type app struct {
 }
 
 func newApp(s Session) *app {
-	a := &app{deps: s, now: time.Now, session: gateway.NewSession(), disk: newDiskState(s.Disk)}
+	a := &app{deps: s, now: time.Now, loc: time.Local, session: gateway.NewSession(), disk: newDiskState(s.Disk)}
 	if s.Events != nil {
 		a.session = s.Events.Session()
 	}
