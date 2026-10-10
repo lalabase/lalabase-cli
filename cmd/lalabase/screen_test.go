@@ -49,6 +49,17 @@ func renderScreen(output string, rows, cols int) []string {
 			}
 			s.csi(cmd.Final(), params)
 		},
+		HandleEsc: func(cmd ansi.Cmd) {
+			// Reverse index: up one line, scrolling the region down at
+			// its top.
+			if cmd.Final() == 'M' && cmd.Intermediate() == 0 {
+				if s.row == s.top {
+					s.scrollDown(1)
+				} else if s.row > 0 {
+					s.row--
+				}
+			}
+		},
 	})
 	p.Parse([]byte(output))
 	lines := make([]string, rows)
@@ -121,6 +132,14 @@ func (s *vscreen) csi(final byte, params ansi.Params) {
 		s.row, s.col = s.clampRow(s.row-n), 0
 	case 'G':
 		s.col = s.clampCol(n - 1)
+	case 'I': // n tab stops forward
+		for range n {
+			s.col = min(s.cols-1, (s.col/8+1)*8)
+		}
+	case 'Z': // n tab stops back
+		for range n {
+			s.col = max(0, (s.col-1)/8*8)
+		}
 	case 'd':
 		s.row = s.clampRow(n - 1)
 	case 'J':

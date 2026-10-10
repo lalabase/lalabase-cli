@@ -3,10 +3,13 @@
 Lalabase from the terminal: one binary for a person with arrow keys (a
 full-screen interface) and for scripts and Claude Code (plain text or JSON).
 
-**Status:** organisations and the unread inbox (slice C1b). The interface
-verifies the token, lists the organisations with their unread counts and
-shows the unread notifications of one organisation, page by page. Projects,
-tickets, search and writes come with C1c and C2.
+**Status:** organisations, the unread inbox and the tickets (slices C1b and
+C1c). The interface verifies the token, lists the organisations with their
+unread counts, shows the unread notifications of one organisation page by
+page, and per organisation its projects, the tickets of a project page by
+page with a search, and a ticket with its description and the first page of
+its comments and attachments. Further pages of comments, marking as read
+and writes come with C1d, C1f and C2.
 
 ## Setting up
 
@@ -33,24 +36,48 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
   repeats that step alone (and what waited for it); a 401 anywhere ends
   the session for good ("Session expired. Restart lalabase.").
 * **Keys.** Nothing is loaded by moving the cursor: `↑`/`↓` highlight an
-  organisation, `Enter` opens its unread inbox (25 rows a page; on a return
-  the remembered page and row), `[`/`]` turn the server pages, `Enter` on
-  a row shows its details from the row itself (no request), `Esc` goes
-  back, `R` refreshes the directory and the counters in the chooser or the
-  open page in the inbox, `PgUp`/`PgDn` move by a screen, `←`/`→` move the
-  focus, `q` quits with 0, Ctrl-C and SIGINT with 130. The help line names
-  exactly the keys that act, on as many lines as it takes.
+  entry of the chooser (per organisation its inbox, with the unread count,
+  and its tickets), `Enter` opens it. In the inbox (25 rows a page; on a
+  return the remembered page and row) `[`/`]` turn the server pages and
+  `Enter` on a row shows its details from the row itself (no request). In
+  the tickets `Enter` on a project opens its tickets (25 a page, `[`/`]`;
+  on a return the remembered page, row and search), `/` opens a one-line
+  search where every printable key is text, `Enter` sends it once and
+  `Esc` discards it (a blank search clears the filter), and `Enter` on a
+  ticket opens it. `Esc` goes back one level, `R` refreshes what is shown
+  (the directory and the counters in the chooser, the open page, the open
+  ticket), `PgUp`/`PgDn` move by a screen, `←`/`→` move the focus, `q`
+  quits with 0, Ctrl-C and SIGINT with 130. The help line names exactly
+  the keys that act, on as many lines as it takes.
+* **The ticket pane.** When the cursor rests on a ticket row for 300 ms and
+  the object pane is on the screen (three columns and two columns always,
+  one column with the pane focused), the ticket is read as a preview: background work, at
+  most six background starts per rolling minute (retries counted), held
+  until the window rolls on when the budget is spent, canceled when the
+  cursor moves on. `Enter` opens the ticket as the person's read and joins
+  a pending preview: one request, both get the whole ticket. The pane shows
+  the head, the description (cut by the server at 8,000 characters), the
+  comments newest first (page 1 of 25, with the number of readable
+  comments) and the attachments (page 1 of 10). On a server without the
+  paging arguments the first 50 comments come oldest first and the first
+  ten attachments, and the pane says how many there are in all. `Esc` goes
+  back to the list and keeps the pane.
 * **What the server supports** comes from its tool schemas, never from its
   version: without `organisation_id` only "All organisations" opens, first
   page only; without `list_notifications` the inbox is off and the counts
-  are unknown ("?"). A counter is unknown until a read observed it, and a
-  newer read wins whatever order the answers arrive in.
-* **The cache** (memory only) shows a page seen before at once, marked
-  "Cached", and reloads it exactly once. A temporary failure keeps what was
-  shown, marked "Possibly stale"; "not found" and "no access" remove it; a
-  refusal keeps it with the server's message; a 429 is shown with its
-  deadline (UTC) while the queue waits. A page that no longer exists after
-  a refresh is corrected once to the last page.
+  are unknown ("?"); without `list_tickets` there are no tickets entries;
+  without its `q` there is no search; without `get_ticket` the list opens
+  nothing. A counter is unknown until a read observed it, and a newer read
+  wins whatever order the answers arrive in.
+* **The cache** (memory only) shows a page, a list or a ticket seen before
+  at once, marked "Cached", and reloads it exactly once (a ticket's reload
+  after the pause, as background work). Every option of a request is part
+  of its key: a search, a page, the page of comments. A temporary failure
+  keeps what was shown, marked "Possibly stale"; "not found" and "no
+  access" remove it (a project with every page and search of it, a ticket
+  with every variant); a refusal keeps it with the server's message; a 429
+  is shown with its deadline (UTC) while the queue waits. A page that no
+  longer exists after a refresh is corrected once to the last page.
 * Startup profile errors and recovered panics exit with 1; terminal, locale
   and profile flag errors exit with 2. A panic in the client's background
   work (a shared request, the wake-up after a rate limit pause, a read for
@@ -111,12 +138,16 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
 
 `tools/inbox-fixture` is a loopback stand-in for a server, built from the
 contract copy: two organisations, two pages of unread notifications for the
-first, rows without a project, a ticket or an actor among them. It binds to
-127.0.0.1 only, accepts one synthetic token (`inboxfixture.Token`) and
-refuses everything but the start and the unread inbox. Scenarios: `normal`,
-`older` (no organisation filter), `temporary` (page 2 of the first
-organisation fails twice, `R` succeeds), `429` (one short pause), `401`
-(the session expires).
+first, rows without a project, a ticket or an actor among them; the first
+organisation's four recorded projects (the second has none), 30 tickets in
+Website-Relaunch (two pages; #1 is the recorded ticket, #2 has nothing, #3
+has 30 comments, #4 twelve attachments), 3 in Handbuch, 5 in Archiv. It
+binds to 127.0.0.1 only, accepts one synthetic token (`inboxfixture.Token`)
+and refuses everything but the reads of C1. Scenarios: `normal`, `older`
+(no organisation filter, no paging of comments), `temporary` (page 2 of the
+first organisation's inbox and of Website-Relaunch's tickets fails twice,
+`R` succeeds), `429` (one short pause), `401` (the session expires, also on
+a preview of ticket #2).
 
 ```sh
 go run ./tools/inbox-fixture -scenario temporary -port 18089
@@ -211,7 +242,11 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   broke off, was too large or the caller left; a window not in the future
   pauses 5 seconds. A job is
   retried at most once: a read on a temporary failure, a write only after a
-  429 or when nothing was sent. A shared request belongs to the program's
+  429 or when nothing was sent. Background work (previews, their reloads,
+  their retries) starts at most six times per rolling minute; what is held
+  waits for the window to roll on, the person's actions are never counted
+  or held, and a held background read a person joins starts as theirs. A
+  shared request belongs to the program's
   lifetime, not to its first caller: it is canceled when its last caller
   leaves or the program stops its work (on quitting, or after a fatal error).
 * **Dependencies** must be permissive (MIT, Apache-2.0, BSD-2-Clause,

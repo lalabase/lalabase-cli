@@ -152,6 +152,37 @@ func (e *Events) Expiry(until, now time.Time) tea.Cmd {
 	}
 }
 
+// Due is the message of a timer the model set (Timer): the token names
+// what fell due (a preview of the row the cursor rested on).
+type Due struct {
+	Session Session
+	Token   uint64
+}
+
+// Timer wakes the model after d with the token, by the real clock. Like
+// Expiry it is maintenance of the model's own state, no request: the model
+// decides on the wake-up whether the token still means anything. It ends
+// without a message when the lifetime ends.
+func (e *Events) Timer(d time.Duration, token uint64) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := worker.Run(e.sup, "gateway: timer", func() tea.Msg {
+			select {
+			case <-time.After(d):
+				return Due{Session: e.session, Token: token}
+			case <-e.sup.Context().Done():
+				return nil
+			}
+		})
+		if !ok {
+			if e.sup.Err() != nil {
+				return worker.Fatal{}
+			}
+			return nil
+		}
+		return msg
+	}
+}
+
 // Observe wraps a job's request so that a 401 is recorded for the session
 // on the request itself, whatever becomes of its answer afterwards: the
 // waiter may have left (its answer is "canceled"), the selection may have

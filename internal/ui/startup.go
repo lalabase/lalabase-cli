@@ -104,7 +104,8 @@ func (m Model) receiveStartup(r gateway.StartupResult) (Model, tea.Cmd) {
 	case stepOrganisations:
 		a.directory = r.Organisations
 		if a.highlight != "" && a.organisation(a.highlight) == nil {
-			a.highlight = ""
+			// The entry for all organisations has an inbox alone.
+			a.highlight, a.highlightSection = "", sectionInbox
 		}
 	}
 	return m, nil
@@ -181,6 +182,7 @@ func (m *Model) expire() {
 		return
 	}
 	a.expired = true
+	m.mode = Navigate
 	for i := range a.steps {
 		if a.steps[i].cancel != nil {
 			a.steps[i].cancel()

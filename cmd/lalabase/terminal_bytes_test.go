@@ -83,10 +83,11 @@ func terminalOutputError(output string) error {
 						}
 					}
 					return
-				// Cursor moves, erasing, inserting and deleting cells or lines,
-				// scrolling: what the renderer writes when a line changes in
-				// the middle. Foreign text cannot reach these: it is cleaned.
-				case 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'X', 'd', 'P', '@', 'L', 'M', 'S', 'T':
+				// Cursor moves (by cells and by tab stops, I and Z), erasing,
+				// inserting and deleting cells or lines, scrolling: what the
+				// renderer writes when a line changes in the middle. Foreign
+				// text cannot reach these: it is cleaned.
+				case 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'I', 'X', 'Z', 'd', 'P', '@', 'L', 'M', 'S', 'T':
 					if len(values) <= 1 && (len(values) == 0 || values[0] >= 0 && values[0] <= 4096) {
 						return
 					}
@@ -118,7 +119,15 @@ func terminalOutputError(output string) error {
 			}
 			reject(fmt.Sprintf("CSI %c/%c/%c %v", prefix, intermediate, final, values))
 		},
-		HandleEsc: func(ansi.Cmd) { reject("ESC") }, HandleOsc: func(int, []byte) { reject("OSC") }, HandleDcs: func(ansi.Cmd, ansi.Params, []byte) { reject("DCS") },
+		HandleEsc: func(cmd ansi.Cmd) {
+			// Reverse index (ESC M): the renderer scrolls a region down by
+			// one line with it when lines move. Nothing else.
+			if cmd.Final() == 'M' && cmd.Intermediate() == 0 {
+				return
+			}
+			reject("ESC")
+		},
+		HandleOsc: func(int, []byte) { reject("OSC") }, HandleDcs: func(ansi.Cmd, ansi.Params, []byte) { reject("DCS") },
 		HandleApc: func([]byte) { reject("APC") }, HandlePm: func([]byte) { reject("PM") }, HandleSos: func([]byte) { reject("SOS") },
 	})
 	p.Parse([]byte(output))
@@ -129,12 +138,21 @@ func terminalOutputError(output string) error {
 }
 
 func TestTerminalOutputAllowlist(t *testing.T) {
-	for _, bad := range []string{terminalHostile, "\x1b[31m", "\x1b[8t", "\x1b]8;;https://evil.invalid\x07", "\x1b]52;c;YQ==\x1b\\", "\x1bPdata\x1b\\", "\x07", "\u202e", "\xff", "\x1b["} {
+	for _, bad := range []string{terminalHostile, "\x1b[31m", "\x1b[8t", "\x1b]8;;https://evil.invalid\x07", "\x1b]52;c;YQ==\x1b\\", "\x1bPdata\x1b\\", "\x07", "\u202e", "\xff", "\x1b[",
+		// Other ESC commands than the reverse index, and tab moves with
+		// a parameter out of range.
+		"\x1b7", "\x1b8", "\x1bc", "\x1b(0", "\x1b[5000I", "\x1b[5000Z"} {
 		if err := terminalOutputError(bad); err == nil {
 			t.Errorf("accepted hostile stream %q", bad)
 		}
 	}
 	if err := terminalOutputError("safe\r\n\x1b[1mBold\x1b[m\x1b[?1049h\x1b[?1049l"); err != nil {
+		t.Fatal(err)
+	}
+	// The renderer's tab-stop moves and the reverse index, which it writes
+	// when lines move (C1c, the ticket pane): allowed, as they appear only
+	// on some frames.
+	if err := terminalOutputError("\x1b[2I\x1b[Z\x1b[3Z\x1b[10;23r\x1b[10;1H\x1bM\x1b[1;24r"); err != nil {
 		t.Fatal(err)
 	}
 }

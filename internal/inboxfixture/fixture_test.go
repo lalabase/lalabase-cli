@@ -131,15 +131,28 @@ func TestOtherCredentialsAreRefused(t *testing.T) {
 	}
 }
 
-// Projects, other tools, writes and other methods are refused, visibly.
-func TestEverythingButTheStartAndTheInboxIsRefused(t *testing.T) {
+// Other tools, writes, other methods and reads outside C1 are refused,
+// visibly.
+func TestEverythingButTheReadsOfC1IsRefused(t *testing.T) {
 	f, a, c := serve(t, Normal)
 	ctx := context.Background()
 	if _, ans := a.Projects(ctx, ""); ans.Class != transport.NotFound || ans.Status != http.StatusNotFound {
-		t.Fatalf("projects: %v %d", ans.Class, ans.Status)
+		t.Fatalf("projects of no organisation: %v %d", ans.Class, ans.Status)
 	}
-	if _, ans := a.Tickets(ctx, api.TicketQuery{ProjectID: "p"}); ans.Class != transport.Refused {
-		t.Fatalf("tickets: %v", ans.Class)
+	if _, ans := a.Tickets(ctx, api.TicketQuery{ProjectID: "p"}); ans.Class != transport.NotFound {
+		t.Fatalf("tickets of an unknown project: %v", ans.Class)
+	}
+	if _, ans := a.Tickets(ctx, api.TicketQuery{ProjectID: ProjectWebsite, Status: "new"}); ans.Class != transport.Refused {
+		t.Fatalf("a status filter: %v", ans.Class)
+	}
+	if _, ans := a.TicketWith(ctx, ProjectWebsite, TicketLogin, api.TicketOptions{FullText: true}); ans.Class != transport.Refused {
+		t.Fatalf("full text: %v", ans.Class)
+	}
+	if _, ans := a.TicketByNumber(ctx, ProjectWebsite, 1); ans.Class != transport.InvalidInput {
+		t.Fatalf("by number: %v", ans.Class)
+	}
+	if _, ans := a.Ticket(ctx, ProjectWebsite, "00000000-0000-4000-8000-000000000999"); ans.Class != transport.NotFound {
+		t.Fatalf("a missing ticket: %v", ans.Class)
 	}
 	if _, ans := a.MarkNotificationRead(ctx, "n", "key-00000001"); ans.Class != transport.Refused {
 		t.Fatalf("mark read: %v", ans.Class)
@@ -161,9 +174,104 @@ func TestEverythingButTheStartAndTheInboxIsRefused(t *testing.T) {
 	for _, r := range f.Requests() {
 		seen[r.Tool] = true
 	}
-	if !seen["list_tickets"] || !seen["mark_notification_read"] {
+	if !seen["list_tickets"] || !seen["mark_notification_read"] || !seen["get_ticket"] {
 		t.Fatalf("the log does not name the refused tools: %v", seen)
 	}
+}
+
+// The projects and tickets (C1c) work against the fixture through the real
+// adapters, and every answer passes the client's own checks.
+func TestTheTicketsSectionWorksAgainstTheFixture(t *testing.T) {
+	_, a, _ := serve(t, Normal)
+	ctx := context.Background()
+	projects, ans := a.Projects(ctx, OrgA)
+	if !ans.OK() || len(projects) != 4 || api.CheckProjects(projects) != nil || projects[3].ID != ProjectWebsite {
+		t.Fatalf("projects of A: %v %+v", ans.Class, projects)
+	}
+	if list, ans := a.Projects(ctx, OrgB); !ans.OK() || len(list) != 0 {
+		t.Fatalf("projects of B: %v %+v", ans.Class, list)
+	}
+	page, ans := a.Tickets(ctx, api.TicketQuery{ProjectID: ProjectWebsite, Page: 1, PerPage: 25})
+	if !ans.OK() || api.CheckTicketPage(page) != nil || len(page.Data) != 25 || page.Meta.Total != 30 || page.Data[0].ID != TicketLogin || page.Data[0].Number != 1 {
+		t.Fatalf("page 1: %v %+v", ans.Class, page.Meta)
+	}
+	if page.Data[2].Assignees == nil || len(page.Data[2].Assignees) != 0 || page.Data[3].Status != nil || *page.Data[0].Status != "in_progress" {
+		t.Fatalf("variations: %+v", page.Data[:4])
+	}
+	second, ans := a.Tickets(ctx, api.TicketQuery{ProjectID: ProjectWebsite, Page: 2, PerPage: 25})
+	if !ans.OK() || len(second.Data) != 5 || second.Data[0].Number != 26 {
+		t.Fatalf("page 2: %v %+v", ans.Class, second.Meta)
+	}
+	found, ans := a.Tickets(ctx, api.TicketQuery{ProjectID: ProjectWebsite, Q: "export", Page: 1, PerPage: 25})
+	if !ans.OK() || len(found.Data) != 1 || found.Data[0].Number != 2 || found.Meta.Total != 1 {
+		t.Fatalf("search: %v %+v", ans.Class, found.Meta)
+	}
+	if empty, ans := a.Tickets(ctx, api.TicketQuery{ProjectID: ProjectIntern, Page: 1, PerPage: 25}); !ans.OK() || len(empty.Data) != 0 || empty.Meta.Total != 0 {
+		t.Fatalf("empty project: %v %+v", ans.Class, empty.Meta)
+	}
+	paged := api.TicketOptions{PostsPage: 1, PostsPerPage: 25, Newest: true, AttachmentsPage: 1}
+	ticket, ans := a.TicketWith(ctx, ProjectWebsite, TicketLogin, paged)
+	if !ans.OK() || api.CheckTicket(ticket, paged) != nil || ticket.Number != 1 || len(ticket.Posts) != 2 || ticket.Posts[0].ID != "00000000-0000-4000-8000-000000000052" || ticket.PostsOrder != "newest" || len(ticket.Attachments) != 2 {
+		t.Fatalf("#1: %v %+v", ans.Class, ticket)
+	}
+	bare, ans := a.TicketWith(ctx, ProjectWebsite, TicketID(ProjectWebsite, 2), paged)
+	if !ans.OK() || bare.DescriptionText != "" || bare.Creator != nil || bare.Status != nil || len(bare.Posts) != 0 || bare.PostsTotal != 0 || len(bare.Attachments) != 0 {
+		t.Fatalf("#2: %v %+v", ans.Class, bare)
+	}
+	many, ans := a.TicketWith(ctx, ProjectWebsite, TicketID(ProjectWebsite, 3), paged)
+	if !ans.OK() || len(many.Posts) != 25 || many.PostsTotal != 30 || many.PostsPages != 2 || many.Posts[0].BodyText != "Comment 30" || !many.PostsTruncated {
+		t.Fatalf("#3: %v %+v", ans.Class, many.Posts)
+	}
+	files, ans := a.TicketWith(ctx, ProjectWebsite, TicketID(ProjectWebsite, 4), paged)
+	if !ans.OK() || len(files.Attachments) != 10 || files.AttachmentsTotal != 12 || files.AttachmentsPages != 2 || !files.AttachmentsTruncated {
+		t.Fatalf("#4: %v %+v", ans.Class, files.Attachments)
+	}
+	plain, ans := a.Ticket(ctx, ProjectWebsite, TicketID(ProjectWebsite, 3))
+	if !ans.OK() || api.CheckTicket(plain, api.TicketOptions{}) != nil || len(plain.Posts) != 30 || plain.Posts[0].BodyText != "Comment 1" || plain.PostsTruncated {
+		t.Fatalf("#3 plain: %v %d comments", ans.Class, len(plain.Posts))
+	}
+	if _, ans := a.Tickets(ctx, api.TicketQuery{ProjectID: ProjectHandbuch, Page: 1, PerPage: 25}); !ans.OK() {
+		t.Fatalf("handbuch: %v", ans.Class)
+	}
+}
+
+// The scenarios act on Website's ticket page 2 and on ticket #2 as they
+// act on A's inbox page 2.
+func TestTheTicketScenarios(t *testing.T) {
+	ctx := context.Background()
+	w2 := api.TicketQuery{ProjectID: ProjectWebsite, Page: 2, PerPage: 25}
+	t.Run("temporary", func(t *testing.T) {
+		_, a, _ := serve(t, Temporary)
+		for i := range 2 {
+			if _, ans := a.Tickets(ctx, w2); ans.Class != transport.Temporary || ans.Status != http.StatusServiceUnavailable {
+				t.Fatalf("attempt %d: %v %d", i+1, ans.Class, ans.Status)
+			}
+		}
+		if _, ans := a.Tickets(ctx, w2); !ans.OK() {
+			t.Fatalf("attempt 3: %v", ans.Class)
+		}
+	})
+	t.Run("401", func(t *testing.T) {
+		_, a, _ := serve(t, Unauthorized)
+		if _, ans := a.Tickets(ctx, w2); ans.Class != transport.Unauthenticated {
+			t.Fatalf("page 2: %v", ans.Class)
+		}
+		if _, ans := a.Ticket(ctx, ProjectWebsite, TicketID(ProjectWebsite, 2)); ans.Class != transport.Unauthenticated {
+			t.Fatalf("ticket #2: %v", ans.Class)
+		}
+		if _, ans := a.Ticket(ctx, ProjectWebsite, TicketLogin); !ans.OK() {
+			t.Fatalf("ticket #1: %v", ans.Class)
+		}
+	})
+	t.Run("older", func(t *testing.T) {
+		_, _, c := serve(t, Older)
+		info, _ := c.Initialize(ctx)
+		tools, _ := c.ListTools(ctx)
+		report := features.Detect(info, tools)
+		if !report.Enabled["tickets"] || !report.Enabled["ticket"] || !report.Enabled["tickets_search"] || report.Enabled["ticket_posts_paged"] || report.Enabled["ticket_full_text"] {
+			t.Fatalf("report %+v", report.Enabled)
+		}
+	})
 }
 
 // Each scenario does what it says, on A's page 2 and nowhere else.

@@ -117,6 +117,50 @@ const (
 	CloseHelp
 	OrganisationsHelp
 	InboxHelp
+	// C1c: the tickets section.
+	Tickets
+	Projects
+	Ticket
+	TicketsUnsupported
+	TicketUnsupported
+	NoProjects
+	NoTickets
+	NoMatches
+	NoneOnTicketPage
+	Archived
+	NoStatus
+	Unassigned
+	NoDescription
+	NoComments
+	NoAttachments
+	NoText
+	Private
+	UnnamedFile
+	CommentsPaged
+	CommentsFirst
+	CommentsAll
+	AttachmentsPaged
+	AttachmentsFirst
+	AttachmentsAll
+	LabelStatus
+	LabelAssignees
+	LabelCreator
+	LabelUpdated
+	SearchFor
+	SearchLine
+	Caret
+	ListShrank
+	OpenTicketsHelp
+	OpenTicketHelp
+	TicketsHelp
+	ProjectsHelp
+	ListHelp
+	BackHelp
+	SearchKey
+	SearchHelp
+	CancelHelp
+	BackspaceKey
+	DeleteHelp
 	count
 )
 
@@ -175,4 +219,25 @@ var english = map[ID]string{
 	PageKey: "[/]", PageHelp: "page", PrevPageKey: "[", PrevPageHelp: "prev page", NextPageKey: "]", NextPageHelp: "next page", RefreshKey: "R", RefreshHelp: "refresh", RetryHelp: "retry",
 	PageUpDownKey: "pgup/pgdn", ScrollHelp: "scroll", MoveHelp: "move", CloseHelp: "close",
 	OrganisationsHelp: "organisations", InboxHelp: "inbox",
+
+	Tickets: "Tickets", Projects: "Projects", Ticket: "Ticket",
+	TicketsUnsupported: "Tickets are not supported by this server.",
+	TicketUnsupported:  "Ticket details are not supported by this server.",
+	NoProjects:         "No projects.", NoTickets: "No tickets.", NoMatches: "No tickets match the search.",
+	NoneOnTicketPage: "No tickets on this page.",
+	Archived:         "archived", NoStatus: "No status", Unassigned: "Unassigned",
+	NoDescription: "No description", NoComments: "No comments", NoAttachments: "No attachments",
+	NoText: "No text", Private: "private", UnnamedFile: "Unnamed file",
+	CommentsPaged:    "Comments · newest first · page %d of %d · %d readable comments",
+	CommentsFirst:    "Comments · oldest first · first %d of %d comments",
+	CommentsAll:      "Comments · oldest first · %d comments",
+	AttachmentsPaged: "Attachments · page %d of %d · %d in all",
+	AttachmentsFirst: "Attachments · first %d of %d",
+	AttachmentsAll:   "Attachments · %d",
+	LabelStatus:      "Status", LabelAssignees: "Assignees", LabelCreator: "Creator", LabelUpdated: "Updated",
+	SearchFor: "search %q", SearchLine: "Search: ", Caret: "_",
+	ListShrank:      "The list shrank again. R refresh.",
+	OpenTicketsHelp: "open tickets", OpenTicketHelp: "open", TicketsHelp: "tickets", ProjectsHelp: "projects",
+	ListHelp: "list", BackHelp: "back",
+	SearchKey: "/", SearchHelp: "search", CancelHelp: "cancel", BackspaceKey: "backspace", DeleteHelp: "delete",
 }

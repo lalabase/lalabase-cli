@@ -115,16 +115,16 @@ func TestAMissingArgumentSwitchesOffOnlyItsFeature(t *testing.T) {
 		tools[i].InputSchema, _ = json.Marshal(schema)
 	}
 	report := Detect(contractServer, tools)
-	if report.Enabled["tickets"] {
-		t.Error("tickets stayed on without q")
+	if report.Enabled["tickets_search"] {
+		t.Error("the search stayed on without q")
 	}
-	for _, name := range []string{"inbox", "mark_read", "ticket", "comment", "knowledge_search"} {
+	for _, name := range []string{"inbox", "mark_read", "tickets", "ticket", "comment", "knowledge_search"} {
 		if !report.Enabled[name] {
 			t.Errorf("%s went off with list_tickets' q", name)
 		}
 	}
-	if !slices.Contains(report.Missing["tickets"], "list_tickets: argument q") {
-		t.Errorf("missing %v", report.Missing["tickets"])
+	if !slices.Contains(report.Missing["tickets_search"], "list_tickets: argument q") {
+		t.Errorf("missing %v", report.Missing["tickets_search"])
 	}
 }
 
@@ -286,6 +286,7 @@ func TestTheTestedVersionIsTheContractCopys(t *testing.T) {
 // that lacks it.
 func TestEachOptionalArgumentBelongsToItsFeature(t *testing.T) {
 	want := map[string]string{
+		"q":                "tickets_search",
 		"organisation_id":  "inbox_by_organisation",
 		"posts_page":       "ticket_posts_paged",
 		"posts_per_page":   "ticket_posts_paged",

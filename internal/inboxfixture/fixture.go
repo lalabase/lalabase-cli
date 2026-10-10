@@ -1,15 +1,16 @@
 // Package inboxfixture is a loopback stand-in for a Lalabase server, for the
-// automated and the manual runs of the interface's start and inbox. One
-// handler serves both: a PTY test mounts it on a test server, the tool
-// tools/inbox-fixture listens on 127.0.0.1 for a person at a terminal.
+// automated and the manual runs of the interface: the start, the inbox and
+// (C1c) the projects and tickets. One handler serves both: a PTY test
+// mounts it on a test server, the tool tools/inbox-fixture listens on
+// 127.0.0.1 for a person at a terminal.
 //
 // Its answers are derived from the contract copy (the recorded initialize,
-// tools/list, /me and a recorded notification as the template of every
-// row), so a client that works against it works against the shapes the
-// server really sends. It accepts one synthetic token, binds to the
-// loopback address only, reads no profile and no environment, and offers
-// nothing but the start and the unread inbox: projects, ticket tools and
-// writes are refused, as a scenario to see them refused.
+// tools/list, /me, projects, a recorded notification, ticket row and ticket
+// as the templates of every row), so a client that works against it works
+// against the shapes the server really sends. It accepts one synthetic
+// token, binds to the loopback address only, reads no profile and no
+// environment, and offers nothing but the reads of C1: writes and the
+// other tools are refused, as a scenario to see them refused.
 //
 // The shipped lalabase does not import it (a source guard holds that).
 package inboxfixture
@@ -31,19 +32,21 @@ import (
 // nothing anywhere else.
 const Token = "lalabase-inbox-fixture-only" //nolint:gosec // synthetic: it opens nothing anywhere
 
-// Scenario is what the fixture does with the second page of organisation A.
+// Scenario is what the fixture does with the second page of organisation
+// A's inbox and of Website's tickets (and, for 401, with ticket #2).
 type Scenario string
 
 const (
 	// Normal: everything succeeds.
 	Normal Scenario = "normal"
-	// Older: the server lists list_notifications without organisation_id.
+	// Older: a server before S1: list_notifications without
+	// organisation_id, get_ticket without the paging arguments.
 	Older Scenario = "older"
-	// Temporary: the first two attempts at A's page 2 fail with 503.
+	// Temporary: the first two attempts at page 2 fail with 503.
 	Temporary Scenario = "temporary"
-	// RateLimited: the first attempt at A's page 2 is a 429 with a short window.
+	// RateLimited: the first attempt at page 2 is a 429 with a short window.
 	RateLimited Scenario = "429"
-	// Unauthorized: A's page 2 answers 401.
+	// Unauthorized: page 2 answers 401, and so does a read of ticket #2.
 	Unauthorized Scenario = "401"
 )
 
@@ -78,6 +81,11 @@ type Fixture struct {
 	me         json.RawMessage
 	orgs       []map[string]any
 	rows       map[string][]map[string]any
+	// C1c: the recorded projects of A, the ticket row and the ticket the
+	// synthetic ones are made from (tickets.go).
+	projectList []map[string]any
+	ticketRow   map[string]any
+	ticketTmpl  map[string]any
 
 	mu       sync.Mutex
 	log      []Request
@@ -144,6 +152,11 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 		if err := f.dropArgument("list_notifications", "organisation_id"); err != nil {
 			return nil, err
 		}
+		for _, arg := range []string{"posts_page", "posts_per_page", "posts_order", "attachments_page", "full_text", "post_id"} {
+			if err := f.dropArgument("get_ticket", arg); err != nil {
+				return nil, err
+			}
+		}
 	}
 	me, ok := file.Contract.REST["GET /api/v1/me"]["ok"]
 	if !ok || len(me.Response.Body) == 0 {
@@ -172,6 +185,9 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 	}
 	f.rows[OrgA] = synthesise(template, a, 1, RowsA)
 	f.rows[OrgB] = synthesise(template, b, 101, RowsB)
+	if f.projectList, f.ticketRow, f.ticketTmpl, err = recordedTickets(file); err != nil {
+		return nil, err
+	}
 	return f, nil
 }
 
@@ -311,10 +327,12 @@ func (f *Fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.record(req)
 		out, _ := json.Marshal(map[string]any{"data": f.orgs})
 		_, _ = w.Write(out)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects":
+		f.projects(w, r, req)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/mcp":
 		f.rpc(w, r, req)
 	default:
-		// Projects and everything else: not here.
+		// Everything else: not here.
 		req.Status = http.StatusNotFound
 		f.record(req)
 		w.WriteHeader(http.StatusNotFound)
@@ -361,11 +379,16 @@ func (f *Fixture) rpc(w http.ResponseWriter, r *http.Request, req Request) {
 	case "tools/list":
 		reply(http.StatusOK, map[string]any{"tools": f.tools}, nil)
 	case "tools/call":
-		if call.Params.Name != "list_notifications" {
+		switch call.Params.Name {
+		case "list_notifications":
+			f.notifications(w, call.Params.Arguments, reply, req)
+		case "list_tickets":
+			f.tickets(w, call.Params.Arguments, reply, req)
+		case "get_ticket":
+			f.ticket(w, call.Params.Arguments, reply, req)
+		default:
 			reply(http.StatusOK, toolError("refused", "not available in the inbox fixture: "+call.Params.Name), nil)
-			return
 		}
-		f.notifications(w, call.Params.Arguments, reply, req)
 	default:
 		reply(http.StatusOK, nil, map[string]any{"code": -32601, "message": "method not found"})
 	}
@@ -423,32 +446,8 @@ func (f *Fixture) notifications(w http.ResponseWriter, args map[string]any, repl
 		return
 	}
 	// The scenario acts on A's page 2, attempt by attempt.
-	if org == OrgA && page == 2 {
-		f.mu.Lock()
-		f.attempts["A2"]++
-		attempt := f.attempts["A2"]
-		f.mu.Unlock()
-		switch {
-		case f.scenario == Temporary && attempt <= 2:
-			req.Status = http.StatusServiceUnavailable
-			f.record(req)
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"error":"unavailable"}`))
-			return
-		case f.scenario == RateLimited && attempt == 1:
-			req.Status = http.StatusTooManyRequests
-			f.record(req)
-			w.Header().Set("Retry-After", "1")
-			w.WriteHeader(http.StatusTooManyRequests)
-			_, _ = w.Write([]byte(`{"error":"rate_limited"}`))
-			return
-		case f.scenario == Unauthorized:
-			req.Status = http.StatusUnauthorized
-			f.record(req)
-			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
-			return
-		}
+	if org == OrgA && page == 2 && f.scenarioOn(w, "A2", req) {
+		return
 	}
 	from := (page - 1) * perPage
 	var data []map[string]any

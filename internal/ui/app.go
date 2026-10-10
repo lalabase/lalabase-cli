@@ -61,6 +61,9 @@ type purpose uint8
 const (
 	forCounters purpose = iota
 	forInbox
+	forProjects
+	forTickets
+	forDetail
 )
 
 // waiter is one consumer of a read in flight: its ticket, how to cancel it,
@@ -72,6 +75,14 @@ type waiter struct {
 	canceled bool
 	purpose  purpose
 }
+
+// section is what an organisation's entry of the chooser opens.
+type section uint8
+
+const (
+	sectionInbox section = iota
+	sectionTickets
+)
 
 // position is where the person was in an organisation's inbox: remembered
 // per organisation, restored on return.
@@ -90,14 +101,9 @@ type inboxView struct {
 	key            cache.Key
 	rows           []api.Notification
 	total, perPage int
-	// known: a page was shown at least once, from the cache or the server.
-	known                bool
+	status
 	selected, opened     string // notification ids
 	offset, detailOffset int
-	loading              bool
-	cached, stale        bool
-	err                  present.Inline
-	loadedAt             time.Time
 	// corrected: the one page correction after a shrink was done; an
 	// explicit R frees it again.
 	corrected bool
@@ -160,11 +166,24 @@ type app struct {
 	// the requests are ordered by their flight.
 	filed map[cache.Key]uint64
 
-	// highlight is the id of the organisation the cursor is on in the
-	// chooser; "" is the entry for all organisations.
-	highlight  string
+	// highlight and highlightSection name the entry the cursor is on in
+	// the chooser: an organisation ("" for all) and its section.
+	highlight        string
+	highlightSection section
+	// active is the open inbox; projects, tickets and detail the open
+	// tickets section (C1c). One of active and projects is set at most.
 	active     *inboxView
 	remembered map[string]position
+	projects   *projectsView
+	tickets    *ticketsView
+	detail     *detailView
+	// rememberedProject is the selected project per organisation,
+	// rememberedTickets the page, row and search per project.
+	rememberedProject map[string]string
+	rememberedTickets map[string]ticketPosition
+	// previewToken names the timer of the row the cursor rests on: only the
+	// wake-up with the current token reads a preview.
+	previewToken uint64
 
 	expired bool
 	pause   time.Time
@@ -186,7 +205,9 @@ func (a *app) reset() {
 	a.ns, a.scope, a.store = cache.Namespace{}, nil, nil
 	a.directory, a.counters, a.global, a.countersSeq, a.snapshot = nil, map[string]count{}, count{}, 0, 0
 	a.waiters, a.filed = map[gateway.Waiter]*waiter{}, map[cache.Key]uint64{}
-	a.highlight, a.active, a.remembered = "", nil, map[string]position{}
+	a.highlight, a.highlightSection, a.active, a.remembered = "", sectionInbox, nil, map[string]position{}
+	a.projects, a.tickets, a.detail = nil, nil, nil
+	a.rememberedProject, a.rememberedTickets, a.previewToken = map[string]string{}, map[string]ticketPosition{}, 0
 	a.pause = time.Time{}
 }
 
@@ -203,29 +224,31 @@ func (a *app) revoked() bool {
 	return a.deps.Events != nil && a.deps.Events.State().Revoked
 }
 
-func (a *app) inboxOn() bool { return a.report != nil && a.report.Enabled["inbox"] }
-func (a *app) byOrgOn() bool { return a.report != nil && a.report.Enabled["inbox_by_organisation"] }
+func (a *app) on(feature string) bool { return a.report != nil && a.report.Enabled[feature] }
+func (a *app) inboxOn() bool          { return a.on("inbox") }
+func (a *app) byOrgOn() bool          { return a.on("inbox_by_organisation") }
 
-// canOpen says whether the inbox of org (or of all, "") can be read: the
-// capabilities are known and allow it. Without the organisation filter only
-// the entry for all organisations opens.
-func (a *app) canOpen(org string) bool {
-	return !a.expired && a.scope != nil && a.inboxOn() && (org == "" || a.byOrgOn())
+// The capabilities of the tickets section: the list, the search on it, the
+// ticket, and the paged comments and attachments of the ticket.
+func (a *app) ticketsOn() bool { return a.on("tickets") }
+func (a *app) searchOn() bool  { return a.on("tickets_search") }
+func (a *app) ticketOn() bool  { return a.on("ticket") }
+func (a *app) pagedOn() bool   { return a.on("ticket_posts_paged") }
+
+// canOpen says whether the entry of org ("" for all) and section can be
+// opened: the capabilities are known and allow it. Without the organisation
+// filter only the inbox of all organisations opens; the tickets open per
+// organisation only, with the list tool.
+func (a *app) canOpen(org string, s section) bool {
+	if a.expired || a.scope == nil {
+		return false
+	}
+	if s == sectionTickets {
+		return org != "" && a.ticketsOn()
+	}
+	return a.inboxOn() && (org == "" || a.byOrgOn())
 }
 
 // pagingOn: server pages are read only with the organisation filter;
 // without it the global inbox shows page 1 only.
 func (a *app) pagingOn() bool { return a.byOrgOn() }
-
-// lastPage is the last page of total rows at perPage each: 1 for an empty
-// inbox, never a division by zero.
-func lastPage(total, perPage int) int {
-	if perPage <= 0 || total <= 0 {
-		return 1
-	}
-	n := total / perPage
-	if total%perPage != 0 {
-		n++
-	}
-	return max(1, n)
-}

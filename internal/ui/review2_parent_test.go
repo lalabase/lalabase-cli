@@ -39,10 +39,10 @@ func TestR2NewerGlobalOmissionCoversPendingDroppedOrganisation(t *testing.T) {
 	}
 	refresh := h.press("R")().(tea.BatchMsg)
 	h.drive(refresh[0])
-	t.Logf("A shown after directory returns: %q", h.m.screen().Chooser.Rows[1].Trailing.String())
+	t.Logf("A shown after directory returns: %q", countShown(h.m, orgA))
 	// Adapted: the snapshot's sequence is kept once (app.snapshot), not
 	// recorded per organisation; what matters is that A stays unknown.
-	if c.known || h.m.screen().Chooser.Rows[1].Trailing.String() != "?" {
+	if c.known || countShown(h.m, orgA) != "?" {
 		t.Fatal("older filtered answer defeated newer global omission")
 	}
 }

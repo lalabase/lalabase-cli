@@ -102,7 +102,9 @@ func TestAHealthyStartMakesExactlyFiveReads(t *testing.T) {
 	if !strings.Contains(s.Identity.String(), "Anna Albers") || !strings.Contains(s.Identity.String(), "Token can write: yes") {
 		t.Fatalf("identity %q", s.Identity.String())
 	}
-	if len(s.Chooser.Rows) != 3 || s.Chooser.Rows[0].Trailing.String() != "33" || s.Chooser.Rows[1].Trailing.String() != "30" || s.Chooser.Rows[2].Trailing.String() != "3" {
+	// Since C1c a heading row and two section rows per organisation (one
+	// for all organisations); the counts sit on the inbox rows.
+	if len(s.Chooser.Rows) != 8 || countShown(h.m, "") != "33" || countShown(h.m, orgA) != "30" || countShown(h.m, orgB) != "3" {
 		t.Fatalf("chooser %+v", s.Chooser.Rows)
 	}
 	if s.Chooser.Notice.String() != "" {
@@ -282,7 +284,7 @@ func TestCapabilitiesComeFromTheSchemasAlone(t *testing.T) {
 		}
 		h.start()
 		a := h.m.app
-		if !a.inboxOn() || a.byOrgOn() || a.canOpen(orgA) || !a.canOpen("") {
+		if !a.inboxOn() || a.byOrgOn() || a.canOpen(orgA, sectionInbox) || !a.canOpen("", sectionInbox) {
 			t.Fatalf("capabilities: inbox %v, filter %v", a.inboxOn(), a.byOrgOn())
 		}
 		if got := h.m.screen().Chooser.Notice.String(); !strings.Contains(got, "first page only") {
@@ -322,8 +324,8 @@ func TestCapabilitiesComeFromTheSchemasAlone(t *testing.T) {
 			t.Fatalf("inbox reads %d, counters %d", len(h.f.inboxCalls()), a.steps[stepCounters].state)
 		}
 		s := h.m.screen()
-		if s.Chooser.Notice.String() != "Inbox is not supported by this server." || s.Chooser.Rows[0].Trailing.String() != "?" {
-			t.Fatalf("notice %q, count %q", s.Chooser.Notice.String(), s.Chooser.Rows[0].Trailing.String())
+		if s.Chooser.Notice.String() != "Inbox is not supported by this server." || countShown(h.m, "") != "?" {
+			t.Fatalf("notice %q, count %q", s.Chooser.Notice.String(), countShown(h.m, ""))
 		}
 		for _, org := range []string{"", orgA} {
 			if cmd := h.choose(org); cmd != nil || a.active != nil {
@@ -341,7 +343,7 @@ func TestCapabilitiesComeFromTheSchemasAlone(t *testing.T) {
 		}
 		h.start()
 		a := h.m.app
-		if !a.inboxOn() || !a.byOrgOn() || !a.canOpen(orgA) {
+		if !a.inboxOn() || !a.byOrgOn() || !a.canOpen(orgA, sectionInbox) {
 			t.Fatal("a low version switched something off")
 		}
 		if got := h.m.screen().Chooser.Notice.String(); !strings.Contains(got, "0.6.0 is older than the tested") {

@@ -23,6 +23,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case tea.WindowSizeMsg:
 		m.width, m.height = max(0, msg.Width), max(0, msg.Height)
+		if m.app != nil {
+			// The object pane may have come into view: the preview of the
+			// selected ticket, if any, is due after the pause.
+			return m, m.selectionChanged()
+		}
 		return m, nil
 	case tea.ModeReportMsg:
 		if msg.Mode == ansi.ModeUnicodeCore && (msg.Value == ansi.ModeReset || msg.Value == ansi.ModeSet || msg.Value == ansi.ModePermanentlySet) {
@@ -33,6 +38,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.receiveStartup(msg)
 	case gateway.InboxResult:
 		return m.receiveInbox(msg)
+	case gateway.ProjectsResult:
+		return m.receiveProjects(msg)
+	case gateway.TicketsResult:
+		return m.receiveTickets(msg)
+	case gateway.TicketResult:
+		return m.receiveDetail(msg)
+	case gateway.Result:
+		// A read refused before it was sent: its waiter is freed, nothing
+		// is shown of it.
+		m.receive(msg)
+		return m, nil
+	case gateway.Due:
+		return m.due(msg)
 	case gateway.Wake:
 		return m.wake(msg)
 	case gateway.PauseEnded:
@@ -77,11 +95,16 @@ func (m Model) key(key tea.KeyPressMsg) (Model, tea.Cmd) {
 	if action.Kind == Interrupt {
 		return m, tea.Interrupt
 	}
-	if m.small() || !m.allowed()[action.Kind] {
+	// allowed is built from the bindings of the state, the small terminal
+	// included: what is not offered does nothing.
+	if !m.allowed()[action.Kind] {
 		return m, nil
 	}
 	if m.app == nil {
 		return m.shellKey(action.Kind), nil
+	}
+	if m.mode == TextEntry {
+		return m.searchKey(action.Kind, action.Text)
 	}
 	return m.sessionKey(action.Kind)
 }
@@ -113,73 +136,157 @@ func (m Model) shellKey(kind Action) Model {
 
 func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 	a := m.app
-	v := a.active
 	switch kind {
 	case Left:
 		if m.focus > view.Navigation {
 			m.focus--
 		}
+		return m, m.selectionChanged()
 	case Right:
 		if m.focus < view.Object {
 			m.focus++
 		}
+		return m, m.selectionChanged()
 	case Up, Down:
 		delta := 1
 		if kind == Up {
 			delta = -1
 		}
-		if m.focus == view.Navigation {
-			a.moveHighlight(delta)
-		} else if m.focus == view.List && v != nil {
-			v.moveSelection(delta)
-		}
+		return m.move(delta)
 	case PageUp, PageDown:
-		g := m.geometry()
 		delta := 1
 		if kind == PageUp {
 			delta = -1
 		}
-		switch m.focus {
-		case view.List:
-			if v != nil {
-				v.moveSelection(delta * max(1, view.Capacity(m.listColumn(), g)))
-			}
-		case view.Object:
-			if v != nil {
-				c := m.objectColumn()
-				capacity := max(1, view.Capacity(c, g))
-				top := max(0, view.Extent(c, g, view.Object, m.widthMethod)-capacity)
-				v.detailOffset = max(0, min(top, v.detailOffset+delta*capacity))
-			}
-		}
+		return m.movePage(delta)
 	case OpenList:
-		if m.focus == view.Navigation {
-			return m.activate(a.highlight)
-		}
-		if m.focus == view.List && v != nil && v.selected != "" {
-			v.opened, v.detailOffset = v.selected, 0
-			m.focus = view.Object
-		}
+		return m.open()
 	case Back:
-		switch m.focus {
-		case view.Navigation:
-			if v != nil {
-				m.focus = view.List
-			}
-		case view.List:
-			m.focus = view.Navigation
-		case view.Object:
-			if v != nil {
-				v.opened = ""
-			}
-			m.focus = view.List
-		}
+		return m.back()
 	case PrevPage:
+		if a.tickets != nil {
+			return m.turnTicketPage(-1)
+		}
 		return m.turnPage(-1)
 	case NextPage:
+		if a.tickets != nil {
+			return m.turnTicketPage(1)
+		}
 		return m.turnPage(1)
 	case Refresh:
 		return m.retryOrRefresh()
+	case Search:
+		return m.startSearch(), nil
+	}
+	return m, nil
+}
+
+// move moves the cursor of the focused pane by rows; nothing is loaded by
+// it, except that a ticket's preview falls due after the pause.
+func (m Model) move(delta int) (Model, tea.Cmd) {
+	a := m.app
+	switch m.focus {
+	case view.Navigation:
+		a.moveHighlight(delta)
+	case view.List:
+		switch {
+		case a.active != nil:
+			a.active.moveSelection(delta)
+		case a.tickets != nil:
+			a.tickets.moveSelection(delta)
+			return m, m.selectionChanged()
+		case a.projects != nil:
+			a.projects.moveSelection(delta)
+		}
+	}
+	return m, nil
+}
+
+// movePage moves the list's cursor by a screen of rows, or scrolls the
+// object pane by a screen of lines.
+func (m Model) movePage(delta int) (Model, tea.Cmd) {
+	a := m.app
+	g := m.geometry()
+	switch m.focus {
+	case view.List:
+		rows := delta * max(1, view.Capacity(m.listColumn(), g))
+		switch {
+		case a.active != nil:
+			a.active.moveSelection(rows)
+		case a.tickets != nil:
+			a.tickets.moveSelection(rows)
+			return m, m.selectionChanged()
+		case a.projects != nil:
+			a.projects.moveSelection(rows)
+		}
+	case view.Object:
+		c := m.objectColumn()
+		capacity := max(1, view.Capacity(c, g))
+		top := max(0, view.Extent(c, g, view.Object, m.widthMethod)-capacity)
+		switch {
+		case a.active != nil:
+			a.active.detailOffset = max(0, min(top, a.active.detailOffset+delta*capacity))
+		case a.detail != nil:
+			a.detail.offset = max(0, min(top, a.detail.offset+delta*capacity))
+		}
+	}
+	return m, nil
+}
+
+// open is Enter: in the chooser the highlighted entry, in the list the
+// selected row (the details of a notification, the tickets of a project,
+// the ticket).
+func (m Model) open() (Model, tea.Cmd) {
+	a := m.app
+	switch m.focus {
+	case view.Navigation:
+		if a.highlightSection == sectionTickets {
+			return m.openProjects(a.highlight)
+		}
+		return m.activate(a.highlight)
+	case view.List:
+		switch {
+		case a.active != nil:
+			v := a.active
+			if v.selected != "" {
+				v.opened, v.detailOffset = v.selected, 0
+				m.focus = view.Object
+			}
+		case a.tickets != nil:
+			return m.openTicket()
+		case a.projects != nil:
+			return m.openTickets(a.projects.selected)
+		}
+	}
+	return m, nil
+}
+
+// back is Esc: from the chooser to the list, from the list one level up
+// (the chooser; from the tickets the projects), from the pane to the list.
+func (m Model) back() (Model, tea.Cmd) {
+	a := m.app
+	switch m.focus {
+	case view.Navigation:
+		if a.shown() {
+			m.focus = view.List
+		}
+	case view.List:
+		if a.tickets != nil {
+			a.leaveList()
+			return m, nil
+		}
+		m.focus = view.Navigation
+	case view.Object:
+		switch {
+		case a.active != nil:
+			a.active.opened = ""
+			m.focus = view.List
+		case a.tickets != nil:
+			m = m.closeTicket()
+			return m, m.selectionChanged()
+		default:
+			m.focus = view.List
+		}
 	}
 	return m, nil
 }
@@ -189,12 +296,12 @@ func (a *app) moveHighlight(delta int) {
 	entries := a.entries()
 	at := 0
 	for i, e := range entries {
-		if e.org == a.highlight {
+		if e.org == a.highlight && e.section == a.highlightSection {
 			at = i
 		}
 	}
 	at = max(0, min(len(entries)-1, at+delta))
-	a.highlight = entries[at].org
+	a.highlight, a.highlightSection = entries[at].org, entries[at].section
 }
 
 // moveSelection moves the cursor of the inbox by rows; details stay as
