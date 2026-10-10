@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/gboyke/lalabase-cli/internal/diskcache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 	"github.com/gboyke/lalabase-cli/internal/worker"
@@ -45,6 +46,9 @@ type Session struct {
 	// /me confirms.
 	Profile string
 	Server  string
+	// Disk opens the disk cache of the profile after /me confirmed the
+	// identity (C1e); nil for memory alone.
+	Disk *diskcache.Opener
 }
 
 // WithSession gives the model a session to run.

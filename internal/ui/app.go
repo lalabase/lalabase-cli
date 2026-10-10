@@ -196,10 +196,14 @@ type app struct {
 
 	expired bool
 	pause   time.Time
+
+	// disk is the disk cache (C1e), outside reset: an ended session still
+	// has its namespace to remove from it.
+	disk *diskState
 }
 
 func newApp(s Session) *app {
-	a := &app{deps: s, now: time.Now, session: gateway.NewSession()}
+	a := &app{deps: s, now: time.Now, session: gateway.NewSession(), disk: newDiskState(s.Disk)}
 	if s.Events != nil {
 		a.session = s.Events.Session()
 	}

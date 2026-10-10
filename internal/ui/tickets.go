@@ -226,6 +226,7 @@ func (a *app) cancelArea(area gateway.Area) {
 			w.canceled = true
 			w.cancel()
 		}
+		a.cancelDiskRead(id)
 	}
 }
 
@@ -252,21 +253,34 @@ func (m Model) openProjects(org string) (Model, tea.Cmd) {
 }
 
 // loadProjects shows the cached list, if there is one that still reads,
-// and starts exactly one reload of the person's priority.
+// and starts exactly one reload of the person's priority; without one in
+// memory the disk is asked too (C1e).
 func (a *app) loadProjects() tea.Cmd {
 	v := a.projects
-	if e, ok := a.store.Get(v.key); ok {
-		list, ans := api.DecodeProjects(transport.Answer{Class: transport.Object, Payload: e.Payload, Status: 200, Sent: true})
-		if ans.OK() && gateway.CheckProjectsList(v.key, list) == nil {
-			v.rows = list
-			v.fromCache(e)
-			v.reselect()
-		} else {
-			a.store.Forget(v.key)
-		}
+	if e, ok := a.cachedProjects(v); ok {
+		v.fromCache(e)
+	} else {
+		a.diskRead(gateway.Projects, v.key, forProjects)
 	}
 	v.loading = true
 	return a.issue(gateway.Projects, v.key, forProjects, queue.User)
+}
+
+// cachedProjects puts the memory entry of the view's key into the view, if
+// there is one that still reads.
+func (a *app) cachedProjects(v *projectsView) (cache.Entry, bool) {
+	e, ok := a.store.Get(v.key)
+	if !ok {
+		return cache.Entry{}, false
+	}
+	list, ans := api.DecodeProjects(transport.Answer{Class: transport.Object, Payload: e.Payload, Status: 200, Sent: true})
+	if !ans.OK() || gateway.CheckProjectsList(v.key, list) != nil {
+		a.forget(v.key)
+		return cache.Entry{}, false
+	}
+	v.rows = list
+	v.reselect()
+	return e, true
 }
 
 // openTickets opens the tickets of the selected project: the remembered
@@ -289,21 +303,34 @@ func (m Model) openTickets(project string) (Model, tea.Cmd) {
 }
 
 // loadTickets shows the cached page, if there is one that still reads,
-// and starts exactly one reload of the person's priority.
+// and starts exactly one reload of the person's priority; without one in
+// memory the disk is asked too (C1e).
 func (a *app) loadTickets() tea.Cmd {
 	v := a.tickets
-	if e, ok := a.store.Get(v.key); ok {
-		page, ans := api.DecodeTickets(transport.Answer{Class: transport.Object, Payload: e.Payload, Status: 200, Sent: true})
-		if ans.OK() && gateway.CheckTicketsPage(v.key, page) == nil {
-			v.rows, v.total, v.perPage = page.Data, page.Meta.Total, page.Meta.PerPage
-			v.fromCache(e)
-			v.reselect()
-		} else {
-			a.store.Forget(v.key)
-		}
+	if e, ok := a.cachedTickets(v); ok {
+		v.fromCache(e)
+	} else {
+		a.diskRead(gateway.Tickets, v.key, forTickets)
 	}
 	v.loading = true
 	return a.issue(gateway.Tickets, v.key, forTickets, queue.User)
+}
+
+// cachedTickets puts the memory entry of the view's key into the view, if
+// there is one that still reads.
+func (a *app) cachedTickets(v *ticketsView) (cache.Entry, bool) {
+	e, ok := a.store.Get(v.key)
+	if !ok {
+		return cache.Entry{}, false
+	}
+	page, ans := api.DecodeTickets(transport.Answer{Class: transport.Object, Payload: e.Payload, Status: 200, Sent: true})
+	if !ans.OK() || gateway.CheckTicketsPage(v.key, page) != nil {
+		a.forget(v.key)
+		return cache.Entry{}, false
+	}
+	v.rows, v.total, v.perPage = page.Data, page.Meta.Total, page.Meta.PerPage
+	v.reselect()
+	return e, true
 }
 
 // turnTicketPage moves to the previous or next server page, when there is
@@ -501,7 +528,8 @@ func (m Model) openTicket() (Model, tea.Cmd) {
 }
 
 // ensureDetail makes the pane show the ticket: the one already there, or
-// a new view, from the cache when it holds the ticket.
+// a new view, from the cache when it holds the ticket, else with the disk
+// asked (C1e) beside the read the caller issues.
 func (a *app) ensureDetail(project, id string) *detailView {
 	if d := a.detail; d != nil && d.id == id {
 		return d
@@ -509,6 +537,7 @@ func (a *app) ensureDetail(project, id string) *detailView {
 	a.dropDetail()
 	if !a.showCachedDetail(project, id) {
 		a.detail = &detailView{id: id, project: project, key: a.detailKey(project, id)}
+		a.diskRead(gateway.Detail, a.detail.key, forDetail)
 	}
 	return a.detail
 }
@@ -517,20 +546,31 @@ func (a *app) ensureDetail(project, id string) *detailView {
 // record of it that still reads, and says whether it did.
 func (a *app) showCachedDetail(project, id string) bool {
 	d := &detailView{id: id, project: project, key: a.detailKey(project, id)}
-	e, ok := a.store.Get(d.key)
+	e, ok := a.cachedPage(d, d.key)
 	if !ok {
 		return false
 	}
-	record, ans := api.DecodeTicket(transport.Answer{Class: transport.Object, Payload: e.Payload, Status: 200, Sent: true}, gateway.DetailOptions(d.key))
-	if !ans.OK() || gateway.CheckDetail(d.key, record) != nil {
-		a.store.Forget(d.key)
-		return false
-	}
-	d.record, d.shown = record, d.key
 	d.fromCache(e)
 	a.detail = d
-	a.settle(d)
 	return true
+}
+
+// cachedPage puts the memory entry of a page of the ticket into the view,
+// if there is one that still reads: the record and the page shown, the
+// selection settled.
+func (a *app) cachedPage(d *detailView, k cache.Key) (cache.Entry, bool) {
+	e, ok := a.store.Get(k)
+	if !ok {
+		return cache.Entry{}, false
+	}
+	record, ans := api.DecodeTicket(transport.Answer{Class: transport.Object, Payload: e.Payload, Status: 200, Sent: true}, gateway.DetailOptions(k))
+	if !ans.OK() || gateway.CheckDetail(k, record) != nil {
+		a.forget(k)
+		return cache.Entry{}, false
+	}
+	d.record, d.shown = record, k
+	a.settle(d)
+	return e, true
 }
 
 // closeTicket is Esc on the opened ticket: back to the list; the pane

@@ -107,6 +107,10 @@ func (s *Scope) Move(area Area) []Waiter {
 // Leave drops a waiter that gave up.
 func (s *Scope) Leave(w Waiter) { delete(s.pending, w) }
 
+// Pending is the number of tickets issued and not yet used up (tests: a
+// read that is never answered or left would leak one for the session).
+func (s *Scope) Pending() int { return len(s.pending) }
+
 // Invalidate refuses every result for the resource begun before now (a
 // write changed it), copies of a removal included.
 func (s *Scope) Invalidate(resource cache.Key) {
@@ -145,6 +149,19 @@ func (s *Scope) accept(t Ticket, sameAnswer bool) bool {
 	}
 	res := t.Key.Resource()
 	return t.Epoch == s.epochs[res] || sameAnswer
+}
+
+// Promote files an entry the disk cache read (C1e) for the waiter's ticket,
+// after the checks every result passes: the session, the waiter, the
+// generation of its area, the epoch of its resource. The ticket is used up
+// by it. The store takes the entry only when it holds nothing for the key:
+// a network answer that landed since wins, and the entry keeps its own
+// load time. It reports whether the entry was filed.
+func (s *Scope) Promote(store *cache.Store, t Ticket, e cache.Entry) bool {
+	if !s.accept(t, false) {
+		return false
+	}
+	return store.Promote(t.Key, e)
 }
 
 // Result is what every result of a read carries: the waiter's ticket, the

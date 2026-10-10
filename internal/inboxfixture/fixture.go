@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Token is the one credential the fixture accepts. Synthetic: it opens
@@ -73,11 +74,24 @@ const (
 	Lost Scenario = "lost"
 	// Slow: every write is carried out at once and answered after a pause.
 	Slow Scenario = "slow"
+	// SlowReads: every inbox read with an organisation filter and every
+	// ticket read is answered after a pause (C1e: what the disk cache shows
+	// meanwhile); the start and the writes are as in Normal.
+	SlowReads Scenario = "slow-reads"
 )
 
 // Scenarios lists them, for a tool's usage line.
 func Scenarios() []Scenario {
-	return []Scenario{Normal, Older, Temporary, RateLimited, Unauthorized, Vanished, ReadOnly, UnknownWrite, NoMarkRead, Refusals, Lost, Slow}
+	return []Scenario{Normal, Older, Temporary, RateLimited, Unauthorized, Vanished, ReadOnly, UnknownWrite, NoMarkRead, Refusals, Lost, Slow, SlowReads}
+}
+
+// ResetAttempts forgets how often each place was tried, so a scenario that
+// acts attempt by attempt (Temporary, RateLimited) acts again: a second
+// run of the client against the same fixture (C1e).
+func (f *Fixture) ResetAttempts() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.attempts = map[string]int{}
 }
 
 // The two organisations: A as the contract records it, B synthetic.
@@ -442,6 +456,15 @@ func (f *Fixture) rpc(w http.ResponseWriter, r *http.Request, req Request) {
 	case "tools/list":
 		reply(http.StatusOK, map[string]any{"tools": f.tools}, nil)
 	case "tools/call":
+		if f.scenario == SlowReads && slowRead(call.Params.Name, call.Params.Arguments) {
+			select {
+			case <-time.After(slowAnswer):
+			case <-r.Context().Done():
+				req.Status = 0
+				f.record(req)
+				return
+			}
+		}
 		switch call.Params.Name {
 		case "list_notifications":
 			f.notifications(w, call.Params.Arguments, reply, req)
@@ -457,6 +480,19 @@ func (f *Fixture) rpc(w http.ResponseWriter, r *http.Request, req Request) {
 	default:
 		reply(http.StatusOK, nil, map[string]any{"code": -32601, "message": "method not found"})
 	}
+}
+
+// slowRead: the reads SlowReads holds: an inbox page of one organisation
+// and a ticket. The global page of the start is not one of them.
+func slowRead(tool string, args map[string]any) bool {
+	switch tool {
+	case "list_notifications":
+		org, _ := args["organisation_id"].(string)
+		return org != ""
+	case "get_ticket":
+		return true
+	}
+	return false
 }
 
 // toolError is a tool answer with the machine field, as the server sends it.

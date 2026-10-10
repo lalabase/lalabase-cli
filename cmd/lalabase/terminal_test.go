@@ -54,6 +54,10 @@ type terminalProcess struct {
 type terminalOptions struct {
 	url, marker string
 	limit       time.Duration
+	// home is the child's home, when a run is to find what an earlier one
+	// left there (the disk cache, C1e); empty for a fresh one. cacheHome,
+	// when set, is the child's XDG_CACHE_HOME.
+	home, cacheHome string
 }
 
 func startTerminal(t *testing.T, scenario string, width uint16) *terminalProcess {
@@ -83,7 +87,10 @@ func startTerminalWith(t *testing.T, scenario string, width uint16, opts termina
 	if err := unix.SetNonblock(int(master.Fd()), true); err != nil {
 		t.Fatal(err)
 	}
-	home := t.TempDir()
+	home := opts.home
+	if home == "" {
+		home = t.TempDir()
+	}
 	token := "pty-dummy"
 	if opts.url != "http://127.0.0.1:1" {
 		token = inboxfixture.Token
@@ -99,6 +106,9 @@ func startTerminalWith(t *testing.T, scenario string, width uint16, opts termina
 	t.Cleanup(processCancel)
 	cmd := exec.CommandContext(processCtx, executable, "-test.run=^TestTerminalChild$", "-test.timeout="+(opts.limit+10*time.Second).String(), "--", scenario)
 	cmd.Env = []string{"C1A_PTY_CHILD=1", "HOME=" + home, "XDG_CONFIG_HOME=" + filepath.Join(home, ".config"), "TERM=xterm-256color", "LC_ALL=C.UTF-8", "RUNEWIDTH_EASTASIAN=0", "CI=1"}
+	if opts.cacheHome != "" {
+		cmd.Env = append(cmd.Env, "XDG_CACHE_HOME="+opts.cacheHome)
+	}
 	cmd.Dir = home
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = slave, slave, slave
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}

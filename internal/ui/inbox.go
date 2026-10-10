@@ -49,6 +49,7 @@ func (a *app) moveInbox() {
 			w.canceled = true
 			w.cancel()
 		}
+		a.cancelDiskRead(id)
 	}
 }
 
@@ -94,6 +95,9 @@ func (m *Model) receive(received gateway.Received) (cache.Decision, bool) {
 	}
 	if d == cache.Replace || d == cache.Remove {
 		a.filed[key] = max(a.filed[key], seq)
+	}
+	if d == cache.KeepStale {
+		a.diskReadsGoStale(key)
 	}
 	return d, true
 }
@@ -275,22 +279,36 @@ func (m Model) activate(org string) (Model, tea.Cmd) {
 }
 
 // load shows the cached page, if there is one that still reads, and starts
-// exactly one reload of the person's priority. A cached page that does not
-// read any more is forgotten.
+// exactly one reload of the person's priority. Without one in memory the
+// disk is asked too (C1e); its answer, if it comes before the reload,
+// shows as cached as well.
 func (a *app) load() tea.Cmd {
 	v := a.active
-	if e, ok := a.store.Get(v.key); ok {
-		page, ans := api.DecodeNotifications(transport.Answer{Class: transport.Object, Payload: e.Payload, Status: 200, Sent: true})
-		if ans.OK() && gateway.CheckInboxPage(v.key, page) == nil {
-			v.rows, v.total, v.perPage = page.Data, page.Meta.Total, page.Meta.PerPage
-			v.fromCache(e)
-			v.reselect()
-		} else {
-			a.store.Forget(v.key)
-		}
+	if e, ok := a.cachedInbox(v); ok {
+		v.fromCache(e)
+	} else {
+		a.diskRead(gateway.Inbox, v.key, forInbox)
 	}
 	v.loading = true
 	return a.issue(gateway.Inbox, v.key, forInbox, queue.User)
+}
+
+// cachedInbox puts the memory entry of the view's key into the view, if
+// there is one that still reads, and hands it back for the status. A
+// cached page that does not read any more is forgotten.
+func (a *app) cachedInbox(v *inboxView) (cache.Entry, bool) {
+	e, ok := a.store.Get(v.key)
+	if !ok {
+		return cache.Entry{}, false
+	}
+	page, ans := api.DecodeNotifications(transport.Answer{Class: transport.Object, Payload: e.Payload, Status: 200, Sent: true})
+	if !ans.OK() || gateway.CheckInboxPage(v.key, page) != nil {
+		a.forget(v.key)
+		return cache.Entry{}, false
+	}
+	v.rows, v.total, v.perPage = page.Data, page.Meta.Total, page.Meta.PerPage
+	v.reselect()
+	return e, true
 }
 
 // turnPage moves to the previous or next server page, when there is one

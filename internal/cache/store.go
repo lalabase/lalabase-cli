@@ -121,9 +121,31 @@ type Store struct {
 	items map[Key]*list.Element
 	order *list.List // front: used last
 	bytes int
+	// journal, when set, is told every change that is a decision about
+	// data (C1e): the disk cache replays it. An eviction is not one.
+	journal *Journal
 }
 
-func NewStore() *Store { return &Store{items: map[Key]*list.Element{}, order: list.New()} }
+// StoreOption changes a Store at construction.
+type StoreOption func(*Store)
+
+// WithJournal makes the store tell j its changes.
+func WithJournal(j *Journal) StoreOption { return func(s *Store) { s.journal = j } }
+
+func NewStore(opts ...StoreOption) *Store {
+	s := &Store{items: map[Key]*list.Element{}, order: list.New()}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// note tells the journal of a change.
+func (s *Store) note(op Change) {
+	if s.journal != nil {
+		s.journal.Add(op)
+	}
+}
 
 // Len and Bytes report the size, for tests and limits.
 func (s *Store) Len() int   { return s.order.Len() }
@@ -154,9 +176,11 @@ func (s *Store) Apply(k Key, d Decision, payload []byte, now time.Time) {
 				s.remove(key)
 			}
 		}
+		s.note(Change{Kind: ChangeRemoveResource, Key: res})
 	case KeepStale:
 		if el, ok := s.items[k]; ok {
 			el.Value.(*item).entry.Stale = true
+			s.note(Change{Kind: ChangePut, Key: k, Entry: s.copyOf(el)})
 		}
 	}
 	// KeepShowMessage, Drop and Reload change no data and no load time.
@@ -168,13 +192,49 @@ func (s *Store) replace(k Key, payload []byte, now time.Time) {
 	}
 	s.remove(k)
 	if len(payload) > MaxEntryBytes {
-		return // valid, but too large to keep; the older entry is outdated
+		// Valid, but too large to keep; the older entry is outdated, on
+		// disk too.
+		s.note(Change{Kind: ChangeForget, Key: k})
+		return
 	}
-	s.items[k] = s.order.PushFront(&item{key: k, entry: Entry{Payload: bytes.Clone(payload), LoadedAt: now}})
-	s.bytes += len(payload)
+	s.insert(k, Entry{Payload: bytes.Clone(payload), LoadedAt: now})
+	s.note(Change{Kind: ChangePut, Key: k, Entry: s.copyOf(s.items[k])})
+}
+
+// insert files an entry at the front and evicts the least recently used
+// past the limits. An eviction is the memory's own housekeeping: the
+// journal is not told, the disk keeps what memory let go.
+func (s *Store) insert(k Key, e Entry) {
+	s.items[k] = s.order.PushFront(&item{key: k, entry: e})
+	s.bytes += len(e.Payload)
 	for s.order.Len() > MaxEntries || s.bytes > MaxBytes {
 		s.remove(s.order.Back().Value.(*item).key)
 	}
+}
+
+// copyOf is the entry of an element, as Get hands it out.
+func (s *Store) copyOf(el *list.Element) Entry {
+	e := el.Value.(*item).entry
+	e.Payload = bytes.Clone(e.Payload)
+	return e
+}
+
+// Promote files an entry the disk cache read (C1e), as it was: its load
+// time and its stale mark stay, so a disk hit extends no lifetime. It
+// files nothing over an entry already there (a network answer that landed
+// meanwhile wins), nothing under an invalid key and nothing above the
+// entry limit, and it is no change the journal is told of: the entry came
+// from the disk. It reports whether the entry was filed.
+func (s *Store) Promote(k Key, e Entry) bool {
+	if !k.valid() || len(e.Payload) > MaxEntryBytes {
+		return false
+	}
+	if _, ok := s.items[k]; ok {
+		return false
+	}
+	e.Payload = bytes.Clone(e.Payload)
+	s.insert(k, e)
+	return true
 }
 
 func (s *Store) remove(k Key) {
@@ -191,7 +251,10 @@ func (s *Store) remove(k Key) {
 // decode, or a page a refresh showed no longer exists. The other pages of
 // the resource stay; refusing results begun before is the scope's step
 // (Invalidate), not the store's.
-func (s *Store) Forget(k Key) { s.remove(k) }
+func (s *Store) Forget(k Key) {
+	s.remove(k)
+	s.note(Change{Kind: ChangeForget, Key: k})
+}
 
 // RemoveNamespace drops every entry of an identity (the session ended).
 func (s *Store) RemoveNamespace(n Namespace) {
@@ -200,4 +263,5 @@ func (s *Store) RemoveNamespace(n Namespace) {
 			s.remove(key)
 		}
 	}
+	s.note(Change{Kind: ChangeRemoveNamespace, Key: Key{ns: n}})
 }

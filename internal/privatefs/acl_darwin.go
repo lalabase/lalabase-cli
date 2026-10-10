@@ -1,6 +1,6 @@
 //go:build darwin
 
-package profile
+package privatefs
 
 import (
 	"encoding/binary"
@@ -42,30 +42,32 @@ type attrlist struct {
 	forkattr    uint32
 }
 
-// checkACL refuses an access list that lets others in, per zone. An entry
+// CheckACL refuses an access list that lets others in, per zone. An entry
 // that denies is always fine (every home carries "everyone deny delete").
-func checkACL(path string, zone aclZone) error {
-	entries, err := readACLOf(path)
+func CheckACL(path string, zone Zone) error {
+	entries, err := ReadACL(path)
 	if err != nil {
 		return fmt.Errorf("%s: reading its access list: %w", path, err)
 	}
 	for _, e := range entries {
-		if e.flags&aceKindMask != acePermit {
+		if e.Flags&aceKindMask != acePermit {
 			continue
 		}
-		if zone == private || e.rights&rightsToChange != 0 {
+		if zone == Private || e.Rights&rightsToChange != 0 {
 			return fmt.Errorf("%s carries an access list that lets others in (see: ls -led %s); remove that entry with chmod -a", path, path)
 		}
 	}
 	return nil
 }
 
-type ace struct{ flags, rights uint32 }
+// ACE is one entry of an access list: its kind and flags, and the rights it
+// names.
+type ACE struct{ Flags, Rights uint32 }
 
-// readACLOf reads an access list (tests replace it to fail).
-var readACLOf = readACL
+// ReadACL reads an access list (tests replace it to fail).
+var ReadACL = readACL
 
-func readACL(path string) ([]ace, error) {
+func readACL(path string) ([]ACE, error) {
 	p, err := unix.BytePtrFromString(path)
 	if err != nil {
 		return nil, err
@@ -74,7 +76,7 @@ func readACL(path string) ([]ace, error) {
 	buf := make([]byte, 64<<10)
 	// x/sys has no libSystem wrapper for getattrlist, so it is called
 	// directly. Should a later macOS refuse that, the call fails and the
-	// config is refused: closed, not open.
+	// file is refused: closed, not open.
 	_, _, errno := unix.Syscall6(unix.SYS_GETATTRLIST, //nolint:staticcheck // no libSystem wrapper exists, see above
 		uintptr(unsafe.Pointer(p)), uintptr(unsafe.Pointer(&al)), //nolint:gosec // the layout getattrlist expects
 		uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), fsoptNoFollow, 0) //nolint:gosec // the layout getattrlist expects
@@ -85,7 +87,7 @@ func readACL(path string) ([]ace, error) {
 }
 
 // parseFilesec reads the attribute buffer of getattrlist.
-func parseFilesec(buf []byte) ([]ace, error) {
+func parseFilesec(buf []byte) ([]ACE, error) {
 	le := binary.NativeEndian
 	if len(buf) < 12 {
 		return nil, fmt.Errorf("short attribute buffer")
@@ -111,10 +113,10 @@ func parseFilesec(buf []byte) ([]ace, error) {
 	if int(count) > (len(sec)-44)/aceSize {
 		return nil, fmt.Errorf("access list longer than its buffer")
 	}
-	entries := make([]ace, 0, count)
+	entries := make([]ACE, 0, count)
 	for i := range int(count) {
 		e := sec[44+i*aceSize:]
-		entries = append(entries, ace{flags: le.Uint32(e[16:]), rights: le.Uint32(e[20:])})
+		entries = append(entries, ACE{Flags: le.Uint32(e[16:]), Rights: le.Uint32(e[20:])})
 	}
 	return entries, nil
 }

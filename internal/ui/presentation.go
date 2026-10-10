@@ -86,10 +86,14 @@ func (m Model) screen() present.Screen {
 	s.Identity = m.identity()
 	s.Context = m.context()
 	switch {
+	case a.expired && a.disk != nil && a.disk.clearFailed:
+		s.Status = uitext.Inline(uitext.SessionExpiredDiskKept)
 	case a.expired:
 		s.Status = uitext.Inline(uitext.SessionExpired)
 	case a.pause.After(a.now()):
 		s.Status = uitext.Fill(uitext.RateLimited, a.pause.UTC().Format("15:04:05"))
+	case a.diskStatus() != 0:
+		s.Status = uitext.Inline(a.diskStatus())
 	}
 	return s
 }

@@ -3,8 +3,8 @@
 Working notes for coding agents in this repository (Claude Code reads this
 file through `CLAUDE.md`). The README says what the
 program does; this file says how to change it without repeating mistakes the
-reviews of C0 already found. Status: 2026-10-10, main at C1d (the ticket
-page by page, expansion, #12); C1f (mark as read) is this branch.
+reviews of C0 already found. Status: 2026-10-10, main at C1f (mark as
+read, #13); C1e (the disk cache) is this branch, and with it C1 is complete.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
@@ -29,7 +29,9 @@ on a Mac before every merge, by running the tests here.
 | `internal/transport` | REST `/api/v1` and MCP `/api/mcp`; every answer becomes one `Answer` with one `Class` |
 | `internal/api` | one adapter per tool or REST reader, each with a `Spec` |
 | `internal/features` | which features a server has, from `tools/list` and input schemas |
-| `internal/cache` | the decisions on an answer, from its class alone, and the memory store they act on |
+| `internal/cache` | the decisions on an answer, from its class alone, the memory store they act on, and the journal of its changes the disk replays |
+| `internal/diskcache` | the disk cache (C1e): one directory per profile, one lock per run, a replay of the journal, every file checked before it is an entry |
+| `internal/privatefs` | the one threat model of the client's private files (the config, its lock, the disk cache): owners, modes, the directory chain, macOS access lists, locks |
 | `internal/queue` | the one queue every request goes through |
 | `internal/gateway` | reads from the queue to the interface: one typed message per waiter, and `Scope`, which checks a result before it is cached |
 | `internal/worker` | the supervisor: the only place a goroutine is started, its panics become one fatal error |
@@ -38,7 +40,7 @@ on a Mac before every merge, by running the tests here.
 | `internal/uitext` | every text of the interface, in English, in one place |
 | `internal/terminal` | the UTF-8 locale check before raw mode |
 | `internal/inboxfixture` | the loopback stand-in for a server, built from the contract copy; `tools/inbox-fixture` serves it for a person |
-| `internal/profile` | server plus token; the config file and its threat model |
+| `internal/profile` | server plus token; the config file, checked through `internal/privatefs` |
 | `internal/safefile` | reading files the client does not control |
 | `internal/claudecfg` | Lalabase entries in Claude Code's configuration (`auth import`) |
 | `internal/clean` | making foreign text safe for a terminal |
@@ -69,11 +71,14 @@ on a Mac before every merge, by running the tests here.
 5. **Every request goes through `internal/queue`**, also in `auth` commands.
    Every received 429 pauses, whatever became of its body. A job is retried
    at most once.
-6. **One threat model per area, no exceptions.** For the config: another local
-   user without root (README "The config's way"). Round 4 of C0c added
-   exceptions (sticky directories, links, root) and each one opened the next
-   hole; round 5 replaced them with the one model. When a case seems to need
-   an exception, check it against the model instead.
+6. **One threat model per area, no exceptions.** For the client's own files
+   (the config, its lock file, the disk cache): another local user without
+   root, held in `internal/privatefs` for all of them (README "The config's
+   way"). Round 4 of C0c added exceptions (sticky directories, links, root)
+   and each one opened the next hole; round 5 replaced them with the one
+   model. When a case seems to need an exception, check it against the
+   model instead. A new file the client keeps goes through that package,
+   not through a check of its own.
 7. **Files the client does not control** are read through `internal/safefile`:
    regular file, opened without blocking, size limit, a larger file is an
    error, never cut.
@@ -96,8 +101,12 @@ on a Mac before every merge, by running the tests here.
     cached or shown only after `gateway.Scope.Receive` accepted it.
     Where the interface and its work reach, production code imports only
     from the guard's allowlist (`reachableImports`); a new import there is a
-    decision about writing and goroutines, not a fix for a red guard. No dot
-    imports anywhere. A function the standard library runs on a goroutine of
+    decision about writing and goroutines, not a fix for a red guard. The
+    three packages that keep the client's files (`internal/diskcache`,
+    `internal/privatefs`, `internal/safefile`) have their file calls named
+    one by one in `fileSystemImports`, the output and goroutine rules hold
+    there too, and no other package gets those names. No dot imports
+    anywhere. A function the standard library runs on a goroutine of
     its own (an httptrace hook, a dial, a TLS callback) is set only through
     transport's `onWire` wrappers (`foreignCallbackTypes` in the guard; its
     fields are read from the types, in all production code). They raise its
