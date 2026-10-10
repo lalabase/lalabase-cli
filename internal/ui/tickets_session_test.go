@@ -1318,3 +1318,19 @@ func TestAVanishedOrganisationResetsTheHighlightToAnEntryThatExists(t *testing.T
 		t.Fatalf("cursor %d, enter offered %v", h.m.screen().Chooser.Cursor, h.m.allowed()[OpenList])
 	}
 }
+
+// A 401 in a result ends the session through the result itself, also
+// without a mailbox to observe it (the model's own check, not only the
+// mailbox's). (A mutation probe of the reviewer survived without it.)
+func TestA401InAResultEndsTheSessionWithoutAMailbox(t *testing.T) {
+	h := newHarness(t)
+	h.start()
+	a := h.m.app
+	a.deps.Events = nil
+	a.deps.Gateway = gateway.New(h.live, h.q, h.f)
+	h.f.setProjects(func(string) transport.Answer { return failing(transport.Unauthenticated, 401) })
+	h.drive(h.chooseTickets(orgA))
+	if !a.expired || a.projects != nil || a.store != nil {
+		t.Fatalf("expired %v, projects %v, store %v", a.expired, a.projects != nil, a.store != nil)
+	}
+}
