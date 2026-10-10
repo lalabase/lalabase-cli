@@ -343,8 +343,13 @@ func TestTheSizeBoundsHoldAndTheOldestGoesFirst(t *testing.T) {
 	// 1: the earlier case was refused for its time, not its size).
 	over := []byte(`"` + strings.Repeat("a", MaxEntryBytes-1) + `"`)
 	apply(t, c, t0, put(k, cache.Entry{Payload: over, LoadedAt: t0}))
-	if _, ok := read(t, c, k, t0); ok || c.Files() != 0 {
-		t.Fatal("an oversized payload was kept, or the older entry came back")
+	// Never written in the first place: the read's own size check must
+	// not be what keeps it out.
+	if c.Files() != 0 || len(names(t, c.Dir())) != 1 {
+		t.Fatalf("an oversized payload was written: %v", names(t, c.Dir()))
+	}
+	if _, ok := read(t, c, k, t0); ok {
+		t.Fatal("the older entry came back")
 	}
 	// A record whose metadata takes it over MaxFileBytes is not kept either.
 	long := k
