@@ -1381,9 +1381,12 @@ func TestARemovedOrganisationClosesItsTicketList(t *testing.T) {
 	a := h.m.app
 	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
 	h.drive(h.press("enter"))
-	// The projects reload lands late, as "not found".
+	// The projects reload lands late, as "not found", while the ticket is
+	// opened: the focus leaves the pane that holds nothing any more.
 	h.f.setProjects(func(string) transport.Answer { return failing(transport.NotFound, 404) })
-	h.m.focus = view.List
+	if h.m.focus != view.Object {
+		t.Fatal("setup: the ticket is not opened")
+	}
 	h.drive(a.issue(gateway.Projects, a.projects.key, forProjects, queue.User))
 	if a.tickets != nil || a.detail != nil || a.projects == nil || len(a.projects.rows) != 0 || h.m.focus != view.List {
 		t.Fatalf("tickets %v detail %v projects %+v focus %d", a.tickets != nil, a.detail != nil, a.projects, h.m.focus)
@@ -1460,5 +1463,103 @@ func TestOneLineFieldsCannotOpenALineInThePane(t *testing.T) {
 		if strings.HasPrefix(line, "FORGED_LINE") || strings.HasPrefix(line, "more") {
 			t.Fatalf("line %d opened by a one-line field: %q", i, line)
 		}
+	}
+}
+
+// Review round 2 probes: a page beyond the last after a shrink is corrected
+// once, like the inbox's; the correction drops the resource's cached pages
+// and the ticket in the pane, and cancels a preview of the old page; a
+// second shrink stops with R; a total of zero shows an empty page 1.
+func TestAShrunkTicketListIsCorrectedOnce(t *testing.T) {
+	h := newHarness(t)
+	total := 60
+	h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+		rows := h.d.ticketRows(website, total)
+		per := q.PerPage
+		from := (q.Page - 1) * per
+		var data []api.TicketRow
+		if from < len(rows) {
+			data = rows[from:min(len(rows), from+per)]
+		}
+		return ticketPageAnswer(q.Page, per, total, data)
+	})
+	h.openTickets(website)
+	h.drive(h.press("]"))
+	h.drive(h.press("]"))
+	a := h.m.app
+	v := a.tickets
+	if v.page != 3 || len(v.rows) != 10 {
+		t.Fatalf("page %d, %d rows", v.page, len(v.rows))
+	}
+	oldKey := v.key
+	// A preview of a row of page 3 is pending when the shrink lands.
+	gate := make(chan struct{})
+	h.f.gate, h.f.gateTicket = gate, v.selected
+	preview := h.background(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})[0])
+	h.waitFor("the preview on the wire", func() bool { return len(h.f.detailReads()) == 1 })
+	total = 30
+	before := len(h.f.ticketListReads())
+	h.drive(h.press("R"))
+	if v.page != 2 || len(v.rows) != 5 || len(h.f.ticketListReads()) != before+2 {
+		t.Fatalf("after the shrink: page %d, %d rows, %d reads", v.page, len(v.rows), len(h.f.ticketListReads())-before)
+	}
+	if _, ok := a.store.Get(oldKey); ok {
+		t.Fatal("the old page stayed cached")
+	}
+	if r := h.receive(preview).(gateway.TicketResult); r.Answer.Class != transport.Canceled {
+		t.Fatalf("the preview of the old page was not canceled: %v", r.Answer.Class)
+	}
+	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH | Tickets | Website-Relaunch | page 2 of 2" {
+		t.Fatalf("context %q", got)
+	}
+	// A second shrink during the correction: stop, offer R.
+	total = 60
+	h.f.gate = nil
+	h.drive(h.press("R"))
+	h.drive(h.press("]"))
+	if v.page != 3 {
+		t.Fatalf("page %d", v.page)
+	}
+	shrinks := 0
+	h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+		shrinks++
+		if shrinks == 1 {
+			return ticketPageAnswer(q.Page, q.PerPage, 30, nil) // page 3 of 30: beyond
+		}
+		return ticketPageAnswer(q.Page, q.PerPage, 10, nil) // page 2 of 10: beyond again
+	})
+	before = len(h.f.ticketListReads())
+	h.drive(h.press("R"))
+	if len(h.f.ticketListReads()) != before+2 || v.page != 2 {
+		t.Fatalf("second shrink: %d reads, page %d", len(h.f.ticketListReads())-before, v.page)
+	}
+	if got := h.m.screen().List.Notice.String(); got != "The list shrank again. R refresh." || !h.m.allowed()[Refresh] {
+		t.Fatalf("notice %q, R %v", got, h.m.allowed()[Refresh])
+	}
+	// Zero: an empty page 1 without a request.
+	h.f.setTickets(func(q api.TicketQuery) transport.Answer { return ticketPageAnswer(q.Page, q.PerPage, 0, nil) })
+	before = len(h.f.ticketListReads())
+	h.drive(h.press("R"))
+	if len(h.f.ticketListReads()) != before+1 || v.page != 1 || len(v.rows) != 0 {
+		t.Fatalf("zero: %d reads, page %d, %d rows", len(h.f.ticketListReads())-before, v.page, len(v.rows))
+	}
+	if _, ok := a.store.Get(a.ticketsKey(website, "", 1)); ok {
+		t.Fatal("a page-2 payload was filed under page 1")
+	}
+}
+
+// Review round 2 probe: a ticket opened again starts at its top, however
+// far the pane was scrolled before.
+func TestAReopenedTicketStartsAtTheTop(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	h.drive(h.press("enter"))
+	a.detail.offset = 7
+	h.press("esc")
+	h.press("enter")
+	if a.detail.offset != 0 {
+		t.Fatalf("offset %d", a.detail.offset)
 	}
 }

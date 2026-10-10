@@ -138,12 +138,21 @@ func terminalOutputError(output string) error {
 }
 
 func TestTerminalOutputAllowlist(t *testing.T) {
-	for _, bad := range []string{terminalHostile, "\x1b[31m", "\x1b[8t", "\x1b]8;;https://evil.invalid\x07", "\x1b]52;c;YQ==\x1b\\", "\x1bPdata\x1b\\", "\x07", "\u202e", "\xff", "\x1b["} {
+	for _, bad := range []string{terminalHostile, "\x1b[31m", "\x1b[8t", "\x1b]8;;https://evil.invalid\x07", "\x1b]52;c;YQ==\x1b\\", "\x1bPdata\x1b\\", "\x07", "\u202e", "\xff", "\x1b[",
+		// Other ESC commands than the reverse index, and tab moves with
+		// a parameter out of range.
+		"\x1b7", "\x1b8", "\x1bc", "\x1b(0", "\x1b[5000I", "\x1b[5000Z"} {
 		if err := terminalOutputError(bad); err == nil {
 			t.Errorf("accepted hostile stream %q", bad)
 		}
 	}
 	if err := terminalOutputError("safe\r\n\x1b[1mBold\x1b[m\x1b[?1049h\x1b[?1049l"); err != nil {
+		t.Fatal(err)
+	}
+	// The renderer's tab-stop moves and the reverse index, which it writes
+	// when lines move (C1c, the ticket pane): allowed, as they appear only
+	// on some frames.
+	if err := terminalOutputError("\x1b[2I\x1b[Z\x1b[3Z\x1b[10;23r\x1b[10;1H\x1bM\x1b[1;24r"); err != nil {
 		t.Fatal(err)
 	}
 }
