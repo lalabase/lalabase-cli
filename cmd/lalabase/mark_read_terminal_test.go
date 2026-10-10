@@ -181,6 +181,17 @@ func TestPTYMarkReadFlow(t *testing.T) {
 					t.Fatalf("the write reloaded the ticket: %+v", r)
 				}
 			}
+			// The whole run: the start (/me, initialize, tools/list,
+			// /organisations, the counters), A's page 1, four reads of
+			// ticket #6 (the open, comments page 2, attachments page 2, the
+			// description whole), the write, the two reloads.
+			if n := len(f.Requests()); n != 13 {
+				var lines []string
+				for _, r := range f.Requests() {
+					lines = append(lines, fmt.Sprintf("%s %s %s %v", r.Method, r.Path, r.Tool, r.Args))
+				}
+				t.Fatalf("%d requests in the run:\n%s", n, strings.Join(lines, "\n"))
+			}
 		})
 	}
 }
