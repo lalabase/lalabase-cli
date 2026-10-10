@@ -118,13 +118,13 @@ func TestPTYInboxFlow(t *testing.T) {
 		t.Run(fmt.Sprintf("%d", width), func(t *testing.T) {
 			c, f := startInbox(t, inboxfixture.Temporary, width)
 			c.expect(t, "the directory and the counters", width, "All organisations", "Nordlicht GmbH", "Südwind AG", "33", "30")
-			c.act(t, keyDown, width, "> Nordlicht GmbH")
+			c.moveTo(t, keyDown, width, "Nordlicht GmbH", "Inbox", 1)
 			c.act(t, keyEnter, width, "#1 Benachrichtigung", "Nordlicht GmbH | Inbox | page 1 of 2")
 			if width == 120 {
 				// Highlighting another organisation relabels nothing: the
 				// heading is the open inbox's, not the cursor's.
 				c.act(t, keyEsc, width, "esc inbox")
-				c.act(t, keyDown, width, "> Südwind AG")
+				c.moveTo(t, keyDown, width, "Südwind AG", "Inbox", 2)
 				if !c.screenShows(width, "Nordlicht GmbH | Inbox | page 1 of 2") {
 					t.Fatalf("the heading followed the cursor:\n%s", strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
 				}
@@ -180,7 +180,7 @@ const orgA = inboxfixture.OrgA
 // shown, keys do nothing but leave, and q still restores the terminal.
 func TestPTYInboxExpiresOn401(t *testing.T) {
 	c, _ := startInbox(t, inboxfixture.Unauthorized, 80)
-	c.act(t, keyDown, 80, "> Nordlicht GmbH")
+	c.moveTo(t, keyDown, 80, "Nordlicht GmbH", "Inbox", 1)
 	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "Nordlicht GmbH | Inbox")
 	c.act(t, "]", 80, "Session expired. Restart lalabase.")
 	if c.screenShows(80, "Benachrichtigung") || c.screenShows(80, "Nordlicht") || c.screenShows(80, "Anna Albers") {
@@ -207,7 +207,7 @@ func TestPTYInboxExpiresOn401(t *testing.T) {
 // A 429 is shown with its deadline and the read goes on after the window.
 func TestPTYInboxShowsTheRateLimitPause(t *testing.T) {
 	c, f := startInbox(t, inboxfixture.RateLimited, 80)
-	c.act(t, keyDown, 80, "> Nordlicht GmbH")
+	c.moveTo(t, keyDown, 80, "Nordlicht GmbH", "Inbox", 1)
 	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "Nordlicht GmbH | Inbox")
 	c.act(t, "]", 80, "Rate limited until")
 	c.expect(t, "the retry after the window", 80, "#26 Benachrichtigung")
@@ -229,7 +229,7 @@ func TestPTYInboxShowsTheRateLimitPause(t *testing.T) {
 func TestPTYInboxWithoutTheOrganisationFilter(t *testing.T) {
 	c, f := startInbox(t, inboxfixture.Older, 80)
 	c.expect(t, "the limitation", 80, "first page only")
-	c.act(t, keyDown, 80, "> Nordlicht GmbH")
+	c.moveTo(t, keyDown, 80, "Nordlicht GmbH", "Inbox", 1)
 	before := len(f.Requests())
 	if err := c.send(keyEnter); err != nil {
 		t.Fatal(err)
@@ -238,7 +238,7 @@ func TestPTYInboxWithoutTheOrganisationFilter(t *testing.T) {
 	if len(f.Requests()) != before {
 		t.Fatal("an organisation opened without the filter")
 	}
-	c.act(t, keyUp, 80, "> All organisations")
+	c.moveTo(t, keyUp, 80, "All organisations", "Inbox", 1)
 	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "All organisations | Inbox")
 	if err := c.send("]"); err != nil {
 		t.Fatal(err)
@@ -261,7 +261,7 @@ func TestPTYInboxWithoutTheOrganisationFilter(t *testing.T) {
 // Ctrl-C in the inbox restores the terminal and exits with 130.
 func TestPTYInboxInterrupt(t *testing.T) {
 	c, _ := startInbox(t, inboxfixture.Normal, 80)
-	c.act(t, keyDown, 80, "> Nordlicht GmbH")
+	c.moveTo(t, keyDown, 80, "Nordlicht GmbH", "Inbox", 1)
 	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "Nordlicht GmbH | Inbox")
 	if err := c.send("\x03"); err != nil {
 		t.Fatal(err)

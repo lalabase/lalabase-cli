@@ -83,10 +83,11 @@ func terminalOutputError(output string) error {
 						}
 					}
 					return
-				// Cursor moves, erasing, inserting and deleting cells or lines,
-				// scrolling: what the renderer writes when a line changes in
-				// the middle. Foreign text cannot reach these: it is cleaned.
-				case 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'X', 'd', 'P', '@', 'L', 'M', 'S', 'T':
+				// Cursor moves (by cells and by tab stops, I and Z), erasing,
+				// inserting and deleting cells or lines, scrolling: what the
+				// renderer writes when a line changes in the middle. Foreign
+				// text cannot reach these: it is cleaned.
+				case 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'I', 'X', 'Z', 'd', 'P', '@', 'L', 'M', 'S', 'T':
 					if len(values) <= 1 && (len(values) == 0 || values[0] >= 0 && values[0] <= 4096) {
 						return
 					}
@@ -118,7 +119,15 @@ func terminalOutputError(output string) error {
 			}
 			reject(fmt.Sprintf("CSI %c/%c/%c %v", prefix, intermediate, final, values))
 		},
-		HandleEsc: func(ansi.Cmd) { reject("ESC") }, HandleOsc: func(int, []byte) { reject("OSC") }, HandleDcs: func(ansi.Cmd, ansi.Params, []byte) { reject("DCS") },
+		HandleEsc: func(cmd ansi.Cmd) {
+			// Reverse index (ESC M): the renderer scrolls a region down by
+			// one line with it when lines move. Nothing else.
+			if cmd.Final() == 'M' && cmd.Intermediate() == 0 {
+				return
+			}
+			reject("ESC")
+		},
+		HandleOsc: func(int, []byte) { reject("OSC") }, HandleDcs: func(ansi.Cmd, ansi.Params, []byte) { reject("DCS") },
 		HandleApc: func([]byte) { reject("APC") }, HandlePm: func([]byte) { reject("PM") }, HandleSos: func([]byte) { reject("SOS") },
 	})
 	p.Parse([]byte(output))

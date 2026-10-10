@@ -31,13 +31,29 @@ var fatalScenarios = map[string]string{
 	"panic-gateway": "gateway: inbox",
 }
 
-type panicSource struct{}
+// inboxOnly is a source of the inbox alone: the other reads of the
+// gateway's Source are refused, so a fault source needs one method.
+type inboxOnly struct{}
+
+func (inboxOnly) ProjectsAnswer(context.Context, string) transport.Answer {
+	return transport.Answer{Class: transport.Refused, Message: "not in this test"}
+}
+
+func (inboxOnly) TicketsAnswer(context.Context, api.TicketQuery) transport.Answer {
+	return transport.Answer{Class: transport.Refused, Message: "not in this test"}
+}
+
+func (inboxOnly) TicketAnswer(context.Context, string, string, api.TicketOptions) transport.Answer {
+	return transport.Answer{Class: transport.Refused, Message: "not in this test"}
+}
+
+type panicSource struct{ inboxOnly }
 
 func (panicSource) NotificationsAnswer(context.Context, api.NotificationQuery) transport.Answer {
 	panic("C1b flight fault")
 }
 
-type throttledSource struct{}
+type throttledSource struct{ inboxOnly }
 
 func (throttledSource) NotificationsAnswer(context.Context, api.NotificationQuery) transport.Answer {
 	return transport.Answer{Class: transport.Temporary, Status: 429, RetryAt: time.Now().Add(50 * time.Millisecond), Sent: true}

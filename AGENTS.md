@@ -3,8 +3,9 @@
 Working notes for coding agents in this repository (Claude Code reads this
 file through `CLAUDE.md`). The README says what the
 program does; this file says how to change it without repeating mistakes the
-reviews of C0 already found. Status: 2026-10-08, main at C1a (the terminal
-shell); C1b-1 adds the gateway, the memory cache and the supervised workers.
+reviews of C0 already found. Status: 2026-10-10, main at C1b (organisations
+and the inbox, #9 and #10); C1c (projects, tickets, the ticket) is this
+branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
@@ -33,6 +34,11 @@ on a Mac before every merge, by running the tests here.
 | `internal/queue` | the one queue every request goes through |
 | `internal/gateway` | reads from the queue to the interface: one typed message per waiter, and `Scope`, which checks a result before it is cached |
 | `internal/worker` | the supervisor: the only place a goroutine is started, its panics become one fatal error |
+| `internal/ui` | the root Bubble Tea model: owns every piece of state, issues reads through the gateway, builds the screen; `view/` renders it and knows nothing else |
+| `internal/present` | the display values the views take: opaque, cleaned once, a cast cannot forge one |
+| `internal/uitext` | every text of the interface, in English, in one place |
+| `internal/terminal` | the UTF-8 locale check before raw mode |
+| `internal/inboxfixture` | the loopback stand-in for a server, built from the contract copy; `tools/inbox-fixture` serves it for a person |
 | `internal/profile` | server plus token; the config file and its threat model |
 | `internal/safefile` | reading files the client does not control |
 | `internal/claudecfg` | Lalabase entries in Claude Code's configuration (`auth import`) |
