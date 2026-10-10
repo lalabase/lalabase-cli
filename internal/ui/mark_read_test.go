@@ -1035,3 +1035,105 @@ func TestThePageCorrectionAfterAMarkKeepsTheTicket(t *testing.T) {
 		t.Fatalf("after esc: origin %v, focus %d, opened %q, selected %q", a.origin, h.m.focus, a.active.opened, a.active.selected)
 	}
 }
+
+// Review round 1, finding 1: the session's end ends a running write. A
+// write out on the wire when a 401 on a read expires the session is
+// canceled, and its result fills nothing.
+func TestExpiryCancelsARunningWrite(t *testing.T) {
+	h := newHarness(t)
+	h.start()
+	h.drive(h.choose(orgA))
+	a := h.m.app
+	gate := make(chan struct{})
+	defer close(gate)
+	h.f.setMarkGate(gate)
+	result := h.background(h.press("r"))
+	h.waitForWriteOnWire(1)
+	h.f.set(func(api.NotificationQuery) transport.Answer { return failing(transport.Unauthenticated, 401) })
+	h.drive(h.press("R"))
+	if !a.expired {
+		t.Fatal("setup: the 401 did not expire the session")
+	}
+	var msg tea.Msg
+	select {
+	case msg = <-result:
+	case <-time.After(wall):
+		t.Fatal("the write outlived the session")
+	}
+	r, ok := msg.(gateway.MarkReadResult)
+	if !ok || r.Answer.Class != transport.Canceled {
+		t.Fatalf("the write ended with %T %+v", msg, msg)
+	}
+	if cmds := h.feed(r); len(cmds) != 0 || len(a.marks) != 0 || a.active != nil {
+		t.Fatal("the canceled write filled the ended session")
+	}
+}
+
+// Review round 1, finding 2: without the ticket tool the details offer no
+// o, and o sends nothing.
+func TestOIsNotOfferedWithoutTheTicketTool(t *testing.T) {
+	h := newHarness(t)
+	tools := withoutTool(h.d.tools, "get_ticket")
+	h.f.tools = func() ([]transport.Tool, transport.Answer) {
+		return tools, transport.Answer{Class: transport.Object, Status: 200, Sent: true}
+	}
+	h.start()
+	h.openDetails(orgA, 0)
+	a := h.m.app
+	if h.m.allowed()[Order] || strings.Contains(helpText(h.m), "open ticket") {
+		t.Fatalf("o offered without get_ticket: %q", helpText(h.m))
+	}
+	if _, cmd := h.m.sessionKey(Order); cmd != nil || a.origin != nil || a.detail != nil || len(h.f.detailReads()) != 0 {
+		t.Fatal("o acted without get_ticket")
+	}
+	// r is still there: marking needs no ticket.
+	if !h.m.allowed()[MarkRead] {
+		t.Fatal("r not offered")
+	}
+}
+
+// Review round 1, finding 3: the lock after an unknown outcome holds for
+// the reads that clear it up and for nothing else. A later read of the
+// same inbox (R, say) neither hides r again nor says "refreshing".
+func TestTheLockAfterAnUnknownOutcomeHoldsForItsOwnReadsOnly(t *testing.T) {
+	h := newHarness(t)
+	h.start()
+	h.openLinked(orgA, 0)
+	a := h.m.app
+	row := a.origin.notification
+	h.f.setMark(func(id, _ string) (api.NotificationState, transport.Answer) {
+		return api.NotificationState{}, transport.Answer{Class: transport.Temporary, Sent: true, Message: "unexpected EOF"}
+	})
+	result := resultOf(h, h.press("r"))
+	cmds := h.feed(result)
+	if a.marks[row].state != markUnknown || h.m.allowed()[MarkRead] {
+		t.Fatal("setup: not unknown and locked")
+	}
+	// The reads of the clarification are out: a page turn of the inbox
+	// abandons them, and the lock goes with them.
+	h.drive(cmds...)
+	if h.m.allowed()[MarkRead] != true {
+		t.Fatal("r not offered after the reads landed")
+	}
+	// A later read of the inbox, the person's R from the list: while it is
+	// out, r stays offered on the ticket and the text does not say
+	// refreshing.
+	h.m.focus = view.List
+	later := h.press("R")
+	if later == nil || !a.pending(a.active.key) {
+		t.Fatal("setup: no read of the page is out")
+	}
+	h.m.focus = view.Object
+	if !h.m.allowed()[MarkRead] {
+		t.Fatal("a later read of the inbox locked r again")
+	}
+	mustContain(t, h.paneText(), "Notification: unread · Result unknown")
+	mustNotContain(t, h.paneText(), "refreshing")
+	if got := h.m.objectColumn().Notice.String(); got != "Result unknown" {
+		t.Fatalf("notice %q", got)
+	}
+	h.drive(later)
+	if !h.m.allowed()[MarkRead] || a.marks[row].state != markUnknown {
+		t.Fatal("the later read changed the state")
+	}
+}

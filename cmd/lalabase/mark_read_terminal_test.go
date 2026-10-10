@@ -310,7 +310,7 @@ func TestPTYRefusedMarksKeepTheTicket(t *testing.T) {
 		c.act(t, "o", 120, fmt.Sprintf("#%d ", tc.row), "Notification: unread", "esc notification")
 		ticketReads := len(ticketReadsOf(f))
 		c.act(t, "r", 120, tc.text, "r mark read")
-		if !c.screenShows(120, fmt.Sprintf("#%d ", tc.row), "Description") && tc.row != 2 {
+		if !c.screenShows(120, fmt.Sprintf("#%d ", tc.row), "Description") {
 			t.Fatalf("row %d: the ticket went:\n%s", tc.row, strings.Join(renderScreen(c.bytes(), 24, 120), "\n"))
 		}
 		if len(ticketReadsOf(f)) != ticketReads {

@@ -66,6 +66,10 @@ type markOp struct {
 	state  markState
 	err    present.Inline
 	cancel context.CancelFunc
+	// clarifiers are the reads afterMark issued for this operation: while
+	// one of them is out, an unknown outcome is being cleared up and the
+	// lock holds. A later read of the same inbox is not one of them.
+	clarifiers []gateway.Waiter
 }
 
 // origin is the notification a ticket in the object pane was opened from.
@@ -181,8 +185,9 @@ func (m Model) markTarget() (markTarget, bool) {
 
 // markBlocks: an operation on the notification holds the lock: it runs,
 // it was confirmed (nothing to mark again), or its outcome is unknown and
-// the reads that clear it up are still out. A refused or unsent one frees
-// the key: the next r is the person's new action.
+// the reads that clear it up are still out (review round 1, finding 3:
+// those reads, not any later read of the inbox). A refused or unsent one
+// frees the key: the next r is the person's new action.
 func (a *app) markBlocks(notification string) bool {
 	op := a.marks[notification]
 	if op == nil {
@@ -197,11 +202,12 @@ func (a *app) markBlocks(notification string) bool {
 	return false
 }
 
-// clarifying: a read of one of the inbox variants the operation touched is
-// still out.
+// clarifying: one of the reads issued for the operation's outcome is still
+// out for somebody. A read the person canceled since (a page turn, another
+// inbox) clears nothing up any more.
 func (a *app) clarifying(op *markOp) bool {
-	for _, res := range a.touchedResources(op) {
-		if a.pendingResource(res) {
+	for _, id := range op.clarifiers {
+		if w := a.waiters[id]; w != nil && !w.canceled {
 			return true
 		}
 	}
@@ -213,16 +219,6 @@ func (a *app) clarifying(op *markOp) bool {
 // organisations, every page of each.
 func (a *app) touchedResources(op *markOp) []cache.Key {
 	return []cache.Key{a.inboxKey(op.org, 1).Resource(), a.inboxKey("", 1).Resource()}
-}
-
-// pendingResource reports a read of any key of the resource still out.
-func (a *app) pendingResource(res cache.Key) bool {
-	for _, w := range a.waiters {
-		if !w.canceled && w.ticket.Key.Resource() == res {
-			return true
-		}
-	}
-	return false
 }
 
 // markRead is r: the target captured, the lock set, the command made. The
@@ -335,9 +331,20 @@ func (a *app) afterMark(op *markOp) tea.Cmd {
 	}
 	a.counters[op.org] = count{seq: a.counters[op.org].seq}
 	a.global = count{seq: a.global.seq}
+	before := make(map[gateway.Waiter]bool, len(a.waiters))
+	for id := range a.waiters {
+		before[id] = true
+	}
 	cmds := []tea.Cmd{a.issueCounters()}
 	if v := a.active; v != nil && (v.org == op.org || v.org == "") {
 		cmds = append(cmds, a.refreshActive())
+	}
+	// The reads just issued are the operation's clarifiers.
+	op.clarifiers = nil
+	for id := range a.waiters {
+		if !before[id] {
+			op.clarifiers = append(op.clarifiers, id)
+		}
 	}
 	return tea.Batch(cmds...)
 }
