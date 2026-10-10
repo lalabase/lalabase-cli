@@ -181,6 +181,7 @@ func (m *Model) expire() {
 		return
 	}
 	a.expired = true
+	m.mode = Navigate
 	for i := range a.steps {
 		if a.steps[i].cancel != nil {
 			a.steps[i].cancel()

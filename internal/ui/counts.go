@@ -6,6 +6,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/present"
+	"github.com/gboyke/lalabase-cli/internal/queue"
 )
 
 // Counters: organisation id → known, value, sequence. The sequence is the
@@ -40,7 +41,7 @@ func (a *app) issueCounters() tea.Cmd {
 		return nil
 	}
 	a.steps[stepCounters].state = loading
-	return a.issue(gateway.Organisations, key, forCounters)
+	return a.issue(gateway.Organisations, key, forCounters, queue.User)
 }
 
 // applyCounters takes the counts of an accepted page: a global page is a

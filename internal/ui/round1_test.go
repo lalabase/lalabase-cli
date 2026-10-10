@@ -168,7 +168,7 @@ func TestFallbacksJudgeTheCleanedText(t *testing.T) {
 	if !strings.HasPrefix(s.Identity.String(), "Unknown user") {
 		t.Errorf("identity %q", s.Identity.String())
 	}
-	if got := s.Chooser.Rows[1].Primary.String(); got != "Unnamed organisation" {
+	if got := headingRow(h.m, orgA).Primary.String(); got != "Unnamed organisation" {
 		t.Errorf("organisation %q", got)
 	}
 	if got := s.Context.String(); !strings.HasPrefix(got, "Unnamed organisation | Inbox") {

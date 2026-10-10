@@ -75,7 +75,7 @@ func TestR3RFromFailedGlobalPageOneLoads(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("R did nothing")
 	}
-	t.Logf("pending(view key)=%v loading=%v notice=%q nextOffered=%v help=%q", a.pending(a.active.key), a.active.loading, listNotice(a.active).String(), h.m.allowed()[NextPage], helpText(h.m))
+	t.Logf("pending(view key)=%v loading=%v notice=%q nextOffered=%v help=%q", a.pending(a.active.key), a.active.loading, h.m.screen().List.Notice.String(), h.m.allowed()[NextPage], helpText(h.m))
 	if a.pending(a.active.key) && !a.active.loading {
 		t.Errorf("a read of the view's key is out, the view does not load")
 	}

@@ -106,7 +106,7 @@ func TestCountersFollowTheRequestSequence(t *testing.T) {
 	if c := a.countOf(orgB); c.known || c.seq == 0 {
 		t.Fatalf("omitted B: %+v", c)
 	}
-	if got := h.m.screen().Chooser.Rows[2].Trailing.String(); got != "?" {
+	if got := countShown(h.m, orgB); got != "?" {
 		t.Fatalf("omitted B shows %q", got)
 	}
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
@@ -128,13 +128,15 @@ func TestHighlightingSendsNothingAndEnterChooses(t *testing.T) {
 	h.start()
 	before := len(h.f.inboxCalls())
 	h.m.focus = view.Navigation
-	for _, key := range []string{"down", "down", "up", "down"} {
+	// Adapted in C1c: the chooser has an inbox and a tickets entry per
+	// organisation, so B's inbox is three steps down.
+	for _, key := range []string{"down", "down", "down", "up", "down"} {
 		if cmd := h.press(key); cmd != nil {
 			t.Fatalf("%s issued a command", key)
 		}
 	}
 	a := h.m.app
-	if a.highlight != orgB || a.active != nil || len(h.f.inboxCalls()) != before {
+	if a.highlight != orgB || a.highlightSection != sectionInbox || a.active != nil || len(h.f.inboxCalls()) != before {
 		t.Fatalf("highlight %q, active %v, reads %d", a.highlight, a.active != nil, len(h.f.inboxCalls()))
 	}
 	h.m.app.highlight = orgA

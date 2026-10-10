@@ -36,6 +36,8 @@ const (
 	PrevPage
 	NextPage
 	Refresh
+	Search
+	DeleteBack
 )
 
 type keyAction struct {
@@ -43,6 +45,10 @@ type keyAction struct {
 	Text string
 }
 
+// routeKey names what a key does in a mode. In navigation every key is one
+// action or nothing; in text entry every printable key is text, Enter
+// sends, Esc cancels, Backspace deletes, and Ctrl-C interrupts as
+// everywhere. A key never does both.
 func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 	name := key.String()
 	if name == "ctrl+c" {
@@ -54,6 +60,8 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 			return keyAction{Kind: Submit}
 		case "esc":
 			return keyAction{Kind: Cancel}
+		case "backspace":
+			return keyAction{Kind: DeleteBack}
 		}
 		text := key.Text
 		if text == "" && key.Code <= unicode.MaxRune && unicode.IsPrint(key.Code) && key.Mod & ^tea.ModShift == 0 {
@@ -94,6 +102,8 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: NextPage}
 	case "R":
 		return keyAction{Kind: Refresh}
+	case "/":
+		return keyAction{Kind: Search}
 	}
 	return keyAction{}
 }
@@ -148,6 +158,19 @@ func (m Model) actions() []binding { return m.bindings(m.small()) }
 // bindings are the actions of the state, with or without the room for
 // them (small).
 func (m Model) bindings(small bool) []binding {
+	if m.mode == TextEntry {
+		// The search line: q is text here, so quitting is not offered;
+		// deleting only while there is something to delete.
+		out := []binding{{Cancel, uitext.EscapeKey, uitext.CancelHelp}, {Interrupt, uitext.InterruptKey, uitext.InterruptHelp}}
+		if small {
+			return out
+		}
+		out = append([]binding{{Submit, uitext.EnterKey, uitext.SearchHelp}}, out...)
+		if a := m.app; a != nil && a.tickets != nil && a.tickets.entry != "" {
+			out = append(out[:2:2], binding{DeleteBack, uitext.BackspaceKey, uitext.DeleteHelp}, out[2])
+		}
+		return out
+	}
 	out := []binding{{Quit, uitext.QuitKey, uitext.QuitHelp}, {Interrupt, uitext.InterruptKey, uitext.InterruptHelp}}
 	if small {
 		return out
@@ -169,44 +192,13 @@ func (m Model) bindings(small bool) []binding {
 		}
 		return out
 	}
-	v := a.active
 	switch m.focus {
 	case view.Navigation:
-		if len(a.entries()) > 1 {
-			out = append(out, binding{Up, uitext.UpDownKey, uitext.HighlightHelp})
-		}
-		if a.canOpen(a.highlight) {
-			out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenHelp})
-		}
-		if v != nil {
-			out = append(out, binding{Back, uitext.EscapeKey, uitext.InboxHelp})
-		}
+		out = append(out, m.chooserBindings()...)
 	case view.List:
-		if v != nil && len(v.rows) > 1 {
-			// The page keys move the selection by a page, to the ends at
-			// the latest: they act whenever there is a second row, however
-			// many rows the pane shows (a pane's capacity is not monotone
-			// in the help's height, so nothing here reads the geometry).
-			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
-		}
-		if v != nil && v.selected != "" {
-			out = append(out, binding{OpenList, uitext.EnterKey, uitext.DetailsHelp})
-		}
-		// The page keys one by one: each only where its page exists.
-		if v != nil && a.pagingOn() && !v.loading {
-			if v.page > 1 {
-				out = append(out, binding{PrevPage, uitext.PrevPageKey, uitext.PrevPageHelp})
-			}
-			if v.known && v.page < lastPage(v.total, v.perPage) {
-				out = append(out, binding{NextPage, uitext.NextPageKey, uitext.NextPageHelp})
-			}
-		}
-		out = append(out, binding{Back, uitext.EscapeKey, uitext.OrganisationsHelp})
+		out = append(out, m.listBindings()...)
 	case view.Object:
-		if v != nil && v.opened != "" {
-			out = append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
-		}
-		out = append(out, binding{Back, uitext.EscapeKey, uitext.CloseHelp})
+		out = append(out, m.objectBindings()...)
 	}
 	if m.canRefresh() {
 		help := uitext.RefreshHelp
@@ -216,6 +208,118 @@ func (m Model) bindings(small bool) []binding {
 		out = append(out, binding{Refresh, uitext.RefreshKey, help})
 	}
 	return m.withoutIdleScroll(append(out, binding{Left, uitext.FocusKey, uitext.FocusHelp}))
+}
+
+// shown: something is open in the list pane (an inbox or the tickets
+// section), so Esc from the chooser has somewhere to go.
+func (a *app) shown() bool { return a.active != nil || a.projects != nil }
+
+func (m Model) chooserBindings() []binding {
+	a := m.app
+	var out []binding
+	if len(a.entries()) > 1 {
+		out = append(out, binding{Up, uitext.UpDownKey, uitext.HighlightHelp})
+	}
+	if a.canOpen(a.highlight, a.highlightSection) {
+		help := uitext.OpenHelp
+		if a.highlightSection == sectionTickets {
+			help = uitext.OpenTicketsHelp
+		}
+		out = append(out, binding{OpenList, uitext.EnterKey, help})
+	}
+	if a.shown() {
+		help := uitext.InboxHelp
+		if a.projects != nil {
+			help = uitext.TicketsHelp
+		}
+		out = append(out, binding{Back, uitext.EscapeKey, help})
+	}
+	return out
+}
+
+func (m Model) listBindings() []binding {
+	a := m.app
+	var out []binding
+	switch {
+	case a.active != nil:
+		v := a.active
+		if len(v.rows) > 1 {
+			// The page keys move the selection by a page, to the ends at
+			// the latest: they act whenever there is a second row, however
+			// many rows the pane shows (a pane's capacity is not monotone
+			// in the help's height, so nothing here reads the geometry).
+			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
+		}
+		if v.selected != "" {
+			out = append(out, binding{OpenList, uitext.EnterKey, uitext.DetailsHelp})
+		}
+		// The page keys one by one: each only where its page exists.
+		if a.pagingOn() && !v.loading {
+			if v.page > 1 {
+				out = append(out, binding{PrevPage, uitext.PrevPageKey, uitext.PrevPageHelp})
+			}
+			if v.known && v.page < lastPage(v.total, v.perPage) {
+				out = append(out, binding{NextPage, uitext.NextPageKey, uitext.NextPageHelp})
+			}
+		}
+		out = append(out, binding{Back, uitext.EscapeKey, uitext.OrganisationsHelp})
+	case a.tickets != nil:
+		v := a.tickets
+		if len(v.rows) > 1 {
+			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
+		}
+		if v.selected != "" && a.ticketOn() {
+			out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenTicketHelp})
+		}
+		if !v.loading {
+			if v.page > 1 {
+				out = append(out, binding{PrevPage, uitext.PrevPageKey, uitext.PrevPageHelp})
+			}
+			if v.known && v.page < lastPage(v.total, v.perPage) {
+				out = append(out, binding{NextPage, uitext.NextPageKey, uitext.NextPageHelp})
+			}
+		}
+		if a.searchOn() {
+			out = append(out, binding{Search, uitext.SearchKey, uitext.SearchHelp})
+		}
+		out = append(out, binding{Back, uitext.EscapeKey, uitext.ProjectsHelp})
+	case a.projects != nil:
+		v := a.projects
+		if len(v.rows) > 1 {
+			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
+		}
+		if v.selected != "" {
+			out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenTicketsHelp})
+		}
+		out = append(out, binding{Back, uitext.EscapeKey, uitext.OrganisationsHelp})
+	default:
+		out = append(out, binding{Back, uitext.EscapeKey, uitext.OrganisationsHelp})
+	}
+	return out
+}
+
+func (m Model) objectBindings() []binding {
+	a := m.app
+	var out []binding
+	switch {
+	case a.active != nil:
+		if a.active.opened != "" {
+			out = append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
+		}
+		out = append(out, binding{Back, uitext.EscapeKey, uitext.CloseHelp})
+	case a.tickets != nil:
+		if a.detail != nil && a.detail.known {
+			out = append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
+		}
+		help := uitext.ListHelp
+		if a.tickets.opened != "" {
+			help = uitext.BackHelp
+		}
+		out = append(out, binding{Back, uitext.EscapeKey, help})
+	default:
+		out = append(out, binding{Back, uitext.EscapeKey, uitext.ListHelp})
+	}
+	return out
 }
 
 // withoutIdleScroll drops the scroll binding of the details when their text
@@ -246,7 +350,9 @@ func (m Model) withoutIdleScroll(out []binding) []binding {
 	return without
 }
 
-// allowed is the set of actions the bindings cover.
+// allowed is the set of actions the bindings cover. While the search line
+// is open, and there is room for it, every printable key is text
+// (InsertText), which no binding names.
 func (m Model) allowed() map[Action]bool {
 	set := map[Action]bool{}
 	for _, b := range m.actions() {
@@ -254,6 +360,9 @@ func (m Model) allowed() map[Action]bool {
 		if second, ok := pairs[b.kind]; ok {
 			set[second] = true
 		}
+	}
+	if m.mode == TextEntry && !m.small() {
+		set[InsertText] = true
 	}
 	return set
 }

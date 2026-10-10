@@ -38,20 +38,34 @@ func textOr(raw string, fallback uitext.ID) string {
 	return text
 }
 
-// entry is one row of the chooser: all organisations, or one.
+// entry is one selectable row of the chooser: a section of all
+// organisations (the inbox alone) or of one.
 type entry struct {
-	org  string
-	name string
+	org     string
+	section section
+	name    string // the organisation's name, for its heading row
 }
 
-// entries are the chooser's rows: all organisations first, then the
-// directory as the server listed it.
+// entries are the chooser's selectable rows: the inbox of all organisations
+// first, then per organisation, as the server listed them, the inbox and,
+// with the list tool, the tickets.
 func (a *app) entries() []entry {
-	out := []entry{{org: "", name: uitext.Inline(uitext.AllOrganisations).String()}}
+	out := []entry{{org: "", section: sectionInbox, name: uitext.Inline(uitext.AllOrganisations).String()}}
 	for _, o := range a.directory {
-		out = append(out, entry{org: o.ID, name: textOr(o.Name, uitext.UnnamedOrganisation)})
+		name := textOr(o.Name, uitext.UnnamedOrganisation)
+		out = append(out, entry{org: o.ID, section: sectionInbox, name: name})
+		if a.ticketsOn() {
+			out = append(out, entry{org: o.ID, section: sectionTickets, name: name})
+		}
 	}
 	return out
+}
+
+func sectionName(s section) uitext.ID {
+	if s == sectionTickets {
+		return uitext.Tickets
+	}
+	return uitext.Inbox
 }
 
 // screen is the whole display of the current state.
@@ -63,7 +77,7 @@ func (m Model) screen() present.Screen {
 		return s
 	}
 	s := present.Screen{
-		Crumbs:  [3]present.Inline{uitext.Inline(uitext.Organisations), uitext.Inline(uitext.Inbox), uitext.Inline(uitext.Details)},
+		Crumbs:  m.crumbs(),
 		Chooser: m.chooserColumn(),
 		List:    m.listColumn(),
 		Object:  m.objectColumn(),
@@ -100,27 +114,58 @@ func (m Model) identity() present.Inline {
 	return uitext.Inline(uitext.VerifyingIdentity)
 }
 
-// context names where the person is: the active inbox's organisation (by
-// the name it had when it was opened, when the directory lost it), the
-// section and the page.
+// crumbs are the names of the three panes for the breadcrumb of one
+// column: the section and the kind of object shown.
+func (m Model) crumbs() [3]present.Inline {
+	a := m.app
+	if a.projects != nil && !a.expired {
+		return [3]present.Inline{uitext.Inline(uitext.Organisations), uitext.Inline(uitext.Tickets), uitext.Inline(uitext.Ticket)}
+	}
+	return [3]present.Inline{uitext.Inline(uitext.Organisations), uitext.Inline(uitext.Inbox), uitext.Inline(uitext.Details)}
+}
+
+// orgName is the name of an organisation for a heading: from the
+// directory, else the name it had when its view was opened.
+func (a *app) orgName(org, opened string) string {
+	if org == "" {
+		return uitext.Inline(uitext.AllOrganisations).String()
+	}
+	name := textOr(opened, uitext.UnnamedOrganisation)
+	if o := a.organisation(org); o != nil {
+		name = textOr(o.Name, uitext.UnnamedOrganisation)
+	}
+	return name
+}
+
+// context names where the person is: the open view's organisation (by the
+// name it had when it was opened, when the directory lost it), the
+// section, the project, the search and the page.
 func (m Model) context() present.Inline {
 	a := m.app
-	v := a.active
-	if v == nil || a.expired {
+	if a.expired {
 		return uitext.Inline(uitext.Organisations)
 	}
-	name := uitext.Inline(uitext.AllOrganisations).String()
-	if v.org != "" {
-		name = textOr(v.name, uitext.UnnamedOrganisation)
-		if o := a.organisation(v.org); o != nil {
-			name = textOr(o.Name, uitext.UnnamedOrganisation)
+	if v := a.active; v != nil {
+		text := a.orgName(v.org, v.name) + " | " + uitext.Inline(uitext.Inbox).String()
+		if v.known {
+			text += " | " + uitext.Fill(uitext.PageOf, v.page, lastPage(v.total, v.perPage)).String()
 		}
+		return present.NewInline(text)
 	}
-	text := name + " | " + uitext.Inline(uitext.Inbox).String()
-	if v.known {
-		text += " | " + uitext.Fill(uitext.PageOf, v.page, lastPage(v.total, v.perPage)).String()
+	if p := a.projects; p != nil {
+		text := a.orgName(p.org, p.name) + " | " + uitext.Inline(uitext.Tickets).String()
+		if v := a.tickets; v != nil {
+			text += " | " + textOr(v.projectName, uitext.UnnamedProject)
+			if v.query != "" {
+				text += " | " + uitext.Fill(uitext.SearchFor, v.query).String()
+			}
+			if v.known {
+				text += " | " + uitext.Fill(uitext.PageOf, v.page, lastPage(v.total, v.perPage)).String()
+			}
+		}
+		return present.NewInline(text)
 	}
-	return present.NewInline(text)
+	return uitext.Inline(uitext.Organisations)
 }
 
 // chooserColumn is the directory with its counters; its notice is the
@@ -137,22 +182,31 @@ func (m Model) chooserColumn() present.Column {
 		c.Rows = []present.Row{}
 		return c
 	}
-	entries := a.entries()
-	c.Rows = make([]present.Row, 0, len(entries))
-	for i, e := range entries {
-		if e.org == a.highlight {
-			c.Cursor = i
+	// Per organisation a heading row (not selectable) and its sections,
+	// indented; the unread count sits on the inbox row.
+	c.Rows = []present.Row{}
+	heading := ""
+	first := true
+	for _, e := range a.entries() {
+		if first || e.org != heading {
+			c.Rows = append(c.Rows, present.Row{Primary: present.NewInline(e.name)})
+			heading, first = e.org, false
 		}
-		cnt := a.countOf(e.org)
-		trailing := uitext.Inline(uitext.UnknownCount)
-		if cnt.known {
-			trailing = uitext.Fill(uitext.CountValue, cnt.value)
+		if e.org == a.highlight && e.section == a.highlightSection {
+			c.Cursor = len(c.Rows)
 		}
-		c.Rows = append(c.Rows, present.Row{
-			Primary:  present.NewInline(e.name),
-			Trailing: trailing,
-			Active:   a.active != nil && a.active.org == e.org,
-		})
+		row := present.Row{Primary: present.NewInline("  " + uitext.Inline(sectionName(e.section)).String())}
+		if e.section == sectionInbox {
+			cnt := a.countOf(e.org)
+			row.Trailing = uitext.Inline(uitext.UnknownCount)
+			if cnt.known {
+				row.Trailing = uitext.Fill(uitext.CountValue, cnt.value)
+			}
+			row.Active = a.active != nil && a.active.org == e.org
+		} else {
+			row.Active = a.projects != nil && a.projects.org == e.org
+		}
+		c.Rows = append(c.Rows, row)
 	}
 	return c
 }
@@ -173,6 +227,8 @@ func (m Model) chooserNotice() present.Inline {
 		return uitext.Inline(uitext.ReadingCapabilities)
 	case !a.inboxOn():
 		return uitext.Inline(uitext.InboxUnsupported)
+	case !a.ticketsOn():
+		return uitext.Inline(uitext.TicketsUnsupported)
 	case !a.byOrgOn():
 		return uitext.Inline(uitext.FilterUnavailable)
 	case a.steps[stepCounters].state == failed:
@@ -187,17 +243,34 @@ func (m Model) chooserNotice() present.Inline {
 	return present.Inline{}
 }
 
-// listColumn is the active inbox page: rows of two lines, the notice says
-// what the page is (loading, cached, stale, empty) or what went wrong.
+// listColumn is the list pane: the inbox page, the projects or the ticket
+// page, whichever is open; the notice says what the data is (loading,
+// cached, stale, empty) or what went wrong.
 func (m Model) listColumn() present.Column {
 	a := m.app
-	c := present.Column{Title: uitext.Inline(uitext.Inbox), Cursor: -1}
-	v := a.active
-	if v == nil || a.expired {
-		c.Text = uitext.Body(uitext.NoData)
-		return c
+	if a.expired {
+		return present.Column{Title: uitext.Inline(uitext.Inbox), Cursor: -1, Text: uitext.Body(uitext.NoData)}
 	}
-	c.Notice = listNotice(v)
+	switch {
+	case a.active != nil:
+		return m.inboxColumn()
+	case a.tickets != nil:
+		return m.ticketsColumn()
+	case a.projects != nil:
+		return m.projectsColumn()
+	}
+	return present.Column{Title: uitext.Inline(uitext.Inbox), Cursor: -1, Text: uitext.Body(uitext.NoData)}
+}
+
+// inboxColumn is the active inbox page: rows of two lines.
+func (m Model) inboxColumn() present.Column {
+	v := m.app.active
+	c := present.Column{Title: uitext.Inline(uitext.Inbox), Cursor: -1}
+	empty := uitext.NoneOnPage
+	if v.total == 0 {
+		empty = uitext.NoUnread
+	}
+	c.Notice = v.notice(empty, len(v.rows) == 0)
 	c.Rows = make([]present.Row, 0, len(v.rows))
 	for i, n := range v.rows {
 		if n.ID == v.selected {
@@ -207,30 +280,6 @@ func (m Model) listColumn() present.Column {
 	}
 	c.Offset = v.offset
 	return c
-}
-
-func listNotice(v *inboxView) present.Inline {
-	switch {
-	case v.err.String() != "":
-		return v.err
-	// A cached page says so while its one reload runs; "Refreshing" is for
-	// a page the server gave.
-	case v.cached && v.stale:
-		return uitext.Inline(uitext.CachedStale)
-	case v.cached:
-		return uitext.Inline(uitext.Cached)
-	case v.loading && !v.known:
-		return uitext.Inline(uitext.Loading)
-	case v.loading:
-		return uitext.Inline(uitext.Refreshing)
-	case v.stale:
-		return uitext.Inline(uitext.PossiblyStale)
-	case v.known && len(v.rows) == 0 && v.total == 0:
-		return uitext.Inline(uitext.NoUnread)
-	case v.known && len(v.rows) == 0:
-		return uitext.Inline(uitext.NoneOnPage)
-	}
-	return present.Inline{}
 }
 
 // rowPrimary: the ticket number, if any, and the message.
@@ -294,10 +343,13 @@ func timeOf(raw string, seconds bool) string {
 	return t.UTC().Format(layout) + " " + uitext.Inline(uitext.UTC).String()
 }
 
-// objectColumn is the opened notification, from the row's own data: the
-// message as a body, the fields one per line.
+// objectColumn is the object pane: the opened notification, or the ticket
+// previewed or opened.
 func (m Model) objectColumn() present.Column {
 	a := m.app
+	if a.projects != nil && !a.expired {
+		return m.detailColumn()
+	}
 	c := present.Column{Title: uitext.Inline(uitext.Details), Cursor: -1}
 	v := a.active
 	if v == nil || a.expired || v.opened == "" {

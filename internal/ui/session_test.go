@@ -31,13 +31,20 @@ var (
 	orgB = "00000000-0000-4000-8000-000000000002"
 )
 
-// recordedData is what the contract records for the startup and the inbox.
+// recordedData is what the contract records for the startup and the inbox,
+// and (C1c) for the projects and tickets.
 type recordedData struct {
 	me      api.Me
 	orgs    []api.Ref
 	server  transport.ServerInfo
 	tools   []transport.Tool
 	rowTmpl api.Notification
+	// projects are the recorded projects of A; ticketTmpl the first
+	// recorded ticket row; ticketRecord the recorded ticket with its
+	// comments.
+	projects       []api.Project
+	ticketTmpl     api.TicketRow
+	recordedTicket api.Ticket
 }
 
 func recorded(t *testing.T) recordedData {
@@ -82,6 +89,7 @@ func recorded(t *testing.T) recordedData {
 		t.Fatalf("recorded inbox: %v", ans.Message)
 	}
 	d.rowTmpl = page.Data[0]
+	d.projects, d.ticketTmpl, d.recordedTicket = recordedTickets(t, file)
 	return d
 }
 
@@ -186,6 +194,18 @@ type fakes struct {
 	gateOrg      string
 	gatePage     int
 	ignoreCancel bool
+	// C1c: the readers of the tickets section (tickets_harness_test.go).
+	projects      func(org string) transport.Answer
+	tickets       func(q api.TicketQuery) transport.Answer
+	ticket        func(project, id string, o api.TicketOptions) transport.Answer
+	projectCalls  []string
+	ticketQueries []api.TicketQuery
+	ticketReads   []ticketRead
+	// The gate holds these too: every project read, every ticket list
+	// read, or the reads of one ticket.
+	gateProjects bool
+	gateTickets  bool
+	gateTicket   string
 }
 
 func (f *fakes) Me(context.Context) (api.Me, transport.Answer) {
@@ -280,6 +300,7 @@ func newHarness(t *testing.T) *harness {
 	f.inbox = func(q api.NotificationQuery) transport.Answer {
 		return d.defaultInbox(q)
 	}
+	f.projects, f.tickets, f.ticket = d.defaultProjects, d.defaultTickets, d.defaultTicket
 	live := worker.New(context.Background())
 	t.Cleanup(func() { live.Stop(wall) })
 	// The mailbox's commands wait on a lifetime that is over, so a test can
@@ -392,7 +413,7 @@ func (h *harness) press(name string) tea.Cmd {
 func (h *harness) choose(org string) tea.Cmd {
 	h.t.Helper()
 	h.m.focus = view.Navigation
-	h.m.app.highlight = org
+	h.m.app.highlight, h.m.app.highlightSection = org, sectionInbox
 	return h.press("enter")
 }
 

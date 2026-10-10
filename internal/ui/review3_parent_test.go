@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
+	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 	"github.com/gboyke/lalabase-cli/internal/worker"
@@ -74,7 +75,7 @@ func TestR3FilteredRemovalLeavesGlobalView(t *testing.T) {
 	global := a.global
 	key := a.active.key
 	h.f.set(func(api.NotificationQuery) transport.Answer { return failing(transport.NoAccess, 200) })
-	h.drive(a.issue(gateway.Inbox, a.inboxKey(orgA, 1), forInbox))
+	h.drive(a.issue(gateway.Inbox, a.inboxKey(orgA, 1), forInbox, queue.User))
 	after := h.m.screen()
 	if !reflect.DeepEqual(before.List, after.List) || !reflect.DeepEqual(before.Object, after.Object) || before.Context != after.Context || a.global != global || a.active.opened == "" {
 		t.Fatal("foreign resource removal changed global view")
@@ -102,7 +103,7 @@ func TestR3SnapshotRankDoesNotSuppressFilteredRows(t *testing.T) {
 			}
 			h.feed(newer, old)
 			a := h.m.app
-			if a.countOf(orgA).known || h.m.chooserColumn().Rows[1].Trailing.String() != "?" {
+			if a.countOf(orgA).known || countShown(h.m, orgA) != "?" {
 				t.Fatal("old filtered counter defeated snapshot")
 			}
 			_, cached := a.store.Get(old.Key)
