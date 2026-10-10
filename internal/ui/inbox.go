@@ -179,11 +179,14 @@ func (m Model) inboxResult(key cache.Key, r gateway.InboxResult, d cache.Decisio
 		v.rows, v.total, v.perPage = r.Page.Data, r.Page.Meta.Total, r.Page.Meta.PerPage
 		v.fresh(a.now())
 		v.reselect()
-		if m.focus == view.Object && v.opened == "" {
+		if m.focus == view.Object && v.opened == "" && a.origin == nil {
+			// Details whose row left close; a ticket opened from a row
+			// stays, also when the row left (it was marked as read).
 			m.focus = view.List
 		}
 		return m.correctPage()
 	case cache.Remove:
+		a.leaveLinkedTicket()
 		v.rows, v.total = nil, 0
 		v.selected, v.opened = "", ""
 		v.removed()
@@ -211,7 +214,9 @@ func (m Model) correctPage() (Model, tea.Cmd) {
 	a.store.Apply(v.key, cache.Remove, nil, a.now())
 	a.scope.Invalidate(v.key)
 	v.rows, v.selected, v.opened, v.offset = nil, "", "", 0
-	if m.focus == view.Object {
+	if m.focus == view.Object && a.origin == nil {
+		// Details go with their page; a ticket opened from a row stays
+		// open (its row was marked as read, and the page shrank with it).
 		m.focus = view.List
 	}
 	if v.total == 0 {
@@ -251,6 +256,8 @@ func (m Model) activate(org string) (Model, tea.Cmd) {
 		return m, nil
 	}
 	a.leaveTickets()
+	a.leaveLinkedTicket()
+	a.forgetSettledMarks()
 	a.remember()
 	pos := a.remembered[org]
 	page := 1
@@ -299,6 +306,7 @@ func (m Model) turnPage(delta int) (Model, tea.Cmd) {
 		return m, nil
 	}
 	a.moveInbox()
+	a.leaveLinkedTicket()
 	v.page, v.key.Page = target, target
 	v.rows, v.status = nil, status{}
 	v.selected, v.opened, v.offset, v.detailOffset = "", "", 0, 0
@@ -362,7 +370,9 @@ func (m Model) retryOrRefresh() (Model, tea.Cmd) {
 		if a.steps[stepCounters].state == failed {
 			cmds = append(cmds, a.issueCounters())
 		}
-		if m.focus != view.Navigation && a.active != nil {
+		if m.focus == view.Object && a.origin != nil {
+			cmds = append(cmds, m.refreshSection())
+		} else if m.focus != view.Navigation && a.active != nil {
 			// The active page as well: a failed page of the global inbox
 			// failed the counters step too, and R from the page must read
 			// the page, not only the counters.
@@ -372,6 +382,10 @@ func (m Model) retryOrRefresh() (Model, tea.Cmd) {
 			cmds = append(cmds, m.refreshSection())
 		}
 		return m, tea.Batch(cmds...)
+	}
+	if m.focus == view.Object && a.origin != nil {
+		// The ticket opened from a notification: R reads the ticket.
+		return m, m.refreshSection()
 	}
 	if m.focus != view.Navigation && a.active != nil {
 		return m, a.refreshActive()
@@ -401,7 +415,11 @@ func (m Model) canRefresh() bool {
 	// Mirrors retryOrRefresh: R is offered only when it would issue a read
 	// (a read already out for the same key is not issued again).
 	countersFree := !a.pending(a.inboxKey("", 1))
-	activeFree := m.focus != view.Navigation && a.active != nil && !a.pending(a.active.key)
+	// The ticket opened from a notification takes R when the pane is
+	// focused; the page takes it from the list, or from the details.
+	linked := m.focus == view.Object && a.origin != nil
+	linkedFree := linked && a.detail != nil && !a.pending(a.detail.key)
+	activeFree := m.focus != view.Navigation && !linked && a.active != nil && !a.pending(a.active.key)
 	sectionFree := m.focus != view.Navigation && a.projects != nil && m.canRefreshSection()
 	if a.anyFailed() {
 		for i := stepInitialize; i < stepCounters; i++ {
@@ -409,7 +427,10 @@ func (m Model) canRefresh() bool {
 				return true
 			}
 		}
-		return (a.steps[stepCounters].state == failed && countersFree) || activeFree || sectionFree
+		return (a.steps[stepCounters].state == failed && countersFree) || linkedFree || activeFree || sectionFree
+	}
+	if m.focus == view.Object && a.origin != nil {
+		return linkedFree
 	}
 	if m.focus != view.Navigation && a.active != nil {
 		return activeFree

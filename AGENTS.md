@@ -3,9 +3,8 @@
 Working notes for coding agents in this repository (Claude Code reads this
 file through `CLAUDE.md`). The README says what the
 program does; this file says how to change it without repeating mistakes the
-reviews of C0 already found. Status: 2026-10-10, main at C1c (projects,
-tickets, the ticket, #11); C1d (the ticket page by page, expansion) is this
-branch.
+reviews of C0 already found. Status: 2026-10-10, main at C1d (the ticket
+page by page, expansion, #12); C1f (mark as read) is this branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).

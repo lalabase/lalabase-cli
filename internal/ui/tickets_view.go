@@ -112,11 +112,16 @@ func (m Model) detailColumn() present.Column {
 		return c
 	}
 	c.Notice = d.notice(uitext.NoItem, false)
+	if o := a.origin; o != nil && c.Notice.String() == "" && a.marks[o.notification] != nil {
+		// The outcome of marking the notification (C1f) in the line that is
+		// always in sight: the head may be scrolled away.
+		c.Notice = present.NewInline(a.markText(o.notification, o.unread))
+	}
 	if !d.known {
 		c.Text = uitext.Body(uitext.NoItem)
 		return c
 	}
-	t := ticketText(d, a.pagedOn())
+	t := ticketText(d, a.pagedOn(), m.originLine())
 	c.Text = present.NewBody(strings.Join(t.lines, "\n"))
 	c.Offset = d.offset
 	line := -1
@@ -166,7 +171,7 @@ func (t *ticketLines) add(texts ...string) {
 // ticketText is the body of the pane. Every field is foreign; a one-line
 // field is cleaned as one line, so a title cannot open a line of its own,
 // but a description or a comment keeps its lines.
-func ticketText(d *detailView, paged bool) ticketLines {
+func ticketText(d *detailView, paged bool, origin string) ticketLines {
 	r := d.record
 	t := ticketLines{posts: map[string]int{}}
 	label := func(id uitext.ID, value string) string { return uitext.Inline(id).String() + ": " + value }
@@ -177,8 +182,11 @@ func ticketText(d *detailView, paged bool) ticketLines {
 		label(uitext.LabelCreator, personOf(r.Creator)),
 		label(uitext.LabelProject, textOr(r.Project.Name, uitext.UnnamedProject)),
 		label(uitext.LabelUpdated, timeOf(r.UpdatedAt, false)),
-		"",
 	)
+	if origin != "" {
+		t.add(label(uitext.LabelNotification, origin))
+	}
+	t.add("")
 	heading := func(area ticketArea, text string) {
 		t.areas[area] = len(t.lines)
 		if d.area == area {
@@ -251,6 +259,26 @@ func ticketText(d *detailView, paged bool) ticketLines {
 		t.add("- " + attachmentLine(f))
 	}
 	return t
+}
+
+// originLine is the line of the head that names the notification a ticket
+// was opened from (C1f): unread or read, and what became of marking it.
+// Empty for a ticket of the tickets section.
+func (m Model) originLine() string {
+	a := m.app
+	o := a.origin
+	if o == nil {
+		return ""
+	}
+	state := uitext.NotificationRead
+	if o.unread {
+		state = uitext.NotificationUnread
+	}
+	text := uitext.Inline(state).String()
+	if mark := a.markText(o.notification, o.unread); mark != "" {
+		text += " · " + mark
+	}
+	return text
 }
 
 // pageState stands in for a section whose page has not come: it loads,

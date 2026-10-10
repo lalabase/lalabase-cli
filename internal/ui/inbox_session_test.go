@@ -566,7 +566,8 @@ func TestRowsAndDetailsFallBackForMissingValues(t *testing.T) {
 // key acts (for a pair, one of its two keys). Every press starts from a
 // fresh model in the state, so nothing of one press leaks into the next.
 func TestHelpNamesExactlyTheKeysThatAct(t *testing.T) {
-	keys := map[string]Action{"up": Up, "down": Down, "pgup": PageUp, "pgdown": PageDown, "[": PrevPage, "]": NextPage, "R": Refresh, "enter": OpenList, "esc": Back, "left": Left, "right": Right}
+	// C1f adds o (the ticket a notification names) and r (mark as read).
+	keys := map[string]Action{"up": Up, "down": Down, "pgup": PageUp, "pgdown": PageDown, "[": PrevPage, "]": NextPage, "R": Refresh, "enter": OpenList, "esc": Back, "left": Left, "right": Right, "o": Order, "r": MarkRead, "tab": NextArea, "e": Expand}
 	acted := func(h *harness, key string) bool {
 		before := ansi.Strip(h.m.View().Content)
 		focus := h.m.focus
@@ -646,6 +647,48 @@ func TestHelpNamesExactlyTheKeysThatAct(t *testing.T) {
 		h := started()
 		h.events.Revoke()
 		h.feed(gateway.Wake{Session: h.events.Session()})
+		return h
+	})
+	// C1f: the ticket a notification names, and marking as read.
+	linked := func() *harness { h := started(); h.openLinked(orgA, 0); return h }
+	check(t, "details of a row with a ticket", func() *harness { h := started(); h.openDetails(orgA, 0); return h })
+	check(t, "details of a row without a ticket", func() *harness {
+		h := started()
+		h.f.set(func(q api.NotificationQuery) transport.Answer {
+			rows := h.d.rows(orgA, 1, 2)
+			rows[0].Ticket = nil
+			return pageAnswer(q.Page, q.PerPage, 2, 2, rows, map[string]int{orgA: 2})
+		})
+		h.openDetails(orgA, 0)
+		return h
+	})
+	check(t, "ticket from a notification", linked)
+	check(t, "ticket from a notification, comments", func() *harness { h := linked(); h.press("tab"); return h })
+	check(t, "ticket from a notification, list focused", func() *harness { h := linked(); h.m.focus = view.List; return h })
+	check(t, "ticket from a notification, one column", func() *harness { h := linked(); h.m.width = 79; return h })
+	check(t, "read-only token", func() *harness {
+		h := newHarness(t)
+		h.setReadOnly(boolPtr(true))
+		h.start()
+		h.openDetails(orgA, 0)
+		return h
+	})
+	check(t, "unknown permission", func() *harness { h := newHarness(t); h.setReadOnly(nil); h.start(); h.openDetails(orgA, 0); return h })
+	check(t, "a running mark", func() *harness { h := started(); h.drive(h.choose(orgA)); h.press("r"); return h })
+	check(t, "a refused mark", func() *harness {
+		h := started()
+		h.f.setMark(func(string, string) (api.NotificationState, transport.Answer) {
+			return api.NotificationState{}, failing(transport.Refused, 200)
+		})
+		h.drive(h.choose(orgA))
+		h.drive(h.press("r"))
+		return h
+	})
+	check(t, "a marked row", func() *harness {
+		h := started()
+		h.f.setMark(func(id, _ string) (api.NotificationState, transport.Answer) { return markedAnswer(id) })
+		h.drive(h.choose(orgA))
+		h.drive(h.press("r"))
 		return h
 	})
 }

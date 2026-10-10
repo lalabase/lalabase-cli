@@ -211,6 +211,8 @@ type fakes struct {
 	gateProjects bool
 	gateTickets  bool
 	gateTicket   string
+	// C1f: the write (mark_harness_test.go).
+	writes markFakes
 }
 
 func (f *fakes) Me(context.Context) (api.Me, transport.Answer) {
@@ -302,9 +304,11 @@ func newHarness(t *testing.T) *harness {
 			return d.tools, transport.Answer{Class: transport.Object, Status: 200, Sent: true}
 		},
 	}
+	// The default inbox hides the rows marked as read so far (C1f).
 	f.inbox = func(q api.NotificationQuery) transport.Answer {
-		return d.defaultInbox(q)
+		return d.inboxWithout(q, f.readIDs())
 	}
+	f.writes.read, f.writes.mark = map[string]bool{}, f.defaultMark
 	f.projects, f.tickets, f.ticket = d.defaultProjects, d.defaultTickets, d.defaultTicket
 	live := worker.New(context.Background())
 	t.Cleanup(func() { live.Stop(wall) })

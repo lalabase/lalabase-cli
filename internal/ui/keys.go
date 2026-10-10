@@ -42,6 +42,8 @@ const (
 	NextArea
 	Order
 	Expand
+	// C1f: mark a notification as read.
+	MarkRead
 )
 
 type keyAction struct {
@@ -114,6 +116,8 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: Order}
 	case "e":
 		return keyAction{Kind: Expand}
+	case "r":
+		return keyAction{Kind: MarkRead}
 	}
 	return keyAction{}
 }
@@ -263,6 +267,9 @@ func (m Model) listBindings() []binding {
 		if v.selected != "" {
 			out = append(out, binding{OpenList, uitext.EnterKey, uitext.DetailsHelp})
 		}
+		if _, ok := m.markTarget(); ok {
+			out = append(out, binding{MarkRead, uitext.MarkReadKey, uitext.MarkReadHelp})
+		}
 		// The page keys one by one: each only where its page exists.
 		if a.pagingOn() && !v.loading {
 			if v.page > 1 {
@@ -312,9 +319,27 @@ func (m Model) objectBindings() []binding {
 	a := m.app
 	var out []binding
 	switch {
+	case a.origin != nil:
+		// The ticket opened from a notification (C1f): the ticket's keys,
+		// r for its notification, Esc back to the details.
+		out = append(out, m.ticketBindings()...)
+		if _, ok := m.markTarget(); ok {
+			out = append(out, binding{MarkRead, uitext.MarkReadKey, uitext.MarkReadHelp})
+		}
+		help := uitext.NotificationHelp
+		if a.detail != nil && a.detail.expansion != nil {
+			help = uitext.CollapseHelp
+		}
+		out = append(out, binding{Back, uitext.EscapeKey, help})
 	case a.active != nil:
 		if a.active.opened != "" {
 			out = append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
+		}
+		if _, ok := a.linkedTicket(); ok {
+			out = append(out, binding{Order, uitext.OrderKey, uitext.OpenLinkedTicketHelp})
+		}
+		if _, ok := m.markTarget(); ok {
+			out = append(out, binding{MarkRead, uitext.MarkReadKey, uitext.MarkReadHelp})
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.CloseHelp})
 	case a.tickets != nil:

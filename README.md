@@ -3,14 +3,16 @@
 Lalabase from the terminal: one binary for a person with arrow keys (a
 full-screen interface) and for scripts and Claude Code (plain text or JSON).
 
-**Status:** organisations, the unread inbox and the tickets (slices C1b to
-C1d). The interface verifies the token, lists the organisations with their
-unread counts, shows the unread notifications of one organisation page by
-page, and per organisation its projects, the tickets of a project page by
-page with a search, and a ticket with its description, its comments page by
-page in either order and its attachments page by page, the description or
-one comment read whole on request. Marking as read and writes come with C1f
-and C2.
+**Status:** organisations, the unread inbox, the tickets and marking as
+read (slices C1b to C1f). The interface verifies the token, lists the
+organisations with their unread counts, shows the unread notifications of
+one organisation page by page, opens the ticket a notification names, and
+per organisation its projects, the tickets of a project page by page with a
+search, and a ticket with its description, its comments page by page in
+either order and its attachments page by page, the description or one
+comment read whole on request. One `r` marks a notification as read, from
+the inbox or from the ticket opened out of it. The other writes come with
+C2.
 
 ## Setting up
 
@@ -84,6 +86,47 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
   sections in one request, a second shrink stops and offers `R`, an empty
   section goes to page 1 without a request. `R` reloads the page shown; an
   open expansion stays as it is.
+* **The ticket a notification names (C1f).** In the details of a
+  notification `o` opens the ticket it names (its project and ticket id;
+  nothing is guessed from a title or a message) in the object pane, with
+  the notification as its origin: the head says "Notification: unread", and
+  the ticket's own keys work as in the tickets section (`Tab`, `[`/`]`, `o`
+  for the order, `e`, the comment selection, `R` for the ticket). `Esc`
+  closes the ticket and returns to the details, or to the list when the row
+  has left meanwhile. The origin is navigation state only: the same ticket
+  opened from the tickets section has none, whatever an inbox visit cached,
+  and `Enter` on another row, a page turn or another inbox drop the ticket.
+* **Mark as read (C1f).** `r` marks the notification the focused pane
+  shows: the selected row of the inbox (a row without a ticket too), the
+  row whose details are open, or the notification the ticket in the pane
+  was opened from. One key, no confirmation; opening, previewing, paging
+  and expanding never mark. The permission comes from `/me` alone:
+  `read_only` false offers the key, true hides and refuses it ("Read-only
+  token"), a missing field hides it as "Write permission unknown", and a
+  server without `mark_notification_read` as unsupported; the profile's
+  `allow_write` plays no part. The target is captured when the key is
+  pressed and never moves with the cursor: the answer for one row never
+  marks another. The lock on that target is set before the request exists,
+  so a second `r` does nothing until the outcome is known. Each press gets
+  one idempotency key; the queue's one retry (the server not reached, or a
+  429 on the first attempt) sends the same key and nothing else is ever
+  sent again by itself. The outcome is shown on the row ("marking…",
+  "marked", "not marked", "unknown"), in the details and in the ticket's
+  head: a confirmed success (the server named the notification as read), a
+  refusal with the server's text (read-only, missing, no access, archived;
+  none of them removes a ticket), a write that was not done ("Not marked;
+  the server was not reached. r try again"), or an unknown outcome
+  ("Result unknown; refreshing", then "Result unknown"): the request left
+  and no usable answer came back, so the server may have acted. A confirmed
+  success and an unknown outcome drop every cached page of the
+  organisation's inbox and of "All organisations", move their epochs on (a
+  read begun before brings nothing old back), make their counters unknown
+  and read the counters and the page shown once more; the counts are the
+  server's, never counted down by the client, and a row missing from the
+  reloaded page proves nothing. After the reads landed an explicit `r` on
+  an unknown or refused target is a new operation with a new key; `R`
+  reads, it never writes. A 401 on a write ends the session, also when its
+  target was left meanwhile.
 * **A comment that is gone.** When the server answers a comment read whole
   with "not found" (it was deleted or made private), its cached text goes
   and is hidden at once, the ticket stays and says "Comment unavailable",
@@ -172,15 +215,27 @@ first, rows without a project, a ticket or an actor among them; the first
 organisation's four recorded projects (the second has none), 30 tickets in
 Website-Relaunch (two pages; #1 is the recorded ticket, #2 has nothing, #3
 has 30 comments, #4 twelve attachments, #6 everything C1d pages and
-expands), 3 in Handbuch, 5 in Archiv. It
+expands), 3 in Handbuch, 5 in Archiv; the first organisation's rows name
+Website-Relaunch's tickets (row 6 names ticket #6), the second's name
+tickets the fixture does not have. It
 binds to 127.0.0.1 only, accepts one synthetic token (`inboxfixture.Token`)
-and refuses everything but the reads of C1. Scenarios: `normal`, `older`
-(no organisation filter, no paging of comments, no expansion), `temporary` (page 2 of the
-first organisation's inbox and of Website-Relaunch's tickets fails twice,
-`R` succeeds; so does page 2 of ticket #6's comments), `429` (one short
-pause), `401` (the session expires, also on a preview of ticket #2),
-`vanished` (ticket #6's newest comment is still on its page, but read whole
-it is "not found"). Ticket #6 of Website-Relaunch has a description and
+and refuses everything but the reads of C1 and its one write,
+`mark_notification_read`: a marked row leaves the unread pages and the
+counts, a key seen before answers the original result without a second
+change, and the fixture logs attempts (`Requests`), keys (`Keys`) and the
+changes it carried out (`Mutations`) apart, for the tests. Scenarios:
+`normal`, `older` (no organisation filter, no paging of comments, no
+expansion), `temporary` (page 2 of the first organisation's inbox and of
+Website-Relaunch's tickets fails twice, `R` succeeds; so does page 2 of
+ticket #6's comments), `429` (one short pause, on page 2 and on the first
+attempt of every write), `401` (the session expires, also on a preview of
+ticket #2 and on a write), `vanished` (ticket #6's newest comment is still
+on its page, but read whole it is "not found"), `read-only` (the token may
+not write), `unknown-write` (`/me` without `read_only`), `no-mark-read`
+(the tool is missing), `refusals` (marking the first organisation's row #2
+is refused as archived, #3 is not found, #4 is not allowed), `lost` (every
+write is carried out and its answer is lost), `slow` (every write is
+answered after 1.5 s). Ticket #6 of Website-Relaunch has a description and
 two comments the server shortened, 30 comments and twelve attachments with
 metadata of every kind (known, missing, zero bytes).
 
@@ -200,8 +255,10 @@ rm -r "$fixture_dir"
 ```
 
 The PTY tests of `cmd/lalabase` run the same flow against the same handler
-at 80 and 120 columns. The shipped binary does not carry the fixture or the
-contract copy (`internal/sourceguard` holds that).
+at 80 and 120 columns, the whole C1 run included (start, organisation,
+inbox, details, the ticket a notification names, its pages and the
+expansion, `r`, back to the updated inbox). The shipped binary does not
+carry the fixture or the contract copy (`internal/sourceguard` holds that).
 
 ## Build
 
@@ -256,7 +313,12 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   letters, digits or `._:-`, a form the server keeps unchanged); an adapter
   refuses a write without one before sending. An answer to a write never
   replaces or drops the record: a refused write keeps it, a successful one
-  keeps it and asks for a reload.
+  keeps it and asks for a reload. The interface's one write (`r`, C1f) runs
+  through the gateway as the person's job of kind Write, never shared, the
+  key made at the key press from the session, the operation's number and
+  the clock; the gateway confirms a success only when the answer names the
+  notification asked for as read, anything else after a request that left
+  is an unknown outcome.
 * **Adapters** (`internal/api`): one per tool and REST reader, each with a
   `Spec` naming the arguments it sends and the fields it needs back (present
   and not null; a field that may be null is marked `?`). The same

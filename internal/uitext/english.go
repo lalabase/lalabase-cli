@@ -191,6 +191,28 @@ const (
 	ExpandHelp
 	CollapseHelp
 	CommentHelp
+	// C1f: mark as read, and the ticket opened from a notification.
+	MarkReadKey
+	MarkReadHelp
+	OpenLinkedTicketHelp
+	NotificationHelp
+	LabelMarkRead
+	Marking
+	Marked
+	MarkRefused
+	MarkNotSent
+	MarkRateLimited
+	MarkUnknownRefreshing
+	MarkUnknown
+	WritePermissionUnknown
+	ReadOnlyToken
+	MarkUnsupported
+	MarkingShort
+	MarkedShort
+	NotMarkedShort
+	UnknownShort
+	NotificationUnread
+	NotificationRead
 	count
 )
 
@@ -282,4 +304,16 @@ var english = map[ID]string{
 	TextEmpty: "no text", TextStatusUnknown: "text status unknown",
 	TabKey: "tab", NextAreaHelp: "next section", OrderKey: "o", ExpandKey: "e", ExpandHelp: "expand",
 	CollapseHelp: "collapse", CommentHelp: "comment",
+
+	MarkReadKey: "r", MarkReadHelp: "mark read", OpenLinkedTicketHelp: "open ticket", NotificationHelp: "notification",
+	LabelMarkRead: "Mark as read",
+	Marking:       "Marking as read…", Marked: "Marked as read",
+	MarkRefused:           "Not marked: %s",
+	MarkNotSent:           "Not marked; the server was not reached. r try again",
+	MarkRateLimited:       "Not marked; rate limited. r try again",
+	MarkUnknownRefreshing: "Result unknown; refreshing", MarkUnknown: "Result unknown",
+	WritePermissionUnknown: "Write permission unknown", ReadOnlyToken: "Read-only token",
+	MarkUnsupported: "Marking as read is not supported by this server.",
+	MarkingShort:    "marking…", MarkedShort: "marked", NotMarkedShort: "not marked", UnknownShort: "unknown",
+	NotificationUnread: "unread", NotificationRead: "read",
 }
