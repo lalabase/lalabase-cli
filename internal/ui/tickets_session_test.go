@@ -1596,7 +1596,7 @@ func TestTheSearchLineClosesWithItsList(t *testing.T) {
 		case "tickets":
 			h.f.setTickets(func(api.TicketQuery) transport.Answer { return failing(transport.NotFound, 200) })
 			h.drive(a.issue(gateway.Tickets, a.tickets.key, forTickets, queue.User))
-			if a.tickets == nil || a.tickets.known || len(a.tickets.rows) != 0 {
+			if a.tickets == nil || a.tickets.known || len(a.tickets.rows) != 0 || a.tickets.entry != "" {
 				t.Fatalf("tickets %+v", a.tickets)
 			}
 		}
@@ -1933,13 +1933,27 @@ func TestThePaneIsHiddenWhenTheHelpMakesTheTerminalSmall(t *testing.T) {
 	if !found {
 		t.Fatal("setup: no size where the help alone makes the terminal small")
 	}
+	width, height := h.m.width, h.m.height
+	// The pane focused in a terminal large enough, then the resize to
+	// the size the help alone makes small: no timer, no read.
+	h.m.width, h.m.height = 120, 24
+	h.m.focus = view.Object
 	token := a.previewToken
-	if cmd := h.press("right"); cmd != nil || a.previewToken != token {
-		t.Fatal("a timer while the help leaves no room for the pane")
+	if cmds := h.feed(tea.WindowSizeMsg{Width: width, Height: height}); len(cmds) != 0 || a.previewToken != token {
+		t.Fatalf("a timer while the help leaves no room for the pane (%dx%d)", width, height)
 	}
 	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
 	if n := len(h.f.detailReads()); n != 0 {
 		t.Fatalf("%d reads while the help leaves no room for the pane", n)
+	}
+	// Large again: the preview comes.
+	cmds := h.feed(tea.WindowSizeMsg{Width: 120, Height: 24})
+	if len(cmds) == 0 {
+		t.Fatal("no timer after the terminal grew")
+	}
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if n := len(h.f.detailReads()); n != 1 {
+		t.Fatalf("%d reads after the terminal grew", n)
 	}
 }
 
