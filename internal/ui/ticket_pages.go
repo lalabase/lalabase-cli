@@ -293,8 +293,9 @@ func (m Model) expand() (Model, tea.Cmd) {
 	a.closeExpansion()
 	k := d.key
 	if post == "" {
-		// The description with the options of the page shown: the answer
-		// is as large as a page, and valid on its own.
+		// The description with the options of the page asked (the one
+		// shown, or the one on its way): the answer is as large as a page,
+		// and valid on its own.
 		k.FullText = true
 	} else {
 		k.PostsPage, k.PostsPerPage, k.Newest, k.AttachmentsPage, k.Post = 0, 0, false, 0, post

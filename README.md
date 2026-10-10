@@ -72,7 +72,7 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
   page stays), `↑`/`↓` select a comment (kept by its id across a reload,
   else the first). A text the server shortened ends with "Text shortened
   by server"; `e` reads it whole: the description (`full_text`, with the
-  options of the page shown) or the selected comment (`post_id`). One
+  options of the page asked) or the selected comment (`post_id`). One
   expansion at a time; it is a read of its own and replaces no page; `Esc`
   closes it first, without a request, and a late answer does not open it
   again. A whole text can still be shortened by the server (100,000
