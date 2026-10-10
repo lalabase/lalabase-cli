@@ -427,7 +427,7 @@ func (d *detailView) holds() bool { return d.known && !d.cached && !d.stale && d
 // state still previewable, the selected ticket is read as background work.
 func (m Model) due(msg gateway.Due) (Model, tea.Cmd) {
 	a := m.app
-	if a.expired || msg.Session != a.session || msg.Token != a.previewToken || !m.previewable() {
+	if a == nil || a.expired || msg.Session != a.session || msg.Token != a.previewToken || !m.previewable() {
 		return m, nil
 	}
 	v := a.tickets

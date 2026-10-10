@@ -1219,3 +1219,14 @@ func TestA401OnTheProjectsEndsTheSession(t *testing.T) {
 		t.Fatal("the session did not end")
 	}
 }
+
+// A timer's wake-up reaching the shell (no session) changes nothing and
+// does not crash.
+func TestADueWithoutASessionIsIgnored(t *testing.T) {
+	m := New()
+	m.width, m.height = 120, 24
+	next, cmd := step(t, m, gateway.Due{Session: 1, Token: 1})
+	if next != m || cmd != nil {
+		t.Fatal("a wake-up without a session acted")
+	}
+}
