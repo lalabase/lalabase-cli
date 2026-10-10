@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/inboxfixture"
@@ -33,12 +34,21 @@ func main() {
 	}))
 }
 
+// scenarioList names the scenarios for the usage line.
+func scenarioList() string {
+	names := make([]string, 0, len(inboxfixture.Scenarios()))
+	for _, s := range inboxfixture.Scenarios() {
+		names = append(names, string(s))
+	}
+	return strings.Join(names, ", ")
+}
+
 // run parses the flags, builds the fixture and hands it to serve, which
 // blocks (the program) or returns at once (a test).
 func run(args []string, stdout, stderr io.Writer, serve func(http.Handler, net.Listener) error) int {
 	fs := flag.NewFlagSet("inbox-fixture", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	scenario := fs.String("scenario", string(inboxfixture.Normal), "one of normal, older, temporary, 429, 401, vanished")
+	scenario := fs.String("scenario", string(inboxfixture.Normal), "one of "+scenarioList())
 	port := fs.Int("port", 18089, "the port on 127.0.0.1")
 	contractPath := fs.String("contract", "internal/contract/testdata/mcp_contract.json", "the contract copy")
 	if err := fs.Parse(args); err != nil {

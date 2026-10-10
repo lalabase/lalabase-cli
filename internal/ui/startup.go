@@ -191,6 +191,10 @@ func (m *Model) expire() {
 	for _, w := range a.waiters {
 		w.cancel()
 	}
+	for _, op := range a.marks {
+		// The session's writes end with it: a late answer fills nothing.
+		op.cancel()
+	}
 	if a.scope != nil {
 		a.scope.EndSession(a.store)
 	}

@@ -47,6 +47,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.receiveExpansion(msg)
 		}
 		return m.receiveDetail(msg)
+	case gateway.MarkReadResult:
+		return m.receiveMark(msg)
 	case gateway.Result:
 		// A read refused before it was sent: its waiter is freed, nothing
 		// is shown of it.
@@ -185,9 +187,17 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 	case NextArea:
 		return m.nextArea(), nil
 	case Order:
+		// o is contextual: in the details of a notification it opens the
+		// ticket the notification names; in a ticket it switches the order
+		// of the comments.
+		if a.active != nil && a.origin == nil && m.focus == view.Object {
+			return m.openLinkedTicket()
+		}
 		return m.switchOrder()
 	case Expand:
 		return m.expand()
+	case MarkRead:
+		return m.markRead()
 	}
 	return m, nil
 }
@@ -200,7 +210,7 @@ func (m Model) move(delta int) (Model, tea.Cmd) {
 	case view.Navigation:
 		a.moveHighlight(delta)
 	case view.Object:
-		if a.detail != nil && a.tickets != nil {
+		if a.detail != nil {
 			return m.moveComment(delta), nil
 		}
 	case view.List:
@@ -239,13 +249,13 @@ func (m Model) movePage(delta int) (Model, tea.Cmd) {
 		capacity := max(1, view.Capacity(c, g))
 		top := max(0, view.Extent(c, g, view.Object, m.widthMethod)-capacity)
 		switch {
-		case a.active != nil:
-			a.active.detailOffset = max(0, min(top, a.active.detailOffset+delta*capacity))
 		case a.detail != nil:
 			// From where the pane is now, the anchor's place included; the
 			// scroll is the person's, the anchor is let go.
 			a.detail.offset = max(0, min(top, min(top, c.Offset)+delta*capacity))
 			a.detail.follow = anchorNone
+		case a.active != nil:
+			a.active.detailOffset = max(0, min(top, a.active.detailOffset+delta*capacity))
 		}
 	}
 	return m, nil
@@ -267,6 +277,9 @@ func (m Model) open() (Model, tea.Cmd) {
 		case a.active != nil:
 			v := a.active
 			if v.selected != "" {
+				// The details of another row: a ticket opened from a
+				// notification goes with them.
+				a.leaveLinkedTicket()
 				v.opened, v.detailOffset = v.selected, 0
 				m.focus = view.Object
 			}
@@ -296,6 +309,13 @@ func (m Model) back() (Model, tea.Cmd) {
 		m.focus = view.Navigation
 	case view.Object:
 		switch {
+		case a.origin != nil:
+			if a.detail != nil && a.detail.expansion != nil {
+				// The expansion closes first, without a request.
+				a.closeExpansion()
+				return m, nil
+			}
+			return m.closeLinkedTicket(), nil
 		case a.active != nil:
 			a.active.opened = ""
 			m.focus = view.List

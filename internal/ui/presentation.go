@@ -121,6 +121,9 @@ func (m Model) crumbs() [3]present.Inline {
 	if a.projects != nil && !a.expired {
 		return [3]present.Inline{uitext.Inline(uitext.Organisations), uitext.Inline(uitext.Tickets), uitext.Inline(uitext.Ticket)}
 	}
+	if a.origin != nil && !a.expired {
+		return [3]present.Inline{uitext.Inline(uitext.Organisations), uitext.Inline(uitext.Inbox), uitext.Inline(uitext.Ticket)}
+	}
 	return [3]present.Inline{uitext.Inline(uitext.Organisations), uitext.Inline(uitext.Inbox), uitext.Inline(uitext.Details)}
 }
 
@@ -276,7 +279,10 @@ func (m Model) inboxColumn() present.Column {
 		if n.ID == v.selected {
 			c.Cursor = i
 		}
-		c.Rows = append(c.Rows, present.Row{Primary: rowPrimary(n), Secondary: rowSecondary(n)})
+		// The word at the end of a row names what became of marking it
+		// (C1f), by the row's id: an answer for one row never sits on
+		// another.
+		c.Rows = append(c.Rows, present.Row{Primary: rowPrimary(n), Secondary: rowSecondary(n), Trailing: m.app.markShort(n.ID)})
 	}
 	c.Offset = v.offset
 	return c
@@ -347,7 +353,7 @@ func timeOf(raw string, seconds bool) string {
 // previewed or opened.
 func (m Model) objectColumn() present.Column {
 	a := m.app
-	if a.projects != nil && !a.expired {
+	if (a.projects != nil || a.origin != nil) && !a.expired {
 		return m.detailColumn()
 	}
 	c := present.Column{Title: uitext.Inline(uitext.Details), Cursor: -1}
@@ -378,6 +384,9 @@ func (m Model) objectColumn() present.Column {
 		label(uitext.LabelNotification, n.ID),
 		label(uitext.LabelState, uitext.Inline(state).String()),
 		label(uitext.LabelLastEvent, timeOf(n.LastEventAt, true)),
+	}
+	if text := a.markText(n.ID, !n.Read); text != "" {
+		lines = append(lines, label(uitext.LabelMarkRead, text))
 	}
 	c.Text = present.NewBody(strings.Join(lines, "\n"))
 	c.Offset = v.detailOffset

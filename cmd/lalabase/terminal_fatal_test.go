@@ -47,6 +47,10 @@ func (inboxOnly) TicketAnswer(context.Context, string, string, api.TicketOptions
 	return transport.Answer{Class: transport.Refused, Message: "not in this test"}
 }
 
+func (inboxOnly) MarkNotificationRead(context.Context, string, string) (api.NotificationState, transport.Answer) {
+	return api.NotificationState{}, transport.Answer{Class: transport.Refused, Message: "not in this test"}
+}
+
 type panicSource struct{ inboxOnly }
 
 func (panicSource) NotificationsAnswer(context.Context, api.NotificationQuery) transport.Answer {

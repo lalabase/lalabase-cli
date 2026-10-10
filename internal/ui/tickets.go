@@ -172,6 +172,8 @@ func (a *app) leaveInbox() {
 	if a.active == nil {
 		return
 	}
+	a.leaveLinkedTicket()
+	a.forgetSettledMarks()
 	a.remember()
 	a.moveInbox()
 	a.active = nil

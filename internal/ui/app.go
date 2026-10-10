@@ -186,6 +186,14 @@ type app struct {
 	// wake-up with the current token reads a preview.
 	previewToken uint64
 
+	// marks are the operations of marking as read, by notification id, each
+	// the newest for its target (C1f); nextOp numbers them. origin is the
+	// notification the ticket in the pane was opened from, nil when the
+	// pane shows no such ticket.
+	marks  map[string]*markOp
+	nextOp uint64
+	origin *origin
+
 	expired bool
 	pause   time.Time
 }
@@ -209,6 +217,7 @@ func (a *app) reset() {
 	a.highlight, a.highlightSection, a.active, a.remembered = "", sectionInbox, nil, map[string]position{}
 	a.projects, a.tickets, a.detail = nil, nil, nil
 	a.rememberedProject, a.rememberedTickets, a.previewToken = map[string]string{}, map[string]ticketPosition{}, 0
+	a.marks, a.origin = map[string]*markOp{}, nil
 	a.pause = time.Time{}
 }
 

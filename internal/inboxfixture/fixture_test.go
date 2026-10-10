@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/contract"
@@ -151,8 +152,13 @@ func TestEverythingButTheReadsOfC1IsRefused(t *testing.T) {
 	if _, ans := a.Ticket(ctx, ProjectWebsite, "00000000-0000-4000-8000-000000000999"); ans.Class != transport.NotFound {
 		t.Fatalf("a missing ticket: %v", ans.Class)
 	}
-	if _, ans := a.MarkNotificationRead(ctx, "n", "key-00000001"); ans.Class != transport.Refused {
-		t.Fatalf("mark read: %v", ans.Class)
+	// The one write answers a missing row as the server does; every other
+	// write stays refused.
+	if _, ans := a.MarkNotificationRead(ctx, "n", "key-00000001"); ans.Class != transport.NotFound {
+		t.Fatalf("mark read of a missing row: %v", ans.Class)
+	}
+	if _, ans := a.PostComment(ctx, ProjectWebsite, TicketLogin, "hello", "key-00000002"); ans.Class != transport.Refused {
+		t.Fatalf("post comment: %v", ans.Class)
 	}
 	if _, ans := a.Notifications(ctx, api.NotificationQuery{Status: "unread", ProjectID: "p"}); ans.Class != transport.Refused {
 		t.Fatalf("project filter: %v", ans.Class)
@@ -171,7 +177,7 @@ func TestEverythingButTheReadsOfC1IsRefused(t *testing.T) {
 	for _, r := range f.Requests() {
 		seen[r.Tool] = true
 	}
-	if !seen["list_tickets"] || !seen["mark_notification_read"] || !seen["get_ticket"] {
+	if !seen["list_tickets"] || !seen["mark_notification_read"] || !seen["get_ticket"] || !seen["post_comment"] {
 		t.Fatalf("the log does not name the refused tools: %v", seen)
 	}
 }
@@ -444,6 +450,192 @@ func TestTheTicketSixScenarios(t *testing.T) {
 			if _, ans := a.TicketWith(ctx, ProjectWebsite, six, o); ans.Class != transport.InvalidInput {
 				t.Fatalf("%+v: %v", o, ans.Class)
 			}
+		}
+	})
+}
+
+// The write (C1f) against the fixture through the real adapters: a marked
+// row leaves the unread pages and the counts, a key seen before answers
+// the original result without a second change, and the three logs tell
+// attempts, keys and changes apart.
+func TestMarkReadWorksAgainstTheFixture(t *testing.T) {
+	f, a, _ := serve(t, Normal)
+	ctx := context.Background()
+	first, _ := a.Notifications(ctx, api.NotificationQuery{Status: "unread", Page: 1, PerPage: 25, OrganisationID: OrgA})
+	row := first.Data[5]
+	if row.Ticket == nil || row.Ticket.ID != TicketID(ProjectWebsite, 6) || row.Ticket.ProjectID != ProjectWebsite || row.Ticket.Title != "Ticket 6" {
+		t.Fatalf("A's rows do not name Website's tickets: %+v", row.Ticket)
+	}
+	if b, _ := a.Notifications(ctx, api.NotificationQuery{Status: "unread", Page: 1, PerPage: 25, OrganisationID: OrgB}); b.Data[0].Ticket == nil || b.Data[0].Ticket.Number != 101 {
+		t.Fatalf("B's rows changed: %+v", b.Data[0].Ticket)
+	}
+	state, ans := a.MarkNotificationRead(ctx, row.ID, "key-00000001")
+	if !ans.OK() || state.ID != row.ID || state.State != "read" || state.ReadAt == nil {
+		t.Fatalf("mark: %v %+v", ans.Class, state)
+	}
+	after, _ := a.Notifications(ctx, api.NotificationQuery{Status: "unread", Page: 1, PerPage: 25, OrganisationID: OrgA})
+	if after.Meta.Total != 29 || after.Meta.ByOrganisation[0].Unread != 29 || len(after.Data) != 25 {
+		t.Fatalf("after the mark: %+v", after.Meta)
+	}
+	for _, n := range after.Data {
+		if n.ID == row.ID {
+			t.Fatal("the marked row is still unread")
+		}
+	}
+	global, _ := a.Notifications(ctx, api.NotificationQuery{Status: "unread", Page: 1, PerPage: 25})
+	if global.Meta.Total != 32 || global.Meta.UnreadTotal != 32 {
+		t.Fatalf("global after the mark: %+v", global.Meta)
+	}
+	// The same key again: the original result, no second change.
+	again, ans := a.MarkNotificationRead(ctx, row.ID, "key-00000001")
+	if !ans.OK() || again.ID != state.ID || again.State != state.State || again.ReadAt == nil || *again.ReadAt != *state.ReadAt {
+		t.Fatalf("replay: %v %+v", ans.Class, again)
+	}
+	// Marking an already read row with a new key: read it stays, one more
+	// change is recorded (the server's "a row that is already read stays
+	// read" is one write call all the same).
+	if _, ans := a.MarkNotificationRead(ctx, row.ID, "key-00000002"); !ans.OK() {
+		t.Fatalf("second mark: %v", ans.Class)
+	}
+	if _, ans := a.MarkNotificationRead(ctx, "00000000-0000-4000-8000-000000000999", "key-00000003"); ans.Class != transport.NotFound {
+		t.Fatalf("a missing row: %v", ans.Class)
+	}
+	if got := f.Mutations(); len(got) != 2 || got[0] != (Mutation{Notification: row.ID, Key: "key-00000001"}) || got[1].Key != "key-00000002" {
+		t.Fatalf("mutations %+v", got)
+	}
+	if got := f.Keys(); len(got) != 4 || got[0] != "key-00000001" || got[1] != "key-00000001" || got[3] != "key-00000003" {
+		t.Fatalf("keys %v", got)
+	}
+	writes := 0
+	for _, r := range f.Requests() {
+		if r.Tool == "mark_notification_read" {
+			writes++
+			if key, _ := r.Args["idempotency_key"].(string); key == "" {
+				t.Fatalf("an attempt without its key: %+v", r)
+			}
+		}
+	}
+	if writes != 4 {
+		t.Fatalf("%d attempts logged", writes)
+	}
+}
+
+// The scenarios of the write: each does what it says, and nothing else
+// changes.
+func TestTheMarkReadScenarios(t *testing.T) {
+	ctx := context.Background()
+	a1 := api.NotificationQuery{Status: "unread", Page: 1, PerPage: 25, OrganisationID: OrgA}
+	rowOf := func(t *testing.T, a *api.API, n int) string {
+		t.Helper()
+		page, ans := a.Notifications(ctx, a1)
+		if !ans.OK() {
+			t.Fatalf("page 1: %v", ans.Class)
+		}
+		return page.Data[n-1].ID
+	}
+	t.Run("read-only", func(t *testing.T) {
+		f, a, _ := serve(t, ReadOnly)
+		me, _ := a.Me(ctx)
+		if me.Token.ReadOnly == nil || !*me.Token.ReadOnly {
+			t.Fatalf("/me: %+v", me.Token)
+		}
+		if _, ans := a.MarkNotificationRead(ctx, rowOf(t, a, 1), "key-00000001"); ans.Class != transport.ReadOnly {
+			t.Fatalf("mark: %v", ans.Class)
+		}
+		if len(f.Mutations()) != 0 {
+			t.Fatal("a read-only token wrote")
+		}
+	})
+	t.Run("unknown-write", func(t *testing.T) {
+		_, a, _ := serve(t, UnknownWrite)
+		me, ans := a.Me(ctx)
+		if !ans.OK() || me.Token.ReadOnly != nil || me.Token.ID == "" {
+			t.Fatalf("/me: %v %+v", ans.Class, me.Token)
+		}
+	})
+	t.Run("no-mark-read", func(t *testing.T) {
+		_, _, c := serve(t, NoMarkRead)
+		info, _ := c.Initialize(ctx)
+		tools, _ := c.ListTools(ctx)
+		report := features.Detect(info, tools)
+		if report.Enabled["mark_read"] || !report.Enabled["inbox"] || !report.Enabled["ticket"] {
+			t.Fatalf("report %+v", report.Enabled)
+		}
+	})
+	t.Run("refusals", func(t *testing.T) {
+		f, a, _ := serve(t, Refusals)
+		if _, ans := a.MarkNotificationRead(ctx, rowOf(t, a, refusedArchived), "key-00000001"); ans.Class != transport.Refused || ans.Reason != "archived" {
+			t.Fatalf("#2: %v %q", ans.Class, ans.Reason)
+		}
+		if _, ans := a.MarkNotificationRead(ctx, rowOf(t, a, refusedMissing), "key-00000002"); ans.Class != transport.NotFound {
+			t.Fatalf("#3: %v", ans.Class)
+		}
+		if _, ans := a.MarkNotificationRead(ctx, rowOf(t, a, refusedForbidden), "key-00000003"); ans.Class != transport.NoAccess {
+			t.Fatalf("#4: %v", ans.Class)
+		}
+		if _, ans := a.MarkNotificationRead(ctx, rowOf(t, a, 5), "key-00000004"); !ans.OK() {
+			t.Fatalf("#5: %v", ans.Class)
+		}
+		if got := f.Mutations(); len(got) != 1 {
+			t.Fatalf("mutations %+v", got)
+		}
+	})
+	t.Run("lost", func(t *testing.T) {
+		f, a, _ := serve(t, Lost)
+		row := rowOf(t, a, 1)
+		_, ans := a.MarkNotificationRead(ctx, row, "key-00000001")
+		if ans.Class != transport.Temporary || !ans.Sent {
+			t.Fatalf("mark: %v sent %v", ans.Class, ans.Sent)
+		}
+		if got := f.Mutations(); len(got) != 1 || got[0].Notification != row {
+			t.Fatalf("mutations %+v", got)
+		}
+		page, _ := a.Notifications(ctx, a1)
+		if page.Meta.Total != 29 {
+			t.Fatalf("after the lost answer: %+v", page.Meta)
+		}
+		log := f.Requests()
+		if last := log[len(log)-2]; last.Tool != "mark_notification_read" || last.Status != 0 {
+			t.Fatalf("the lost attempt is logged as %+v", last)
+		}
+	})
+	t.Run("429", func(t *testing.T) {
+		f, a, _ := serve(t, RateLimited)
+		row := rowOf(t, a, 1)
+		if _, ans := a.MarkNotificationRead(ctx, row, "key-00000001"); ans.Class != transport.Temporary || ans.Status != http.StatusTooManyRequests {
+			t.Fatalf("attempt 1: %v %d", ans.Class, ans.Status)
+		}
+		if len(f.Mutations()) != 0 {
+			t.Fatal("a rate-limited attempt wrote")
+		}
+		if _, ans := a.MarkNotificationRead(ctx, row, "key-00000001"); !ans.OK() {
+			t.Fatalf("attempt 2: %v", ans.Class)
+		}
+		if got := f.Mutations(); len(got) != 1 {
+			t.Fatalf("mutations %+v", got)
+		}
+	})
+	t.Run("401", func(t *testing.T) {
+		f, a, _ := serve(t, Unauthorized)
+		if _, ans := a.MarkNotificationRead(ctx, rowOf(t, a, 1), "key-00000001"); ans.Class != transport.Unauthenticated {
+			t.Fatalf("mark: %v", ans.Class)
+		}
+		if len(f.Mutations()) != 0 {
+			t.Fatal("a refused token wrote")
+		}
+	})
+	t.Run("slow", func(t *testing.T) {
+		f, a, _ := serve(t, Slow)
+		row := rowOf(t, a, 1)
+		started := time.Now()
+		if _, ans := a.MarkNotificationRead(ctx, row, "key-00000001"); !ans.OK() {
+			t.Fatalf("mark: %v", ans.Class)
+		}
+		if time.Since(started) < slowAnswer {
+			t.Fatal("the answer came at once")
+		}
+		if got := f.Mutations(); len(got) != 1 {
+			t.Fatalf("mutations %+v", got)
 		}
 	})
 }

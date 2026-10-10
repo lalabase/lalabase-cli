@@ -9,8 +9,9 @@
 // as the templates of every row), so a client that works against it works
 // against the shapes the server really sends. It accepts one synthetic
 // token, binds to the loopback address only, reads no profile and no
-// environment, and offers nothing but the reads of C1: writes and the
-// other tools are refused, as a scenario to see them refused.
+// environment, and offers nothing but the reads of C1 and its one write,
+// mark_notification_read (marks.go): the other tools are refused, as a
+// scenario to see them refused.
 //
 // The shipped lalabase does not import it (a source guard holds that).
 package inboxfixture
@@ -33,9 +34,11 @@ import (
 const Token = "lalabase-inbox-fixture-only" //nolint:gosec // synthetic: it opens nothing anywhere
 
 // Scenario is what the fixture does with the second page of organisation
-// A's inbox and of Website's tickets (and, for 401, with ticket #2; for a
-// temporary failure, with page 2 of the comments of ticket #6; for
-// vanished, with the newest comment of ticket #6).
+// A's inbox and of Website's tickets (and, for 401, with ticket #2 and
+// every write; for a temporary failure, with page 2 of the comments of
+// ticket #6; for vanished, with the newest comment of ticket #6; for 429,
+// with the first attempt of every write), and what it does with
+// mark_notification_read (C1f, marks.go).
 type Scenario string
 
 const (
@@ -54,11 +57,27 @@ const (
 	// read whole (post_id) it is "not found", as for a comment that was
 	// made private meanwhile (C1d).
 	Vanished Scenario = "vanished"
+	// ReadOnly: /me says the token is read-only, and a write is refused as
+	// such (C1f).
+	ReadOnly Scenario = "read-only"
+	// UnknownWrite: /me does not say whether the token may write (a server
+	// before MCP 0.7.0).
+	UnknownWrite Scenario = "unknown-write"
+	// NoMarkRead: tools/list has no mark_notification_read.
+	NoMarkRead Scenario = "no-mark-read"
+	// Refusals: marking A's row #2 is refused as archived, #3 is not found
+	// (deleted meanwhile), #4 is not allowed; every other write succeeds.
+	Refusals Scenario = "refusals"
+	// Lost: every write is carried out and its answer is lost (the
+	// connection closes after the request was read).
+	Lost Scenario = "lost"
+	// Slow: every write is carried out at once and answered after a pause.
+	Slow Scenario = "slow"
 )
 
 // Scenarios lists them, for a tool's usage line.
 func Scenarios() []Scenario {
-	return []Scenario{Normal, Older, Temporary, RateLimited, Unauthorized, Vanished}
+	return []Scenario{Normal, Older, Temporary, RateLimited, Unauthorized, Vanished, ReadOnly, UnknownWrite, NoMarkRead, Refusals, Lost, Slow}
 }
 
 // The two organisations: A as the contract records it, B synthetic.
@@ -98,6 +117,11 @@ type Fixture struct {
 	mu       sync.Mutex
 	log      []Request
 	attempts map[string]int
+	// C1f (marks.go): the changes carried out, the keys seen, and the
+	// result each key answered first.
+	mutations []Mutation
+	keys      []string
+	results   map[string]map[string]any
 }
 
 // contractFile is the part of the contract copy the fixture reads. It is
@@ -139,7 +163,7 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 	if err := json.Unmarshal(contractJSON, &file); err != nil {
 		return nil, fmt.Errorf("inbox fixture: the contract copy does not read: %w", err)
 	}
-	f := &Fixture{scenario: scenario, attempts: map[string]int{}, rows: map[string][]map[string]any{}}
+	f := &Fixture{scenario: scenario, attempts: map[string]int{}, rows: map[string][]map[string]any{}, results: map[string]map[string]any{}}
 	var initialize struct {
 		Result json.RawMessage `json:"result"`
 	}
@@ -166,11 +190,27 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 			}
 		}
 	}
-	me, ok := file.Contract.REST["GET /api/v1/me"]["ok"]
+	if scenario == NoMarkRead {
+		if err := f.dropTool("mark_notification_read"); err != nil {
+			return nil, err
+		}
+	}
+	meCase := "ok"
+	if scenario == ReadOnly {
+		meCase = "ok_read_only"
+	}
+	me, ok := file.Contract.REST["GET /api/v1/me"][meCase]
 	if !ok || len(me.Response.Body) == 0 {
-		return nil, errors.New("inbox fixture: the contract copy records no /me")
+		return nil, errors.New("inbox fixture: the contract copy records no /me " + meCase)
 	}
 	f.me = me.Response.Body
+	if scenario == UnknownWrite {
+		unknown, err := withoutReadOnly(f.me)
+		if err != nil {
+			return nil, err
+		}
+		f.me = unknown
+	}
 	var orgs struct {
 		Data []map[string]any `json:"data"`
 	}
@@ -191,12 +231,27 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 	if err != nil {
 		return nil, err
 	}
-	f.rows[OrgA] = synthesise(template, a, 1, RowsA)
-	f.rows[OrgB] = synthesise(template, b, 101, RowsB)
+	// A's rows name the tickets of Website-Relaunch (tickets.go), so the
+	// ticket a notification names can be opened (C1f); B has no projects,
+	// its rows name tickets the fixture does not have.
+	f.rows[OrgA] = synthesise(template, a, 1, RowsA, websiteTicket)
+	f.rows[OrgB] = synthesise(template, b, 101, RowsB, func(number int) (string, string) {
+		return fmt.Sprintf("00000000-0000-4000-8000-%012d", 200000+number), fmt.Sprintf("Ticket %d of %s", number, b["name"])
+	})
 	if f.projectList, f.ticketRow, f.ticketTmpl, err = recordedTickets(file); err != nil {
 		return nil, err
 	}
 	return f, nil
+}
+
+// websiteTicket is the ticket of Website-Relaunch with the number, by its
+// id and title there.
+func websiteTicket(number int) (string, string) {
+	title := map[int]string{1: "Login bricht ab", 2: "Export als CSV"}[number]
+	if title == "" {
+		title = fmt.Sprintf("Ticket %d", number)
+	}
+	return TicketID(ProjectWebsite, number), title
 }
 
 // recordedRow is the one notification the contract records, as the
@@ -225,12 +280,12 @@ func recordedRow(file contractFile) (map[string]any, error) {
 	return page.Data[0], nil
 }
 
-// synthesise makes n rows for org from the template, numbered from first.
-// Deterministic variations cover what the interface must fall back on: a
-// row without a project, one without a ticket, one without an actor, a
-// deleted actor (name null), a ticket without a title. Times are fixed,
-// in UTC.
-func synthesise(template, org map[string]any, first, n int) []map[string]any {
+// synthesise makes n rows for org from the template, numbered from first,
+// each naming the ticket ticketOf gives for its number. Deterministic
+// variations cover what the interface must fall back on: a row without a
+// project, one without a ticket, one without an actor, a deleted actor
+// (name null), a ticket without a title. Times are fixed, in UTC.
+func synthesise(template, org map[string]any, first, n int, ticketOf func(number int) (id, title string)) []map[string]any {
 	var rows []map[string]any
 	for i := range n {
 		row := map[string]any{}
@@ -239,13 +294,13 @@ func synthesise(template, org map[string]any, first, n int) []map[string]any {
 		}
 		number := first + i
 		id := fmt.Sprintf("00000000-0000-4000-8000-%012d", 100000+number)
-		title := fmt.Sprintf("Ticket %d of %s", number, org["name"])
+		ticketID, title := ticketOf(number)
 		actorName := "Ben Berger"
 		row["id"] = id
 		row["read"], row["read_at"], row["state"] = false, nil, "queued"
 		row["organisation"] = map[string]any{"id": org["id"], "name": org["name"]}
-		row["project"] = map[string]any{"id": "00000000-0000-4000-8000-000000000031", "name": "Website"}
-		row["ticket"] = map[string]any{"id": fmt.Sprintf("00000000-0000-4000-8000-%012d", 200000+number), "number": number, "title": title, "project_id": "00000000-0000-4000-8000-000000000031"}
+		row["project"] = map[string]any{"id": ProjectWebsite, "name": "Website"}
+		row["ticket"] = map[string]any{"id": ticketID, "number": number, "title": title, "project_id": ProjectWebsite}
 		row["actor"] = map[string]any{"id": "00000000-0000-4000-8000-000000000012", "name": actorName}
 		row["message"] = fmt.Sprintf("Benachrichtigung: %s hat eine Aktion zu #%d %s durchgeführt", actorName, number, title)
 		stamp := fmt.Sprintf("2026-01-05T%02d:%02d:00Z", 9+i/60, i%60)
@@ -394,6 +449,8 @@ func (f *Fixture) rpc(w http.ResponseWriter, r *http.Request, req Request) {
 			f.tickets(w, call.Params.Arguments, reply, req)
 		case "get_ticket":
 			f.ticket(w, call.Params.Arguments, reply, req)
+		case "mark_notification_read":
+			f.markRead(w, r, call.Params.Arguments, reply, req)
 		default:
 			reply(http.StatusOK, toolError("refused", "not available in the inbox fixture: "+call.Params.Name), nil)
 		}
@@ -440,19 +497,25 @@ func (f *Fixture) notifications(w http.ResponseWriter, args map[string]any, repl
 		reply(http.StatusOK, toolError("invalid_input", "page or per_page out of range"), nil)
 		return
 	}
+	// The unread rows as they are now: a marked row has left them and the
+	// counts (C1f).
 	var rows []map[string]any
 	counts := map[string]int{}
+	f.mu.Lock()
 	switch org {
 	case "":
-		rows = append(append(rows, f.rows[OrgA]...), f.rows[OrgB]...)
-		counts[OrgA], counts[OrgB] = RowsA, RowsB
+		a, b := f.unread(OrgA), f.unread(OrgB)
+		rows = append(append(rows, a...), b...)
+		counts[OrgA], counts[OrgB] = len(a), len(b)
 	case OrgA, OrgB:
-		rows = f.rows[org]
+		rows = f.unread(org)
 		counts[org] = len(rows)
 	default:
+		f.mu.Unlock()
 		reply(http.StatusOK, toolError("not_found", "Organisation not found or not accessible."), nil)
 		return
 	}
+	f.mu.Unlock()
 	// The scenario acts on A's page 2, attempt by attempt.
 	if org == OrgA && page == 2 && f.scenarioOn(w, "A2", req) {
 		return
