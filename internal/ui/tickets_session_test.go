@@ -1499,15 +1499,20 @@ func TestAShrunkTicketListIsCorrectedOnce(t *testing.T) {
 	h.waitFor("the preview on the wire", func() bool { return len(h.f.detailReads()) == 1 })
 	total = 30
 	before := len(h.f.ticketListReads())
-	h.drive(h.press("R"))
-	if v.page != 2 || len(v.rows) != 5 || len(h.f.ticketListReads()) != before+2 {
-		t.Fatalf("after the shrink: page %d, %d rows, %d reads", v.page, len(v.rows), len(h.f.ticketListReads())-before)
+	beyond := messages(t, h.press("R")) // page 3 of 30: beyond the last
+	correction := h.feed(beyond...)     // the one correction: page 2 is read
+	if a.detail != nil || v.page != 2 || len(correction) != 1 {
+		t.Fatalf("the correction: detail %v, page %d, %d commands", a.detail != nil, v.page, len(correction))
+	}
+	if r := h.receive(preview).(gateway.TicketResult); r.Answer.Class != transport.Canceled {
+		t.Fatalf("the preview of the old page was not canceled: %v", r.Answer.Class)
 	}
 	if _, ok := a.store.Get(oldKey); ok {
 		t.Fatal("the old page stayed cached")
 	}
-	if r := h.receive(preview).(gateway.TicketResult); r.Answer.Class != transport.Canceled {
-		t.Fatalf("the preview of the old page was not canceled: %v", r.Answer.Class)
+	h.drive(correction...)
+	if v.page != 2 || len(v.rows) != 5 || len(h.f.ticketListReads()) != before+2 {
+		t.Fatalf("after the shrink: page %d, %d rows, %d reads", v.page, len(v.rows), len(h.f.ticketListReads())-before)
 	}
 	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH | Tickets | Website-Relaunch | page 2 of 2" {
 		t.Fatalf("context %q", got)
