@@ -42,7 +42,8 @@ func normalServer(raw string) (string, bool) {
 }
 
 // Key names one cached answer. Every option of the query is part of it; a
-// key belongs to one organisation or, explicitly, to all of them (Global).
+// key is scoped by one organisation, explicitly by all of them (Global), or
+// by a project (a ticket list, a ticket).
 type Key struct {
 	ns           Namespace
 	Operation    string
@@ -52,6 +53,16 @@ type Key struct {
 	Page         int
 	PerPage      int
 	Project      string
+	// C1c: the search of a ticket list, and the options of one ticket
+	// (internal/api, TicketOptions). A key of a ticket names it.
+	Query           string
+	Ticket          string
+	PostsPage       int
+	PostsPerPage    int
+	Newest          bool
+	AttachmentsPage int
+	FullText        bool
+	Post            string
 }
 
 // Key starts a key of this namespace for an operation.
@@ -60,21 +71,34 @@ func (n Namespace) Key(operation string) Key { return Key{ns: n, Operation: oper
 // Namespace is the identity the key belongs to.
 func (k Key) Namespace() Namespace { return k.ns }
 
-// Resource is the key without its page: what a write or a removal affects
-// as a whole.
+// Resource is the key without its page, its search and the options of one
+// record: what a write or a removal affects as a whole. For a ticket that
+// is the ticket in every variant it was read in; for a ticket list the
+// project, every search and page of it.
 func (k Key) Resource() Key {
-	k.Page, k.PerPage = 0, 0
+	k.Page, k.PerPage, k.Query = 0, 0, ""
+	k.PostsPage, k.PostsPerPage, k.Newest, k.AttachmentsPage, k.FullText, k.Post = 0, 0, false, 0, false, ""
 	return k
 }
 
 // String encodes every field, for sharing a read in the queue.
 func (k Key) String() string {
-	out, _ := json.Marshal([]any{k.ns.profile, k.ns.server, k.ns.tokenID, k.Operation, k.Organisation, k.Global, k.Status, k.Page, k.PerPage, k.Project})
+	out, _ := json.Marshal([]any{k.ns.profile, k.ns.server, k.ns.tokenID, k.Operation, k.Organisation, k.Global, k.Status, k.Page, k.PerPage, k.Project,
+		k.Query, k.Ticket, k.PostsPage, k.PostsPerPage, k.Newest, k.AttachmentsPage, k.FullText, k.Post})
 	return string(out)
 }
 
+// valid: a confirmed identity, an operation, and one scope: an
+// organisation or all of them (never both), or a project; a ticket needs
+// its project.
 func (k Key) valid() bool {
-	return k.ns.tokenID != "" && k.Operation != "" && k.Global == (k.Organisation == "")
+	if k.ns.tokenID == "" || k.Operation == "" || (k.Global && k.Organisation != "") {
+		return false
+	}
+	if k.Ticket != "" && k.Project == "" {
+		return false
+	}
+	return k.Global || k.Organisation != "" || k.Project != ""
 }
 
 // Entry is a cached answer, a copy the caller may change.

@@ -16,6 +16,9 @@ type Area uint8
 const (
 	Organisations Area = iota // the list of organisations and their counts
 	Inbox                     // the inbox of one organisation or of all, one page
+	Projects                  // the projects of one organisation (C1c)
+	Tickets                   // the tickets of one project: one page, one search (C1c)
+	Detail                    // the ticket in the object pane, previewed or opened (C1c)
 	areas
 )
 
@@ -140,11 +143,30 @@ func (s *Scope) accept(t Ticket, sameAnswer bool) bool {
 	return t.Epoch == s.epochs[res] || sameAnswer
 }
 
-// Receive is the one way an inbox result reaches the cache: checked first,
-// then filed by the decision its class gives. ok is false for a result that
+// Result is what every result of a read carries: the waiter's ticket, the
+// answer and the request it came from. The typed results embed the ticket
+// and carry the rest beside their decoded value.
+type Result struct {
+	Ticket
+	Answer transport.Answer
+	// Flight is the request the answer came from: the waiters that shared
+	// one request carry the same flight.
+	Flight queue.Flight
+}
+
+// Header is the Result itself, so a plain Result is a Received too (a read
+// refused before anything was sent).
+func (r Result) Header() Result { return r }
+
+// Received is a result of any read, for Receive.
+type Received interface{ Header() Result }
+
+// Receive is the one way a result reaches the cache: checked first, then
+// filed by the decision its class gives. ok is false for a result that
 // must be dropped; then nothing changed. An unauthenticated answer ends the
 // session.
-func (s *Scope) Receive(store *cache.Store, r InboxResult, now time.Time) (cache.Decision, bool) {
+func (s *Scope) Receive(store *cache.Store, received Received, now time.Time) (cache.Decision, bool) {
+	r := received.Header()
 	d := cache.Decide(r.Answer.Class, cache.Read)
 	res := r.Key.Resource()
 	// A copy of the last removal: a removal from the very request that

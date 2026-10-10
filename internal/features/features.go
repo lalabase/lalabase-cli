@@ -37,6 +37,7 @@ var All = []Feature{
 	{Name: "inbox", Spec: api.NotificationsSpec},
 	{Name: "mark_read", Spec: api.MarkReadSpec},
 	{Name: "tickets", Spec: api.TicketsSpec},
+	{Name: "tickets_search", Spec: api.TicketsSpec, ExtraArgs: []string{"q"}},
 	{Name: "ticket", Spec: api.TicketSpec},
 	{Name: "comment", Spec: api.CommentSpec},
 	{Name: "knowledge_search", Spec: api.KnowledgeSpec},

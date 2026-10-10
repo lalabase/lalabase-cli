@@ -266,7 +266,10 @@ func (a *API) MarkNotificationRead(ctx context.Context, id, key string) (Notific
 
 var TicketsSpec = Spec{
 	Name: "list_tickets", Tool: "list_tickets",
-	Args: []string{"project_id", "q", "status", "page", "per_page"},
+	Args: []string{"project_id", "status", "page", "per_page"},
+	// q is the search (feature tickets_search): a list without it is
+	// still a list.
+	Optional: []string{"q"},
 	Required: []string{
 		"data[].id", "data[].number", "data[].title", "data[].status?", "data[].updated_at",
 		"data[].assignees[].id", "data[].assignees[].name",
@@ -302,13 +305,73 @@ type TicketPage struct {
 }
 
 func (a *API) Tickets(ctx context.Context, q TicketQuery) (TicketPage, transport.Answer) {
+	return DecodeTickets(a.TicketsAnswer(ctx, q))
+}
+
+// TicketsAnswer sends the request and returns the answer undecoded, for a
+// read shared by several waiters; each decodes with DecodeTickets.
+func (a *API) TicketsAnswer(ctx context.Context, q TicketQuery) transport.Answer {
 	args := map[string]any{"project_id": q.ProjectID}
 	setString(args, "q", q.Q)
 	setString(args, "status", q.Status)
 	setInt(args, "page", q.Page)
 	setInt(args, "per_page", q.PerPage)
+	return a.c.CallTool(ctx, transport.Call{Tool: TicketsSpec.Tool, Args: args, OneRecord: TicketsSpec.OneRecord})
+}
+
+// DecodeTickets checks an answer against TicketsSpec and decodes a new page
+// from it, sharing nothing with an earlier decode; an answer that is no
+// object, or fails the check, gives the empty page.
+func DecodeTickets(ans transport.Answer) (TicketPage, transport.Answer) {
 	var page TicketPage
-	return page, a.call(ctx, TicketsSpec, args, &page)
+	if ans = decode(TicketsSpec, ans, &page); !ans.OK() {
+		return TicketPage{}, ans
+	}
+	return page, ans
+}
+
+// CheckTicketPage checks what the spec cannot say about a page of tickets:
+// the numbers the paging divides by are above zero, the total is not
+// negative, the page holds no more rows than its size or its total, and
+// every row has an id that comes once.
+func CheckTicketPage(p TicketPage) error {
+	m := p.Meta
+	switch {
+	case m.Page <= 0:
+		return errors.New("list_tickets: meta.page is not above zero")
+	case m.PerPage <= 0:
+		return errors.New("list_tickets: meta.per_page is not above zero")
+	case m.Total < 0:
+		return errors.New("list_tickets: meta.total is negative")
+	case len(p.Data) > m.PerPage:
+		return errors.New("list_tickets: more rows than meta.per_page")
+	case len(p.Data) > m.Total:
+		return errors.New("list_tickets: more rows than meta.total")
+	}
+	return uniqueIDs("list_tickets: data", func(yield func(string) bool) {
+		for _, row := range p.Data {
+			if !yield(row.ID) {
+				return
+			}
+		}
+	})
+}
+
+// uniqueIDs says whether every id of a list is present and comes once.
+func uniqueIDs(what string, ids func(yield func(string) bool)) error {
+	seen := map[string]bool{}
+	i := 0
+	for id := range ids {
+		switch {
+		case id == "":
+			return fmt.Errorf("%s[%d] has no id", what, i)
+		case seen[id]:
+			return fmt.Errorf("%s[%d] carries an id twice", what, i)
+		}
+		seen[id] = true
+		i++
+	}
+	return nil
 }
 
 var TicketSpec = Spec{
@@ -422,8 +485,16 @@ func (a *API) Ticket(ctx context.Context, projectID, ticketID string) (Ticket, t
 // CommentNotFound instead; a ticket that is really gone says so on the next
 // plain read.
 func (a *API) TicketWith(ctx context.Context, projectID, ticketID string, o TicketOptions) (Ticket, transport.Answer) {
+	return DecodeTicket(a.TicketAnswer(ctx, projectID, ticketID, o), o)
+}
+
+// TicketAnswer sends the request of TicketWith and returns the answer
+// undecoded, for a read shared by several waiters (a preview and an open
+// of the same ticket); each decodes with DecodeTicket under the same
+// options. A page below zero is refused before anything is sent.
+func (a *API) TicketAnswer(ctx context.Context, projectID, ticketID string, o TicketOptions) transport.Answer {
 	if o.PostsPage < 0 || o.PostsPerPage < 0 || o.AttachmentsPage < 0 {
-		return Ticket{}, transport.Answer{Class: transport.InvalidInput, Message: TicketSpec.Name + ": a page or page size below 0"}
+		return transport.Answer{Class: transport.InvalidInput, Message: TicketSpec.Name + ": a page or page size below 0"}
 	}
 	args := map[string]any{"project_id": projectID, "ticket_id": ticketID}
 	setInt(args, "posts_page", o.PostsPage)
@@ -436,12 +507,83 @@ func (a *API) TicketWith(ctx context.Context, projectID, ticketID string, o Tick
 		args["full_text"] = true
 	}
 	setString(args, "post_id", o.PostID)
+	return a.c.CallTool(ctx, transport.Call{Tool: TicketSpec.Tool, Args: args, OneRecord: TicketSpec.OneRecord})
+}
+
+// DecodeTicket checks an answer against the spec of its options and decodes
+// a new ticket from it, sharing nothing with an earlier decode, and turns
+// "not found" for one comment into the refusal CommentNotFound.
+func DecodeTicket(ans transport.Answer, o TicketOptions) (Ticket, transport.Answer) {
 	var t Ticket
-	ans := a.call(ctx, ticketSpec(o), args, &t)
+	ans = decode(ticketSpec(o), ans, &t)
 	if o.PostID != "" && ans.Class == transport.NotFound {
 		ans.Class, ans.Reason = transport.Refused, CommentNotFound
 	}
+	if !ans.OK() {
+		return Ticket{}, ans
+	}
 	return t, ans
+}
+
+// maxPostsPerPage is the page size the server caps at: asked for more, it
+// answers that many.
+const maxPostsPerPage = 50
+
+// CheckTicket checks what the spec cannot say about a ticket: its id and
+// its project are there, every comment has an id that comes once, no total
+// is negative, and a page echoes the options it was asked with (the page,
+// the page size up to the server's cap, the order, the attachments page)
+// with a count of pages that is not negative.
+func CheckTicket(t Ticket, o TicketOptions) error {
+	switch {
+	case t.ID == "":
+		return errors.New("get_ticket: the ticket has no id")
+	case t.Project.ID == "":
+		return errors.New("get_ticket: the ticket has no project id")
+	case t.PostsTotal < 0:
+		return errors.New("get_ticket: posts_total is negative")
+	case t.AttachmentsTotal < 0:
+		return errors.New("get_ticket: attachments_total is negative")
+	}
+	if err := uniqueIDs("get_ticket: posts", func(yield func(string) bool) {
+		for _, p := range t.Posts {
+			if !yield(p.ID) {
+				return
+			}
+		}
+	}); err != nil {
+		return err
+	}
+	if o.PostID != "" || !o.paged() {
+		return nil
+	}
+	order := "oldest"
+	if o.Newest {
+		order = "newest"
+	}
+	switch {
+	case t.PostsPage <= 0:
+		return errors.New("get_ticket: posts_page is not above zero")
+	case o.PostsPage > 0 && t.PostsPage != o.PostsPage:
+		return fmt.Errorf("get_ticket: posts_page %d answered for page %d", t.PostsPage, o.PostsPage)
+	case t.PostsPerPage <= 0:
+		return errors.New("get_ticket: posts_per_page is not above zero")
+	case o.PostsPerPage > 0 && t.PostsPerPage != min(o.PostsPerPage, maxPostsPerPage):
+		return fmt.Errorf("get_ticket: posts_per_page %d answered for %d", t.PostsPerPage, o.PostsPerPage)
+	case len(t.Posts) > t.PostsPerPage:
+		return errors.New("get_ticket: more comments than posts_per_page")
+	case t.PostsPages < 0:
+		return errors.New("get_ticket: posts_pages is negative")
+	case t.PostsOrder != order:
+		return fmt.Errorf("get_ticket: posts_order %q answered for %q", t.PostsOrder, order)
+	case t.AttachmentsPage <= 0:
+		return errors.New("get_ticket: attachments_page is not above zero")
+	case o.AttachmentsPage > 0 && t.AttachmentsPage != o.AttachmentsPage:
+		return fmt.Errorf("get_ticket: attachments_page %d answered for page %d", t.AttachmentsPage, o.AttachmentsPage)
+	case t.AttachmentsPages < 0:
+		return errors.New("get_ticket: attachments_pages is negative")
+	}
+	return nil
 }
 
 // TicketByNumber sends the number as text, the form the tool documents
@@ -577,13 +719,52 @@ type Project struct {
 // Projects lists the projects the token reaches, of one organisation when
 // organisationID is set.
 func (a *API) Projects(ctx context.Context, organisationID string) ([]Project, transport.Answer) {
+	return DecodeProjects(a.ProjectsAnswer(ctx, organisationID))
+}
+
+// ProjectsAnswer sends the request and returns the answer undecoded, for a
+// read shared by several waiters; each decodes with DecodeProjects.
+func (a *API) ProjectsAnswer(ctx context.Context, organisationID string) transport.Answer {
 	query := url.Values{}
 	if organisationID != "" {
 		query.Set("organisation_id", organisationID)
 	}
+	path := ProjectsSpec.Path
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+	return a.c.Get(ctx, path)
+}
+
+// DecodeProjects checks an answer against ProjectsSpec and decodes a new
+// list from it (never nil for an object), sharing nothing with an earlier
+// decode.
+func DecodeProjects(ans transport.Answer) ([]Project, transport.Answer) {
 	var body struct {
 		Data []Project `json:"data"`
 	}
-	ans := a.get(ctx, ProjectsSpec, query, &body)
+	if ans = decode(ProjectsSpec, ans, &body); !ans.OK() {
+		return nil, ans
+	}
+	if body.Data == nil {
+		body.Data = []Project{}
+	}
 	return body.Data, ans
+}
+
+// CheckProjects checks what the spec cannot say about a list of projects:
+// every project has an id that comes once and names its organisation.
+func CheckProjects(list []Project) error {
+	for i, p := range list {
+		if p.Organisation.ID == "" {
+			return fmt.Errorf("projects: data[%d] has no organisation id", i)
+		}
+	}
+	return uniqueIDs("projects: data", func(yield func(string) bool) {
+		for _, p := range list {
+			if !yield(p.ID) {
+				return
+			}
+		}
+	})
 }

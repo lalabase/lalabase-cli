@@ -27,9 +27,13 @@ type Doer interface {
 	DoShared(ctx context.Context, job queue.Job) (transport.Answer, queue.Flight)
 }
 
-// Source sends the inbox request; *api.API in the program.
+// Source sends the requests of the reads, undecoded; *api.API in the
+// program. Each has its decode in internal/api, run by every waiter.
 type Source interface {
 	NotificationsAnswer(ctx context.Context, q api.NotificationQuery) transport.Answer
+	ProjectsAnswer(ctx context.Context, organisationID string) transport.Answer
+	TicketsAnswer(ctx context.Context, q api.TicketQuery) transport.Answer
+	TicketAnswer(ctx context.Context, projectID, ticketID string, o api.TicketOptions) transport.Answer
 }
 
 // Gateway turns tickets into commands.
@@ -67,6 +71,74 @@ type InboxResult struct {
 	Flight queue.Flight
 }
 
+func (r InboxResult) Header() Result {
+	return Result{Ticket: r.Ticket, Answer: r.Answer, Flight: r.Flight}
+}
+
+// ProjectsResult is one waiter's list of an organisation's projects (C1c).
+// Projects is nil unless Answer is an object.
+type ProjectsResult struct {
+	Ticket
+	Projects []api.Project
+	Answer   transport.Answer
+	Flight   queue.Flight
+}
+
+func (r ProjectsResult) Header() Result {
+	return Result{Ticket: r.Ticket, Answer: r.Answer, Flight: r.Flight}
+}
+
+// TicketsResult is one waiter's page of a project's tickets (C1c).
+type TicketsResult struct {
+	Ticket
+	Page   api.TicketPage
+	Answer transport.Answer
+	Flight queue.Flight
+}
+
+func (r TicketsResult) Header() Result {
+	return Result{Ticket: r.Ticket, Answer: r.Answer, Flight: r.Flight}
+}
+
+// TicketResult is one waiter's ticket, previewed or opened (C1c). Record is
+// empty unless Answer is an object.
+type TicketResult struct {
+	Ticket
+	Record api.Ticket
+	Answer transport.Answer
+	Flight queue.Flight
+}
+
+func (r TicketResult) Header() Result {
+	return Result{Ticket: r.Ticket, Answer: r.Answer, Flight: r.Flight}
+}
+
+// Read is the one entry for a read: the key's operation says what is sent
+// and which result comes back. A ticket of an operation the gateway does
+// not read answers a plain Result, refused before anything is sent, so its
+// waiter is freed like any other.
+func (g *Gateway) Read(ctx context.Context, t Ticket) tea.Cmd {
+	switch t.Key.Operation {
+	case api.NotificationsSpec.Tool:
+		return g.Inbox(ctx, t)
+	case api.ProjectsSpec.Name:
+		return g.Projects(ctx, t)
+	case api.TicketsSpec.Tool:
+		return g.Tickets(ctx, t)
+	case api.TicketSpec.Tool:
+		return g.Detail(ctx, t)
+	}
+	return func() tea.Msg {
+		err := fmt.Errorf("gateway: no read of %q", t.Key.Operation)
+		return Result{Ticket: t, Answer: refusedTicket(err)}
+	}
+}
+
+// refusedTicket is the answer of a ticket refused before a request was made.
+func refusedTicket(err error) transport.Answer {
+	return transport.Answer{Class: transport.InvalidInput, Message: err.Error(), Err: err}
+}
+
 // Inbox reads the inbox page t names, for the waiter whose context ctx is.
 // The shared request runs on the queue's context, so this waiter leaving
 // cancels it only when it was the last one. A ticket that is no inbox read
@@ -74,37 +146,112 @@ type InboxResult struct {
 // contradicts the question (CheckInboxPage) before the model sees it.
 func (g *Gateway) Inbox(ctx context.Context, t Ticket) tea.Cmd {
 	if err := CheckInboxTicket(t); err != nil {
-		return func() tea.Msg {
-			return InboxResult{Ticket: t, Answer: transport.Answer{Class: transport.InvalidInput, Message: err.Error(), Err: err}}
-		}
+		return func() tea.Msg { return InboxResult{Ticket: t, Answer: refusedTicket(err)} }
 	}
 	query := InboxQuery(t.Key)
+	return shared(g, ctx, t, "gateway: inbox", func(shared context.Context) transport.Answer {
+		return g.src.NotificationsAnswer(shared, query)
+	}, func(ans transport.Answer, flight queue.Flight) InboxResult {
+		page, ans := api.DecodeNotifications(ans)
+		if ans.OK() {
+			if err := CheckInboxPage(t.Key, page); err != nil {
+				page, ans = api.NotificationPage{}, contradiction(ans, err)
+			}
+		}
+		return InboxResult{Ticket: t, Page: page, Answer: ans, Flight: flight}
+	})
+}
+
+// Projects reads the projects of the organisation t names (C1c).
+func (g *Gateway) Projects(ctx context.Context, t Ticket) tea.Cmd {
+	if err := CheckProjectsTicket(t); err != nil {
+		return func() tea.Msg { return ProjectsResult{Ticket: t, Answer: refusedTicket(err)} }
+	}
+	org := t.Key.Organisation
+	return shared(g, ctx, t, "gateway: projects", func(shared context.Context) transport.Answer {
+		return g.src.ProjectsAnswer(shared, org)
+	}, func(ans transport.Answer, flight queue.Flight) ProjectsResult {
+		list, ans := api.DecodeProjects(ans)
+		if ans.OK() {
+			if err := CheckProjectsList(t.Key, list); err != nil {
+				list, ans = nil, contradiction(ans, err)
+			}
+		}
+		return ProjectsResult{Ticket: t, Projects: list, Answer: ans, Flight: flight}
+	})
+}
+
+// Tickets reads the page of a project's tickets t names, with its search
+// (C1c).
+func (g *Gateway) Tickets(ctx context.Context, t Ticket) tea.Cmd {
+	if err := CheckTicketsTicket(t); err != nil {
+		return func() tea.Msg { return TicketsResult{Ticket: t, Answer: refusedTicket(err)} }
+	}
+	query := TicketsQuery(t.Key)
+	return shared(g, ctx, t, "gateway: tickets", func(shared context.Context) transport.Answer {
+		return g.src.TicketsAnswer(shared, query)
+	}, func(ans transport.Answer, flight queue.Flight) TicketsResult {
+		page, ans := api.DecodeTickets(ans)
+		if ans.OK() {
+			if err := CheckTicketsPage(t.Key, page); err != nil {
+				page, ans = api.TicketPage{}, contradiction(ans, err)
+			}
+		}
+		return TicketsResult{Ticket: t, Page: page, Answer: ans, Flight: flight}
+	})
+}
+
+// Detail reads the ticket t names, with the options of its key (C1c). The
+// preview and the open of one ticket share the request; each decodes for
+// itself.
+func (g *Gateway) Detail(ctx context.Context, t Ticket) tea.Cmd {
+	if err := CheckDetailTicket(t); err != nil {
+		return func() tea.Msg { return TicketResult{Ticket: t, Answer: refusedTicket(err)} }
+	}
+	project, id, options := t.Key.Project, t.Key.Ticket, DetailOptions(t.Key)
+	return shared(g, ctx, t, "gateway: ticket", func(shared context.Context) transport.Answer {
+		return g.src.TicketAnswer(shared, project, id, options)
+	}, func(ans transport.Answer, flight queue.Flight) TicketResult {
+		record, ans := api.DecodeTicket(ans, options)
+		if ans.OK() {
+			if err := CheckDetail(t.Key, record); err != nil {
+				record, ans = api.Ticket{}, contradiction(ans, err)
+			}
+		}
+		return TicketResult{Ticket: t, Record: record, Answer: ans, Flight: flight}
+	})
+}
+
+// shared is the command of one shared read: the request under the
+// ticket's share key and priority, observed for the mailbox, the answer
+// cloned for this waiter and built into its result by build. A command
+// that comes after Stop is a canceled result with its ticket; a panic in it
+// is the fatal error.
+func shared[R tea.Msg](g *Gateway, ctx context.Context, t Ticket, where string, send func(context.Context) transport.Answer, build func(transport.Answer, queue.Flight) R) tea.Cmd {
 	// Observed on the request itself: a 401 is recorded whatever becomes of
 	// this waiter's result (canceled, refused as old data).
-	job := queue.Job{Priority: t.Priority, Kind: queue.Read, Key: t.ShareKey(), Run: g.events.Observe(func(shared context.Context) transport.Answer {
-		return g.src.NotificationsAnswer(shared, query)
-	})}
+	job := queue.Job{Priority: t.Priority, Kind: queue.Read, Key: t.ShareKey(), Run: g.events.Observe(send)}
 	return func() tea.Msg {
-		msg, ok := worker.Run(g.sup, "gateway: inbox", func() tea.Msg {
+		msg, ok := worker.Run(g.sup, where, func() tea.Msg {
 			ans, flight := g.queue.DoShared(ctx, job)
 			ans.Payload = bytes.Clone(ans.Payload) // the waiters share the answer
-			page, ans := api.DecodeNotifications(ans)
-			if ans.OK() {
-				if err := CheckInboxPage(t.Key, page); err != nil {
-					page, ans = api.NotificationPage{}, transport.Answer{Class: transport.Protocol, Status: ans.Status, Message: err.Error(), Err: err, Sent: ans.Sent}
-				}
-			}
-			return InboxResult{Ticket: t, Page: page, Answer: ans, Flight: flight}
+			return build(ans, flight)
 		})
 		if !ok {
 			if g.sup.Err() != nil {
 				return worker.Fatal{}
 			}
 			// Not run: the session stopped before this command came.
-			return InboxResult{Ticket: t, Answer: transport.Answer{Class: transport.Canceled, Message: "canceled before it was sent"}}
+			return build(transport.Answer{Class: transport.Canceled, Message: "canceled before it was sent"}, 0)
 		}
 		return msg
 	}
+}
+
+// contradiction is the answer for an object that is not to the question
+// the key asked: a protocol error that keeps what the transport knew.
+func contradiction(ans transport.Answer, err error) transport.Answer {
+	return transport.Answer{Class: transport.Protocol, Status: ans.Status, Message: err.Error(), Err: err, Sent: ans.Sent}
 }
 
 // InboxQuery is the request for an inbox key: everything sent comes from the
@@ -113,8 +260,38 @@ func InboxQuery(k cache.Key) api.NotificationQuery {
 	return api.NotificationQuery{Status: k.Status, Page: k.Page, PerPage: k.PerPage, ProjectID: k.Project, OrganisationID: k.Organisation}
 }
 
-// InboxPageSize is the one page size C1b reads with.
-const InboxPageSize = 25
+// TicketsQuery is the request for a ticket list key.
+func TicketsQuery(k cache.Key) api.TicketQuery {
+	return api.TicketQuery{ProjectID: k.Project, Q: k.Query, Status: k.Status, Page: k.Page, PerPage: k.PerPage}
+}
+
+// DetailOptions are the options of a ticket key: none for a plain read.
+func DetailOptions(k cache.Key) api.TicketOptions {
+	return api.TicketOptions{PostsPage: k.PostsPage, PostsPerPage: k.PostsPerPage, Newest: k.Newest, AttachmentsPage: k.AttachmentsPage, FullText: k.FullText, PostID: k.Post}
+}
+
+// The page sizes C1 reads with.
+const (
+	InboxPageSize  = 25
+	TicketPageSize = 25
+	PostsPageSize  = 25
+)
+
+// CheckReadTicket says whether a ticket is one of the reads C1 sends, by
+// its operation.
+func CheckReadTicket(t Ticket) error {
+	switch t.Key.Operation {
+	case api.NotificationsSpec.Tool:
+		return CheckInboxTicket(t)
+	case api.ProjectsSpec.Name:
+		return CheckProjectsTicket(t)
+	case api.TicketsSpec.Tool:
+		return CheckTicketsTicket(t)
+	case api.TicketSpec.Tool:
+		return CheckDetailTicket(t)
+	}
+	return fmt.Errorf("gateway: no read of %q", t.Key.Operation)
+}
 
 // CheckInboxTicket says whether a ticket is one of the reads C1b sends:
 // unread rows only, a page above zero of InboxPageSize rows, no project
@@ -140,6 +317,68 @@ func CheckInboxTicket(t Ticket) error {
 		return errors.New("inbox: a filtered read in the counters' area")
 	case t.Area != Organisations && t.Area != Inbox:
 		return errors.New("inbox: an unknown area")
+	}
+	return nil
+}
+
+// CheckProjectsTicket: the projects of one organisation, nothing else on
+// the key, in their own area.
+func CheckProjectsTicket(t Ticket) error {
+	k := t.Key
+	switch {
+	case k.Operation != api.ProjectsSpec.Name:
+		return fmt.Errorf("projects: a ticket of %q", k.Operation)
+	case k.Organisation == "" || k.Global:
+		return errors.New("projects: not of one organisation")
+	case k.Page != 0 || k.PerPage != 0 || k.Status != "" || k.Project != "" || k.Query != "" || k.Ticket != "":
+		return errors.New("projects: an option the read does not have")
+	case t.Area != Projects:
+		return errors.New("projects: another area")
+	}
+	return nil
+}
+
+// CheckTicketsTicket: one project's tickets, a page above zero of
+// TicketPageSize rows, a search or none, no status, in their own area.
+func CheckTicketsTicket(t Ticket) error {
+	k := t.Key
+	switch {
+	case k.Operation != api.TicketsSpec.Tool:
+		return fmt.Errorf("tickets: a ticket of %q", k.Operation)
+	case k.Project == "":
+		return errors.New("tickets: no project")
+	case k.Page <= 0:
+		return errors.New("tickets: a page below 1")
+	case k.PerPage != TicketPageSize:
+		return fmt.Errorf("tickets: a page size of %d, not %d", k.PerPage, TicketPageSize)
+	case k.Status != "" || k.Organisation != "" || k.Global || k.Ticket != "":
+		return errors.New("tickets: an option the read does not have")
+	case t.Area != Tickets:
+		return errors.New("tickets: another area")
+	}
+	return nil
+}
+
+// CheckDetailTicket: one ticket of one project, read plain or with the
+// first page of comments (newest first, PostsPageSize) and of attachments:
+// the two reads C1c sends. Later pages and expansions are C1d.
+func CheckDetailTicket(t Ticket) error {
+	k := t.Key
+	plain := k.PostsPage == 0 && k.PostsPerPage == 0 && !k.Newest && k.AttachmentsPage == 0
+	first := k.PostsPage == 1 && k.PostsPerPage == PostsPageSize && k.Newest && k.AttachmentsPage == 1
+	switch {
+	case k.Operation != api.TicketSpec.Tool:
+		return fmt.Errorf("ticket: a ticket of %q", k.Operation)
+	case k.Project == "" || k.Ticket == "":
+		return errors.New("ticket: no project or no ticket id")
+	case k.Page != 0 || k.PerPage != 0 || k.Status != "" || k.Organisation != "" || k.Global || k.Query != "":
+		return errors.New("ticket: an option the read does not have")
+	case k.FullText || k.Post != "":
+		return errors.New("ticket: an expansion (C1d)")
+	case !plain && !first:
+		return errors.New("ticket: a page other than the first (C1d)")
+	case t.Area != Detail:
+		return errors.New("ticket: another area")
 	}
 	return nil
 }
@@ -170,6 +409,49 @@ func CheckInboxPage(k cache.Key, p api.NotificationPage) error {
 		if c.ID != k.Organisation {
 			return fmt.Errorf("inbox: meta.by_organisation[%d] counts another organisation", i)
 		}
+	}
+	return nil
+}
+
+// CheckProjectsList: every project is of the organisation asked for.
+func CheckProjectsList(k cache.Key, list []api.Project) error {
+	if err := api.CheckProjects(list); err != nil {
+		return err
+	}
+	for i, p := range list {
+		if p.Organisation.ID != k.Organisation {
+			return fmt.Errorf("projects: data[%d] belongs to another organisation", i)
+		}
+	}
+	return nil
+}
+
+// CheckTicketsPage: the page and page size the server names are the ones
+// asked for.
+func CheckTicketsPage(k cache.Key, p api.TicketPage) error {
+	if err := api.CheckTicketPage(p); err != nil {
+		return err
+	}
+	if p.Meta.Page != k.Page {
+		return fmt.Errorf("tickets: page %d answered for page %d", p.Meta.Page, k.Page)
+	}
+	if p.Meta.PerPage != k.PerPage {
+		return fmt.Errorf("tickets: a page size of %d answered for %d", p.Meta.PerPage, k.PerPage)
+	}
+	return nil
+}
+
+// CheckDetail: the ticket answered is the one asked for, in its project,
+// with the page the key asked for (api.CheckTicket).
+func CheckDetail(k cache.Key, t api.Ticket) error {
+	if err := api.CheckTicket(t, DetailOptions(k)); err != nil {
+		return err
+	}
+	if t.ID != k.Ticket {
+		return errors.New("ticket: another ticket answered")
+	}
+	if t.Project.ID != k.Project {
+		return errors.New("ticket: a ticket of another project answered")
 	}
 	return nil
 }

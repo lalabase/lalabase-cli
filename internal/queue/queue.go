@@ -12,6 +12,11 @@
 //   - a job is retried at most once: a read on any temporary failure, a write
 //     only when the server cannot have acted on it (a 429, or nothing was
 //     sent). A retry runs the same job, so it carries the same idempotency key;
+//   - background work starts at most BackgroundBudget times per rolling
+//     BudgetWindow, retries counted (C1 design: previews, refreshes and their
+//     retries at most six per minute). What is held waits for the window to
+//     roll on; the person's actions are never counted or held, and a
+//     background read a person joins starts as theirs;
 //   - the queue's own goroutines (a shared read, the wake-up after a pause)
 //     run under one lifetime (WithLifetime, internal/worker). It ends them;
 //     a panic in them is recovered there and becomes its fatal error, and
@@ -103,6 +108,10 @@ const (
 	// defaultPause is the window of a 429 that names none in the future:
 	// never zero, or the retry would run straight into it.
 	defaultPause = 5 * time.Second
+	// BackgroundBudget is the number of background starts in one
+	// BudgetWindow, a retry being a start of its own.
+	BackgroundBudget = 6
+	BudgetWindow     = time.Minute
 )
 
 // Queue schedules jobs.
@@ -119,6 +128,11 @@ type Queue struct {
 	timerFor    time.Time
 	waiting     []*ticket
 	shared      map[string]*flight
+	// starts are the moments background work was started in the current
+	// window, oldest first; budgetFor is the end of the window a timer waits
+	// for, so one wake-up serves it.
+	starts    []time.Time
+	budgetFor time.Time
 }
 
 // New returns an empty queue.
@@ -139,6 +153,9 @@ type ticket struct {
 	ready      chan struct{}
 	granted    bool
 	background bool // holds a background place
+	// started is the moment the budget counted this grant; zero for a
+	// person's grant. A grant abandoned before it ran gives it back.
+	started time.Time
 }
 
 // flight is a read shared by its callers. Its priority follows the callers
@@ -463,7 +480,7 @@ func (q *Queue) enqueue(prio Priority, f *flight) (*ticket, Priority, bool, time
 }
 
 // abandon withdraws a wait whose caller left; a place granted meanwhile goes
-// back.
+// back, and so does the budget it took: nothing was started.
 func (q *Queue) abandon(t *ticket) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -471,11 +488,64 @@ func (q *Queue) abandon(t *ticket) {
 		q.running--
 		if t.background {
 			q.bgRunning--
+			q.unstart(t)
 		}
 		q.dispatch()
 		return
 	}
 	q.remove(t)
+}
+
+// unstart takes a grant's moment out of the window again. Called with q.mu
+// held.
+func (q *Queue) unstart(t *ticket) {
+	if t.started.IsZero() {
+		return
+	}
+	for i, at := range q.starts {
+		if at.Equal(t.started) {
+			q.starts = append(q.starts[:i], q.starts[i+1:]...)
+			break
+		}
+	}
+	t.started = time.Time{}
+}
+
+// budgetFree says whether a background start is within the budget now,
+// after the starts that fell out of the window are forgotten. Called with
+// q.mu held.
+func (q *Queue) budgetFree(now time.Time) bool {
+	for len(q.starts) > 0 && !now.Before(q.starts[0].Add(BudgetWindow)) {
+		q.starts = q.starts[1:]
+	}
+	return len(q.starts) < BackgroundBudget
+}
+
+// waitForBudget wakes dispatch when the oldest start falls out of the
+// window; one timer per window end. Called with q.mu held.
+func (q *Queue) waitForBudget(now time.Time) {
+	if len(q.starts) == 0 {
+		return
+	}
+	until := q.starts[0].Add(BudgetWindow)
+	if q.budgetFor.Equal(until) {
+		return
+	}
+	q.budgetFor = until
+	wake := q.clock.After(until.Sub(now))
+	q.life.Start("queue: budget", func(ctx context.Context) {
+		select {
+		case <-wake:
+		case <-ctx.Done():
+			return
+		}
+		q.mu.Lock()
+		defer q.mu.Unlock()
+		if q.budgetFor.Equal(until) {
+			q.budgetFor = time.Time{}
+		}
+		q.dispatch()
+	})
 }
 
 func (q *Queue) clearTicket(f *flight) {
@@ -536,7 +606,7 @@ func (q *Queue) dispatch() {
 		return
 	}
 	for q.running < slots {
-		t := q.next()
+		t := q.next(now)
 		if t == nil {
 			return
 		}
@@ -545,6 +615,8 @@ func (q *Queue) dispatch() {
 		if t.prio == Background {
 			t.background = true
 			q.bgRunning++
+			t.started = now
+			q.starts = append(q.starts, now)
 		}
 		t.granted = true
 		close(t.ready)
@@ -552,8 +624,9 @@ func (q *Queue) dispatch() {
 }
 
 // next is the wait to grant next, or nil: the first of the person's, else the
-// first background wait if a background place is free.
-func (q *Queue) next() *ticket {
+// first background wait if a background place is free and the budget has
+// a start left; without one, the wait goes on until the window rolls.
+func (q *Queue) next(now time.Time) *ticket {
 	for _, t := range q.waiting {
 		if t.prio == User {
 			return t
@@ -564,6 +637,10 @@ func (q *Queue) next() *ticket {
 	}
 	for _, t := range q.waiting {
 		if t.prio == Background {
+			if !q.budgetFree(now) {
+				q.waitForBudget(now)
+				return nil
+			}
 			return t
 		}
 	}
