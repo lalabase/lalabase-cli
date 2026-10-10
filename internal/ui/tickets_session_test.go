@@ -180,7 +180,10 @@ func TestTheSearchSendsOnEnterAndEscDiscards(t *testing.T) {
 	if strings.Contains(help, "quit") {
 		t.Fatalf("q offered as quit while typing: %q", help)
 	}
-	if cmd := h.press("esc"); cmd != nil || h.m.mode != Navigate || a.tickets.entry != "" || a.tickets.query != "" || len(h.f.ticketListReads()) != before {
+	// Esc closes the line and sends nothing; the command it returns is the
+	// preview timer of the row, armed again.
+	h.drive(h.press("esc"))
+	if h.m.mode != Navigate || a.tickets.entry != "" || a.tickets.query != "" || len(h.f.ticketListReads()) != before || len(h.f.detailReads()) != 0 {
 		t.Fatalf("esc: mode %d entry %q query %q reads %d", h.m.mode, a.tickets.entry, a.tickets.query, len(h.f.ticketListReads())-before)
 	}
 	if len(a.tickets.rows) != 25 {
@@ -206,7 +209,8 @@ func TestTheSearchSendsOnEnterAndEscDiscards(t *testing.T) {
 	if tv.entry != "export" {
 		t.Fatalf("the line does not start with the search: %q", tv.entry)
 	}
-	if cmd := h.press("enter"); cmd != nil || h.m.mode != Navigate || len(h.f.ticketListReads()) != before+1 {
+	h.drive(h.press("enter"))
+	if h.m.mode != Navigate || len(h.f.ticketListReads()) != before+1 {
 		t.Fatal("the same search was sent again")
 	}
 	h.press("/")
@@ -221,7 +225,8 @@ func TestTheSearchSendsOnEnterAndEscDiscards(t *testing.T) {
 	// A search of blanks is no search. The entry is cleaned on screen.
 	h.press("/")
 	h.typeText("  ")
-	if cmd := h.press("enter"); cmd != nil || len(h.f.ticketListReads()) != before+2 {
+	h.drive(h.press("enter"))
+	if len(h.f.ticketListReads()) != before+2 {
 		t.Fatal("blanks were sent")
 	}
 	// Keys that navigate elsewhere are text or nothing here: q, R, [ and
@@ -1332,5 +1337,128 @@ func TestA401InAResultEndsTheSessionWithoutAMailbox(t *testing.T) {
 	h.drive(h.chooseTickets(orgA))
 	if !a.expired || a.projects != nil || a.store != nil {
 		t.Fatalf("expired %v, projects %v, store %v", a.expired, a.projects != nil, a.store != nil)
+	}
+}
+
+// Review round 1, finding 1: a preview timer that fired while the search
+// line was open is armed again when the line closes without a new search
+// (Esc, or Enter with the search unchanged); otherwise no wake-up ever
+// comes for the row the cursor rests on.
+func TestThePreviewIsArmedAgainWhenTheSearchLineCloses(t *testing.T) {
+	for _, close := range []string{"esc", "enter"} {
+		h := newHarness(t)
+		h.openTickets(website)
+		a := h.m.app
+		token := a.previewToken
+		if cmd := h.press("/"); cmd != nil || h.m.mode != TextEntry {
+			t.Fatal("/ did not open the line")
+		}
+		if cmds := h.feed(gateway.Due{Session: a.session, Token: token}); len(cmds) != 0 || len(h.f.detailReads()) != 0 || a.detail != nil {
+			t.Fatalf("%s: a preview was read while typing", close)
+		}
+		cmd := h.press(close)
+		if h.m.mode != Navigate || !h.m.previewable() || a.detail != nil || len(h.f.ticketListReads()) != 1 {
+			t.Fatalf("%s: mode %d previewable %v detail %v reads %d", close, h.m.mode, h.m.previewable(), a.detail != nil, len(h.f.ticketListReads()))
+		}
+		// In the program the timer of token fired once already; without a
+		// new timer no Due ever comes for this row.
+		if cmd == nil || a.previewToken == token {
+			t.Fatalf("%s: no new timer after the search line closed: cmd %v, token %d (was %d)", close, cmd != nil, a.previewToken, token)
+		}
+		h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+		if len(h.f.detailReads()) != 1 || a.detail == nil || !a.detail.known {
+			t.Fatalf("%s: the preview did not come: %d reads", close, len(h.f.detailReads()))
+		}
+	}
+}
+
+// Review round 1, question 1: the projects of an organisation answered
+// "not found" while a project's tickets are open. Everything under the
+// organisation goes: the list, the ticket shown, the pending reads.
+func TestARemovedOrganisationClosesItsTicketList(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	h.drive(h.press("enter"))
+	// The projects reload lands late, as "not found".
+	h.f.setProjects(func(string) transport.Answer { return failing(transport.NotFound, 404) })
+	h.m.focus = view.List
+	h.drive(a.issue(gateway.Projects, a.projects.key, forProjects, queue.User))
+	if a.tickets != nil || a.detail != nil || a.projects == nil || len(a.projects.rows) != 0 || h.m.focus != view.List {
+		t.Fatalf("tickets %v detail %v projects %+v focus %d", a.tickets != nil, a.detail != nil, a.projects, h.m.focus)
+	}
+	if got := h.m.screen().List.Notice.String(); got != "Not found or no longer accessible." {
+		t.Fatalf("notice %q", got)
+	}
+	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH | Tickets" {
+		t.Fatalf("context %q", got)
+	}
+	if _, ok := a.store.Get(a.projectsKey(orgA)); ok {
+		t.Fatal("the projects stayed cached")
+	}
+}
+
+// The pause before a preview is the documented one.
+func TestThePreviewPauseIsTheDocumentedOne(t *testing.T) {
+	if previewDelay != 300*time.Millisecond {
+		t.Fatalf("preview delay %s", previewDelay)
+	}
+}
+
+// Review round 1, finding 3 (the reviewer's R8): a result produced before
+// the selection moved on and delivered after it is neither shown nor
+// filed. The generation of the area refuses it, not the cancellation.
+func TestAResultProducedBeforeTheMoveIsRefusedAfterIt(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	first := a.tickets.selected
+	cmds := h.feed(gateway.Due{Session: a.session, Token: a.previewToken})
+	if len(cmds) != 1 {
+		t.Fatalf("%d commands", len(cmds))
+	}
+	late := messages(t, cmds[0]) // the preview's result, with data, produced now
+	if r, ok := late[0].(gateway.TicketResult); !ok || !r.Answer.OK() || r.Record.ID != first {
+		t.Fatalf("not a result with data: %#v", late[0])
+	}
+	h.press("down") // the selection moves on before the message is delivered
+	h.feed(late...)
+	if d := a.detail; d != nil && (d.id == first || d.known) {
+		t.Fatalf("the late result was shown: %+v", d)
+	}
+	if _, ok := a.store.Get(a.detailKey(website, first)); ok {
+		t.Fatal("the late result was filed")
+	}
+}
+
+// Review round 1, question 6 (the reviewer's R3): a one-line field of the
+// ticket (title, project, creator, author, file name) cannot open a line of
+// its own in the pane, whatever it holds.
+func TestOneLineFieldsCannotOpenALineInThePane(t *testing.T) {
+	h := newHarness(t)
+	forged := "x\nFORGED_LINE\r\nmore"
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		r := h.d.ticketRecord(project, 1, o)
+		r.Title = "T" + forged
+		r.Project.Name = "P" + forged
+		r.Creator = &api.Ref{ID: "c", Name: "C" + forged}
+		r.Posts[0].Author.Name = "A" + forged
+		r.Attachments[0].Filename = "F" + forged
+		status := "S" + forged
+		r.Status = &status
+		return ticketAnswer(r)
+	})
+	h.openTickets(website)
+	a := h.m.app
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	text := h.m.screen().Object.Text.String()
+	if !strings.Contains(text, "FORGED_LINE") {
+		t.Fatal("the fields are missing")
+	}
+	for i, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "FORGED_LINE") || strings.HasPrefix(line, "more") {
+			t.Fatalf("line %d opened by a one-line field: %q", i, line)
+		}
 	}
 }

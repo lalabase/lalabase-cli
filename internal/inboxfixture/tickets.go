@@ -181,8 +181,7 @@ func (f *Fixture) scenarioOn(w http.ResponseWriter, place string, req Request) b
 
 func (f *Fixture) tickets(w http.ResponseWriter, args map[string]any, reply func(int, any, any), req Request) {
 	project, _ := args["project_id"].(string)
-	n, ok := ticketCounts[project]
-	if !ok {
+	if _, ok := ticketCounts[project]; !ok {
 		reply(http.StatusOK, toolError("not_found", "Project not found or not accessible."), nil)
 		return
 	}
@@ -207,7 +206,6 @@ func (f *Fixture) tickets(w http.ResponseWriter, args map[string]any, reply func
 	if project == ProjectWebsite && page == 2 && f.scenarioOn(w, "W2", req) {
 		return
 	}
-	_ = n
 	from := (page - 1) * perPage
 	data := []map[string]any{}
 	if from < len(rows) {

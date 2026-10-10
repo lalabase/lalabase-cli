@@ -50,8 +50,8 @@ The interface needs at least 24 columns and 8 rows, uses two columns from
   quits with 0, Ctrl-C and SIGINT with 130. The help line names exactly
   the keys that act, on as many lines as it takes.
 * **The ticket pane.** When the cursor rests on a ticket row for 300 ms and
-  the object pane is on the screen (three columns, or two with the list or
-  the pane focused), the ticket is read as a preview: background work, at
+  the object pane is on the screen (three columns and two columns always,
+  one column with the pane focused), the ticket is read as a preview: background work, at
   most six background starts per rolling minute (retries counted), held
   until the window rolls on when the budget is spent, canceled when the
   cursor moves on. `Enter` opens the ticket as the person's read and joins

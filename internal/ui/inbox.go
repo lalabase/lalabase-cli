@@ -80,6 +80,9 @@ func (m *Model) receive(received gateway.Received) (cache.Decision, bool) {
 	}
 	d, ok := a.scope.Receive(a.store, received, a.now())
 	if ok && r.Answer.Class == transport.Unauthenticated {
+		// Defence in depth: with a mailbox the 401 was observed on the
+		// request and Update expired the session before this result
+		// arrived; without one this is the path.
 		m.expire()
 		return d, false
 	}

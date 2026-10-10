@@ -148,3 +148,35 @@ func TestThePauseAndTheBudgetAreSeparate(t *testing.T) {
 		t.Fatalf("%v", a.Class)
 	}
 }
+
+// Review round 1, finding 2 (the reviewer's R6): the person's starts are
+// not counted, told apart from "fell out of the window meanwhile": two of
+// theirs between the fourth and the fifth background start leave the
+// seventh background start waiting, not the ninth.
+func TestThePersonsStartsAreNotCounted(t *testing.T) {
+	c := newClock()
+	q := New(WithClock(c))
+	spend(t, q, c, BackgroundBudget-2) // four background starts
+	for range 2 {
+		g := newGate()
+		r := do(q, context.Background(), Job{Priority: User, Run: g.run})
+		waitStarted(t, g)
+		g.release <- ok()
+		answer(t, r)
+	}
+	c.Advance(time.Second)
+	for i := range 2 {
+		g := newGate()
+		r := do(q, context.Background(), Job{Priority: Background, Run: g.run})
+		waitStarted(t, g) // the fifth and sixth background start
+		g.release <- ok()
+		if a := answer(t, r); a.Class != transport.Object {
+			t.Fatalf("background start %d: %v", 5+i, a.Class)
+		}
+	}
+	g := newGate()
+	do(q, context.Background(), Job{Priority: Background, Run: g.run})
+	notStarted(t, g) // the seventh waits
+	c.Advance(BudgetWindow)
+	waitStarted(t, g)
+}

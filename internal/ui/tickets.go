@@ -357,12 +357,15 @@ func (m Model) searchKey(kind Action, text string) (Model, tea.Cmd) {
 	case Cancel:
 		v.entry = ""
 		m.mode = Navigate
+		// The line closed without a new search: a timer that fired while
+		// it was open is set again (review round 1, finding 1).
+		return m, m.selectionChanged()
 	case Submit:
 		query := strings.TrimSpace(v.entry)
 		v.entry = ""
 		m.mode = Navigate
 		if query == v.query {
-			return m, nil
+			return m, m.selectionChanged()
 		}
 		return m.showTicketPage(1, query)
 	}
@@ -571,8 +574,12 @@ func (m Model) receiveProjects(r gateway.ProjectsResult) (Model, tea.Cmd) {
 		v.fresh(a.now())
 		v.reselect()
 	case cache.Remove:
+		// The organisation is gone or out of reach: everything under it
+		// goes, the ticket list and the ticket with it.
+		a.leaveList()
 		v.rows, v.selected = nil, ""
 		v.removed()
+		m.focus = view.List
 	default:
 		v.failed(d, r.Answer)
 	}

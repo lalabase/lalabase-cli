@@ -370,3 +370,22 @@ func TestATimerCarriesItsToken(t *testing.T) {
 		t.Fatalf("after the lifetime: %#v", got)
 	}
 }
+
+// Review round 1, finding 3 (the reviewer's R7): a result for a waiter of
+// a moved area is refused by the generation alone, its waiter still
+// pending.
+func TestAMovedAreaRefusesItsWaiterByGeneration(t *testing.T) {
+	ns := confirmed(t)
+	s, store := NewScope(ns), cache.NewStore()
+	left := s.Begin(Detail, detailKey(ns, website, login, true), queue.Background)
+	if moved := s.Move(Detail); len(moved) != 1 || moved[0] != left.Waiter {
+		t.Fatalf("moved %v", moved)
+	}
+	r := TicketResult{Ticket: left, Answer: transport.Answer{Class: transport.Object, Payload: []byte(`{"id":"x"}`), Status: 200, Sent: true}, Flight: 1}
+	if d, ok := s.Receive(store, r, now); ok {
+		t.Fatalf("a result for a left selection was accepted: %v", d)
+	}
+	if _, ok := store.Get(left.Key); ok {
+		t.Fatal("the late answer was filed")
+	}
+}
