@@ -155,7 +155,10 @@ func TestAShellReadsTheQuotedValueBack(t *testing.T) {
 			continue
 		}
 		for _, v := range values {
-			out, err := exec.CommandContext(t.Context(), shell, "-c", "printf '%s' "+quote(v)).Output()
+			cmd := exec.CommandContext(t.Context(), shell, "-c", "printf '%s' "+quote(v))
+			// A broken quote runs "touch pwned": in a folder of the test.
+			cmd.Dir = t.TempDir()
+			out, err := cmd.Output()
 			if err != nil || string(out) != v {
 				t.Errorf("%s read %q back as %q (%v)", shell, v, out, err)
 			}

@@ -38,6 +38,8 @@ func TestSameServer(t *testing.T) {
 		{"ftp://lalabase.com", "ftp://lalabase.com", false},
 		{"https://lalabase.com/t%65nant", "https://lalabase.com/t%65nant", false},
 		{"https://[fe80::1%25en0]", "https://[fe80::1%25en0]", false},
+		{"https://lalabase.com:80", "https://lalabase.com", false},
+		{"http://localhost:443", "http://localhost", false},
 		{"", "", false},
 		{"lalabase.com", "lalabase.com", false},
 	} {
@@ -145,7 +147,12 @@ func TestPickServerRoundOne(t *testing.T) {
 		{name: "normalised alike, both right", entries: []claudecfg.Entry{entry("user", "lalabase_prod", profile), entry("project", "lalabase prod", profile)}, want: "lalabase_prod"},
 		// P5: a dot is outside the pattern.
 		{name: "a dot in the name", entries: []claudecfg.Entry{entry("user", "lalabase.prod", profile)}, kind: BadName, detail: "lalabase.prod"},
-		// P6: of two conflicts, the first name is reported.
+		// P6: of two conflicts, the first name is reported, in either
+		// order of the entries (review round 4).
+		{name: "two conflicts, other order", entries: []claudecfg.Entry{
+			entry("user", "alpha", profile), entry("project", "alpha", "https://a.example"),
+			entry("user", "zeta", profile), entry("project", "zeta", "https://z.example"),
+		}, kind: Conflict, detail: "alpha; https://a.example"},
 		{name: "two conflicts", entries: []claudecfg.Entry{
 			entry("user", "zeta", profile), entry("project", "zeta", "https://z.example"),
 			entry("user", "alpha", profile), entry("project", "alpha", "https://a.example"),

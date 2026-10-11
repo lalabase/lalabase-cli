@@ -394,3 +394,23 @@ func TestTwoHighSurrogatesAreLone(t *testing.T) {
 		t.Fatal("not refused")
 	}
 }
+
+// Review round 4: a server whose url and token are fine but one field has
+// another type than Claude Code takes never counts; and a high surrogate
+// followed by an escape above the low surrogates is lone.
+func TestAWrongTypeAloneMakesTheServerAProblem(t *testing.T) {
+	home, folder := realDir(t), realDir(t)
+	for _, field := range []string{`"type":5`, `"command":["node"]`, `"headers":"x"`} {
+		write(t, filepath.Join(folder, ".mcp.json"), `{"mcpServers":{"lalabase":{`+field+`,"url":"https://lalabase.com/api/mcp","headers":{"Authorization":"Bearer `+tokenA+`"}}}}`)
+		if field == `"headers":"x"` {
+			write(t, filepath.Join(folder, ".mcp.json"), `{"mcpServers":{"lalabase":{"type":"http","url":"https://lalabase.com/api/mcp","headers":"x"}}}`)
+		}
+		entries, _ := Visible(home, "", folder)
+		if len(entries) != 1 || entries[0].Problem == "" || entries[0].BaseURL != "" {
+			t.Errorf("%s: %+v", field, entries)
+		}
+	}
+	if !loneSurrogate([]byte(`{"x\ud800\ue000":1}`)) {
+		t.Error("a high surrogate before U+E000 was not refused")
+	}
+}

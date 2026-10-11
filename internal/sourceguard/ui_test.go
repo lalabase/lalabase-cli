@@ -166,6 +166,10 @@ var launchImports = map[string]map[string][]string{
 // child process.
 const childProcessDir = "internal/launch"
 
+// childProcessPackages start programs: os/exec, and x/sys/execabs, a
+// wrapper of it (review round 4 of #22).
+var childProcessPackages = map[string]bool{"os/exec": true, "golang.org/x/sys/execabs": true}
+
 // childProcessCalls start a program without os/exec.
 var childProcessCalls = map[string][]string{
 	"os":                    {"StartProcess"},
@@ -174,8 +178,8 @@ var childProcessCalls = map[string][]string{
 }
 
 // inspectChildProcesses: in the client's production code (cmd/ and
-// internal/; the developer tools under tools/ are no part of it) os/exec is
-// imported in childProcessDir alone, and the process calls of os, syscall
+// internal/; the developer tools under tools/ are no part of it) os/exec and
+// its wrapper execabs are imported in childProcessDir alone, and the process calls of os, syscall
 // and x/sys/unix nowhere.
 func inspectChildProcesses(name string, file *ast.File, aliases map[string]string) []string {
 	if test(name) || (!strings.HasPrefix(name, "cmd/") && !strings.HasPrefix(name, "internal/")) {
@@ -183,8 +187,8 @@ func inspectChildProcesses(name string, file *ast.File, aliases map[string]strin
 	}
 	var findings []string
 	for _, imp := range file.Imports {
-		if p, _ := strconv.Unquote(imp.Path.Value); p == "os/exec" && path.Dir(name) != childProcessDir {
-			findings = append(findings, name+": os/exec outside "+childProcessDir)
+		if p, _ := strconv.Unquote(imp.Path.Value); childProcessPackages[p] && path.Dir(name) != childProcessDir {
+			findings = append(findings, name+": "+p+" outside "+childProcessDir)
 		}
 	}
 	ast.Inspect(file, func(node ast.Node) bool {

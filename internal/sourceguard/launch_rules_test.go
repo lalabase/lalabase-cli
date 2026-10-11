@@ -113,6 +113,8 @@ func TestOnlyTheLaunchPackageStartsAChildProcess(t *testing.T) {
 		"cmd/lalabase/fork.go":        `package main; import "syscall"; var _ = syscall.ForkExec`,
 		"cmd/lalabase/exec.go":        `package main; import "syscall"; var _ = syscall.Exec`,
 		"cmd/lalabase/sysstart.go":    `package main; import "syscall"; var _ = syscall.StartProcess`,
+		"cmd/lalabase/execabs.go":     `package main; import "golang.org/x/sys/execabs"; var _ = execabs.Command`,
+		"internal/profile/execabs.go": `package profile; import e "golang.org/x/sys/execabs"; var _ = e.LookPath`,
 		"cmd/lalabase/unix.go":        `package main; import "golang.org/x/sys/unix"; var _ = unix.Exec`,
 		"internal/profile/x.go":       `package profile; import "os/exec"; var _ = exec.Command`,
 		"internal/launch/sub/x.go":    `package sub; import "os/exec"; var _ = exec.Command`,
