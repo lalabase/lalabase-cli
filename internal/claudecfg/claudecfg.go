@@ -1,5 +1,6 @@
 // Package claudecfg finds the Lalabase servers registered in Claude Code's MCP
-// configuration, for `lalabase auth import`. It only reads: nothing here runs
+// configuration: for `lalabase auth import` (Find), and for the launch of
+// Claude Code beside a ticket (Visible, C7). It only reads: nothing here runs
 // a configured program, expands a variable or guesses at a value. An entry
 // that cannot be imported as it stands is listed with the reason.
 //
@@ -8,6 +9,8 @@
 //   - user:    ~/.claude.json, "mcpServers"
 //   - local:   ~/.claude.json, "projects" -> <path> -> "mcpServers"
 //   - project: .mcp.json in the current directory, "mcpServers"
+//
+// A .mcp.json is foreign: a cloned repository brings its own.
 package claudecfg
 
 import (
@@ -16,6 +19,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -75,36 +79,41 @@ type server struct {
 
 var bearer = regexp.MustCompile(`^Bearer (lalab_pat_[A-Za-z0-9]+)$`)
 
+// userConfig is what ~/.claude.json says about MCP servers.
+type userConfig struct {
+	MCPServers map[string]server `json:"mcpServers"`
+	Projects   map[string]struct {
+		MCPServers                 map[string]server `json:"mcpServers"`
+		EnabledMcpjsonServers      []string          `json:"enabledMcpjsonServers"`
+		DisabledMcpjsonServers     []string          `json:"disabledMcpjsonServers"`
+		EnableAllProjectMcpServers bool              `json:"enableAllProjectMcpServers"`
+	} `json:"projects"`
+}
+
+type projectConfig struct {
+	MCPServers map[string]server `json:"mcpServers"`
+}
+
 // Find reads the three scopes. A file that is missing is skipped; one that
 // cannot be read or parsed is reported in errs and the others are still read.
 func Find(home, cwd string) (entries []Entry, errs []error) {
 	userFile := filepath.Join(home, ".claude.json")
-	var claude struct {
-		MCPServers map[string]server `json:"mcpServers"`
-		Projects   map[string]struct {
-			MCPServers                 map[string]server `json:"mcpServers"`
-			EnabledMcpjsonServers      []string          `json:"enabledMcpjsonServers"`
-			DisabledMcpjsonServers     []string          `json:"disabledMcpjsonServers"`
-			EnableAllProjectMcpServers bool              `json:"enableAllProjectMcpServers"`
-		} `json:"projects"`
-	}
+	var claude userConfig
 	if err := readJSON(userFile, maxUserFile, &claude); err != nil {
 		errs = append(errs, err)
 	}
-	entries = append(entries, collect("user", userFile, claude.MCPServers)...)
+	entries = append(entries, collect("user", userFile, claude.MCPServers, isLalabase)...)
 	paths := make([]string, 0, len(claude.Projects))
 	for p := range claude.Projects {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
 	for _, p := range paths {
-		entries = append(entries, collect("local", p, claude.Projects[p].MCPServers)...)
+		entries = append(entries, collect("local", p, claude.Projects[p].MCPServers, isLalabase)...)
 	}
 
 	projectFile := filepath.Join(cwd, ".mcp.json")
-	var project struct {
-		MCPServers map[string]server `json:"mcpServers"`
-	}
+	var project projectConfig
 	if err := readJSON(projectFile, maxProjectFile, &project); err != nil {
 		errs = append(errs, err)
 	}
@@ -114,7 +123,7 @@ func Find(home, cwd string) (entries []Entry, errs []error) {
 	if real, err := filepath.EvalSymlinks(cwd); !ok && err == nil {
 		approval = claude.Projects[real]
 	}
-	for _, e := range collect("project", projectFile, project.MCPServers) {
+	for _, e := range collect("project", projectFile, project.MCPServers, isLalabase) {
 		state := "none"
 		switch {
 		case slices.Contains(approval.DisabledMcpjsonServers, e.Name):
@@ -143,10 +152,128 @@ func readJSON(path string, maxBytes int64, out any) error {
 	return nil
 }
 
-func collect(scope, where string, servers map[string]server) []Entry {
+// Visible lists every server Claude Code may use when it starts in folder,
+// whatever its name and whether or not it is a Lalabase server, in the
+// order user, local, project:
+//
+//   - user: every server of ~/.claude.json;
+//   - local: the servers filed under one of the folder's ProjectKeys;
+//   - project: every .mcp.json in the folder and in each directory above it
+//     (nearest first), since Claude Code may read more than the folder's.
+//
+// It lists more than Claude Code may use, never less: the launch asks of a
+// name that every server so called points at one place, and a server listed
+// in vain can only stop a launch, never send one elsewhere. A file that
+// cannot be read is reported in errs: what it holds is unknown.
+func Visible(home, folder string) (entries []Entry, errs []error) {
+	userFile := filepath.Join(home, ".claude.json")
+	var claude userConfig
+	if err := readJSON(userFile, maxUserFile, &claude); err != nil {
+		errs = append(errs, err)
+	}
+	entries = append(entries, collect("user", userFile, claude.MCPServers, anyServer)...)
+	keys := ProjectKeys(folder)
+	sort.Strings(keys)
+	for _, key := range keys {
+		entries = append(entries, collect("local", key, claude.Projects[key].MCPServers, anyServer)...)
+	}
+	for dir := filepath.Clean(folder); ; {
+		file := filepath.Join(dir, ".mcp.json")
+		var project projectConfig
+		if err := readJSON(file, maxProjectFile, &project); err != nil {
+			errs = append(errs, err)
+		}
+		entries = append(entries, collect("project", file, project.MCPServers, anyServer)...)
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return entries, errs
+}
+
+// ProjectKeys are the paths Claude Code may file a folder's local servers
+// under. Claude Code keys a project by the root of the main checkout when
+// the folder lies in a git repository (a worktree's too), else by the folder
+// itself. Every candidate is returned: the folder as given and resolved, its
+// git root, and for a worktree the main checkout's root. Reading more keys
+// than Claude Code uses can only stop a launch.
+func ProjectKeys(folder string) []string {
+	folder = filepath.Clean(folder)
+	keys := []string{folder}
+	add := func(p string) {
+		if !slices.Contains(keys, p) {
+			keys = append(keys, p)
+		}
+	}
+	real, err := filepath.EvalSymlinks(folder)
+	if err != nil {
+		return keys
+	}
+	add(real)
+	for dir := real; ; {
+		info, err := os.Lstat(filepath.Join(dir, ".git"))
+		if err == nil && (info.IsDir() || info.Mode().IsRegular()) {
+			add(dir)
+			if info.Mode().IsRegular() {
+				if main, ok := mainCheckout(dir); ok {
+					add(main)
+				}
+			}
+			return keys
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return keys
+		}
+		dir = parent
+	}
+}
+
+// mainCheckout follows a worktree's .git file ("gitdir: <dir>") to the
+// common directory its git directory names ("commondir") and returns the
+// checkout that common directory belongs to. A .git file without a common
+// directory (a submodule) has no main checkout.
+func mainCheckout(root string) (string, bool) {
+	gitdir, ok := pointer(filepath.Join(root, ".git"), "gitdir: ", root)
+	if !ok {
+		return "", false
+	}
+	common, ok := pointer(filepath.Join(gitdir, "commondir"), "", gitdir)
+	if !ok || filepath.Base(common) != ".git" {
+		return "", false
+	}
+	main, err := filepath.EvalSymlinks(filepath.Dir(common))
+	if err != nil {
+		return "", false
+	}
+	return main, true
+}
+
+// pointer reads a one-line git pointer file: the path after prefix,
+// relative to base unless absolute.
+func pointer(file, prefix, base string) (string, bool) {
+	data, _, err := safefile.ReadRegular(file, 4096)
+	if err != nil {
+		return "", false
+	}
+	line, ok := strings.CutPrefix(strings.TrimRight(string(data), "\r\n"), prefix)
+	if !ok || line == "" || strings.ContainsAny(line, "\r\n") {
+		return "", false
+	}
+	if !filepath.IsAbs(line) {
+		line = filepath.Join(base, line)
+	}
+	return filepath.Clean(line), true
+}
+
+func anyServer(string, server) bool { return true }
+
+func collect(scope, where string, servers map[string]server, take func(string, server) bool) []Entry {
 	names := make([]string, 0, len(servers))
 	for name, s := range servers {
-		if isLalabase(name, s) {
+		if take(name, s) {
 			names = append(names, name)
 		}
 	}

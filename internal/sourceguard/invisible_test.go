@@ -41,7 +41,7 @@ func TestTextFilesCarryNoInvisibleCharacters(t *testing.T) {
 		"internal/claudecfg", "internal/profile", "internal/queue", "internal/safefile",
 		"internal/ui", "internal/ui/view", "internal/present", "internal/uitext", "internal/terminal",
 		"internal/worker", "internal/gateway", "internal/inboxfixture", "tools/inbox-fixture",
-		"internal/diskcache", "internal/privatefs",
+		"internal/diskcache", "internal/privatefs", "internal/launch",
 	} {
 		if !seen[dir] {
 			t.Errorf("no file of %s was checked", dir)
