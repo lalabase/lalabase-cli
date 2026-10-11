@@ -60,7 +60,13 @@ navigation again.
   reversed over the pane's width (both lines of a two-line entry), in which
   faint and a status's tone give way and bold stays; the other panes mark
   their cursor with `>` alone, which the bar keeps too, so the cursor shows
-  without any attribute.
+  without any attribute. Free text that is longer than its pane (a ticket,
+  the details of a notification) carries a scrollbar in the pane's last
+  column: a thumb (`┃`) as long as the share in sight and where it is, on a
+  faint track (`╎`); the thumb touches the bottom only at the end. The text
+  always leaves that column and a space before it free, so it wraps the same
+  whether the bar shows or not. In a ticket the bar covers the page of
+  comments loaded, not the whole conversation.
 
 * **The start** asks `/api/v1/me` first; only after that succeeds it reads
   the server's capabilities (`initialize`, `tools/list`), the organisations
