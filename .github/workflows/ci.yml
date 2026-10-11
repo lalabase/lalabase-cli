@@ -55,7 +55,7 @@ jobs:
         # them without the other packages' load on the same cores.
         run: go test -race -count=1 -timeout 5m ./cmd/lalabase/
       - name: test platform boundaries
-        run: go test -race -count=1 -timeout 5m ./internal/ui/... ./internal/worker/ ./internal/gateway/ ./internal/queue/ ./internal/present/ ./internal/uitext/ ./internal/terminal/ ./internal/sourceguard/ ./internal/profile/ ./internal/privatefs/ ./internal/safefile/ ./internal/diskcache/ ./internal/api/ ./internal/features/ ./internal/cache/ ./internal/inboxfixture/ ./tools/inbox-fixture/
+        run: go test -race -count=1 -timeout 5m ./internal/ui/... ./internal/worker/ ./internal/gateway/ ./internal/queue/ ./internal/present/ ./internal/uitext/ ./internal/terminal/ ./internal/sourceguard/ ./internal/profile/ ./internal/privatefs/ ./internal/safefile/ ./internal/diskcache/ ./internal/api/ ./internal/features/ ./internal/cache/ ./internal/inboxfixture/ ./tools/inbox-fixture/ ./internal/launch/ ./internal/claudecfg/
 
   lint:
     runs-on: ubuntu-latest
