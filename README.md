@@ -183,7 +183,8 @@ navigation again.
     vertically (AppleScript, a constant run with `osascript -`, the values
     as its arguments only), and the new pane's login shell runs
     `cd '<folder>' && claude -n 'lalabase #<n>' '<prompt>'`, every value
-    single-quoted. Every press opens a new split. Elsewhere the interface
+    single-quoted, at most 1000 bytes (a longer line could be lost before
+    the shell reads it). Every press opens a new split. Elsewhere the interface
     gives the terminal to `claude` (from the `PATH`, no shell, same
     arguments) and comes back when it ends.
   * **Which folder.** `[profiles.<name>.folders]` in `config.toml` maps a
@@ -196,18 +197,26 @@ navigation again.
     00000000-0000-4000-8000-000000000031 = "~/dev/website"
     ```
   * **Which server.** Claude Code's configuration as it applies in that
-    folder (user scope, the local scope of the folder's git root, a
-    `.mcp.json` there or above) is read; a server name counts only when
-    every server of that name points at the profile's server, so a
-    repository's `.mcp.json` cannot redirect a name to another server.
-    None: nothing starts, and the status line names both servers. The name
-    must match `^[A-Za-z0-9_-]{1,64}$`.
+    folder is read: the user scope of every global file it may read (under
+    the home and `CLAUDE_CONFIG_DIR`, the legacy `.config.json` too), the
+    local scope of the folder's git root (keys compared without case), and
+    every `.mcp.json` in the folder and above it, on the path as given and
+    with its links resolved. Keys are read as written (`url`, not `URL`),
+    as Claude Code reads them. Servers whose names give the same tool name
+    (`lalabase.prod` and `lalabase_prod`) are one name. A name counts only
+    when every server of that name points at the profile's server (hosts
+    compared in ASCII only), so a repository's `.mcp.json` cannot redirect
+    the name the prompt uses. None: nothing starts, and the status line
+    names both servers. The name must match `^[A-Za-z0-9_-]{1,64}$`. Not
+    read: managed MCP settings, plugins, claude.ai connectors and an
+    environment of the new pane's shell that differs from the client's.
   * **What the status line says:** opening, opened beside `#<n>` (or ended,
     without iTerm), or why not: the address, the folder, Claude Code's
     configuration, no matching or a conflicting server, a name outside the
     pattern, `claude` not on the `PATH`, macOS refusing iTerm control
     (error -1743: allow it in System Settings, Privacy & Security,
-    Automation), the session not found, no answer within 5 s. While a
+    Automation), the session not found, no answer within 5 s (a pane may
+    still open). While a
     launch runs, a second `x` does nothing.
 * **A comment that is gone.** When the server answers a comment read whole
   with "not found" (it was deleted or made private), its cached text goes

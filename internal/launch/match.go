@@ -32,9 +32,11 @@ var scopeRank = map[string]int{"local": 0, "project": 1, "user": 2}
 // passed over. kind is OK when a name was found; otherwise detail says
 // what the status line names.
 func pickServer(entries []claudecfg.Entry, profile string) (name string, kind Kind, detail string) {
+	// Grouped by the tool name: what the prompt names is the tool, and
+	// servers whose names give the same one are one name to the model.
 	byName := map[string][]claudecfg.Entry{}
 	for _, e := range entries {
-		byName[e.Name] = append(byName[e.Name], e)
+		byName[toolName(e.Name)] = append(byName[toolName(e.Name)], e)
 	}
 	type candidate struct {
 		name string
@@ -55,7 +57,15 @@ func pickServer(entries []claudecfg.Entry, profile string) (name string, kind Ki
 		}
 		switch {
 		case matching == len(group):
-			fits = append(fits, candidate{n, rank})
+			// The prompt names the server as written; within a group only a
+			// name in the pattern equals its tool name.
+			raw := group[0].Name
+			for _, e := range group {
+				if e.Name == n {
+					raw = n
+				}
+			}
+			fits = append(fits, candidate{raw, rank})
 		case matching > 0 && (conflict == "" || n < conflict):
 			conflict = n
 			detail = n + "; " + elsewhere(other)
@@ -120,7 +130,16 @@ func normalBase(raw string) (string, bool) {
 	if scheme != "https" && scheme != "http" {
 		return "", false
 	}
-	host, port := strings.ToLower(u.Hostname()), u.Port()
+	host, port := u.Hostname(), u.Port()
+	// ASCII only: Go lowercases U+0130 to "i", Claude Code's URL parser
+	// maps a host outside ASCII to punycode; and a "%" is decoded there,
+	// kept here. A host in punycode is ASCII and compared as it is.
+	for _, r := range host {
+		if r >= 0x80 || r == '%' {
+			return "", false
+		}
+	}
+	host = strings.ToLower(host)
 	if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
 		port = ""
 	}
@@ -129,4 +148,32 @@ func normalBase(raw string) (string, bool) {
 		host = strings.TrimSuffix(host, ":")
 	}
 	return scheme + "://" + host + strings.TrimRight(u.EscapedPath(), "/"), true
+}
+
+// toolName is the name Claude Code gives a server in its tools
+// (mcp__<name>__get_ticket), read in Claude Code 2.1.296: every UTF-16 unit
+// outside [A-Za-z0-9_-] becomes "_" (a character beyond the BMP is two),
+// and for a name starting with "claude.ai " runs of "_" collapse and the
+// ends are trimmed. Two servers whose names give one tool name are one
+// name to the model.
+func toolName(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r < 0x80 && (r == '_' || r == '-' || ('0' <= r && r <= '9') || ('A' <= r && r <= 'Z') || ('a' <= r && r <= 'z')):
+			b.WriteRune(r)
+		case r > 0xFFFF:
+			b.WriteString("__")
+		default:
+			b.WriteByte('_')
+		}
+	}
+	out := b.String()
+	if strings.HasPrefix(name, "claude.ai ") {
+		for strings.Contains(out, "__") {
+			out = strings.ReplaceAll(out, "__", "_")
+		}
+		out = strings.TrimPrefix(strings.TrimSuffix(out, "_"), "_")
+	}
+	return out
 }

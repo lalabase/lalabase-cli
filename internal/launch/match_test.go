@@ -87,3 +87,75 @@ func TestPickServer(t *testing.T) {
 		})
 	}
 }
+
+// Review round 1, F2: a host is compared only in ASCII. Go lowercases
+// U+0130 to "i", the URL parser of Claude Code (WHATWG) maps it to
+// punycode: another host.
+func TestAHostOutsideASCIIIsNoServer(t *testing.T) {
+	for _, c := range []struct{ a, b string }{
+		{"https://t\u0130ckets.example.com", "https://tickets.example.com"},
+		{"https://tickets.example.com", "https://t\u0130ckets.example.com"},
+		{"https://caf\u00e9.example", "https://caf\u00e9.example"},
+		{"https://xn--caf-dma.example", "https://caf\u00e9.example"},
+		{"https://lala%62ase.com", "https://lalabase.com"},
+		{"https://lalabase.com\u212a", "https://lalabase.comk"},
+	} {
+		if sameServer(c.a, c.b) {
+			t.Errorf("sameServer(%q, %q) is true", c.a, c.b)
+		}
+	}
+	if !sameServer("https://xn--caf-dma.example", "https://XN--CAF-DMA.example/") {
+		t.Error("punycode in ASCII is a host like any other")
+	}
+}
+
+// Review round 1, F3: Claude Code names a server's tools after the name
+// with every character outside [A-Za-z0-9_-] as "_", so two names that
+// normalise alike are one name.
+func TestToolNameOfAServer(t *testing.T) {
+	for in, want := range map[string]string{
+		"lalabase":           "lalabase",
+		"lalabase.prod":      "lalabase_prod",
+		"lalabase prod":      "lalabase_prod",
+		"lala-base_1":        "lala-base_1",
+		"caf\u00e9":          "caf_",
+		"x\U0001F600":        "x__",
+		"claude.ai Lalabase": "claude_ai_Lalabase",
+		"claude.ai  x..y ":   "claude_ai_x_y",
+	} {
+		if got := toolName(in); got != want {
+			t.Errorf("toolName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestPickServerRoundOne(t *testing.T) {
+	const profile = "https://lalabase.com"
+	for _, c := range []struct {
+		name    string
+		entries []claudecfg.Entry
+		want    string
+		kind    Kind
+		detail  string
+	}{
+		// F3: a server whose name normalises to the chosen one's.
+		{name: "normalised alike", entries: []claudecfg.Entry{entry("user", "lalabase_prod", profile), entry("project", "lalabase.prod", "https://evil.example")}, kind: Conflict, detail: "lalabase_prod; https://evil.example"},
+		{name: "normalised alike, both right", entries: []claudecfg.Entry{entry("user", "lalabase_prod", profile), entry("project", "lalabase prod", profile)}, want: "lalabase_prod"},
+		// P5: a dot is outside the pattern.
+		{name: "a dot in the name", entries: []claudecfg.Entry{entry("user", "lalabase.prod", profile)}, kind: BadName, detail: "lalabase.prod"},
+		// P6: of two conflicts, the first name is reported.
+		{name: "two conflicts", entries: []claudecfg.Entry{
+			entry("user", "zeta", profile), entry("project", "zeta", "https://z.example"),
+			entry("user", "alpha", profile), entry("project", "alpha", "https://a.example"),
+		}, kind: Conflict, detail: "alpha; https://a.example"},
+		// P7: a name's rank is the best scope it has.
+		{name: "best scope of a name", entries: []claudecfg.Entry{entry("local", "beta", profile), entry("user", "beta", profile), entry("user", "alpha", profile)}, want: "beta"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, kind, detail := pickServer(c.entries, profile)
+			if got != c.want || kind != c.kind || detail != c.detail {
+				t.Errorf("got %q, kind %v, detail %q; want %q, kind %v, detail %q", got, kind, detail, c.want, c.kind, c.detail)
+			}
+		})
+	}
+}

@@ -64,7 +64,11 @@ func commandLine(folder string, t Ticket, server string) (line string, ok bool) 
 		return "", false
 	}
 	args := claudeArgs(t, server)
-	return "cd " + quote(folder) + " && claude " + args[0] + " " + quote(args[1]) + " " + quote(args[2]), true
+	line = "cd " + quote(folder) + " && claude " + args[0] + " " + quote(args[1]) + " " + quote(args[2])
+	if len(line)+1 > maxLine {
+		return "", false
+	}
+	return line, true
 }
 
 // quote makes s one word for a POSIX shell, zsh and fish alike: inside
@@ -121,3 +125,9 @@ end run
 // osascriptArgs read the script from stdin ("-") and pass the session and
 // the command line to its run handler.
 func osascriptArgs(session, line string) []string { return []string{"-", session, line} }
+
+// maxLine bounds the command line with its newline. iTerm types it into a
+// shell that may not read yet, and until it does the terminal holds the
+// line in its buffer: MAX_CANON on macOS is 1024 bytes, and a longer line
+// is lost (review round 1 of C7).
+const maxLine = 1000

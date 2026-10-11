@@ -369,11 +369,102 @@ func TestALaunchUnderTheSupervisor(t *testing.T) {
 	}
 
 	r = newRig(t, true, nil)
-	r.l.visible = func(string, string) ([]claudecfg.Entry, []error) { panic("boom") }
+	r.l.visible = func(string, string, string) ([]claudecfg.Entry, []error) { panic("boom") }
 	if msg := r.launch(shown); msg != (worker.Fatal{}) {
 		t.Fatalf("after a panic: %#v", msg)
 	}
 	if r.sup.Err() == nil {
 		t.Fatal("no fatal error recorded")
+	}
+}
+
+// Review round 1, P32: the error number is the one at the end of the
+// output, not a number in parentheses before it.
+func TestTheErrorNumberIsTheLastOne(t *testing.T) {
+	ctx := context.Background()
+	if got := classify(ctx, "execution error: (4201) in a name (-1708)\n", errors.New("exit status 1")); got != ITermFailed {
+		t.Fatalf("kind %v", got)
+	}
+	if got := classify(ctx, "execution error: x (-1743)\n", errors.New("exit status 1")); got != NoPermission {
+		t.Fatalf("kind %v", got)
+	}
+}
+
+// Review round 1, P35 and F10: a relative entry is no folder, even one that
+// exists from here; a project id in another case finds its entry.
+func TestAFolderEntryOfAnotherForm(t *testing.T) {
+	r := newRig(t, true, nil)
+	r.l.cfg.Folders = map[string]string{projectID: "."}
+	if _, kind, _ := r.l.folder(projectID); kind != NoFolder {
+		t.Errorf("a relative entry: %v", kind)
+	}
+	const lettered = "abcdef00-0000-4000-8000-0000000000ff"
+	dir := realTemp(t)
+	r.l.cfg.Folders = map[string]string{strings.ToUpper(lettered): dir}
+	if got, kind, _ := r.l.folder(lettered); kind != OK || got != dir {
+		t.Errorf("an entry in upper case: %q, %v", got, kind)
+	}
+}
+
+// Review round 1, P66: the session's end cancels a launch waiting on iTerm.
+func TestTheSessionsEndCancelsTheWaitOnITerm(t *testing.T) {
+	r := newRig(t, true, nil)
+	waiting := make(chan struct{})
+	r.answer = func(ctx context.Context) (string, error) {
+		close(waiting)
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+	out := make(chan tea.Msg, 1)
+	if !r.sup.Start("test: launch", func(context.Context) { out <- r.l.Launch(7, shown)() }) {
+		t.Fatal("the lifetime is over")
+	}
+	<-waiting
+	go r.sup.Stop(testLimit)
+	select {
+	case msg := <-out:
+		if d, ok := msg.(Done); !ok || d.Kind != Canceled {
+			t.Fatalf("message %#v", msg)
+		}
+	case <-time.After(testLimit):
+		t.Fatal("no message")
+	}
+}
+
+// Review round 1, F6: CLAUDE_CONFIG_DIR reaches the reading of Claude
+// Code's configuration, and only in its absolute form.
+func TestTheConfigDirOfClaudeCode(t *testing.T) {
+	r := newRig(t, true, nil)
+	var asked []string
+	r.l.visible = func(home, dir, folder string) ([]claudecfg.Entry, []error) {
+		asked = append(asked, dir)
+		return claudecfg.Visible(home, dir, folder)
+	}
+	dir := realTemp(t)
+	r.l.cfg.ClaudeConfigDir = dir
+	if d := r.done(shown); d.Kind != Opened || len(asked) != 1 || asked[0] != dir {
+		t.Fatalf("done %+v, asked %q", d, asked)
+	}
+	for _, bad := range []string{"relative/dir", "/tmp/a\nb"} {
+		r.l.cfg.ClaudeConfigDir = bad
+		if d := r.done(shown); d.Kind != ConfigUnreadable {
+			t.Errorf("%q: done %+v", bad, d)
+		}
+	}
+}
+
+// Review round 1, P41: after the deadline killed osascript, a child of it
+// that keeps its error output open does not hold the launch: the wait for
+// the output ends after WaitDelay.
+func TestAKilledChildDoesNotHoldTheLaunch(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := runChild(ctx, "/bin/sh", "sleep 20 >&2 &\nsleep 20\n", []string{"-s"})
+	if err == nil {
+		t.Fatal("no error after the deadline")
+	}
+	if took := time.Since(start); took > 5*time.Second {
+		t.Fatalf("the launch waited %v", took)
 	}
 }

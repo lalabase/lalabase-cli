@@ -360,6 +360,6 @@ var english = map[ID]string{
 	LaunchNoClaude:         "claude was not found on the PATH",
 	LaunchNoPermission:     "macOS does not let this terminal control iTerm: allow it in System Settings > Privacy & Security > Automation",
 	LaunchSessionGone:      "iTerm did not find this session; nothing opened",
-	LaunchNoAnswer:         "iTerm did not answer within 5 s; if macOS asks for permission, allow it and press x again",
+	LaunchNoAnswer:         "iTerm did not answer within 5 s; a pane may still open. If macOS asks for permission, allow it",
 	LaunchFailed:           "iTerm could not open a pane",
 }

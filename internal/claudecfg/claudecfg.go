@@ -70,28 +70,104 @@ func TokenPrefix(token string) string {
 	return token[:12]
 }
 
+// server is one MCP server as Claude Code's configuration holds it. bad
+// says why it could not be read; such a server stays in the list as an
+// entry with a problem, since it may be the one that shadows a name.
 type server struct {
-	Type    string            `json:"type"`
-	URL     string            `json:"url"`
-	Command string            `json:"command"`
-	Headers map[string]string `json:"headers"`
+	Type    string
+	URL     string
+	Command string
+	Headers map[string]string
+	bad     string
 }
 
 var bearer = regexp.MustCompile(`^Bearer (lalab_pat_[A-Za-z0-9]+)$`)
 
+// object is a JSON object read with its keys as written. Go's encoding/json
+// matches a struct field without regard to case, Claude Code (JavaScript)
+// does not: with struct tags, a file holding both "url" and "URL" would
+// show this client one address and Claude Code another (review round 1 of
+// C7). Every key here is looked up exactly.
+type object map[string]json.RawMessage
+
+// field decodes the value of key into out; a missing key leaves out as it
+// is.
+func (o object) field(key string, out any) error {
+	raw, ok := o[key]
+	if !ok {
+		return nil
+	}
+	return json.Unmarshal(raw, out)
+}
+
+// UnmarshalJSON never fails: what is not a server of the expected shape is
+// a server with a problem.
+func (s *server) UnmarshalJSON(data []byte) error {
+	var o object
+	if err := json.Unmarshal(data, &o); err != nil || o == nil {
+		s.bad = "not an object"
+		return nil //nolint:nilerr // recorded in s.bad: the server stays as an entry with a problem
+	}
+	for key, out := range map[string]any{"type": &s.Type, "url": &s.URL, "command": &s.Command, "headers": &s.Headers} {
+		if err := o.field(key, out); err != nil {
+			s.bad = "the field " + key + " has another type than expected"
+		}
+	}
+	return nil
+}
+
 // userConfig is what ~/.claude.json says about MCP servers.
 type userConfig struct {
-	MCPServers map[string]server `json:"mcpServers"`
-	Projects   map[string]struct {
-		MCPServers                 map[string]server `json:"mcpServers"`
-		EnabledMcpjsonServers      []string          `json:"enabledMcpjsonServers"`
-		DisabledMcpjsonServers     []string          `json:"disabledMcpjsonServers"`
-		EnableAllProjectMcpServers bool              `json:"enableAllProjectMcpServers"`
-	} `json:"projects"`
+	MCPServers map[string]server
+	Projects   map[string]projectEntry
+}
+
+func (c *userConfig) UnmarshalJSON(data []byte) error {
+	var o object
+	if err := json.Unmarshal(data, &o); err != nil {
+		return err
+	}
+	if err := o.field("mcpServers", &c.MCPServers); err != nil {
+		return err
+	}
+	return o.field("projects", &c.Projects)
+}
+
+// projectEntry is one project of ~/.claude.json: its local servers and
+// what it records about the approval of a .mcp.json.
+type projectEntry struct {
+	MCPServers                 map[string]server
+	EnabledMcpjsonServers      []string
+	DisabledMcpjsonServers     []string
+	EnableAllProjectMcpServers bool
+}
+
+func (p *projectEntry) UnmarshalJSON(data []byte) error {
+	var o object
+	if err := json.Unmarshal(data, &o); err != nil {
+		return err
+	}
+	for key, out := range map[string]any{
+		"mcpServers": &p.MCPServers, "enabledMcpjsonServers": &p.EnabledMcpjsonServers,
+		"disabledMcpjsonServers": &p.DisabledMcpjsonServers, "enableAllProjectMcpServers": &p.EnableAllProjectMcpServers,
+	} {
+		if err := o.field(key, out); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type projectConfig struct {
-	MCPServers map[string]server `json:"mcpServers"`
+	MCPServers map[string]server
+}
+
+func (c *projectConfig) UnmarshalJSON(data []byte) error {
+	var o object
+	if err := json.Unmarshal(data, &o); err != nil {
+		return err
+	}
+	return o.field("mcpServers", &c.MCPServers)
 }
 
 // Find reads the three scopes. A file that is missing is skipped; one that
@@ -156,41 +232,88 @@ func readJSON(path string, maxBytes int64, out any) error {
 // whatever its name and whether or not it is a Lalabase server, in the
 // order user, local, project:
 //
-//   - user: every server of ~/.claude.json;
-//   - local: the servers filed under one of the folder's ProjectKeys;
-//   - project: every .mcp.json in the folder and in each directory above it
-//     (nearest first), since Claude Code may read more than the folder's.
+//   - user: every server of every global file Claude Code may read
+//     (globalFiles: under home and configDir, the legacy file too);
+//   - local: the servers of those files filed under a project key that
+//     equals one of the folder's ProjectKeys without regard to case (a file
+//     system without case takes either spelling);
+//   - project: every .mcp.json in the folder and each directory above it,
+//     on the path as given and on the path with its links resolved (Claude
+//     Code walks the physical one), nearest first.
 //
 // It lists more than Claude Code may use, never less: the launch asks of a
 // name that every server so called points at one place, and a server listed
 // in vain can only stop a launch, never send one elsewhere. A file that
-// cannot be read is reported in errs: what it holds is unknown.
-func Visible(home, folder string) (entries []Entry, errs []error) {
-	userFile := filepath.Join(home, ".claude.json")
-	var claude userConfig
-	if err := readJSON(userFile, maxUserFile, &claude); err != nil {
-		errs = append(errs, err)
-	}
-	entries = append(entries, collect("user", userFile, claude.MCPServers, anyServer)...)
+// cannot be read is reported in errs: what it holds is unknown. configDir
+// is CLAUDE_CONFIG_DIR, or "" when it is not set.
+func Visible(home, configDir, folder string) (entries []Entry, errs []error) {
 	keys := ProjectKeys(folder)
-	sort.Strings(keys)
-	for _, key := range keys {
-		entries = append(entries, collect("local", key, claude.Projects[key].MCPServers, anyServer)...)
-	}
-	for dir := filepath.Clean(folder); ; {
-		file := filepath.Join(dir, ".mcp.json")
-		var project projectConfig
-		if err := readJSON(file, maxProjectFile, &project); err != nil {
+	for _, file := range globalFiles(home, configDir) {
+		var claude userConfig
+		if err := readJSON(file, maxUserFile, &claude); err != nil {
 			errs = append(errs, err)
 		}
-		entries = append(entries, collect("project", file, project.MCPServers, anyServer)...)
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
+		entries = append(entries, collect("user", file, claude.MCPServers, anyServer)...)
+		paths := make([]string, 0, len(claude.Projects))
+		for p := range claude.Projects {
+			if slices.ContainsFunc(keys, func(k string) bool { return strings.EqualFold(k, p) }) {
+				paths = append(paths, p)
+			}
 		}
-		dir = parent
+		sort.Strings(paths)
+		for _, p := range paths {
+			entries = append(entries, collect("local", p, claude.Projects[p].MCPServers, anyServer)...)
+		}
+	}
+	var seen []string
+	starts := []string{filepath.Clean(folder)}
+	if real, err := filepath.EvalSymlinks(folder); err == nil {
+		starts = append(starts, real)
+	}
+	for _, start := range starts {
+		for dir := start; ; {
+			file := filepath.Join(dir, ".mcp.json")
+			if !slices.Contains(seen, file) {
+				seen = append(seen, file)
+				var project projectConfig
+				if err := readJSON(file, maxProjectFile, &project); err != nil {
+					errs = append(errs, err)
+				}
+				entries = append(entries, collect("project", file, project.MCPServers, anyServer)...)
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
 	}
 	return entries, errs
+}
+
+// globalFiles are the files Claude Code may read its global configuration
+// from (read in Claude Code 2.1.296): .claude.json under CLAUDE_CONFIG_DIR
+// or else the home, with a suffix for another login (-custom-oauth,
+// -local-oauth, -staging-oauth), and the legacy .config.json under
+// CLAUDE_CONFIG_DIR or ~/.claude. All of them are read: which one Claude
+// Code takes depends on its environment in the new pane.
+func globalFiles(home, configDir string) []string {
+	var out []string
+	for _, dir := range []string{home, configDir} {
+		if dir == "" {
+			continue
+		}
+		for _, suffix := range []string{"", "-custom-oauth", "-local-oauth", "-staging-oauth"} {
+			out = append(out, filepath.Join(dir, ".claude"+suffix+".json"))
+		}
+	}
+	for _, dir := range []string{filepath.Join(home, ".claude"), configDir} {
+		if dir != "" {
+			out = append(out, filepath.Join(dir, ".config.json"))
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 // ProjectKeys are the paths Claude Code may file a folder's local servers
@@ -304,6 +427,10 @@ func isLalabase(name string, s server) bool {
 
 func inspect(scope, where, name string, s server) Entry {
 	e := Entry{Scope: scope, Where: where, Name: name}
+	if s.bad != "" {
+		e.Problem = "unreadable entry: " + s.bad
+		return e
+	}
 	if s.Command != "" || s.Type == "stdio" {
 		e.Problem = "runs a local program; nothing to import"
 		return e

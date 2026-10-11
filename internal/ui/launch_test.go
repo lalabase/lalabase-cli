@@ -209,7 +209,9 @@ func TestEveryOutcomeHasItsStatusText(t *testing.T) {
 		{launch.NoClaude, "", "claude was not found on the PATH"},
 		{launch.NoPermission, "", "macOS does not let this terminal control iTerm: allow it in System Settings > Privacy & Security > Automation"},
 		{launch.SessionGone, "", "iTerm did not find this session; nothing opened"},
-		{launch.NoAnswer, "", "iTerm did not answer within 5 s; if macOS asks for permission, allow it and press x again"},
+		// F9 of review round 1: after the deadline a split may still come;
+		// the text does not ask for a second press.
+		{launch.NoAnswer, "", "iTerm did not answer within 5 s; a pane may still open. If macOS asks for permission, allow it"},
 		{launch.ITermFailed, "", "iTerm could not open a pane"},
 		{launch.EndedWithError, "", "Claude Code ended with an error: "},
 		{launch.Canceled, "", ""},
@@ -262,5 +264,27 @@ func TestTheNoticeStaysWithItsTicket(t *testing.T) {
 	}
 	if got := h.status(); got != "" {
 		t.Fatalf("ticket #7 shows %q", got)
+	}
+}
+
+// Review round 1, P43 and P48: a record that is not the ticket asked for,
+// or one without a number, offers no x.
+func TestXNeedsTheRecordOfTheTicketAskedFor(t *testing.T) {
+	h := newHarness(t)
+	h.withLauncher()
+	h.openSix()
+	d := h.m.app.detail
+	id, number := d.record.ID, d.record.Number
+	d.record.ID = ticketID(website, 7)
+	if h.offers(Launch) {
+		t.Error("x offered for a record of another ticket")
+	}
+	d.record.ID, d.record.Number = id, 0
+	if h.offers(Launch) {
+		t.Error("x offered for a ticket without a number")
+	}
+	d.record.Number = number
+	if !h.offers(Launch) {
+		t.Error("x not offered for the ticket restored")
 	}
 }

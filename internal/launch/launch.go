@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -38,6 +39,8 @@ type Config struct {
 	// TermProgram and SessionID are TERM_PROGRAM and ITERM_SESSION_ID as
 	// the environment has them; their form is checked here.
 	TermProgram, SessionID string
+	// ClaudeConfigDir is CLAUDE_CONFIG_DIR as the environment has it.
+	ClaudeConfigDir string
 }
 
 // Launcher starts Claude Code beside a ticket, one launch per call of
@@ -53,7 +56,7 @@ type Launcher struct {
 	lookPath    func(string) (string, error)
 	execProcess func(*exec.Cmd, tea.ExecCallback) tea.Cmd
 	stat        func(string) (os.FileInfo, error)
-	visible     func(home, folder string) ([]claudecfg.Entry, []error)
+	visible     func(home, configDir, folder string) ([]claudecfg.Entry, []error)
 }
 
 // New returns a launcher. iTerm is used on macOS when TERM_PROGRAM says
@@ -100,7 +103,12 @@ func (l *Launcher) launch(ref uint64, t Ticket) tea.Msg {
 	if kind != OK {
 		return done(kind, detail)
 	}
-	entries, errs := l.visible(l.cfg.Home, folder)
+	// CLAUDE_CONFIG_DIR moves Claude Code's global file; a relative one
+	// would be relative to a folder this client cannot know.
+	if dir := l.cfg.ClaudeConfigDir; dir != "" && (!filepath.IsAbs(dir) || !passable(dir)) {
+		return done(ConfigUnreadable, "CLAUDE_CONFIG_DIR is no absolute path: "+dir)
+	}
+	entries, errs := l.visible(l.cfg.Home, l.cfg.ClaudeConfigDir, folder)
 	if len(errs) > 0 {
 		return done(ConfigUnreadable, errs[0].Error())
 	}
@@ -145,7 +153,7 @@ func (l *Launcher) here(folder string, t Ticket, server string, done func(Kind, 
 // profile, an absolute path or one under ~/, else the folder the client was
 // started in. It must exist, be a directory and pass as typed.
 func (l *Launcher) folder(project string) (string, Kind, string) {
-	path, ok := l.cfg.Folders[project]
+	path, ok := l.folderEntry(project)
 	switch {
 	case !ok && l.cfg.Cwd == "":
 		return "", NoFolder, "the folder lalabase was started in is unknown"
@@ -172,6 +180,26 @@ func (l *Launcher) folder(project string) (string, Kind, string) {
 		return "", NotADirectory, path
 	}
 	return path, OK, ""
+}
+
+// folderEntry is the project's entry in the profile; a UUID written in
+// another case is the same id. Of two entries differing in case only, the
+// exact one wins.
+func (l *Launcher) folderEntry(project string) (string, bool) {
+	if path, ok := l.cfg.Folders[project]; ok {
+		return path, true
+	}
+	keys := make([]string, 0, len(l.cfg.Folders))
+	for k := range l.cfg.Folders {
+		if strings.EqualFold(k, project) {
+			keys = append(keys, k)
+		}
+	}
+	if len(keys) == 0 {
+		return "", false
+	}
+	slices.Sort(keys)
+	return l.cfg.Folders[keys[0]], true
 }
 
 // errorNumber is the number osascript ends an execution error with.
@@ -201,11 +229,17 @@ func classify(ctx context.Context, stderr string, err error) Kind {
 }
 
 // runOSAScript runs the script with osascript, the script on stdin, the
-// values as arguments. os/exec copies stdin and stderr on goroutines of
-// its own; they end with the child, and WaitDelay bounds the wait for
-// them after the deadline killed it.
+// values as arguments.
 func runOSAScript(ctx context.Context, script string, args []string) (string, error) {
-	c := exec.CommandContext(ctx, osascriptPath, args...)
+	return runChild(ctx, osascriptPath, script, args)
+}
+
+// runChild runs path with args, script on stdin, and keeps the start of its
+// error output. os/exec copies stdin and stderr on goroutines of its own;
+// they end with the child, and WaitDelay bounds the wait for them after
+// the deadline killed it (a grandchild may hold the output open).
+func runChild(ctx context.Context, path, script string, args []string) (string, error) {
+	c := exec.CommandContext(ctx, path, args...)
 	c.Stdin = strings.NewReader(script)
 	var stderr capped
 	c.Stderr = &stderr

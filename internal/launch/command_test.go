@@ -162,3 +162,31 @@ func TestAShellReadsTheQuotedValueBack(t *testing.T) {
 		}
 	}
 }
+
+// Review round 1, P27: the session id is the whole value, from its start.
+func TestTheSessionIDIsTheWholeValue(t *testing.T) {
+	if got := iTermSession("xw1t4p0:FCB46015-2039-451D-82C2-59CE4353910D"); got != "" {
+		t.Fatalf("%q", got)
+	}
+}
+
+// Review round 1, F7: a line longer than the terminal's line buffer is
+// lost when it arrives before the new shell reads it (MAX_CANON is 1024 on
+// macOS); a folder that makes it longer is refused.
+func TestACommandLineFitsTheLineBuffer(t *testing.T) {
+	short := "/tmp/" + strings.Repeat("a", 50)
+	line, ok := commandLine(short, shown, "lalabase")
+	if !ok || len(line)+1 > maxLine {
+		t.Fatalf("a short folder: %d bytes, %v", len(line), ok)
+	}
+	room := maxLine - 1 - len(line) + len(short)
+	if _, ok := commandLine("/tmp/"+strings.Repeat("a", room-5), shown, "lalabase"); !ok {
+		t.Error("a folder that just fits was refused")
+	}
+	if _, ok := commandLine("/tmp/"+strings.Repeat("a", room-4), shown, "lalabase"); ok {
+		t.Error("a folder one byte too long passed")
+	}
+	if maxLine > 1024 {
+		t.Errorf("maxLine %d is more than MAX_CANON", maxLine)
+	}
+}
