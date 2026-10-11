@@ -134,18 +134,97 @@ var fileSystemImports = map[string]map[string][]string{
 	},
 }
 
-// rawSyscall is the one raw system call the client makes, and the number
-// it may carry: anything else by number would be any call at all.
+// launchImports are what the launch of Claude Code beside a ticket (C7)
+// may import beyond reachableImports, named one by one like
+// fileSystemImports. internal/launch is the client's one package that
+// starts a child process: osascript, which asks iTerm for a pane, and
+// claude in this terminal through Bubble Tea's exec. That is a decision
+// about child processes, taken here, not a fix for a red guard: os/exec
+// copies a child's input and output on goroutines of its own, which end
+// with the child, and the launch runs under the supervisor. It may stat a
+// folder, and nothing else of os: no environment (the command hands it
+// the values it needs), no output stream. internal/claudecfg reads Claude
+// Code's configuration for it, through internal/safefile, and may look at
+// paths the way Claude Code does (a .git entry, a link resolved). Nothing
+// else gets any of this, and inspectChildProcesses refuses a child process
+// everywhere else in the client.
+var launchImports = map[string]map[string][]string{
+	"internal/launch": {
+		"os/exec":       {"Cmd", "Command", "CommandContext", "LookPath"},
+		"os":            {"FileInfo", "Stat"},
+		"path/filepath": {"Clean", "IsAbs", "Join"},
+	},
+	"internal/claudecfg": {
+		"os":            {"Lstat"},
+		"io/fs":         {"ErrNotExist"},
+		"path/filepath": {"Base", "Clean", "Dir", "EvalSymlinks", "IsAbs", "Join"},
+		"sort":          {"Strings"},
+	},
+}
+
+// childProcessDir is the one directory whose production code may start a
+// child process.
+const childProcessDir = "internal/launch"
+
+// childProcessPackages start programs: os/exec, and x/sys/execabs, a
+// wrapper of it (review round 4 of #22).
+var childProcessPackages = map[string]bool{"os/exec": true, "golang.org/x/sys/execabs": true}
+
+// childProcessCalls start a program without os/exec.
+var childProcessCalls = map[string][]string{
+	"os":                    {"StartProcess"},
+	"syscall":               {"Exec", "ForkExec", "StartProcess"},
+	"golang.org/x/sys/unix": {"Exec"},
+}
+
+// inspectChildProcesses: in the client's production code (cmd/ and
+// internal/; the developer tools under tools/ are no part of it) os/exec and
+// its wrapper execabs are imported in childProcessDir alone, and the process calls of os, syscall
+// and x/sys/unix nowhere.
+func inspectChildProcesses(name string, file *ast.File, aliases map[string]string) []string {
+	if test(name) || (!strings.HasPrefix(name, "cmd/") && !strings.HasPrefix(name, "internal/")) {
+		return nil
+	}
+	var findings []string
+	for _, imp := range file.Imports {
+		if p, _ := strconv.Unquote(imp.Path.Value); childProcessPackages[p] && path.Dir(name) != childProcessDir {
+			findings = append(findings, name+": "+p+" outside "+childProcessDir)
+		}
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		if sel, ok := node.(*ast.SelectorExpr); ok {
+			if ident, ok := sel.X.(*ast.Ident); ok && slices.Contains(childProcessCalls[aliases[ident.Name]], sel.Sel.Name) {
+				findings = append(findings, name+": "+aliases[ident.Name]+"."+sel.Sel.Name+" starts a child process")
+			}
+		}
+		return true
+	})
+	return findings
+}
+
+// rawSyscall is the one raw system call the client makes, the number it
+// may carry and the package it is made in (the access list reader):
+// anything else by number would be any call at all.
 const (
 	rawSyscall       = "Syscall6"
 	rawSyscallNumber = "SYS_GETATTRLIST"
+	rawSyscallDir    = "internal/privatefs"
 )
 
-// inspectRawSyscalls: a call of x/sys/unix's Syscall6 names rawSyscallNumber
-// of the same package as its first argument; a number, a variable or
-// another constant is refused.
+// rawSyscallPackages offer raw system calls (Syscall, Syscall6, RawSyscall,
+// AllThreadsSyscall, ...): by number, any call at all, the start of a
+// program among them (review rounds 5 and 6 of #22).
+var rawSyscallPackages = map[string]bool{"syscall": true, "golang.org/x/sys/unix": true}
+
+// inspectRawSyscalls: a raw system call is x/sys/unix's Syscall6, called in
+// rawSyscallDir with rawSyscallNumber of the same package as its first
+// argument; a number, a variable or another constant is refused, and so is
+// every other name of syscall and x/sys/unix with Syscall in it, called or
+// taken as a value. Not seen, by design (a syntax guard): a go:linkname to
+// such a function.
 func inspectRawSyscalls(name string, file *ast.File, aliases map[string]string) []string {
 	var findings []string
+	allowed := map[*ast.SelectorExpr]bool{}
 	ast.Inspect(file, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
@@ -161,6 +240,7 @@ func inspectRawSyscalls(name string, file *ast.File, aliases map[string]string) 
 		}
 		if len(call.Args) == 0 {
 			findings = append(findings, name+": "+rawSyscall+" without a system call")
+			allowed[sel] = true
 			return true
 		}
 		named := false
@@ -172,6 +252,21 @@ func inspectRawSyscalls(name string, file *ast.File, aliases map[string]string) 
 		if !named {
 			findings = append(findings, name+": "+rawSyscall+" with a system call other than "+rawSyscallNumber)
 		}
+		if path.Dir(name) != rawSyscallDir {
+			findings = append(findings, name+": "+rawSyscall+" outside "+rawSyscallDir)
+		}
+		allowed[sel] = true
+		return true
+	})
+	ast.Inspect(file, func(node ast.Node) bool {
+		sel, ok := node.(*ast.SelectorExpr)
+		if !ok || allowed[sel] {
+			return true
+		}
+		pkg, ok := sel.X.(*ast.Ident)
+		if ok && rawSyscallPackages[aliases[pkg.Name]] && strings.Contains(sel.Sel.Name, "Syscall") {
+			findings = append(findings, name+": raw system call "+aliases[pkg.Name]+"."+sel.Sel.Name)
+		}
 		return true
 	})
 	return findings
@@ -181,6 +276,12 @@ func inspectRawSyscalls(name string, file *ast.File, aliases map[string]string) 
 // is false when dir has no such allowance for p.
 func fileSystemNames(dir, p string) (names []string, ok bool) {
 	names, ok = fileSystemImports[dir][p]
+	return names, ok
+}
+
+// launchNames: the names dir may use of p under launchImports.
+func launchNames(dir, p string) (names []string, ok bool) {
+	names, ok = launchImports[dir][p]
 	return names, ok
 }
 
@@ -282,12 +383,16 @@ func inspectForeignCallbacks(name string, file *ast.File, aliases map[string]str
 }
 
 // inspectReachableImports applies reachableImports to a production file,
-// and fileSystemImports to the files of the three packages named there.
+// and fileSystemImports and launchImports to the files of the packages
+// named there.
 func inspectReachableImports(name string, file *ast.File, aliases map[string]string) []string {
 	var findings []string
 	dir := path.Dir(name)
 	allowed := func(p string) (names []string, ok bool) {
 		if names, ok = reachableImports[p]; ok {
+			return names, true
+		}
+		if names, ok = launchNames(dir, p); ok {
 			return names, true
 		}
 		return fileSystemNames(dir, p)
@@ -394,6 +499,7 @@ func inspectUI(sources map[string]string) []string {
 			findings = append(findings, inspectUIEntry(name, file, aliases)...)
 			findings = append(findings, inspectForeignCallbacks(name, file, aliases)...)
 			findings = append(findings, inspectRawSyscalls(name, file, aliases)...)
+			findings = append(findings, inspectChildProcesses(name, file, aliases)...)
 		}
 		// Goroutines: production code anywhere starts one only in the
 		// worker's Start; a test harness may, except in the interface.

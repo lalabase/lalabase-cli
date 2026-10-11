@@ -86,6 +86,9 @@ func TestTheFileSystemPackagesImportByName(t *testing.T) {
 		"privatefs#syscall#var": `package privatefs; import "golang.org/x/sys/unix"; func f(n uintptr) { unix.Syscall6(n, 0, 0, 0, 0, 0, 0) }`,
 		"privatefs#syscall#oth": `package privatefs; import "golang.org/x/sys/unix"; func f() { unix.Syscall6(unix.SYS_WRITE, 0, 0, 0, 0, 0, 0) }`,
 		"privatefs#syscall#ali": `package privatefs; import u "golang.org/x/sys/unix"; func f() { u.Syscall6(u.SYS_WRITE, 0, 0, 0, 0, 0, 0) }`,
+		// Review round 6: a number in a field of a variable passes the
+		// package's names; the check of the first argument refuses it.
+		"privatefs#syscall#fld": `package privatefs; import "golang.org/x/sys/unix"; var s struct{ n uintptr }; func f() { unix.Syscall6(s.n, 0, 0, 0, 0, 0, 0) }`,
 	} {
 		pkg, _, _ := strings.Cut(name, "#")
 		if got := inspectUI(withFS(map[string]string{"internal/" + pkg + "/probe.go": source})); len(got) == 0 {

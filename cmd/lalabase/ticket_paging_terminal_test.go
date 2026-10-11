@@ -61,7 +61,10 @@ func TestPTYTicketPagingFlow(t *testing.T) {
 			openSix(t, c, width)
 			c.act(t, keyTab, width, "» Comments · newest first", "Six comment 30 begins", "] next page")
 			c.act(t, "]", width, "page 2 of 2", "Six comment 5")
-			c.act(t, "o", width, "oldest first · page 1 of 2", "Six comment 1")
+			// "o newest first" in the help: the page has come and o is
+			// offered again (while a page loads, o is not, and a press then
+			// does nothing; the CI of #22 sent the second o into that gap).
+			c.act(t, "o", width, "oldest first · page 1 of 2", "Six comment 1", "o newest first")
 			c.act(t, "o", width, "newest first · page 1 of 2", "Six comment 30 begins")
 			c.act(t, "e", width, "Six comment 30 begins and ends here.", "esc collapse")
 			c.act(t, keyEsc, width, "esc back")

@@ -423,3 +423,88 @@ func TestAFailedRenameIsAFailedSave(t *testing.T) {
 		}
 	}
 }
+
+// C7: a profile maps project ids to the folders Claude Code starts in. The
+// map is read with the profile and kept whole when the file is written.
+const withFolders = `
+[profiles.default]
+url = "https://lalabase.com"
+token = "lalab_pat_default0000"
+
+[profiles.default.folders]
+00000000-0000-4000-8000-000000000031 = "~/dev/website"
+"00000000-0000-4000-8000-000000000032" = "/srv/intern"
+`
+
+func TestFoldersAreReadWithTheProfileAndKeptOnSave(t *testing.T) {
+	path := writeConfig(t, withFolders, 0o600)
+	want := map[string]string{
+		"00000000-0000-4000-8000-000000000031": "~/dev/website",
+		"00000000-0000-4000-8000-000000000032": "/srv/intern",
+	}
+	p, err := Resolve(Interactive, "", env(nil), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !mapsEqual(p.Folders, want) {
+		t.Fatalf("resolved folders %v, want %v", p.Folders, want)
+	}
+	file, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(path, file); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := again.Profiles["default"].Folders; !mapsEqual(got, want) {
+		t.Fatalf("after a round trip %v, want %v", got, want)
+	}
+	// A profile without folders writes none.
+	if err := Save(path, File{Profiles: map[string]Entry{"agent": {URL: "https://lalabase.com", Token: "lalab_pat_agent00000000"}}}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "folders") {
+		t.Fatalf("an empty map was written:\n%s", data)
+	}
+}
+
+func mapsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if w, ok := b[k]; !ok || w != v {
+			return false
+		}
+	}
+	return true
+}
+
+// auth import checks that a profile did not change while the person was
+// asked: a change of its folders is a change.
+func TestSameComparesTheFoldersToo(t *testing.T) {
+	a := Entry{URL: "https://lalabase.com", Token: "lalab_pat_x", Folders: map[string]string{"p": "/a"}}
+	for name, b := range map[string]Entry{
+		"other folder": {URL: a.URL, Token: a.Token, Folders: map[string]string{"p": "/b"}},
+		"other key":    {URL: a.URL, Token: a.Token, Folders: map[string]string{"q": "/a"}},
+		"no folders":   {URL: a.URL, Token: a.Token},
+		"more folders": {URL: a.URL, Token: a.Token, Folders: map[string]string{"p": "/a", "q": "/b"}},
+		"other token":  {URL: a.URL, Token: "lalab_pat_y", Folders: map[string]string{"p": "/a"}},
+		"write":        {URL: a.URL, Token: a.Token, AllowWrite: true, Folders: map[string]string{"p": "/a"}},
+	} {
+		if a.Same(b) || b.Same(a) {
+			t.Errorf("%s: counted as the same", name)
+		}
+	}
+	if !a.Same(Entry{URL: a.URL, Token: a.Token, Folders: map[string]string{"p": "/a"}}) {
+		t.Error("equal entries differ")
+	}
+}

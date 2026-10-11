@@ -60,6 +60,24 @@ type Entry struct {
 	URL        string `toml:"url"`
 	Token      string `toml:"token"`
 	AllowWrite bool   `toml:"allow_write,omitempty"`
+	// Folders maps a project id of this profile's server to the folder
+	// Claude Code starts in beside one of its tickets (C7): an absolute
+	// path or one starting with ~/. Written by hand, kept by auth import.
+	Folders map[string]string `toml:"folders,omitempty"`
+}
+
+// Same reports whether two entries hold the same values, the folders
+// included (an Entry with a map cannot be compared with ==).
+func (e Entry) Same(o Entry) bool {
+	if e.URL != o.URL || e.Token != o.Token || e.AllowWrite != o.AllowWrite || len(e.Folders) != len(o.Folders) {
+		return false
+	}
+	for k, v := range e.Folders {
+		if w, ok := o.Folders[k]; !ok || w != v {
+			return false
+		}
+	}
+	return true
 }
 
 // File is the whole config file.
@@ -73,6 +91,9 @@ type Profile struct {
 	URL        string
 	Token      string
 	AllowWrite bool
+	// Folders is the profile's map of project folders (C7); nil for a
+	// profile from the environment.
+	Folders map[string]string
 	// Source says where it came from, for messages ("file ...", "env ...").
 	Source string
 }
@@ -258,7 +279,7 @@ func fromFile(path, name, hint string) (Profile, error) {
 	if entry.URL == "" || entry.Token == "" {
 		return Profile{}, fmt.Errorf("profile %q in %s needs both url and token", name, path)
 	}
-	return Profile{Name: name, URL: entry.URL, Token: entry.Token, AllowWrite: entry.AllowWrite, Source: "file " + path}, nil
+	return Profile{Name: name, URL: entry.URL, Token: entry.Token, AllowWrite: entry.AllowWrite, Folders: entry.Folders, Source: "file " + path}, nil
 }
 
 // VerifyAgent refuses an agent profile whose token may write, and one whose

@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
+	"github.com/gboyke/lalabase-cli/internal/launch"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
@@ -66,6 +67,9 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.receiveDetail(msg)
 	case gateway.MarkReadResult:
 		return m.receiveMark(msg)
+	case launch.Done:
+		m.receiveLaunch(msg)
+		return m, nil
 	case gateway.Result:
 		// A read refused before it was sent: its waiter is freed, nothing
 		// is shown of it.
@@ -217,6 +221,8 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		return m.expand()
 	case MarkRead:
 		return m.markRead()
+	case Launch:
+		return m.launchClaude()
 	}
 	return m, nil
 }

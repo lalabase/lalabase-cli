@@ -11,6 +11,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/diskcache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
+	"github.com/gboyke/lalabase-cli/internal/launch"
 	"github.com/gboyke/lalabase-cli/internal/profile"
 	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/terminal"
@@ -78,6 +79,8 @@ func runInteractive(name string, env Env) int {
 				// The disk cache (C1e): under the user's cache directory,
 				// opened only after /me confirmed the identity.
 				Disk: &diskcache.Opener{Root: diskcache.Root(env.Getenv, env.Home)},
+				// Claude Code beside the ticket (C7).
+				Launcher: launch.New(launchConfig(env, p, sup)),
 			})), sup)
 		}
 	}
@@ -98,4 +101,23 @@ func runInteractive(name string, env Env) int {
 		return 1
 	}
 	return 0
+}
+
+// launchConfig is what the launch of Claude Code beside a ticket (C7) reads:
+// the profile's server and folders, the start folder, the variables that
+// say whether this is an iTerm session and whether a multiplexer runs in
+// between, and where Claude Code keeps its configuration. The interface
+// reads no environment itself.
+func launchConfig(env Env, p profile.Profile, sup *worker.Supervisor) launch.Config {
+	multiplexer := ""
+	for _, key := range []string{"TMUX", "STY", "ZELLIJ"} {
+		if env.Getenv(key) != "" {
+			multiplexer = key
+		}
+	}
+	return launch.Config{
+		Supervisor: sup, Home: env.Home, Cwd: env.Cwd, Server: p.URL, Folders: p.Folders,
+		TermProgram: env.Getenv("TERM_PROGRAM"), SessionID: env.Getenv("ITERM_SESSION_ID"),
+		ClaudeConfigDir: env.Getenv("CLAUDE_CONFIG_DIR"), Multiplexer: multiplexer,
+	}
 }
