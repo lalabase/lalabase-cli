@@ -26,8 +26,10 @@ func sgrParams(stream string) map[int]bool {
 }
 
 // The tones of a status through a real terminal: the tickets list draws
-// #1 (in progress) yellow and #2 (new) cyan. With NO_COLOR the same list
-// comes without a colour, its bold and faint kept.
+// #1 (in progress) yellow and #2 (new) cyan, each while the cursor bar is
+// on the other. With NO_COLOR the same list
+// comes without a colour, its bold and faint kept. The cursor bar
+// (reversed) is no colour and shows in both.
 func TestPTYStatusTones(t *testing.T) {
 	for _, noColor := range []bool{false, true} {
 		t.Run(fmt.Sprintf("NO_COLOR=%v", noColor), func(t *testing.T) {
@@ -41,6 +43,9 @@ func TestPTYStatusTones(t *testing.T) {
 				t.Fatalf("%v\n%s", err, c.bytes())
 			}
 			openWebsite(t, c, 120)
+			// The cursor bar draws #1 without its tone; one row down, #1
+			// is an ordinary row again.
+			c.act(t, keyDown, 120, "> #2 Export als CSV")
 			if err := c.send("q"); err != nil {
 				t.Fatal(err)
 			}
@@ -52,6 +57,9 @@ func TestPTYStatusTones(t *testing.T) {
 			seen := sgrParams(out)
 			if !seen[1] || !seen[2] {
 				t.Fatalf("bold %v, faint %v: the weights are gone", seen[1], seen[2])
+			}
+			if !seen[7] {
+				t.Fatal("no reversed cells: the cursor bar is gone")
 			}
 			if noColor {
 				if seen[32] || seen[33] || seen[36] {

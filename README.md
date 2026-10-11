@@ -56,7 +56,11 @@ navigation again.
   from a server before the field, has no tone. The colours are the
   terminal's own sixteen, so the theme picks the shade, and `NO_COLOR` turns
   them off. Bold, faint and colour only weigh the text: a terminal without
-  them shows the same words.
+  them shows the same words. The cursor row of the focused pane is a bar,
+  reversed over the pane's width (both lines of a two-line entry), in which
+  faint and a status's tone give way and bold stays; the other panes mark
+  their cursor with `>` alone, which the bar keeps too, so the cursor shows
+  without any attribute.
 
 * **The start** asks `/api/v1/me` first; only after that succeeds it reads
   the server's capabilities (`initialize`, `tools/list`), the organisations

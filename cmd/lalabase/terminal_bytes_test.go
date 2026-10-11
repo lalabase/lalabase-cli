@@ -77,15 +77,16 @@ func terminalOutputError(output string) error {
 			if prefix == 0 {
 				switch final {
 				case 'm':
-					// Reset, bold, faint and the end of both, the three
-					// tones of a status (green, yellow, cyan) and the end of
-					// a colour: the view's own attributes. No other colour,
-					// no other attribute.
+					// Reset, bold, faint and the end of both, reversed (the
+					// cursor bar) and its end, the three tones of a status
+					// (green, yellow, cyan) and the end of a colour: the
+					// view's own attributes. No other colour, no other
+					// attribute.
 					for _, n := range values {
 						switch n {
-						case 0, 1, 2, 22, 32, 33, 36, 39:
+						case 0, 1, 2, 7, 22, 27, 32, 33, 36, 39:
 						default:
-							reject("SGR")
+							reject(fmt.Sprintf("SGR %d", n))
 						}
 					}
 					return
@@ -144,7 +145,7 @@ func terminalOutputError(output string) error {
 }
 
 func TestTerminalOutputAllowlist(t *testing.T) {
-	for _, bad := range []string{terminalHostile, "\x1b[31m", "\x1b[34m", "\x1b[35m", "\x1b[37m", "\x1b[91m", "\x1b[41m", "\x1b[38;5;2m", "\x1b[38;2;0;200;0m", "\x1b[3m", "\x1b[4m", "\x1b[7m", "\x1b[8t", "\x1b]8;;https://evil.invalid\x07", "\x1b]52;c;YQ==\x1b\\", "\x1bPdata\x1b\\", "\x07", "\u202e", "\xff", "\x1b[",
+	for _, bad := range []string{terminalHostile, "\x1b[31m", "\x1b[34m", "\x1b[35m", "\x1b[37m", "\x1b[91m", "\x1b[41m", "\x1b[38;5;2m", "\x1b[38;2;0;200;0m", "\x1b[3m", "\x1b[4m", "\x1b[5m", "\x1b[8t", "\x1b]8;;https://evil.invalid\x07", "\x1b]52;c;YQ==\x1b\\", "\x1bPdata\x1b\\", "\x07", "\u202e", "\xff", "\x1b[",
 		// Other ESC commands than the reverse index, and tab moves with
 		// a parameter out of range.
 		"\x1b7", "\x1b8", "\x1bc", "\x1b(0", "\x1b[5000I", "\x1b[5000Z"} {
@@ -153,6 +154,11 @@ func TestTerminalOutputAllowlist(t *testing.T) {
 		}
 	}
 	if err := terminalOutputError("safe\r\n\x1b[1mBold\x1b[m\x1b[?1049h\x1b[?1049l"); err != nil {
+		t.Fatal(err)
+	}
+	// The cursor bar: reversed, and its end, which the renderer writes
+	// when a cell leaves the bar.
+	if err := terminalOutputError("\x1b[1;7m> Bar \x1b[27mrest\x1b[m"); err != nil {
 		t.Fatal(err)
 	}
 	// The renderer's tab-stop moves and the reverse index, which it writes
