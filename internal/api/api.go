@@ -286,12 +286,16 @@ type TicketQuery struct {
 }
 
 type TicketRow struct {
-	ID        string  `json:"id"`
-	Number    int     `json:"number"`
-	Title     string  `json:"title"`
-	Status    *string `json:"status"`
-	Assignees []Ref   `json:"assignees"`
-	UpdatedAt string  `json:"updated_at"`
+	ID     string  `json:"id"`
+	Number int     `json:"number"`
+	Title  string  `json:"title"`
+	Status *string `json:"status"`
+	// StatusFunctions says what the status means in its project
+	// ("is_in_progress", "is_completed", ...). Not required: a server before
+	// the field sends none, and the status is then drawn without a tone.
+	StatusFunctions []string `json:"status_functions"`
+	Assignees       []Ref    `json:"assignees"`
+	UpdatedAt       string   `json:"updated_at"`
 }
 
 type TicketPage struct {
@@ -460,6 +464,7 @@ type Ticket struct {
 	Number           int          `json:"number"`
 	Title            string       `json:"title"`
 	Status           *string      `json:"status"`
+	StatusFunctions  []string     `json:"status_functions"` // as on TicketRow
 	DescriptionText  string       `json:"description_text"`
 	Assignees        []Ref        `json:"assignees"`
 	Creator          *Ref         `json:"creator"`

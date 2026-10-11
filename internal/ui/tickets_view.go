@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/gboyke/lalabase-cli/internal/api"
@@ -57,9 +58,10 @@ func (m Model) ticketsColumn() present.Column {
 			c.Cursor = i
 		}
 		c.Rows = append(c.Rows, present.Row{
-			Primary:   present.NewInline(uitext.Fill(uitext.TicketNumber, r.Number).String() + " " + textOr(r.Title, uitext.UntitledTicket)),
-			Trailing:  present.NewInline(bounded(statusOf(r.Status), maxStatus)),
-			Secondary: present.NewInline(assigneesOf(r.Assignees) + " · " + m.app.when(r.UpdatedAt)),
+			Primary:       present.NewInline(uitext.Fill(uitext.TicketNumber, r.Number).String() + " " + textOr(r.Title, uitext.UntitledTicket)),
+			Trailing:      present.NewInline(bounded(statusOf(r.Status), maxStatus)),
+			TrailingStyle: statusStyle(r.StatusFunctions, present.Plain),
+			Secondary:     present.NewInline(assigneesOf(r.Assignees) + " · " + m.app.when(r.UpdatedAt)),
 		})
 	}
 	c.Offset = v.offset
@@ -69,6 +71,34 @@ func (m Model) ticketsColumn() present.Column {
 // maxStatus bounds a status at the end of a row: a status is a word, and
 // a long one must not take the title's room.
 const maxStatus = 20
+
+// statusTones are the tones of the status functions the core knows
+// (SystemFunctions::Registry::STATUS_FUNCTIONS), in its lifecycle order.
+// A status may carry more than one; the last one in this order wins, so a
+// status that is new and in progress is drawn in progress.
+var statusTones = []struct {
+	function string
+	style    present.Style
+}{
+	{"is_backlog", present.Faint},
+	{"is_new", present.StatusOpen},
+	{"is_open", present.StatusOpen},
+	{"is_in_progress", present.StatusActive},
+	{"is_completed", present.StatusDone},
+	{"is_closed", present.StatusDone},
+}
+
+// statusStyle is the tone of a status by its functions; otherwise when it
+// has none the client knows, as from a server before the field.
+func statusStyle(functions []string, otherwise present.Style) present.Style {
+	style := otherwise
+	for _, tone := range statusTones {
+		if slices.Contains(functions, tone.function) {
+			style = tone.style
+		}
+	}
+	return style
+}
 
 func statusOf(status *string) string {
 	if status == nil {
@@ -195,7 +225,6 @@ var (
 	plainLine = present.LineStyle{}
 	bodyLine  = present.LineStyle{Indent: 2}
 	noteLine  = present.LineStyle{Indent: 2, RestStyle: present.Faint}
-	metaLine  = present.LineStyle{RestStyle: present.Faint}
 )
 
 // ticketText is the body of the pane. Every field is foreign; a one-line
@@ -210,13 +239,13 @@ func ticketText(d *detailView, paged bool, origin string, when func(string) stri
 	if len(r.Assignees) > 0 {
 		assigned = uitext.Fill(uitext.MetaAssigned, assigneesOf(r.Assignees)).String()
 	}
-	t.add(metaLine, strings.Join([]string{
-		statusOf(r.Status),
+	// The status leads the facts, in the tone of its meaning.
+	t.addLead(present.NewInline(statusOf(r.Status)).String(), statusStyle(r.StatusFunctions, present.Faint), " · "+strings.Join([]string{
 		textOr(r.Project.Name, uitext.UnnamedProject),
 		assigned,
 		uitext.Fill(uitext.MetaCreator, personOf(r.Creator)).String(),
 		uitext.Fill(uitext.MetaUpdated, when(r.UpdatedAt)).String(),
-	}, " · "))
+	}, " · "), present.Faint)
 	if origin != "" {
 		t.add(plainLine, uitext.Inline(uitext.LabelNotification).String()+": "+origin)
 	}

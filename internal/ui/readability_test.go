@@ -28,7 +28,7 @@ func TestTheTicketIsDrawnInItsStyles(t *testing.T) {
 	if st := tl.styles[0]; st.Lead != len(tl.lines[0]) || st.LeadStyle != present.Strong || !strings.HasPrefix(tl.lines[0], "#6 ") {
 		t.Fatalf("the title %q: %+v", tl.lines[0], st)
 	}
-	if st := tl.styles[1]; st.RestStyle != present.Faint || st.Lead != 0 || !strings.Contains(tl.lines[1], " · created by ") || !strings.Contains(tl.lines[1], " · updated ") {
+	if st := tl.styles[1]; st.RestStyle != present.Faint || st.LeadStyle != statusStyle(d.record.StatusFunctions, present.Faint) || !strings.Contains(tl.lines[1], " · created by ") || !strings.Contains(tl.lines[1], " · updated ") {
 		t.Fatalf("the facts %q: %+v", tl.lines[1], st)
 	}
 	for area := range ticketAreas {
@@ -105,13 +105,13 @@ func TestTheInboxCountIsQuietAtZeroAndHighlightedAbove(t *testing.T) {
 	for _, r := range h.m.chooserColumn().Rows {
 		if r.Trailing.String() == "0" {
 			zero = true
-			if !r.Quiet || r.Highlight {
+			if !r.Quiet || r.TrailingStyle != present.Plain {
 				t.Fatalf("a zero count: %+v", r)
 			}
 		}
 		if n := r.Trailing.String(); n != "" && n != "0" && n != "?" {
 			unread = true
-			if r.Quiet || !r.Highlight {
+			if r.Quiet || r.TrailingStyle != present.Strong {
 				t.Fatalf("an unread count: %+v", r)
 			}
 		}

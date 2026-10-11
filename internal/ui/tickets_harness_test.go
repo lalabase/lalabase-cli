@@ -195,7 +195,8 @@ func ticketTitle(n int) string {
 }
 
 // ticketRows makes the rows of a project from the recorded row; every
-// third is unassigned, every fourth has no status.
+// third is unassigned, every fourth has no status; a status means what
+// its name says (status_functions).
 func (d recordedData) ticketRows(project string, n int) []api.TicketRow {
 	var out []api.TicketRow
 	for i := 1; i <= n; i++ {
@@ -205,13 +206,13 @@ func (d recordedData) ticketRows(project string, n int) []api.TicketRow {
 		if i%3 == 0 {
 			row.Assignees = []api.Ref{}
 		}
-		status := "new"
+		status, functions := "new", []string{"is_new"}
 		if i == 1 {
-			status = "in_progress" // as recorded
+			status, functions = "in_progress", []string{"is_in_progress"} // as recorded
 		}
-		row.Status = &status
+		row.Status, row.StatusFunctions = &status, functions
 		if i%4 == 0 {
-			row.Status = nil
+			row.Status, row.StatusFunctions = nil, nil
 		}
 		out = append(out, row)
 	}
@@ -267,13 +268,13 @@ func (d recordedData) ticketRecord(project string, n int, o api.TicketOptions) a
 	rows := d.ticketRows(project, max(n, 1))
 	row := rows[len(rows)-1]
 	t := d.recordedTicket
-	t.ID, t.Number, t.Title, t.Status, t.Assignees = row.ID, row.Number, row.Title, row.Status, row.Assignees
+	t.ID, t.Number, t.Title, t.Status, t.StatusFunctions, t.Assignees = row.ID, row.Number, row.Title, row.Status, row.StatusFunctions, row.Assignees
 	t.Project = api.Ref{ID: project, Name: map[string]string{website: "Website-Relaunch", intern: "Intern", handbuch: "Handbuch", archiv: "Archiv"}[project]}
 	t.Posts = slices.Clone(d.recordedTicket.Posts)
 	t.Attachments = []api.Attachment{{Filename: "design.pdf"}, {Filename: "screenshot.png"}}
 	switch n {
 	case 2:
-		t.DescriptionText, t.Assignees, t.Creator, t.Status, t.Posts, t.Attachments = "", nil, nil, nil, nil, nil
+		t.DescriptionText, t.Assignees, t.Creator, t.Status, t.StatusFunctions, t.Posts, t.Attachments = "", nil, nil, nil, nil, nil, nil
 	case 3:
 		t.Posts = nil
 		for i := range 30 { // oldest first, as the server lists them

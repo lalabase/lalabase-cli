@@ -274,7 +274,7 @@ func (f *Fixture) updateTicket(w http.ResponseWriter, r *http.Request, args map[
 	case MutationTitle:
 		e.row["title"] = title
 	case MutationStatus:
-		e.row["status"] = status
+		e.row["status"], e.row["status_functions"] = status, statusMeanings[status]
 	case MutationAssign:
 		current, _ := f.currentAssignees(project, n)
 		var next []any

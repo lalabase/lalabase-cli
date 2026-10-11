@@ -59,7 +59,9 @@ func (l screenLine) render(width int, method ansi.Method) string {
 }
 
 // styled draws text in a style; spaces stay unstyled, so nothing but the
-// text itself carries an attribute.
+// text itself carries an attribute. A status's tone is one of the
+// terminal's own sixteen colours, so the user's theme picks the shade, and
+// a terminal without colour (NO_COLOR) draws the text alone.
 func styled(text string, s present.Style) string {
 	if strings.TrimSpace(text) == "" {
 		return text
@@ -69,6 +71,12 @@ func styled(text string, s present.Style) string {
 		return lipgloss.NewStyle().Bold(true).Render(text)
 	case present.Faint:
 		return lipgloss.NewStyle().Faint(true).Render(text)
+	case present.StatusOpen:
+		return lipgloss.NewStyle().Foreground(lipgloss.Cyan).Render(text)
+	case present.StatusActive:
+		return lipgloss.NewStyle().Foreground(lipgloss.Yellow).Render(text)
+	case present.StatusDone:
+		return lipgloss.NewStyle().Foreground(lipgloss.Green).Render(text)
 	}
 	return text
 }
