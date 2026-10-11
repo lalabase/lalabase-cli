@@ -18,7 +18,7 @@ func TestDecodeNotificationsGivesEveryCallerItsOwnFullPage(t *testing.T) {
 	if !a1.OK() || !a2.OK() || !reflect.DeepEqual(first, second) {
 		t.Fatalf("%v %v: %+v / %+v", a1.Class, a2.Class, first, second)
 	}
-	if len(first.Data) != 1 || first.Data[0].ID != unread || first.Data[0].Ticket == nil || first.Data[0].Ticket.Number != 1 ||
+	if len(first.Data) != 1 || first.Data[0].ID != unread || first.Data[0].Ticket == nil || first.Data[0].Ticket.Number != 2 || first.Data[0].Ticket.ID != export ||
 		first.Data[0].Organisation.ID != org || first.Meta.UnreadTotal != 1 || len(first.Meta.ByOrganisation) != 1 {
 		t.Fatalf("decoded %+v", first)
 	}

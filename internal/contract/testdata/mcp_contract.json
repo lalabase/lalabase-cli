@@ -1,9 +1,9 @@
 {
   "header": {
     "regenerate": "RAILS_ENV=test bin/rails mcp:contract",
-    "core_commit": "0d9d218f4f444c6e9da9ea7585cd8e8eca32ce20",
+    "core_commit": "a44e0d2359575bad5c2a94200391b91798c2b6be",
     "core_dirty": true,
-    "contract_sha256": "ad02ad2d05788fb7dcc03f76d5ca26843fcd7266a55836257b3f968c89a4aa42"
+    "contract_sha256": "8701694f218d779389f5fdb3885a784604a2c215ef3108e9c7fa019e98515ef9"
   },
   "contract": {
     "mcp": {
@@ -42,7 +42,7 @@
               },
               "serverInfo": {
                 "name": "lalabase",
-                "version": "0.9.0"
+                "version": "0.11.0"
               }
             }
           }
@@ -326,14 +326,14 @@
                 },
                 {
                   "name": "create_ticket",
-                  "description": "Creates a ticket in the project. Requires a title; optional description (rich body), ticket_type (default \"support\"), summary and status. Returns the created ticket summary including its id and number.",
+                  "description": "Creates a ticket in the project. Requires a title (one line, at most 255 characters); optional description (rich body), ticket_type (default \"support\"), summary and status. Returns the created ticket summary including its id and number.",
                   "inputSchema": {
                     "$schema": "https://json-schema.org/draft/2020-12/schema",
                     "type": "object",
                     "properties": {
                       "title": {
                         "type": "string",
-                        "description": "Ticket title (required)."
+                        "description": "Ticket title (required), one line, at most 255 characters."
                       },
                       "description": {
                         "type": "string",
@@ -379,7 +379,15 @@
                       },
                       "body": {
                         "type": "string",
-                        "description": "Comment body (required)."
+                        "description": "Comment body (required). HTML unless format is plain."
+                      },
+                      "format": {
+                        "type": "string",
+                        "enum": [
+                          "html",
+                          "plain"
+                        ],
+                        "description": "Body format: html (default) or plain. Plain escapes literal text, turns blank lines into paragraphs and single line breaks into <br>; line endings are normalized, blank lines at the edges are dropped, repeated spaces collapse in the web view, no Markdown."
                       },
                       "is_private": {
                         "type": "boolean",
@@ -505,6 +513,54 @@
                     },
                     "required": [
                       "notification_id"
+                    ]
+                  }
+                },
+                {
+                  "name": "update_ticket",
+                  "description": "Changes ONE thing on a ticket per call: its title, its status, or its assignees (add_assignee_ids and/or remove_assignee_ids; nobody else is touched). A call naming more than one of these is refused. Returns the ticket summary.",
+                  "inputSchema": {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object",
+                    "properties": {
+                      "ticket_id": {
+                        "type": "string",
+                        "description": "UUID of the ticket to change."
+                      },
+                      "title": {
+                        "type": "string",
+                        "description": "New title, one line, at most 255 characters."
+                      },
+                      "status": {
+                        "type": "string",
+                        "description": "New status: one of the KEYS in meta.available_statuses of list_tickets (per project, e.g. \"in_progress\"), not a display label."
+                      },
+                      "add_assignee_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "User UUIDs (or \"me\") to add. Everybody else stays assigned."
+                      },
+                      "remove_assignee_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "User UUIDs (or \"me\") to remove. Everybody else stays assigned."
+                      },
+                      "project_id": {
+                        "type": "string",
+                        "description": "UUID of the Lalabase project to scope this call to."
+                      },
+                      "idempotency_key": {
+                        "type": "string",
+                        "description": "Optional. Repeating a write with the same key returns the original result instead of creating a duplicate."
+                      }
+                    },
+                    "required": [
+                      "ticket_id",
+                      "project_id"
                     ]
                   }
                 }
@@ -1414,7 +1470,7 @@
                   "content": [
                     {
                       "type": "text",
-                      "text": "{\n  \"data\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000071\",\n      \"event_type\": \"ticket_commented\",\n      \"state\": \"queued\",\n      \"priority\": \"normal\",\n      \"read\": false,\n      \"read_at\": null,\n      \"group_count\": 1,\n      \"message\": \"Benachrichtigung: Ben Berger hat eine Aktion zu #1 Login bricht ab durchgeführt\",\n      \"actor\": {\n        \"id\": \"00000000-0000-4000-8000-000000000012\",\n        \"name\": \"Ben Berger\"\n      },\n      \"organisation\": {\n        \"id\": \"00000000-0000-4000-8000-000000000001\",\n        \"name\": \"Nordlicht GmbH\"\n      },\n      \"project\": null,\n      \"ticket\": {\n        \"id\": \"00000000-0000-4000-8000-000000000041\",\n        \"number\": 1,\n        \"title\": \"Login bricht ab\",\n        \"project_id\": \"00000000-0000-4000-8000-000000000031\"\n      },\n      \"notifiable\": {\n        \"type\": \"Ticket\",\n        \"id\": \"00000000-0000-4000-8000-000000000041\",\n        \"title\": \"Login bricht ab\"\n      },\n      \"payload\": {\n        \"action\": \"commented\",\n        \"actor_name\": \"Ben Berger\"\n      },\n      \"first_event_at\": \"2026-01-05T09:30:00Z\",\n      \"last_event_at\": \"2026-01-05T09:30:00Z\",\n      \"created_at\": \"2026-01-05T09:30:00Z\"\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"per_page\": 25,\n    \"total\": 1,\n    \"unread_total\": 1,\n    \"since\": null,\n    \"by_organisation\": [\n      {\n        \"id\": \"00000000-0000-4000-8000-000000000001\",\n        \"name\": \"Nordlicht GmbH\",\n        \"unread\": 1\n      }\n    ]\n  }\n}"
+                      "text": "{\n  \"data\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000071\",\n      \"event_type\": \"ticket_commented\",\n      \"state\": \"queued\",\n      \"priority\": \"normal\",\n      \"read\": false,\n      \"read_at\": null,\n      \"group_count\": 1,\n      \"message\": \"Benachrichtigung: Ben Berger hat eine Aktion zu #2 Export als CSV durchgeführt\",\n      \"actor\": {\n        \"id\": \"00000000-0000-4000-8000-000000000012\",\n        \"name\": \"Ben Berger\"\n      },\n      \"organisation\": {\n        \"id\": \"00000000-0000-4000-8000-000000000001\",\n        \"name\": \"Nordlicht GmbH\"\n      },\n      \"project\": null,\n      \"ticket\": {\n        \"id\": \"00000000-0000-4000-8000-000000000042\",\n        \"number\": 2,\n        \"title\": \"Export als CSV\",\n        \"project_id\": \"00000000-0000-4000-8000-000000000031\"\n      },\n      \"notifiable\": {\n        \"type\": \"Ticket\",\n        \"id\": \"00000000-0000-4000-8000-000000000042\",\n        \"title\": \"Export als CSV\"\n      },\n      \"payload\": {\n        \"action\": \"commented\",\n        \"actor_name\": \"Ben Berger\"\n      },\n      \"first_event_at\": \"2026-01-05T09:30:00Z\",\n      \"last_event_at\": \"2026-01-05T09:30:00Z\",\n      \"created_at\": \"2026-01-05T09:30:00Z\"\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"per_page\": 25,\n    \"total\": 1,\n    \"unread_total\": 1,\n    \"since\": null,\n    \"by_organisation\": [\n      {\n        \"id\": \"00000000-0000-4000-8000-000000000001\",\n        \"name\": \"Nordlicht GmbH\",\n        \"unread\": 1\n      }\n    ]\n  }\n}"
                     }
                   ],
                   "isError": false,
@@ -1580,7 +1636,7 @@
                   "content": [
                     {
                       "type": "text",
-                      "text": "{\n  \"data\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000071\",\n      \"event_type\": \"ticket_commented\",\n      \"state\": \"queued\",\n      \"priority\": \"normal\",\n      \"read\": false,\n      \"read_at\": null,\n      \"group_count\": 1,\n      \"message\": \"Benachrichtigung: Ben Berger hat eine Aktion zu #1 Login bricht ab durchgeführt\",\n      \"actor\": {\n        \"id\": \"00000000-0000-4000-8000-000000000012\",\n        \"name\": \"Ben Berger\"\n      },\n      \"organisation\": {\n        \"id\": \"00000000-0000-4000-8000-000000000001\",\n        \"name\": \"Nordlicht GmbH\"\n      },\n      \"project\": null,\n      \"ticket\": {\n        \"id\": \"00000000-0000-4000-8000-000000000041\",\n        \"number\": 1,\n        \"title\": \"Login bricht ab\",\n        \"project_id\": \"00000000-0000-4000-8000-000000000031\"\n      },\n      \"notifiable\": {\n        \"type\": \"Ticket\",\n        \"id\": \"00000000-0000-4000-8000-000000000041\",\n        \"title\": \"Login bricht ab\"\n      },\n      \"payload\": {\n        \"action\": \"commented\",\n        \"actor_name\": \"Ben Berger\"\n      },\n      \"first_event_at\": \"2026-01-05T09:30:00Z\",\n      \"last_event_at\": \"2026-01-05T09:30:00Z\",\n      \"created_at\": \"2026-01-05T09:30:00Z\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000072\",\n      \"event_type\": \"ticket_commented\",\n      \"state\": \"read\",\n      \"priority\": \"normal\",\n      \"read\": true,\n      \"read_at\": \"2026-01-05T09:29:00Z\",\n      \"group_count\": 1,\n      \"message\": \"Benachrichtigung: Ben Berger hat eine Aktion zu #1 Login bricht ab durchgeführt\",\n      \"actor\": {\n        \"id\": \"00000000-0000-4000-8000-000000000012\",\n        \"name\": \"Ben Berger\"\n      },\n      \"organisation\": {\n        \"id\": \"00000000-0000-4000-8000-000000000001\",\n        \"name\": \"Nordlicht GmbH\"\n      },\n      \"project\": null,\n      \"ticket\": {\n        \"id\": \"00000000-0000-4000-8000-000000000041\",\n        \"number\": 1,\n        \"title\": \"Login bricht ab\",\n        \"project_id\": \"00000000-0000-4000-8000-000000000031\"\n      },\n      \"notifiable\": {\n        \"type\": \"Ticket\",\n        \"id\": \"00000000-0000-4000-8000-000000000041\",\n        \"title\": \"Login bricht ab\"\n      },\n      \"payload\": {\n        \"action\": \"commented\",\n        \"actor_name\": \"Ben Berger\"\n      },\n      \"first_event_at\": \"2026-01-05T09:29:00Z\",\n      \"last_event_at\": \"2026-01-05T09:29:00Z\",\n      \"created_at\": \"2026-01-05T09:29:00Z\"\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"per_page\": 25,\n    \"total\": 2,\n    \"unread_total\": 1,\n    \"since\": null,\n    \"by_organisation\": [\n      {\n        \"id\": \"00000000-0000-4000-8000-000000000001\",\n        \"name\": \"Nordlicht GmbH\",\n        \"unread\": 1\n      }\n    ]\n  }\n}"
+                      "text": "{\n  \"data\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000071\",\n      \"event_type\": \"ticket_commented\",\n      \"state\": \"queued\",\n      \"priority\": \"normal\",\n      \"read\": false,\n      \"read_at\": null,\n      \"group_count\": 1,\n      \"message\": \"Benachrichtigung: Ben Berger hat eine Aktion zu #2 Export als CSV durchgeführt\",\n      \"actor\": {\n        \"id\": \"00000000-0000-4000-8000-000000000012\",\n        \"name\": \"Ben Berger\"\n      },\n      \"organisation\": {\n        \"id\": \"00000000-0000-4000-8000-000000000001\",\n        \"name\": \"Nordlicht GmbH\"\n      },\n      \"project\": null,\n      \"ticket\": {\n        \"id\": \"00000000-0000-4000-8000-000000000042\",\n        \"number\": 2,\n        \"title\": \"Export als CSV\",\n        \"project_id\": \"00000000-0000-4000-8000-000000000031\"\n      },\n      \"notifiable\": {\n        \"type\": \"Ticket\",\n        \"id\": \"00000000-0000-4000-8000-000000000042\",\n        \"title\": \"Export als CSV\"\n      },\n      \"payload\": {\n        \"action\": \"commented\",\n        \"actor_name\": \"Ben Berger\"\n      },\n      \"first_event_at\": \"2026-01-05T09:30:00Z\",\n      \"last_event_at\": \"2026-01-05T09:30:00Z\",\n      \"created_at\": \"2026-01-05T09:30:00Z\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000072\",\n      \"event_type\": \"ticket_commented\",\n      \"state\": \"read\",\n      \"priority\": \"normal\",\n      \"read\": true,\n      \"read_at\": \"2026-01-05T09:29:00Z\",\n      \"group_count\": 1,\n      \"message\": \"Benachrichtigung: Ben Berger hat eine Aktion zu #2 Export als CSV durchgeführt\",\n      \"actor\": {\n        \"id\": \"00000000-0000-4000-8000-000000000012\",\n        \"name\": \"Ben Berger\"\n      },\n      \"organisation\": {\n        \"id\": \"00000000-0000-4000-8000-000000000001\",\n        \"name\": \"Nordlicht GmbH\"\n      },\n      \"project\": null,\n      \"ticket\": {\n        \"id\": \"00000000-0000-4000-8000-000000000042\",\n        \"number\": 2,\n        \"title\": \"Export als CSV\",\n        \"project_id\": \"00000000-0000-4000-8000-000000000031\"\n      },\n      \"notifiable\": {\n        \"type\": \"Ticket\",\n        \"id\": \"00000000-0000-4000-8000-000000000042\",\n        \"title\": \"Export als CSV\"\n      },\n      \"payload\": {\n        \"action\": \"commented\",\n        \"actor_name\": \"Ben Berger\"\n      },\n      \"first_event_at\": \"2026-01-05T09:29:00Z\",\n      \"last_event_at\": \"2026-01-05T09:29:00Z\",\n      \"created_at\": \"2026-01-05T09:29:00Z\"\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"per_page\": 25,\n    \"total\": 2,\n    \"unread_total\": 1,\n    \"since\": null,\n    \"by_organisation\": [\n      {\n        \"id\": \"00000000-0000-4000-8000-000000000001\",\n        \"name\": \"Nordlicht GmbH\",\n        \"unread\": 1\n      }\n    ]\n  }\n}"
                     }
                   ],
                   "isError": false,
@@ -1787,6 +1843,837 @@
                   "_meta": {
                     "lalabase/code": "refused",
                     "lalabase/reason": "archived"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "update_ticket": {
+          "ok_status": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "update_ticket",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000042",
+                  "status": "in_progress",
+                  "idempotency_key": "contract-update-1"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "{\n  \"id\": \"00000000-0000-4000-8000-000000000042\",\n  \"number\": 2,\n  \"title\": \"Export als CSV\",\n  \"status\": \"in_progress\",\n  \"ticket_type\": \"support\",\n  \"parent_id\": null,\n  \"assignees\": [],\n  \"creator\": {\n    \"id\": \"00000000-0000-4000-8000-000000000012\",\n    \"name\": \"Ben Berger\"\n  },\n  \"created_at\": \"2026-01-05T09:22:00Z\",\n  \"updated_at\": \"2026-01-05T09:36:00Z\"\n}"
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "ok"
+                  }
+                }
+              }
+            }
+          },
+          "ok_assign": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "update_ticket",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000042",
+                  "add_assignee_ids": [
+                    "me"
+                  ]
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "{\n  \"id\": \"00000000-0000-4000-8000-000000000042\",\n  \"number\": 2,\n  \"title\": \"Export als CSV\",\n  \"status\": \"in_progress\",\n  \"ticket_type\": \"support\",\n  \"parent_id\": null,\n  \"assignees\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000011\",\n      \"name\": \"Anna Albers\"\n    }\n  ],\n  \"creator\": {\n    \"id\": \"00000000-0000-4000-8000-000000000012\",\n    \"name\": \"Ben Berger\"\n  },\n  \"created_at\": \"2026-01-05T09:22:00Z\",\n  \"updated_at\": \"2026-01-05T09:36:00Z\"\n}"
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "ok"
+                  }
+                }
+              }
+            }
+          },
+          "ok_title": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "update_ticket",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000042",
+                  "title": "Export als CSV und XLSX"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "{\n  \"id\": \"00000000-0000-4000-8000-000000000042\",\n  \"number\": 2,\n  \"title\": \"Export als CSV und XLSX\",\n  \"status\": \"in_progress\",\n  \"ticket_type\": \"support\",\n  \"parent_id\": null,\n  \"assignees\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000011\",\n      \"name\": \"Anna Albers\"\n    }\n  ],\n  \"creator\": {\n    \"id\": \"00000000-0000-4000-8000-000000000012\",\n    \"name\": \"Ben Berger\"\n  },\n  \"created_at\": \"2026-01-05T09:22:00Z\",\n  \"updated_at\": \"2026-01-05T09:36:00Z\"\n}"
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "ok"
+                  }
+                }
+              }
+            }
+          },
+          "mixed": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "update_ticket",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000042",
+                  "title": "x",
+                  "status": "new"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "exactly one change per call: title, status, or add_assignee_ids/remove_assignee_ids"
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "invalid_input"
+                  }
+                }
+              }
+            }
+          },
+          "status_not_allowed": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "update_ticket",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000042",
+                  "status": "erledigt"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "status is not a status of this project; use a key from meta.available_statuses"
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "refused",
+                    "lalabase/reason": "value_not_allowed"
+                  }
+                }
+              }
+            }
+          },
+          "value_not_allowed": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "update_ticket",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000042",
+                  "add_assignee_ids": [
+                    "00000000-0000-4000-8000-000000000999"
+                  ]
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "a user in this change cannot be assigned in this project"
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "refused",
+                    "lalabase/reason": "value_not_allowed"
+                  }
+                }
+              }
+            }
+          },
+          "ok_assign_beside_stale": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "update_ticket",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000041",
+                  "add_assignee_ids": [
+                    "00000000-0000-4000-8000-000000000012"
+                  ]
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "{\n  \"id\": \"00000000-0000-4000-8000-000000000041\",\n  \"number\": 1,\n  \"title\": \"Login bricht ab\",\n  \"status\": \"in_progress\",\n  \"ticket_type\": \"support\",\n  \"parent_id\": null,\n  \"assignees\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000011\",\n      \"name\": \"Anna Albers\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000012\",\n      \"name\": \"Ben Berger\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000013\",\n      \"name\": \"Carla Conrad\"\n    }\n  ],\n  \"creator\": {\n    \"id\": \"00000000-0000-4000-8000-000000000011\",\n    \"name\": \"Anna Albers\"\n  },\n  \"created_at\": \"2026-01-05T09:21:00Z\",\n  \"updated_at\": \"2026-01-05T09:36:00Z\"\n}"
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "ok"
+                  }
+                }
+              }
+            }
+          },
+          "no_status_field": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "update_ticket",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000032",
+                  "ticket_id": "00000000-0000-4000-8000-000000000045",
+                  "status": "new"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "this project has no status field"
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "refused",
+                    "lalabase/reason": "no_status_field"
+                  }
+                }
+              }
+            }
+          },
+          "empty": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "update_ticket",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000999",
+                  "status": "new"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "No ticket found for 00000000-0000-4000-8000-000000000999."
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "empty"
+                  }
+                }
+              }
+            }
+          },
+          "hidden": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "update_ticket",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000033",
+                  "ticket_id": "00000000-0000-4000-8000-000000000043",
+                  "status": "new"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "No ticket found for 00000000-0000-4000-8000-000000000043."
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "empty"
+                  }
+                }
+              }
+            }
+          },
+          "forbidden": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "update_ticket",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000035",
+                  "ticket_id": "00000000-0000-4000-8000-000000000044",
+                  "status": "new"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Not authorized."
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "forbidden"
+                  }
+                }
+              }
+            }
+          },
+          "not_found": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "update_ticket",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000034",
+                  "ticket_id": "00000000-0000-4000-8000-000000000042",
+                  "status": "new"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Project not found or not accessible."
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "read_only": {
+            "token": "read",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "update_ticket",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000042",
+                  "status": "new"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "This token is read-only; writes are not permitted."
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "read_only"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post_comment_formats": {
+          "plain": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "post_comment",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000041",
+                  "format": "plain",
+                  "body": "line one\nline two\n\nsee <file.txt> &lt;tag&gt;"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "{\n  \"id\": \"<generated-id-2>\",\n  \"ticket_id\": \"00000000-0000-4000-8000-000000000041\",\n  \"author\": {\n    \"id\": \"00000000-0000-4000-8000-000000000011\",\n    \"name\": \"Anna Albers\"\n  },\n  \"body_text\": \"line one\\nline two\\n\\nsee <file.txt> &lt;tag&gt;\",\n  \"is_private\": false,\n  \"created_at\": \"2026-01-05T09:36:00Z\"\n}"
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "ok"
+                  }
+                }
+              }
+            }
+          },
+          "html": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "post_comment",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000041",
+                  "format": "html",
+                  "body": "<p><b>bold</b></p>"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "{\n  \"id\": \"<generated-id-3>\",\n  \"ticket_id\": \"00000000-0000-4000-8000-000000000041\",\n  \"author\": {\n    \"id\": \"00000000-0000-4000-8000-000000000011\",\n    \"name\": \"Anna Albers\"\n  },\n  \"body_text\": \"bold\",\n  \"is_private\": false,\n  \"created_at\": \"2026-01-05T09:36:00Z\"\n}"
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "ok"
+                  }
+                }
+              }
+            }
+          },
+          "invalid_format": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "post_comment",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000041",
+                  "format": "markdown",
+                  "body": "x"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Invalid arguments: value at `/format` is not one of: [\"html\", \"plain\"]"
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "invalid_input"
+                  }
+                }
+              }
+            }
+          },
+          "format_not_string": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "post_comment",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000041",
+                  "format": 1,
+                  "body": "x"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Invalid arguments: value at `/format` is not a string, value at `/format` is not one of: [\"html\", \"plain\"]"
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "invalid_input"
+                  }
+                }
+              }
+            }
+          },
+          "nul": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "post_comment",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000041",
+                  "format": "plain",
+                  "body": "a\u0000b"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "body must not contain NUL bytes"
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "invalid_input"
+                  }
+                }
+              }
+            }
+          },
+          "private": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "post_comment",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000041",
+                  "format": "plain",
+                  "is_private": true,
+                  "body": "<private>"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "{\n  \"id\": \"<generated-id-4>\",\n  \"ticket_id\": \"00000000-0000-4000-8000-000000000041\",\n  \"author\": {\n    \"id\": \"00000000-0000-4000-8000-000000000011\",\n    \"name\": \"Anna Albers\"\n  },\n  \"body_text\": \"<private>\",\n  \"is_private\": true,\n  \"created_at\": \"2026-01-05T09:36:00Z\"\n}"
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "ok"
+                  }
+                }
+              }
+            }
+          },
+          "read_only": {
+            "token": "read",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "post_comment",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000041",
+                  "format": "plain",
+                  "body": "x"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "This token is read-only; writes are not permitted."
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "read_only"
+                  }
+                }
+              }
+            }
+          },
+          "hidden": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "post_comment",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000033",
+                  "ticket_id": "00000000-0000-4000-8000-000000000043",
+                  "format": "plain",
+                  "body": "x"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "No ticket found for 00000000-0000-4000-8000-000000000043."
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "empty"
+                  }
+                }
+              }
+            }
+          },
+          "forbidden": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "post_comment",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000035",
+                  "ticket_id": "00000000-0000-4000-8000-000000000044",
+                  "format": "plain",
+                  "body": "x"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Not authorized."
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "forbidden"
+                  }
+                }
+              }
+            }
+          },
+          "whitespace_only": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "post_comment",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000041",
+                  "format": "plain",
+                  "body": " "
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "body is required"
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "invalid_input"
                   }
                 }
               }

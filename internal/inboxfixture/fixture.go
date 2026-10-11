@@ -9,9 +9,10 @@
 // as the templates of every row), so a client that works against it works
 // against the shapes the server really sends. It accepts one synthetic
 // token, binds to the loopback address only, reads no profile and no
-// environment, and offers nothing but the reads of C1 and its one write,
-// mark_notification_read (marks.go): the other tools are refused, as a
-// scenario to see them refused.
+// environment, and offers nothing but the reads of C1 and the writes of
+// C1f and C2, mark_notification_read (marks.go), update_ticket and
+// post_comment (writes.go): the other tools are refused, as a scenario to
+// see them refused.
 //
 // The shipped lalabase does not import it (a source guard holds that).
 package inboxfixture
@@ -46,8 +47,14 @@ const (
 	// Normal: everything succeeds.
 	Normal Scenario = "normal"
 	// Older: a server before S1: list_notifications without
-	// organisation_id, get_ticket without the paging arguments.
+	// organisation_id, get_ticket without the paging arguments, no
+	// update_ticket, post_comment without format.
 	Older Scenario = "older"
+	// S1Only: a 0.9.0 server, S1 included: no update_ticket, post_comment
+	// without format.
+	S1Only Scenario = "s1-only"
+	// S2Only: a 0.10.0 server, S2 included: post_comment without format.
+	S2Only Scenario = "s2-only"
 	// Temporary: the first two attempts at page 2 fail with 503.
 	Temporary Scenario = "temporary"
 	// RateLimited: the first attempt at page 2 is a 429 with a short window.
@@ -67,7 +74,12 @@ const (
 	// NoMarkRead: tools/list has no mark_notification_read.
 	NoMarkRead Scenario = "no-mark-read"
 	// Refusals: marking A's row #2 is refused as archived, #3 is not found
-	// (deleted meanwhile), #4 is not allowed; every other write succeeds.
+	// (deleted meanwhile), #4 is not allowed; on Website's tickets, #2
+	// refuses a status and an assignment (value_not_allowed), a title
+	// (validation_failed) and a comment (forbidden), #3 a status
+	// (no_status_field), #4 every write (forbidden), #5 every write as
+	// vanished, #7 an assignment (user_not_assignable); every other write
+	// succeeds.
 	Refusals Scenario = "refusals"
 	// Lost: every write is carried out and its answer is lost (the
 	// connection closes after the request was read).
@@ -82,7 +94,7 @@ const (
 
 // Scenarios lists them, for a tool's usage line.
 func Scenarios() []Scenario {
-	return []Scenario{Normal, Older, Temporary, RateLimited, Unauthorized, Vanished, ReadOnly, UnknownWrite, NoMarkRead, Refusals, Lost, Slow, SlowReads}
+	return []Scenario{Normal, Older, S1Only, S2Only, Temporary, RateLimited, Unauthorized, Vanished, ReadOnly, UnknownWrite, NoMarkRead, Refusals, Lost, Slow, SlowReads}
 }
 
 // ResetAttempts forgets how often each place was tried, so a scenario that
@@ -128,14 +140,26 @@ type Fixture struct {
 	ticketRow   map[string]any
 	ticketTmpl  map[string]any
 
+	// dropped names what a scenario took out of tools/list: a tool by its
+	// name, an argument as "tool:argument". A dropped tool is unknown to
+	// the server, a dropped argument is ignored by it.
+	dropped map[string]bool
+	// C2a (writes.go): the people the fixture knows, by id, and the id of
+	// the person /me names.
+	people map[string]string
+	meID   string
+
 	mu       sync.Mutex
 	log      []Request
 	attempts map[string]int
-	// C1f (marks.go): the changes carried out, the keys seen, and the
-	// result each key answered first.
+	// C1f (marks.go), C2a (writes.go): the changes carried out, the keys
+	// seen, the result each key answered first, the changes on the
+	// tickets and the comments added, the number of the last comment.
 	mutations []Mutation
 	keys      []string
 	results   map[string]map[string]any
+	edits     map[string]*ticketEdit
+	nextPost  int
 }
 
 // contractFile is the part of the contract copy the fixture reads. It is
@@ -177,7 +201,7 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 	if err := json.Unmarshal(contractJSON, &file); err != nil {
 		return nil, fmt.Errorf("inbox fixture: the contract copy does not read: %w", err)
 	}
-	f := &Fixture{scenario: scenario, attempts: map[string]int{}, rows: map[string][]map[string]any{}, results: map[string]map[string]any{}}
+	f := &Fixture{scenario: scenario, attempts: map[string]int{}, rows: map[string][]map[string]any{}, results: map[string]map[string]any{}, dropped: map[string]bool{}, edits: map[string]*ticketEdit{}}
 	var initialize struct {
 		Result json.RawMessage `json:"result"`
 	}
@@ -202,6 +226,17 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 			if err := f.dropArgument("get_ticket", arg); err != nil {
 				return nil, err
 			}
+		}
+	}
+	// What a server before S2 and before S2b lacks (C2a).
+	if scenario == Older || scenario == S1Only {
+		if err := f.dropTool("update_ticket"); err != nil {
+			return nil, err
+		}
+	}
+	if scenario == Older || scenario == S1Only || scenario == S2Only {
+		if err := f.dropArgument("post_comment", "format"); err != nil {
+			return nil, err
 		}
 	}
 	if scenario == NoMarkRead {
@@ -253,6 +288,9 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 		return fmt.Sprintf("00000000-0000-4000-8000-%012d", 200000+number), fmt.Sprintf("Ticket %d of %s", number, b["name"])
 	})
 	if f.projectList, f.ticketRow, f.ticketTmpl, err = recordedTickets(file); err != nil {
+		return nil, err
+	}
+	if f.people, f.meID, err = recordedPeople(f.me, f.ticketRow, f.ticketTmpl); err != nil {
 		return nil, err
 	}
 	return f, nil
@@ -356,6 +394,7 @@ func (f *Fixture) dropArgument(tool, arg string) error {
 			return err
 		}
 		f.tools[i] = out
+		f.dropped[tool+":"+arg] = true
 		return nil
 	}
 	return fmt.Errorf("inbox fixture: no tool %s in the contract copy", tool)
@@ -465,6 +504,12 @@ func (f *Fixture) rpc(w http.ResponseWriter, r *http.Request, req Request) {
 				return
 			}
 		}
+		if f.dropped[call.Params.Name] {
+			// A tool the server does not list: the SDK answers an invalid
+			// params error before any tool runs.
+			reply(http.StatusOK, nil, map[string]any{"code": -32602, "message": "Unknown tool: " + call.Params.Name})
+			return
+		}
 		switch call.Params.Name {
 		case "list_notifications":
 			f.notifications(w, call.Params.Arguments, reply, req)
@@ -474,6 +519,10 @@ func (f *Fixture) rpc(w http.ResponseWriter, r *http.Request, req Request) {
 			f.ticket(w, call.Params.Arguments, reply, req)
 		case "mark_notification_read":
 			f.markRead(w, r, call.Params.Arguments, reply, req)
+		case "update_ticket":
+			f.updateTicket(w, r, call.Params.Arguments, reply, req)
+		case "post_comment":
+			f.postComment(w, r, call.Params.Arguments, reply, req)
 		default:
 			reply(http.StatusOK, toolError("refused", "not available in the inbox fixture: "+call.Params.Name), nil)
 		}

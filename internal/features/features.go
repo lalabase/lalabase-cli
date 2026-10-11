@@ -16,9 +16,9 @@ import (
 )
 
 // MinTestedServerVersion is the MCP surface the client was tested against:
-// the version of the contract copy in internal/contract, server slice S1
-// included.
-const MinTestedServerVersion = "0.9.0"
+// the version of the contract copy in internal/contract, server slices S1,
+// S2 and S2b included.
+const MinTestedServerVersion = "0.11.0"
 
 // Feature is one thing the client offers, and what it needs from the server.
 type Feature struct {
@@ -27,8 +27,9 @@ type Feature struct {
 	Spec api.Spec
 	// ExtraArgs are arguments the feature needs beyond the adapter's base set.
 	ExtraArgs []string
-	// Since names the server slice that brings the feature; empty for one the
-	// contract already has.
+	// Since names the server slice that brings the feature, through an
+	// argument of a tool the contract had (ExtraArgs) or a tool of its own;
+	// empty for one the contract has had from the start.
 	Since string
 }
 
@@ -44,6 +45,11 @@ var All = []Feature{
 	{Name: "inbox_by_organisation", Spec: api.NotificationsSpec, ExtraArgs: []string{"organisation_id"}, Since: "S1"},
 	{Name: "ticket_posts_paged", Spec: api.TicketSpec, ExtraArgs: []string{"posts_page", "posts_per_page", "posts_order", "attachments_page"}, Since: "S1"},
 	{Name: "ticket_full_text", Spec: api.TicketSpec, ExtraArgs: []string{"full_text", "post_id"}, Since: "S1"},
+	// C2: the writes on a ticket. ticket_update needs the whole tool, every
+	// argument its spec declares (a server with half of it keeps it off);
+	// comment_plain needs format on top of the base feature comment.
+	{Name: "ticket_update", Spec: api.UpdateTicketSpec, Since: "S2"},
+	{Name: "comment_plain", Spec: api.CommentSpec, ExtraArgs: []string{"format"}, Since: "S2b"},
 }
 
 // Report is what one server supports.

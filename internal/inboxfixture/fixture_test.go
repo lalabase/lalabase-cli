@@ -152,13 +152,13 @@ func TestEverythingButTheReadsOfC1IsRefused(t *testing.T) {
 	if _, ans := a.Ticket(ctx, ProjectWebsite, "00000000-0000-4000-8000-000000000999"); ans.Class != transport.NotFound {
 		t.Fatalf("a missing ticket: %v", ans.Class)
 	}
-	// The one write answers a missing row as the server does; every other
-	// write stays refused.
+	// The writes answer a missing record as the server does (marks.go,
+	// writes.go); a tool outside C1 and C2 stays refused.
 	if _, ans := a.MarkNotificationRead(ctx, "n", "key-00000001"); ans.Class != transport.NotFound {
 		t.Fatalf("mark read of a missing row: %v", ans.Class)
 	}
-	if _, ans := a.PostComment(ctx, ProjectWebsite, TicketLogin, "hello", "key-00000002"); ans.Class != transport.Refused {
-		t.Fatalf("post comment: %v", ans.Class)
+	if _, ans := a.SearchKnowledge(ctx, api.KnowledgeQuery{ProjectID: ProjectWebsite, Q: "deploy"}); ans.Class != transport.Refused {
+		t.Fatalf("search knowledge: %v", ans.Class)
 	}
 	if _, ans := a.Notifications(ctx, api.NotificationQuery{Status: "unread", ProjectID: "p"}); ans.Class != transport.Refused {
 		t.Fatalf("project filter: %v", ans.Class)
@@ -177,7 +177,7 @@ func TestEverythingButTheReadsOfC1IsRefused(t *testing.T) {
 	for _, r := range f.Requests() {
 		seen[r.Tool] = true
 	}
-	if !seen["list_tickets"] || !seen["mark_notification_read"] || !seen["get_ticket"] || !seen["post_comment"] {
+	if !seen["list_tickets"] || !seen["mark_notification_read"] || !seen["get_ticket"] || !seen["search_knowledge"] {
 		t.Fatalf("the log does not name the refused tools: %v", seen)
 	}
 }
@@ -500,7 +500,7 @@ func TestMarkReadWorksAgainstTheFixture(t *testing.T) {
 	if _, ans := a.MarkNotificationRead(ctx, "00000000-0000-4000-8000-000000000999", "key-00000003"); ans.Class != transport.NotFound {
 		t.Fatalf("a missing row: %v", ans.Class)
 	}
-	if got := f.Mutations(); len(got) != 2 || got[0] != (Mutation{Notification: row.ID, Key: "key-00000001"}) || got[1].Key != "key-00000002" {
+	if got := f.Mutations(); len(got) != 2 || got[0] != (Mutation{Kind: MutationMarkRead, Notification: row.ID, Key: "key-00000001"}) || got[1].Key != "key-00000002" {
 		t.Fatalf("mutations %+v", got)
 	}
 	if got := f.Keys(); len(got) != 4 || got[0] != "key-00000001" || got[1] != "key-00000001" || got[3] != "key-00000003" {

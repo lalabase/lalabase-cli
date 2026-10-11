@@ -42,7 +42,7 @@ type Spec struct {
 
 // Specs are all adapters, for the compatibility test and feature detection.
 var Specs = []Spec{
-	NotificationsSpec, MarkReadSpec, TicketsSpec, TicketSpec, CommentSpec, KnowledgeSpec,
+	NotificationsSpec, MarkReadSpec, TicketsSpec, TicketSpec, UpdateTicketSpec, CommentSpec, KnowledgeSpec,
 	MeSpec, OrganisationsSpec, ProjectsSpec,
 }
 

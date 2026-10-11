@@ -19,10 +19,13 @@ import (
 // carried out (Mutations). A key seen before answers the original result
 // and changes nothing, as the server does.
 
-// Mutation is one change the fixture carried out: the notification and the
-// key the request carried.
+// Mutation is one change the fixture carried out: its kind (the Mutation
+// constants in writes.go), the notification or the ticket it changed, and
+// the key the request carried.
 type Mutation struct {
+	Kind         string
 	Notification string
+	Ticket       string
 	Key          string
 }
 
@@ -89,23 +92,8 @@ func (f *Fixture) markRead(w http.ResponseWriter, r *http.Request, args map[stri
 		reply(http.StatusOK, toolError("invalid_input", "invalid notification_id format"), nil)
 		return
 	}
-	if f.scenario == ReadOnly {
-		reply(http.StatusOK, toolError("read_only", "This token is read-only; writes are not permitted."), nil)
+	if f.writeGate(w, "mark:"+id, reply, req) {
 		return
-	}
-	// The scenarios that act on the attempt, before anything is looked up:
-	// 401 refuses the token, 429 rate-limits the first attempt.
-	switch f.scenario {
-	case Unauthorized:
-		req.Status = http.StatusUnauthorized
-		f.record(req)
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
-		return
-	case RateLimited:
-		if f.scenarioOn(w, "mark:"+id, req) {
-			return
-		}
 	}
 	f.mu.Lock()
 	row, number := f.findRow(id)
@@ -144,31 +132,23 @@ func (f *Fixture) markRead(w http.ResponseWriter, r *http.Request, args map[stri
 	if key != "" {
 		f.results[key] = result
 	}
-	f.mutations = append(f.mutations, Mutation{Notification: id, Key: key})
+	f.mutations = append(f.mutations, Mutation{Kind: MutationMarkRead, Notification: id, Key: key})
 	f.mu.Unlock()
-	switch f.scenario {
-	case Lost:
-		// The change is made, the answer is lost: the connection closes
-		// after the request was read, as a server that acted and then
-		// failed. Status 0: no answer went out.
+	f.answerWrite(w, r, reply, req, result)
+}
+
+// pause holds an answer for slowAnswer; false when the client left
+// meanwhile (logged with status 0: no answer went out).
+func (f *Fixture) pause(w http.ResponseWriter, r *http.Request, req Request) bool {
+	_ = w
+	select {
+	case <-time.After(slowAnswer):
+		return true
+	case <-r.Context().Done():
 		req.Status = 0
 		f.record(req)
-		if h, ok := w.(http.Hijacker); ok {
-			if conn, _, err := h.Hijack(); err == nil {
-				_ = conn.Close()
-			}
-		}
-		return
-	case Slow:
-		select {
-		case <-time.After(slowAnswer):
-		case <-r.Context().Done():
-			req.Status = 0
-			f.record(req)
-			return
-		}
+		return false
 	}
-	reply(http.StatusOK, toolObject(result), nil)
 }
 
 // toolRefused is a refusal with a reason, as the server sends an archived
@@ -207,6 +187,7 @@ func (f *Fixture) dropTool(tool string) error {
 		}
 		if t["name"] == tool {
 			f.tools = slices.Delete(f.tools, i, i+1)
+			f.dropped[tool] = true
 			return nil
 		}
 	}

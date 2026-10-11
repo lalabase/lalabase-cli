@@ -29,14 +29,16 @@ type Doer interface {
 
 // Source sends the requests of the reads, undecoded; *api.API in the
 // program. Each has its decode in internal/api, run by every waiter. The
-// one write (C1f) is decoded by the adapter: a write has one waiter and is
-// never shared.
+// writes (C1f, C2) are decoded by the adapter: a write has one waiter and
+// is never shared.
 type Source interface {
 	NotificationsAnswer(ctx context.Context, q api.NotificationQuery) transport.Answer
 	ProjectsAnswer(ctx context.Context, organisationID string) transport.Answer
 	TicketsAnswer(ctx context.Context, q api.TicketQuery) transport.Answer
 	TicketAnswer(ctx context.Context, projectID, ticketID string, o api.TicketOptions) transport.Answer
 	MarkNotificationRead(ctx context.Context, id, key string) (api.NotificationState, transport.Answer)
+	UpdateTicket(ctx context.Context, projectID, ticketID string, c api.TicketChange, key string) (api.TicketRow, transport.Answer)
+	PostComment(ctx context.Context, projectID, ticketID, body string, o api.CommentOptions, key string) (api.Comment, transport.Answer)
 }
 
 // Gateway turns tickets into commands.

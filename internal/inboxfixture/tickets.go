@@ -102,9 +102,13 @@ func copyMap(m map[string]any) map[string]any {
 	return out
 }
 
+// statusKeys is the catalogue of every project of the fixture, in the
+// server's order.
+var statusKeys = []string{"new", "in_progress", "resolved", "closed", "backlog"}
+
 // ticketRows are the rows of a project: #1 and #2 keep the recorded
 // titles, the rest are "Ticket n"; every third is unassigned, every fourth
-// has no status.
+// has no status; what the writes changed (C2a) lies over that.
 func (f *Fixture) ticketRows(project string) []map[string]any {
 	titles := map[int]string{1: "Login bricht ab", 2: "Export als CSV"}
 	var out []map[string]any
@@ -124,6 +128,11 @@ func (f *Fixture) ticketRows(project string) []map[string]any {
 		}
 		if i%4 == 0 {
 			row["status"] = nil
+		}
+		if e := f.editOf(row["id"].(string)); e != nil {
+			for k, v := range e.row {
+				row[k] = v
+			}
 		}
 		out = append(out, row)
 	}
@@ -216,7 +225,7 @@ func (f *Fixture) tickets(w http.ResponseWriter, args map[string]any, reply func
 	}
 	reply(http.StatusOK, toolObject(map[string]any{
 		"data": data,
-		"meta": map[string]any{"page": page, "per_page": perPage, "total": len(rows), "available_statuses": []string{"new", "in_progress", "resolved", "closed", "backlog"}},
+		"meta": map[string]any{"page": page, "per_page": perPage, "total": len(rows), "available_statuses": statusKeys},
 	}), nil)
 }
 
@@ -346,6 +355,9 @@ func (f *Fixture) onePost(project string, n int, postID string, page map[string]
 			posts = nil
 		}
 	}
+	if e := f.editOf(TicketID(project, n)); e != nil {
+		posts = append(slices.Clone(posts), e.posts...)
+	}
 	for _, p := range posts {
 		if p.(map[string]any)["id"] != postID {
 			continue
@@ -404,6 +416,9 @@ func (f *Fixture) ticketRecord(project string, n, postsPage, perPage int, newest
 	case 6:
 		t["description_html"], t["description_text"] = SixDescription, SixDescription
 		posts, attachments = f.sixPosts(false), sixAttachments()
+	}
+	if e := f.editOf(row["id"].(string)); e != nil {
+		posts = append(posts, e.posts...)
 	}
 	total, attachmentsTotal := len(posts), len(attachments)
 	if newest {

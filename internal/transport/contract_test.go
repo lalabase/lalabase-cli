@@ -74,6 +74,37 @@ var toolCases = map[string]expected{
 	"mark_notification_read/invalid_input":    {class: InvalidInput, legacyClass: Refused},
 	"mark_notification_read/read_only":        {class: ReadOnly, legacyClass: ReadOnly},
 	"mark_notification_read/refused_archived": {class: Refused, reason: "archived", legacyClass: Refused},
+
+	// S2 (0.10.0): update_ticket, one change per call. Its refusals carry
+	// a reason. An older server never gets the call (feature detection),
+	// so its class only says whether the text is one the client knows.
+	"update_ticket/ok_status":              {class: Object, legacyClass: Object},
+	"update_ticket/ok_assign":              {class: Object, legacyClass: Object},
+	"update_ticket/ok_title":               {class: Object, legacyClass: Object},
+	"update_ticket/ok_assign_beside_stale": {class: Object, legacyClass: Object},
+	"update_ticket/mixed":                  {class: InvalidInput, legacyClass: Refused},
+	"update_ticket/status_not_allowed":     {class: Refused, reason: "value_not_allowed", legacyClass: Refused},
+	"update_ticket/value_not_allowed":      {class: Refused, reason: "value_not_allowed", legacyClass: Refused},
+	"update_ticket/no_status_field":        {class: Refused, reason: "no_status_field", legacyClass: Refused},
+	"update_ticket/empty":                  {class: NotFound, legacyClass: NotFound},
+	"update_ticket/hidden":                 {class: NotFound, legacyClass: NotFound},
+	"update_ticket/forbidden":              {class: NoAccess, legacyClass: NoAccess},
+	"update_ticket/not_found":              {class: NotFound, legacyClass: NotFound},
+	"update_ticket/read_only":              {class: ReadOnly, legacyClass: ReadOnly},
+
+	// S2b (0.11.0): post_comment with format. The SDK refuses a format it
+	// does not know before the tool runs ("Invalid arguments: ..."), and
+	// the dispatcher gives that the machine code of an invalid input.
+	"post_comment_formats/plain":             {class: Object, legacyClass: Object},
+	"post_comment_formats/html":              {class: Object, legacyClass: Object},
+	"post_comment_formats/private":           {class: Object, legacyClass: Object},
+	"post_comment_formats/invalid_format":    {class: InvalidInput, legacyClass: Refused},
+	"post_comment_formats/format_not_string": {class: InvalidInput, legacyClass: Refused},
+	"post_comment_formats/nul":               {class: InvalidInput, legacyClass: Refused},
+	"post_comment_formats/whitespace_only":   {class: InvalidInput, legacyClass: Refused},
+	"post_comment_formats/read_only":         {class: ReadOnly, legacyClass: ReadOnly},
+	"post_comment_formats/hidden":            {class: NotFound, legacyClass: NotFound},
+	"post_comment_formats/forbidden":         {class: NoAccess, legacyClass: NoAccess},
 }
 
 // The tools that address one record, and the argument naming it. Their empty
@@ -81,6 +112,7 @@ var toolCases = map[string]expected{
 var oneRecord = map[string]string{
 	"get_ticket":             "ticket_id",
 	"post_comment":           "ticket_id",
+	"update_ticket":          "ticket_id",
 	"mark_notification_read": "notification_id",
 }
 
@@ -241,13 +273,13 @@ func TestTheRecordedServerAnswersInitializeAndToolsList(t *testing.T) {
 	}
 	srv := replay(t, 200, file.Contract.MCP.Initialize.Response.Body)
 	info, ans := newClient(t, srv.URL).Initialize(context.Background())
-	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.9.0" {
+	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.11.0" {
 		t.Fatalf("initialize: %v %+v", ans.Class, info)
 	}
 
 	srv = replay(t, 200, file.Contract.MCP.ToolsList.Response.Body)
 	tools, ans := newClient(t, srv.URL).ListTools(context.Background())
-	if ans.Class != Object || len(tools) != 13 || tools[0].Name != "search_code_symbols" {
+	if ans.Class != Object || len(tools) != 14 || tools[0].Name != "search_code_symbols" {
 		t.Fatalf("tools/list: %v, %d tools", ans.Class, len(tools))
 	}
 	if _, ok := tools[6].Properties()["ticket_id"]; !ok || tools[6].Name != "get_ticket" {

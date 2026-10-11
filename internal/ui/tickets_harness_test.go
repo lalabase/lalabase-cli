@@ -185,19 +185,22 @@ func ticketID(project string, n int) string {
 	return idOf(500000 + n)
 }
 
-// ticketRows makes the rows of a project from the recorded row: #1 and #2
-// keep the recorded titles, the rest are "Ticket n"; every third is
-// unassigned, every fourth has no status.
+// ticketTitle is the title of ticket n of a project: #1 and #2 keep the
+// recorded titles, the rest are "Ticket n".
+func ticketTitle(n int) string {
+	if title := map[int]string{1: "Login bricht ab", 2: "Export als CSV"}[n]; title != "" {
+		return title
+	}
+	return fmt.Sprintf("Ticket %d", n)
+}
+
+// ticketRows makes the rows of a project from the recorded row; every
+// third is unassigned, every fourth has no status.
 func (d recordedData) ticketRows(project string, n int) []api.TicketRow {
-	titles := map[int]string{1: "Login bricht ab", 2: "Export als CSV"}
 	var out []api.TicketRow
 	for i := 1; i <= n; i++ {
 		row := d.ticketTmpl
-		row.ID, row.Number = ticketID(project, i), i
-		row.Title = titles[i]
-		if row.Title == "" {
-			row.Title = fmt.Sprintf("Ticket %d", i)
-		}
+		row.ID, row.Number, row.Title = ticketID(project, i), i, ticketTitle(i)
 		row.Assignees = slices.Clone(d.ticketTmpl.Assignees)
 		if i%3 == 0 {
 			row.Assignees = []api.Ref{}
