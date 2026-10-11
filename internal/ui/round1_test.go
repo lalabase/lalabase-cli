@@ -177,7 +177,7 @@ func TestFallbacksJudgeTheCleanedText(t *testing.T) {
 	if got := s.List.Rows[0].Primary.String(); got != "#1 No message" {
 		t.Errorf("row %q", got)
 	}
-	if got := s.List.Rows[0].Secondary.String(); !strings.HasPrefix(got, "Unknown actor | Unnamed project") {
+	if got := s.List.Rows[0].Secondary.String(); !strings.HasPrefix(got, "Unknown actor · Unnamed project") {
 		t.Errorf("secondary %q", got)
 	}
 	text := s.Object.Text.String()

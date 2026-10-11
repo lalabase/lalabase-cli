@@ -132,7 +132,7 @@ func TestPTYInboxFlow(t *testing.T) {
 			}
 			c.act(t, "]", width, "Could not reach the server") // clipped to the column at 80
 			c.act(t, "R", width, "#26 Benachrichtigung", "page 2 of 2")
-			c.act(t, keyEnter, width, "000000100026", "State: unread", "Last event: 2026-01-05 09:25:00 UTC", "esc close")
+			c.act(t, keyEnter, width, "000000100026", "State: unread", "Last event: 5 Jan 09:25", "esc close")
 			other := uint16(120)
 			if width == 120 {
 				other = 80

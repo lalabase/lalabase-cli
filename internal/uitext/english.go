@@ -96,7 +96,6 @@ const (
 	LabelLastEvent
 	StateUnread
 	StateRead
-	UTC
 	UpDownKey
 	HighlightHelp
 	SelectHelp
@@ -142,10 +141,10 @@ const (
 	AttachmentsPaged
 	AttachmentsFirst
 	AttachmentsAll
-	LabelStatus
-	LabelAssignees
-	LabelCreator
-	LabelUpdated
+	MetaAssigned
+	MetaUnassigned
+	MetaCreator
+	MetaUpdated
 	SearchFor
 	SearchLine
 	Caret
@@ -259,7 +258,7 @@ var english = map[ID]string{
 	BelowTested:          "Server %s is older than the tested %s; its schemas decide what works.",
 	InboxUnsupported:     "Inbox is not supported by this server.",
 	FilterUnavailable:    "Showing the first page only; organisation filtering is unavailable.",
-	RateLimited:          "Rate limited until %s UTC",
+	RateLimited:          "Rate limited until %s",
 	LoadingOrganisations: "Loading organisations…", ReadingCapabilities: "Reading server capabilities…",
 	Loading: "Loading…", Refreshing: "Refreshing…",
 	Cached: "Cached", CachedStale: "Cached, possibly stale", PossiblyStale: "Possibly stale",
@@ -270,7 +269,7 @@ var english = map[ID]string{
 	NoTicket: "No ticket", UntitledTicket: "Untitled ticket", TimeUnknown: "Time unknown", TicketNumber: "#%d",
 	LabelMessage: "Message", LabelActor: "Actor", LabelOrganisation: "Organisation", LabelProject: "Project",
 	LabelTicket: "Ticket", LabelEvent: "Event", LabelNotification: "Notification", LabelState: "State",
-	LabelLastEvent: "Last event", StateUnread: "unread", StateRead: "read", UTC: "UTC",
+	LabelLastEvent: "Last event", StateUnread: "unread", StateRead: "read",
 	UpDownKey: "up/down", HighlightHelp: "highlight", SelectHelp: "select", OpenHelp: "open inbox", DetailsHelp: "details",
 	PageKey: "[/]", PageHelp: "page", PrevPageKey: "[", PrevPageHelp: "prev page", NextPageKey: "]", NextPageHelp: "next page", RefreshKey: "R", RefreshHelp: "refresh", RetryHelp: "retry",
 	PageUpDownKey: "pgup/pgdn", ScrollHelp: "scroll", MoveHelp: "move", CloseHelp: "close",
@@ -290,7 +289,7 @@ var english = map[ID]string{
 	AttachmentsPaged: "Attachments · page %d of %d · %d in all",
 	AttachmentsFirst: "Attachments · first %d of %d",
 	AttachmentsAll:   "Attachments · %d",
-	LabelStatus:      "Status", LabelAssignees: "Assignees", LabelCreator: "Creator", LabelUpdated: "Updated",
+	MetaAssigned:     "assigned %s", MetaUnassigned: "unassigned", MetaCreator: "created by %s", MetaUpdated: "updated %s",
 	SearchFor: "search %q", SearchLine: "Search: ", Caret: "_",
 	ListShrank:      "The list shrank again. R refresh.",
 	OpenTicketsHelp: "open tickets", OpenTicketHelp: "open", TicketsHelp: "tickets", ProjectsHelp: "projects",

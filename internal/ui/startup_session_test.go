@@ -452,7 +452,7 @@ func TestA401EndsTheSessionForGood(t *testing.T) {
 }
 
 // Plan test 16: a 429 that only background work ran into is still shown,
-// with its deadline in UTC; an extension survives the old deadline's
+// with its deadline in the person's zone; an extension survives the old deadline's
 // expiry; a wake-up of another session changes nothing.
 func TestARateLimitPauseIsShownAndClearedByItsOwnExpiry(t *testing.T) {
 	h := newHarness(t)
@@ -460,20 +460,20 @@ func TestARateLimitPauseIsShownAndClearedByItsOwnExpiry(t *testing.T) {
 	first := h.now.Add(30 * time.Second)
 	h.events.RateLimit(first)
 	h.feed(gateway.Wake{Session: h.events.Session()})
-	if got := h.m.screen().Status.String(); got != "Rate limited until 12:00:30 UTC" {
+	if got := h.m.screen().Status.String(); got != "Rate limited until 12:00:30" {
 		t.Fatalf("status %q", got)
 	}
-	if got := ansi.Strip(h.m.View().Content); !strings.Contains(got, "Rate limited until 12:00:30 UTC") {
+	if got := ansi.Strip(h.m.View().Content); !strings.Contains(got, "Rate limited until 12:00:30") {
 		t.Fatalf("the pause is not on screen:\n%s", got)
 	}
 	second := h.now.Add(time.Minute)
 	h.events.RateLimit(second)
 	h.feed(gateway.Wake{Session: h.events.Session()})
-	if got := h.m.screen().Status.String(); got != "Rate limited until 12:01:00 UTC" {
+	if got := h.m.screen().Status.String(); got != "Rate limited until 12:01:00" {
 		t.Fatalf("extended status %q", got)
 	}
 	h.feed(gateway.PauseEnded{Session: h.events.Session(), Until: first})
-	if got := h.m.screen().Status.String(); got != "Rate limited until 12:01:00 UTC" {
+	if got := h.m.screen().Status.String(); got != "Rate limited until 12:01:00" {
 		t.Fatalf("an old expiry cleared the extended pause: %q", got)
 	}
 	h.feed(gateway.PauseEnded{Session: h.events.Session() + 1, Until: second})

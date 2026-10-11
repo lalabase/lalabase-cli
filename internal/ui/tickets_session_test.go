@@ -120,10 +120,10 @@ func TestTheChooserHasSectionsAndEnterOpensProjectsThenTickets(t *testing.T) {
 	if s.List.Title.String() != "Tickets" || s.Context.String() != "Nordlicht GmbH | Tickets | Website-Relaunch | page 1 of 2" {
 		t.Fatalf("title %q context %q", s.List.Title.String(), s.Context.String())
 	}
-	if s.List.Rows[0].Primary.String() != "#1 Login bricht ab" || s.List.Rows[0].Trailing.String() != "in_progress" || s.List.Rows[0].Secondary.String() != "Anna Albers | 2026-01-05 09:26 UTC" {
+	if s.List.Rows[0].Primary.String() != "#1 Login bricht ab" || s.List.Rows[0].Trailing.String() != "in_progress" || s.List.Rows[0].Secondary.String() != "Anna Albers · 5 Jan 09:26" {
 		t.Fatalf("row 0 %+v", s.List.Rows[0])
 	}
-	if s.List.Rows[2].Secondary.String() != "Unassigned | 2026-01-05 09:26 UTC" || s.List.Rows[3].Trailing.String() != "No status" {
+	if s.List.Rows[2].Secondary.String() != "Unassigned · 5 Jan 09:26" || s.List.Rows[3].Trailing.String() != "No status" {
 		t.Fatalf("rows 2, 3: %+v %+v", s.List.Rows[2], s.List.Rows[3])
 	}
 	if len(h.f.detailReads()) != 0 {
@@ -292,7 +292,7 @@ func TestAPreviewIsReadAfterThePauseWhenTheObjectPaneIsVisible(t *testing.T) {
 		t.Fatalf("title %q notice %q", s.Object.Title.String(), s.Object.Notice.String())
 	}
 	text := s.Object.Text.String()
-	for _, want := range []string{"#2 Export als CSV", "Status: No status", "Assignees: Unassigned", "Creator: Unknown user", "Project: Website-Relaunch", "No description", "No comments", "No attachments"} {
+	for _, want := range []string{"#2 Export als CSV", "No status · Website-Relaunch · unassigned · created by Unknown user", "No description", "No comments", "No attachments"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the pane lacks %q:\n%s", want, text)
 		}
@@ -376,7 +376,7 @@ func TestOpenJoinsAPendingPreviewAndEscGoesBack(t *testing.T) {
 		t.Fatalf("after the results: %+v focus %d", d, h.m.focus)
 	}
 	text := h.m.screen().Object.Text.String()
-	for _, want := range []string{"#1 Login bricht ab", "Status: in_progress", "Nach dem Absenden bleibt die Seite weiß.", "Comments · newest first · page 1 of 1 · 2 readable comments", "Anna Albers · 2026-01-05 09:26:00 UTC", "Ich schaue es mir an.", "Ben Berger · 2026-01-05 09:25:00 UTC", "Tritt nur in Safari auf.", "Attachments · page 1 of 1 · 2 in all", "- design.pdf", "- screenshot.png"} {
+	for _, want := range []string{"#1 Login bricht ab", "in_progress · Website-Relaunch · assigned Anna Albers", "Nach dem Absenden bleibt die Seite weiß.", "Comments · newest first · page 1 of 1 · 2 readable comments", "Anna Albers  5 Jan 09:26", "Ich schaue es mir an.", "Ben Berger  5 Jan 09:25", "Tritt nur in Safari auf.", "Attachments · page 1 of 1 · 2 in all", "\ndesign.pdf · ", "\nscreenshot.png · "} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the pane lacks %q:\n%s", want, text)
 		}
@@ -812,7 +812,7 @@ func TestTicketCapabilitiesComeFromTheSchemas(t *testing.T) {
 		h.press("down")
 		h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
 		text = h.m.screen().Object.Text.String()
-		if !strings.Contains(text, "Attachments · first 10 of 12") || !strings.Contains(text, "- file-10.txt") || strings.Contains(text, "file-11") {
+		if !strings.Contains(text, "Attachments · first 10 of 12") || !strings.Contains(text, "\nfile-10.txt · ") || strings.Contains(text, "file-11") {
 			t.Fatalf("attachments:\n%s", text)
 		}
 	})
@@ -834,7 +834,7 @@ func TestTheTicketPaneNamesItsPages(t *testing.T) {
 	h.press("down") // #4
 	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
 	text = h.m.screen().Object.Text.String()
-	if !strings.Contains(text, "Attachments · page 1 of 2 · 12 in all") || !strings.Contains(text, "- file-10.txt") || strings.Contains(text, "file-11") {
+	if !strings.Contains(text, "Attachments · page 1 of 2 · 12 in all") || !strings.Contains(text, "\nfile-10.txt · ") || strings.Contains(text, "file-11") {
 		t.Fatalf("page 1 of the attachments:\n%s", text)
 	}
 	// A private comment is marked; a deleted author and an unreadable time
@@ -856,7 +856,7 @@ func TestTheTicketPaneNamesItsPages(t *testing.T) {
 	h.press("up")
 	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
 	text = h.m.screen().Object.Text.String()
-	for _, want := range []string{"Status: No status", "Creator: Unknown user", "Updated: Time unknown", "Unknown user · 2026-01-05 09:26:00 UTC · private", "Unknown user · Time unknown", "No text"} {
+	for _, want := range []string{"No status · ", "created by Unknown user", "updated Time unknown", "Unknown user  5 Jan 09:26 · private", "Unknown user  Time unknown", "No text"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the pane lacks %q:\n%s", want, text)
 		}
@@ -1976,7 +1976,7 @@ func TestThePaneIsHiddenWhenTheHelpMakesTheTerminalSmall(t *testing.T) {
 	for width := 24; width <= 60 && !found; width++ {
 		for height := 8; height <= 14 && !found; height++ {
 			h.m.width, h.m.height = width, height
-			found = h.m.small() && !layoutWith(width, height, 1).Small
+			found = h.m.small() && !layoutWith(width, height, 1, h.m.focus).Small
 		}
 	}
 	if !found {

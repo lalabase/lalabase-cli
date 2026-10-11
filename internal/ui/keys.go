@@ -146,7 +146,7 @@ func (m Model) small() bool {
 	if m.tooSmall() {
 		return true
 	}
-	g := layoutWith(m.width, m.height, len(view.HelpLines(toHelp(m.bindings(false)), m.width, m.widthMethod)))
+	g := layoutWith(m.width, m.height, len(view.HelpLines(toHelp(m.bindings(false)), m.width, m.widthMethod)), m.focus)
 	return view.Capacity(m.focusedColumn(), g) < 1
 }
 
@@ -409,7 +409,7 @@ func (m Model) withoutIdleScroll(out []binding) []binding {
 		return out
 	}
 	without := append(out[:at:at], out[at+1:]...)
-	g := layoutWith(m.width, m.height, len(view.HelpLines(toHelp(without), m.width, m.widthMethod)))
+	g := layoutWith(m.width, m.height, len(view.HelpLines(toHelp(without), m.width, m.widthMethod)), m.focus)
 	c := m.objectColumn()
 	if view.Extent(c, g, view.Object, m.widthMethod) > view.Capacity(c, g) {
 		return out

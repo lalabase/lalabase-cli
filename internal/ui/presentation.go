@@ -91,7 +91,7 @@ func (m Model) screen() present.Screen {
 	case a.expired:
 		s.Status = uitext.Inline(uitext.SessionExpired)
 	case a.pause.After(a.now()):
-		s.Status = uitext.Fill(uitext.RateLimited, a.pause.UTC().Format("15:04:05"))
+		s.Status = uitext.Fill(uitext.RateLimited, a.pause.In(a.loc).Format("15:04:05"))
 	case a.diskStatus() != 0:
 		s.Status = uitext.Inline(a.diskStatus())
 	}
@@ -208,6 +208,8 @@ func (m Model) chooserColumn() present.Column {
 			row.Trailing = uitext.Inline(uitext.UnknownCount)
 			if cnt.known {
 				row.Trailing = uitext.Fill(uitext.CountValue, cnt.value)
+				// Nothing unread is quiet; unread asks for attention.
+				row.Quiet, row.Highlight = cnt.value == 0, cnt.value > 0
 			}
 			row.Active = a.active != nil && a.active.org == e.org
 		} else {
@@ -286,7 +288,7 @@ func (m Model) inboxColumn() present.Column {
 		// The word at the end of a row names what became of marking it
 		// (C1f), by the row's id: an answer for one row never sits on
 		// another.
-		c.Rows = append(c.Rows, present.Row{Primary: rowPrimary(n), Secondary: rowSecondary(n), Trailing: m.app.markShort(n.ID)})
+		c.Rows = append(c.Rows, present.Row{Primary: rowPrimary(n), Secondary: m.app.rowSecondary(n), Trailing: m.app.markShort(n.ID)})
 	}
 	c.Offset = v.offset
 	return c
@@ -302,8 +304,8 @@ func rowPrimary(n api.Notification) present.Inline {
 }
 
 // rowSecondary: the actor, the project and the time of the last event.
-func rowSecondary(n api.Notification) present.Inline {
-	return present.NewInline(actorOf(n) + " | " + projectOf(n) + " | " + timeOf(n.LastEventAt, false))
+func (a *app) rowSecondary(n api.Notification) present.Inline {
+	return present.NewInline(actorOf(n) + " · " + projectOf(n) + " · " + a.when(n.LastEventAt))
 }
 
 func messageOf(n api.Notification) string { return textOr(n.Message, uitext.NoMessage) }
@@ -339,19 +341,23 @@ func ticketOf(n api.Notification) string {
 	return uitext.Fill(uitext.TicketNumber, n.Ticket.Number).String() + " " + textOr(n.Ticket.Title, uitext.UntitledTicket)
 }
 
-// timeOf shows a server time in UTC: minutes in a row, seconds in the
-// details. A time that does not read says so.
-func timeOf(raw string, seconds bool) string {
+// timeOf shows a server time in the person's zone, to the minute: day and
+// month, the year only when it is not the current one there. A time that
+// does not read says so.
+func timeOf(raw string, now time.Time, loc *time.Location) string {
 	t, err := time.Parse(time.RFC3339Nano, raw)
 	if err != nil {
 		return uitext.Inline(uitext.TimeUnknown).String()
 	}
-	layout := "2006-01-02 15:04"
-	if seconds {
-		layout = "2006-01-02 15:04:05"
+	t = t.In(loc)
+	if t.Year() == now.In(loc).Year() {
+		return t.Format("2 Jan 15:04")
 	}
-	return t.UTC().Format(layout) + " " + uitext.Inline(uitext.UTC).String()
+	return t.Format("2 Jan 2006 15:04")
 }
+
+// when is a server time as timeOf shows it, now and here.
+func (a *app) when(raw string) string { return timeOf(raw, a.now(), a.loc) }
 
 // objectColumn is the object pane: the opened notification, or the ticket
 // previewed or opened.
@@ -387,7 +393,7 @@ func (m Model) objectColumn() present.Column {
 		label(uitext.LabelEvent, n.EventType),
 		label(uitext.LabelNotification, n.ID),
 		label(uitext.LabelState, uitext.Inline(state).String()),
-		label(uitext.LabelLastEvent, timeOf(n.LastEventAt, true)),
+		label(uitext.LabelLastEvent, a.when(n.LastEventAt)),
 	}
 	if text := a.markText(n.ID, !n.Read); text != "" {
 		lines = append(lines, label(uitext.LabelMarkRead, text))

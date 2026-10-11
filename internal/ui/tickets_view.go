@@ -59,7 +59,7 @@ func (m Model) ticketsColumn() present.Column {
 		c.Rows = append(c.Rows, present.Row{
 			Primary:   present.NewInline(uitext.Fill(uitext.TicketNumber, r.Number).String() + " " + textOr(r.Title, uitext.UntitledTicket)),
 			Trailing:  present.NewInline(bounded(statusOf(r.Status), maxStatus)),
-			Secondary: present.NewInline(assigneesOf(r.Assignees) + " | " + timeOf(r.UpdatedAt, false)),
+			Secondary: present.NewInline(assigneesOf(r.Assignees) + " · " + m.app.when(r.UpdatedAt)),
 		})
 	}
 	c.Offset = v.offset
@@ -121,8 +121,9 @@ func (m Model) detailColumn() present.Column {
 		c.Text = uitext.Body(uitext.NoItem)
 		return c
 	}
-	t := ticketText(d, a.pagedOn(), m.originLine())
+	t := ticketText(d, a.pagedOn(), m.originLine(), a.when)
 	c.Text = present.NewBody(strings.Join(t.lines, "\n"))
+	c.Styles = t.styles
 	c.Offset = d.offset
 	line := -1
 	switch d.follow {
@@ -134,65 +135,100 @@ func (m Model) detailColumn() present.Column {
 		}
 	}
 	if line >= 0 {
-		c.Offset = m.wrappedLines(t.lines[:line])
+		c.Offset = m.wrappedLines(t, line)
 	}
 	return c
 }
 
-// wrappedLines is the number of screen lines the text's lines take in
-// the object pane at the current width: the place of the line after them.
-// The width alone decides it, never the help, so the help's bindings can
-// ask for the pane without asking for themselves.
-func (m Model) wrappedLines(lines []string) int {
-	g := layout(m.width, m.height)
-	n := 0
-	for _, line := range lines {
-		n += max(1, view.Extent(present.Column{Text: present.NewBody(line)}, g, view.Object, m.widthMethod))
-	}
-	return n
+// wrappedLines is the number of screen lines the text's first n lines take
+// in the object pane at the current width, in their styles: the place of
+// the line after them. The width alone decides it, never the help, so the
+// help's bindings can ask for the pane without asking for themselves.
+func (m Model) wrappedLines(t ticketLines, n int) int {
+	g := layoutWith(m.width, m.height, 1, m.focus)
+	return view.Extent(present.Column{Text: present.NewBody(strings.Join(t.lines[:n], "\n")), Styles: t.styles[:n]}, g, view.Object, m.widthMethod) - boolInt(n == 0)
 }
 
-// ticketLines is the text of the pane, one cleaned line each, with the
-// line of every section's heading and of every comment's head.
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// ticketLines is the text of the pane, one cleaned line each with its
+// style, and the line of every section's heading and of every comment's
+// head.
 type ticketLines struct {
-	lines []string
-	areas [ticketAreas]int
-	posts map[string]int
+	lines  []string
+	styles []present.LineStyle
+	areas  [ticketAreas]int
+	posts  map[string]int
 }
 
-// add appends foreign or own text: a body is cleaned once and split into
-// its lines, so the places counted are the lines shown.
-func (t *ticketLines) add(texts ...string) {
+// add appends foreign or own text in one style: a body is cleaned once and
+// split into its lines, so the places counted are the lines shown.
+func (t *ticketLines) add(style present.LineStyle, texts ...string) {
 	for _, text := range texts {
-		t.lines = append(t.lines, strings.Split(present.NewBody(text).String(), "\n")...)
+		for _, line := range strings.Split(present.NewBody(text).String(), "\n") {
+			t.lines = append(t.lines, line)
+			t.styles = append(t.styles, style)
+		}
 	}
 }
+
+// addLead appends one line whose lead (already cleaned, one line) is drawn
+// in its own style before the rest: an author before the time.
+func (t *ticketLines) addLead(lead string, leadStyle present.Style, rest string, restStyle present.Style) {
+	line := present.NewInline(lead + rest).String()
+	n := len(lead)
+	if !strings.HasPrefix(line, lead) {
+		// Cleaning changed the lead's bytes: the line is drawn in one style.
+		n = 0
+	}
+	t.lines = append(t.lines, line)
+	t.styles = append(t.styles, present.LineStyle{Lead: n, LeadStyle: leadStyle, RestStyle: restStyle})
+}
+
+// The styles of the ticket's lines.
+var (
+	plainLine = present.LineStyle{}
+	bodyLine  = present.LineStyle{Indent: 2}
+	noteLine  = present.LineStyle{Indent: 2, RestStyle: present.Faint}
+	metaLine  = present.LineStyle{RestStyle: present.Faint}
+)
 
 // ticketText is the body of the pane. Every field is foreign; a one-line
 // field is cleaned as one line, so a title cannot open a line of its own,
 // but a description or a comment keeps its lines.
-func ticketText(d *detailView, paged bool, origin string) ticketLines {
+func ticketText(d *detailView, paged bool, origin string, when func(string) string) ticketLines {
 	r := d.record
 	t := ticketLines{posts: map[string]int{}}
-	label := func(id uitext.ID, value string) string { return uitext.Inline(id).String() + ": " + value }
-	t.add(
-		uitext.Fill(uitext.TicketNumber, r.Number).String()+" "+textOr(r.Title, uitext.UntitledTicket),
-		label(uitext.LabelStatus, statusOf(r.Status)),
-		label(uitext.LabelAssignees, assigneesOf(r.Assignees)),
-		label(uitext.LabelCreator, personOf(r.Creator)),
-		label(uitext.LabelProject, textOr(r.Project.Name, uitext.UnnamedProject)),
-		label(uitext.LabelUpdated, timeOf(r.UpdatedAt, false)),
-	)
-	if origin != "" {
-		t.add(label(uitext.LabelNotification, origin))
+	// The head: the title, then one faint line of its facts.
+	t.addLead(uitext.Fill(uitext.TicketNumber, r.Number).String()+" "+textOr(r.Title, uitext.UntitledTicket), present.Strong, "", present.Strong)
+	assigned := uitext.Inline(uitext.MetaUnassigned).String()
+	if len(r.Assignees) > 0 {
+		assigned = uitext.Fill(uitext.MetaAssigned, assigneesOf(r.Assignees)).String()
 	}
-	t.add("")
+	t.add(metaLine, strings.Join([]string{
+		statusOf(r.Status),
+		textOr(r.Project.Name, uitext.UnnamedProject),
+		assigned,
+		uitext.Fill(uitext.MetaCreator, personOf(r.Creator)).String(),
+		uitext.Fill(uitext.MetaUpdated, when(r.UpdatedAt)).String(),
+	}, " · "))
+	if origin != "" {
+		t.add(plainLine, uitext.Inline(uitext.LabelNotification).String()+": "+origin)
+	}
+	t.add(plainLine, "")
 	heading := func(area ticketArea, text string) {
 		t.areas[area] = len(t.lines)
 		if d.area == area {
 			text = uitext.Inline(uitext.ActiveArea).String() + text
 		}
-		t.add(present.NewInline(text).String())
+		text = present.NewInline(text).String()
+		t.lines = append(t.lines, text)
+		t.styles = append(t.styles, present.LineStyle{Lead: len(text), LeadStyle: present.Strong, Rule: true})
 	}
 
 	// The description, whole when it was expanded.
@@ -207,58 +243,75 @@ func ticketText(d *detailView, paged bool, origin string) ticketLines {
 	if whole {
 		text = e.text
 	}
-	t.add(bodyOr(text, uitext.NoDescription)...)
+	t.body(bodyOr(text, uitext.NoDescription))
 	if e != nil && e.post == "" {
-		t.add(expansionState(e)...)
+		t.add(noteLine, expansionState(e)...)
 	}
-	t.add("")
+	t.add(plainLine, "")
 
 	heading(areaComments, commentsHeading(d, paged))
 	switch {
 	case d.commentsLoading():
-		t.add(pageState(d), "")
+		t.add(noteLine, pageState(d))
+		t.add(plainLine, "")
 	case len(r.Posts) == 0:
-		t.add("")
+		t.add(plainLine, "")
+	default:
+		t.add(plainLine, "")
 	}
 	for _, p := range r.Posts {
 		if d.commentsLoading() {
 			break
 		}
+		// The head: the author bold, the time faint; the text indented
+		// below it.
 		t.posts[p.ID] = len(t.lines)
-		head := personOf(p.Author) + " · " + timeOf(p.CreatedAt, true)
-		if p.IsPrivate {
-			head += " · " + uitext.Inline(uitext.Private).String()
-		}
+		author := present.NewInline(personOf(p.Author)).String()
 		if d.area == areaComments && p.ID == d.post {
-			head = uitext.Inline(uitext.SelectedComment).String() + head
+			author = uitext.Inline(uitext.SelectedComment).String() + author
 		}
-		t.add(present.NewInline(head).String())
+		rest := "  " + when(p.CreatedAt)
+		if p.IsPrivate {
+			rest += " · " + uitext.Inline(uitext.Private).String()
+		}
+		t.addLead(author, present.Strong, rest, present.Faint)
 		switch {
 		case e != nil && e.post == p.ID && e.unavailable:
 			// The server said the comment is missing: its text is hidden
 			// at once, the page's copy too, until Esc or the next page.
-			t.add(uitext.Inline(uitext.CommentUnavailable).String())
+			t.add(noteLine, uitext.Inline(uitext.CommentUnavailable).String())
 		case e != nil && e.post == p.ID && e.known:
-			t.add(bodyOr(e.text, uitext.NoText)...)
-			t.add(expansionState(e)...)
+			t.body(bodyOr(e.text, uitext.NoText))
+			t.add(noteLine, expansionState(e)...)
 		default:
-			t.add(bodyOr(p.BodyText, uitext.NoText)...)
+			t.body(bodyOr(p.BodyText, uitext.NoText))
 			if e != nil && e.post == p.ID {
-				t.add(expansionState(e)...)
+				t.add(noteLine, expansionState(e)...)
 			}
 		}
-		t.add("")
+		t.add(plainLine, "")
 	}
 
 	heading(areaAttachments, attachmentsHeading(d, paged))
 	if d.attachmentsLoading() {
-		t.add(pageState(d))
+		t.add(noteLine, pageState(d))
 		return t
 	}
 	for _, f := range r.Attachments {
-		t.add("- " + attachmentLine(f))
+		name, rest := attachmentLine(f)
+		t.addLead(name, present.Plain, rest, present.Faint)
+		t.styles[len(t.styles)-1].Indent = 2
 	}
 	return t
+}
+
+// body appends a foreign text indented, and the line that says the server
+// shortened it faint.
+func (t *ticketLines) body(text string, shortened bool) {
+	t.add(bodyLine, text)
+	if shortened {
+		t.add(noteLine, uitext.Inline(uitext.TextShortened).String())
+	}
 }
 
 // originLine is the line of the head that names the notification a ticket
@@ -290,18 +343,15 @@ func pageState(d *detailView) string {
 	return uitext.Inline(uitext.PageNotLoaded).String()
 }
 
-// bodyOr is a foreign body as lines, without the server's marker of a
-// shortened text and with a line that says so, or the fallback when
-// nothing readable is left of it.
-func bodyOr(raw string, fallback uitext.ID) []string {
+// bodyOr is a foreign body without the server's marker of a shortened
+// text, and whether it was shortened; the fallback when nothing readable is
+// left of it.
+func bodyOr(raw string, fallback uitext.ID) (string, bool) {
 	text, short := api.Shortened(raw)
 	if strings.TrimSpace(present.NewBody(text).String()) == "" {
 		text = uitext.Inline(fallback).String()
 	}
-	if short {
-		return []string{text, uitext.Inline(uitext.TextShortened).String()}
-	}
-	return []string{text}
+	return text, short
 }
 
 // expansionState is the line under an expansion that is not settled: it
@@ -358,8 +408,9 @@ func attachmentsHeading(d *detailView, paged bool) string {
 
 // attachmentLine is one attachment: its name, and of its metadata what
 // the server sent; what it did not send says so (a missing size is not
-// zero bytes). One line: every value is cleaned as one.
-func attachmentLine(f api.Attachment) string {
+// zero bytes). One line: every value is cleaned as one. The name and the
+// rest come apart, so the rest can be drawn faint.
+func attachmentLine(f api.Attachment) (string, string) {
 	kind := uitext.Inline(uitext.TypeUnknown).String()
 	if f.ContentType != nil && strings.TrimSpace(present.NewInline(*f.ContentType).String()) != "" {
 		kind = bounded(present.NewInline(*f.ContentType).String(), maxContentType)
@@ -374,7 +425,7 @@ func attachmentLine(f api.Attachment) string {
 			text = id
 		}
 	}
-	return textOr(f.Filename, uitext.UnnamedFile) + " · " + kind + " · " + size + " · " + uitext.Inline(text).String()
+	return textOr(f.Filename, uitext.UnnamedFile), " · " + kind + " · " + size + " · " + uitext.Inline(text).String()
 }
 
 // maxContentType bounds a MIME type: it is a short word, and a long one

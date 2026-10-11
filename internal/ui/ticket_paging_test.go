@@ -484,13 +484,13 @@ func TestAttachmentsShowOnlyTheMetadataTheServerSent(t *testing.T) {
 	mustContain(t, h.paneText(), "six-12.txt · type unknown · 0 B · text status unknown")
 	for status, want := range map[string]string{"available": "text available", "unsupported": "text not supported", "unavailable": "text unavailable", "empty": "no text", "other": "text status unknown"} {
 		s := status
-		if got := attachmentLine(api.Attachment{Filename: "f", TextStatus: &s}); !strings.HasSuffix(got, want) {
+		if name, got := attachmentLine(api.Attachment{Filename: "f", TextStatus: &s}); name != "f" || !strings.HasSuffix(got, want) {
 			t.Errorf("%s: %q", status, got)
 		}
 	}
 	for size, want := range map[int64]string{0: "0 B", 1023: "1023 B", 1024: "1.0 KiB", 1536: "1.5 KiB", 5 << 20: "5.0 MiB", 3 << 30: "3.0 GiB"} {
 		n := size
-		if got := attachmentLine(api.Attachment{Filename: "f", ByteSize: &n}); !strings.Contains(got, " · "+want+" · ") {
+		if _, got := attachmentLine(api.Attachment{Filename: "f", ByteSize: &n}); !strings.Contains(got, " · "+want+" · ") {
 			t.Errorf("%d: %q", size, got)
 		}
 	}
@@ -1406,10 +1406,10 @@ func TestR2TheStatesOfAnExpansion(t *testing.T) {
 // long one is bounded, 1 MiB is named so.
 func TestR2AttachmentMetadataEdges(t *testing.T) {
 	blank, long := "   ", strings.Repeat("x", 200)
-	if got := attachmentLine(api.Attachment{Filename: "f", ContentType: &blank}); !strings.Contains(got, "type unknown") {
+	if _, got := attachmentLine(api.Attachment{Filename: "f", ContentType: &blank}); !strings.Contains(got, "type unknown") {
 		t.Fatalf("blank: %q", got)
 	}
-	if got := attachmentLine(api.Attachment{Filename: "f", ContentType: &long}); strings.Contains(got, long) || !strings.Contains(got, "…") {
+	if _, got := attachmentLine(api.Attachment{Filename: "f", ContentType: &long}); strings.Contains(got, long) || !strings.Contains(got, "…") {
 		t.Fatalf("long: %q", got)
 	}
 	if got := sizeOf(1 << 20); got != "1.0 MiB" {

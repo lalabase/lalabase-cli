@@ -88,10 +88,14 @@ func markRequests(f *inboxfixture.Fixture) []string {
 
 // rowGone waits until the screen no longer shows the marker: the row left
 // with the reload after a write (at 80 columns the counters are not on
-// the screen, the list is).
+// the screen, the list is). The marker is short enough to be seen in a
+// title cut for the row's "marking…", and no row may still say that: a
+// row whose title is cut further must not pass for one that left.
 func (c *terminalProcess) rowGone(t *testing.T, width uint16, marker string) {
 	t.Helper()
-	if err := c.until("the row leaving", readyLimit, func() bool { return !c.screenShows(width, marker) }); err != nil {
+	if err := c.until("the row leaving", readyLimit, func() bool {
+		return !c.screenShows(width, marker) && !c.screenShows(width, "marking…")
+	}); err != nil {
 		t.Fatalf("%v: %q is still shown\n%s", err, marker, strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
 	}
 }
@@ -133,13 +137,8 @@ func TestPTYMarkReadFlow(t *testing.T) {
 			if width == 120 {
 				other = 80
 			}
-			// r: the head says so, the counters follow the server (29; the
-			// chooser is on the screen at 120 columns), the ticket stays
-			// open and usable.
+			// r: the head says so, the ticket stays open and usable.
 			c.act(t, "r", width, "Marked as read")
-			if width == 120 {
-				c.expect(t, "the counters after the write", width, "29", "32")
-			}
 			// The pane keeps the description in sight (the head may be
 			// scrolled away at 80 columns after the Tabs).
 			if !c.screenShows(width, "Description of six", "esc notification") {
@@ -152,6 +151,11 @@ func TestPTYMarkReadFlow(t *testing.T) {
 			// Esc: the row left with the reload, so the list is where the
 			// person lands; the sixth row is now #7.
 			c.act(t, keyEsc, width, "esc organisations", "page 1 of 2")
+			if width == 120 {
+				// Back in the list the navigation is on the screen again,
+				// and its counters followed the server.
+				c.expect(t, "the counters after the write", width, "29", "32")
+			}
 			if c.screenShows(width, "#6 Benachrichtigung") || c.screenShows(width, "esc close") {
 				t.Fatalf("the marked row is still shown:\n%s", strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
 			}
@@ -246,7 +250,7 @@ func TestPTYMarkReadWithALostAnswer(t *testing.T) {
 	before := len(f.Requests())
 	c.act(t, "r", 120, "29", "32")
 	// Both reloads land in either order: wait for the row to leave too.
-	c.rowGone(t, 120, "#1 Benachrichtigung")
+	c.rowGone(t, 120, "#1 Benachrichtigun")
 	// Nothing claims a success.
 	if c.screenShows(120, "marked") {
 		t.Fatalf("the screen after the lost answer:\n%s", strings.Join(renderScreen(c.bytes(), 24, 120), "\n"))
@@ -359,7 +363,7 @@ func TestPTYMarkReadAfterARateLimit(t *testing.T) {
 	c, f := startMark(t, inboxfixture.RateLimited, 80, "Token can write: yes")
 	openInboxA(t, c, 80)
 	c.act(t, "r", 80, "Rate limited until")
-	c.rowGone(t, 80, "#1 Benachrichtigung")
+	c.rowGone(t, 80, "#1 Benachrichtigun")
 	c.expect(t, "the retry after the window", 80, "> #2 Benachrichtigung")
 	if err := c.send("q"); err != nil {
 		t.Fatal(err)
@@ -410,11 +414,14 @@ func TestPTYASlowAnswerMarksTheRowItWasFor(t *testing.T) {
 	}
 	// The answer: the first row leaves with the reload, the second stays
 	// open and unmarked.
-	c.expect(t, "the answer", 120, "29", "32")
-	c.rowGone(t, 120, "#1 Benachrichtigung")
+	c.rowGone(t, 120, "#1 Benachrichtigun")
 	if c.screenShows(120, "Marked as read") || !c.screenShows(120, "State: unread") {
 		t.Fatalf("after the slow answer:\n%s", strings.Join(renderScreen(c.bytes(), 24, 120), "\n"))
 	}
+	// Back in the list the navigation shows the counters the reload
+	// brought.
+	c.act(t, keyEsc, 120, "esc organisations")
+	c.expect(t, "the answer's counters", 120, "29", "32")
 	if err := c.send("q"); err != nil {
 		t.Fatal(err)
 	}
@@ -453,7 +460,7 @@ func TestPTYMarkReadThenANetworkError(t *testing.T) {
 	if err := c.send("r"); err != nil {
 		t.Fatal(err)
 	}
-	c.rowGone(t, 80, "#1 Benachrichtigung")
+	c.rowGone(t, 80, "#1 Benachrichtigun")
 	c.act(t, "]", 80, "Could not reach the server")
 	c.act(t, "R", 80, "#27 Benachrichtigung", "page 2 of 2")
 	if err := c.send("q"); err != nil {
