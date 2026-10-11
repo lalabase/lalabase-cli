@@ -18,6 +18,14 @@ import (
 // claude on the PATH records the terminal's mode while it runs, its folder
 // and its arguments.
 
+// claudeEntry records the PWD claude inherits, before a shell could set it
+// to the real folder (sh does at start, so the shell stub cannot see it),
+// and hands over to claudeStub.
+const claudeEntry = `#!/usr/bin/perl
+open(my $f, ">", "$ENV{CLAUDE_PROBE}/pwdenv") or die; print $f "$ENV{PWD}\n"; close $f;
+exec("/bin/sh", "$ENV{CLAUDE_STUB}", @ARGV) or die;
+`
+
 // claudeStub records what claude would see and ends at once.
 const claudeStub = `#!/bin/sh
 stty -a > "$CLAUDE_PROBE/stty" 2>&1
@@ -38,7 +46,10 @@ func TestPTYLaunchRunsClaudeHereAndComesBack(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(claudeStub), 0o700); err != nil { //nolint:gosec // a test program
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(claudeEntry), 0o700); err != nil { //nolint:gosec // a test program
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(probe, "stub.sh"), []byte(claudeStub), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// Claude Code's own configuration names the fixture as its server.
@@ -48,7 +59,8 @@ func TestPTYLaunchRunsClaudeHereAndComesBack(t *testing.T) {
 	}
 	c := startTerminalWith(t, "inbox-normal", 120, terminalOptions{
 		url: url, marker: "Token can write: yes", limit: inboxLimit, home: home,
-		env: []string{"PATH=" + bin + ":/usr/bin:/bin", "CLAUDE_PROBE=" + probe},
+		// PWD as a shell leaves it for the client: the start folder.
+		env: []string{"PATH=" + bin + ":/usr/bin:/bin", "CLAUDE_PROBE=" + probe, "CLAUDE_STUB=" + filepath.Join(probe, "stub.sh"), "PWD=" + home},
 		// The project's folder from the profile, under ~/: not the folder
 		// the client was started in (home).
 		folders: map[string]string{website: "~/dev/website"},
@@ -80,6 +92,11 @@ func TestPTYLaunchRunsClaudeHereAndComesBack(t *testing.T) {
 	}
 	if got := strings.TrimSpace(read(t, filepath.Join(probe, "pwd"))); got != work {
 		t.Errorf("claude ran in %q, want the project's folder %q", got, work)
+	}
+	// PWD as claude inherits it names the project's folder too, not the
+	// client's start folder: exec.Cmd sets it from Dir while Env is unset.
+	if got := strings.TrimSpace(read(t, filepath.Join(probe, "pwdenv"))); got != work {
+		t.Errorf("claude inherited PWD %q, want the project's folder %q", got, work)
 	}
 	want := "-n\n--\nlalabase #1\n--\n" +
 		"Arbeite mit mir am Lalabase-Ticket #1. " +
