@@ -60,6 +60,8 @@ type terminalOptions struct {
 	home, cacheHome string
 	// env is added to the child's environment (NO_COLOR=1).
 	env []string
+	// folders are the default profile's project folders (C7).
+	folders map[string]string
 }
 
 func startTerminal(t *testing.T, scenario string, width uint16) *terminalProcess {
@@ -97,7 +99,7 @@ func startTerminalWith(t *testing.T, scenario string, width uint16, opts termina
 	if opts.url != "http://127.0.0.1:1" {
 		token = inboxfixture.Token
 	}
-	if err := profile.Save(filepath.Join(home, ".config", "lalabase", "config.toml"), profile.File{Profiles: map[string]profile.Entry{"default": {URL: opts.url, Token: token}}}); err != nil {
+	if err := profile.Save(filepath.Join(home, ".config", "lalabase", "config.toml"), profile.File{Profiles: map[string]profile.Entry{"default": {URL: opts.url, Token: token, Folders: opts.folders}}}); err != nil {
 		t.Fatal(err)
 	}
 	executable, err := os.Executable()
@@ -380,7 +382,8 @@ func TestTerminalChild(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
-	env := Env{Context: ctx, Home: os.Getenv("HOME"), Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv, Interactive: isTerminal(os.Stdin), OutputTerminal: isTerminal(os.Stdout)}
+	cwd, _ := os.Getwd()
+	env := Env{Context: ctx, Home: os.Getenv("HOME"), Cwd: cwd, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv, Interactive: isTerminal(os.Stdin), OutputTerminal: isTerminal(os.Stdout)}
 	if scenario == "hang" {
 		// The inherited pipe stays open while this sleeping descendant lives.
 		// EOF proves group termination without relying on zombie reaping by
