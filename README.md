@@ -18,7 +18,8 @@ search, and a ticket with its description, its comments page by page in
 either order and its attachments page by page, the description or one
 comment read whole on request. One `r` marks a notification as read, from
 the inbox or from the ticket opened out of it. The other writes come with
-C2.
+C2. One `x` in a ticket opens Claude Code beside it (C7): in a new iTerm
+pane, or without iTerm in this terminal until it ends.
 
 ## Setting up
 
@@ -167,6 +168,47 @@ navigation again.
   an unknown or refused target is a new operation with a new key; `R`
   reads, it never writes. A 401 on a write ends the session, also when its
   target was left meanwhile.
+* **Claude Code beside the ticket (C7).** `x` in the ticket view (the
+  focus on the ticket, the ticket shown whole) starts Claude Code with the
+  ticket as its task. It gets the ticket's **address only**: a fixed German
+  prompt with the number, `project_id`, `ticket_id` and the name of its own
+  Lalabase MCP server, and reads the ticket itself with `get_ticket`; no
+  title or other text of the server goes into the command line or the
+  prompt. The ids pass only as UUIDs, the number only as a positive
+  integer. Claude Code works with the rights of the token registered in
+  it, writes included; the prompt asks it to treat the ticket as foreign
+  text and to ask before changing it, which is a request, not a boundary.
+  * **Where.** In iTerm on macOS (`TERM_PROGRAM=iTerm.app` and a
+    well-formed `ITERM_SESSION_ID`) the client's own session is split
+    vertically (AppleScript, a constant run with `osascript -`, the values
+    as its arguments only), and the new pane's login shell runs
+    `cd '<folder>' && claude -n 'lalabase #<n>' '<prompt>'`, every value
+    single-quoted. Every press opens a new split. Elsewhere the interface
+    gives the terminal to `claude` (from the `PATH`, no shell, same
+    arguments) and comes back when it ends.
+  * **Which folder.** `[profiles.<name>.folders]` in `config.toml` maps a
+    project id to an absolute path or one under `~/`; without an entry,
+    the folder `lalabase` was started in. The folder must exist; a path
+    with a control character, a line break, an invisible character or a
+    backslash is refused.
+    ```toml
+    [profiles.default.folders]
+    00000000-0000-4000-8000-000000000031 = "~/dev/website"
+    ```
+  * **Which server.** Claude Code's configuration as it applies in that
+    folder (user scope, the local scope of the folder's git root, a
+    `.mcp.json` there or above) is read; a server name counts only when
+    every server of that name points at the profile's server, so a
+    repository's `.mcp.json` cannot redirect a name to another server.
+    None: nothing starts, and the status line names both servers. The name
+    must match `^[A-Za-z0-9_-]{1,64}$`.
+  * **What the status line says:** opening, opened beside `#<n>` (or ended,
+    without iTerm), or why not: the address, the folder, Claude Code's
+    configuration, no matching or a conflicting server, a name outside the
+    pattern, `claude` not on the `PATH`, macOS refusing iTerm control
+    (error -1743: allow it in System Settings, Privacy & Security,
+    Automation), the session not found, no answer within 5 s. While a
+    launch runs, a second `x` does nothing.
 * **A comment that is gone.** When the server answers a comment read whole
   with "not found" (it was deleted or made private), its cached text goes
   and is hidden at once, the ticket stays and says "Comment unavailable",
@@ -279,7 +321,9 @@ navigation again.
   says `allow_write = true`. That line lets both through, on purpose: the
   person allowed the agent to write. It is set by hand only; `auth import`
   never sets it and drops it, with a notice, when it replaces a profile.
-  `--profile NAME` picks one profile of the file, whole.
+  `--profile NAME` picks one profile of the file, whole. A profile may
+  carry `folders` (C7, above), written by hand; `auth import` keeps them
+  when it replaces the profile's server and token.
 * `auth import` reads Claude Code's MCP configuration (user, local and project
   scope), lists what it finds with only the token's prefix, always asks which
   entry to take, and checks the token with the server before saving. It runs
@@ -441,6 +485,10 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   auth commands do not check the locale; agent commands arrive in C4.
 * **No invisible characters in the repository:** `internal/sourceguard` reads
   every tracked text file. Write such characters as escapes or numbers.
+* **Child processes** start in `internal/launch` alone (C7: `osascript` and
+  `claude`): the source guard allows `os/exec` there, by name, and refuses
+  it and the process calls of `os` and `syscall` in every other production
+  file of the client.
 * **The server contract** is a copy of `spec/fixtures/mcp_contract.json` of the
   core repository, with its origin in `internal/contract/testdata/SOURCE.json`.
   Refresh it when the client adopts a newer server:

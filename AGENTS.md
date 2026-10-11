@@ -3,13 +3,11 @@
 Working notes for coding agents in this repository (Claude Code reads this
 file through `CLAUDE.md`). The README says what the
 program does; this file says how to change it without repeating mistakes the
-reviews of C0 already found. Status: 2026-10-11, main at C2a (#16: the
-ground for the writes of C2: the contract copy at MCP 0.11.0, the gateway's
-one write path, `update_ticket` and plain comments in the adapters, the
-features and the fixture's writes) plus the status colours (#18); the
-review findings of #16 (the fixture as a stand-in: replay by fingerprint,
-the server's trimming and body conversions, the scenarios' versions, a data
-race between its readers and writers) are this branch.
+reviews of C0 already found. Status: 2026-10-12, main at C2a (#16: the
+ground for the writes of C2, with its review findings in #21) plus the
+status colours (#18), the cursor bar (#19) and the scrollbar on free text
+(#23); C7 (Claude Code beside the ticket: `x`, `internal/launch`, project
+folders per profile) is this branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
@@ -47,7 +45,8 @@ on a Mac before every merge, by running the tests here.
 | `internal/inboxfixture` | the loopback stand-in for a server, built from the contract copy; `tools/inbox-fixture` serves it for a person |
 | `internal/profile` | server plus token; the config file, checked through `internal/privatefs` |
 | `internal/safefile` | reading files the client does not control |
-| `internal/claudecfg` | Lalabase entries in Claude Code's configuration (`auth import`) |
+| `internal/claudecfg` | Lalabase entries in Claude Code's configuration (`auth import`), and every server Claude Code may use in a folder (`Visible`, C7) |
+| `internal/launch` | Claude Code beside the ticket (C7): the server name, the folder, the command line, the AppleScript; the only package that starts a child process |
 | `internal/clean` | making foreign text safe for a terminal |
 | `internal/contract` | copy of the core's MCP contract; imported by tests only |
 | `internal/sourceguard` | tests over the repository's own files |
@@ -110,7 +109,9 @@ on a Mac before every merge, by running the tests here.
     three packages that keep the client's files (`internal/diskcache`,
     `internal/privatefs`, `internal/safefile`) have their file calls named
     one by one in `fileSystemImports`, the output and goroutine rules hold
-    there too, and no other package gets those names. No dot imports
+    there too, and no other package gets those names. Likewise
+    `launchImports` names what `internal/launch` (`os/exec`) and
+    `internal/claudecfg` may use; a child process starts nowhere else. No dot imports
     anywhere. A function the standard library runs on a goroutine of
     its own (an httptrace hook, a dial, a TLS callback) is set only through
     transport's `onWire` wrappers (`foreignCallbackTypes` in the guard; its
