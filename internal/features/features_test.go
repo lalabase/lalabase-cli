@@ -238,6 +238,38 @@ func TestEveryArgumentOfEveryFeatureIsChecked(t *testing.T) {
 	}
 }
 
+// A feature that brings a whole tool (Since set, no extra arguments)
+// declares every argument of the tool's recorded schema in its spec, so
+// the feature needs the whole tool: a server with half of it keeps the
+// feature off. The dispatcher's two arguments (project_id,
+// idempotency_key) are in the recorded schema, so they count. Review of
+// #16, finding 4 a: remove_assignee_ids is declared for this reason and
+// never sent, and nothing else pins it.
+func TestAWholeToolFeatureDeclaresEveryArgumentOfItsSchema(t *testing.T) {
+	tools, _ := contractTools(t)
+	for _, f := range All {
+		if f.Since == "" || len(f.ExtraArgs) > 0 {
+			continue
+		}
+		for _, tool := range tools {
+			if tool.Name != f.Spec.Tool {
+				continue
+			}
+			declared := slices.Concat(f.Spec.Args, f.Spec.Optional)
+			for name := range tool.Properties() {
+				if !slices.Contains(declared, name) {
+					t.Errorf("%s: the schema of %s has %s, which the spec does not declare", f.Name, tool.Name, name)
+				}
+			}
+			for _, name := range declared {
+				if _, ok := tool.Properties()[name]; !ok {
+					t.Errorf("%s: the spec declares %s, which the schema of %s lacks", f.Name, name, tool.Name)
+				}
+			}
+		}
+	}
+}
+
 // An adapter's optional arguments are exactly the extra arguments of the
 // features that run it: an argument no feature checks could be sent to a
 // server that does not know it.

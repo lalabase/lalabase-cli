@@ -68,7 +68,7 @@ func TestTheTicketWritesWorkAgainstTheFixture(t *testing.T) {
 	if !ans.OK() || api.CheckTicket(ticket, o) != nil || ticket.Title != "Ticket 6 (CSV)" || ticket.Status == nil || *ticket.Status != "resolved" || len(ticket.Assignees) != len(row.Assignees) {
 		t.Fatalf("the ticket does not show the changes: %v %+v", ans.Class, ticket)
 	}
-	again, ans := a.UpdateTicket(ctx, ProjectWebsite, six, api.TicketChange{Title: "other"}, "key-00000004")
+	again, ans := a.UpdateTicket(ctx, ProjectWebsite, six, api.TicketChange{Title: "Ticket 6 (CSV)"}, "key-00000004")
 	if !ans.OK() || again.Title != "Ticket 6 (CSV)" {
 		t.Fatalf("replay: %v %+v", ans.Class, again)
 	}
@@ -179,7 +179,7 @@ func TestPostCommentWorksAgainstTheFixture(t *testing.T) {
 	if global, _ := a.Notifications(ctx, api.NotificationQuery{Status: "unread", Page: 1, PerPage: 25}); global.Meta.UnreadTotal != 32 {
 		t.Fatalf("global after the comment: %+v", global.Meta)
 	}
-	again, ans := a.PostComment(ctx, ProjectWebsite, six, "other", api.CommentOptions{Plain: true}, "key-00000001")
+	again, ans := a.PostComment(ctx, ProjectWebsite, six, body, api.CommentOptions{Plain: true}, "key-00000001")
 	if !ans.OK() || again.ID != comment.ID || again.BodyText != comment.BodyText {
 		t.Fatalf("replay: %v %+v", ans.Class, again)
 	}

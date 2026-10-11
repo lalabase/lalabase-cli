@@ -3,11 +3,13 @@
 Working notes for coding agents in this repository (Claude Code reads this
 file through `CLAUDE.md`). The README says what the
 program does; this file says how to change it without repeating mistakes the
-reviews of C0 already found. Status: 2026-10-11, main at C1 complete (C1e,
-the disk cache, #14); C2a (the ground for the writes of C2: the contract
-copy at MCP 0.11.0, the gateway's one write path, `update_ticket` and plain
-comments in the adapters, the features and the fixture's writes) is this
-branch.
+reviews of C0 already found. Status: 2026-10-11, main at C2a (#16: the
+ground for the writes of C2: the contract copy at MCP 0.11.0, the gateway's
+one write path, `update_ticket` and plain comments in the adapters, the
+features and the fixture's writes) plus the status colours (#18); the
+review findings of #16 (the fixture as a stand-in: replay by fingerprint,
+the server's trimming and body conversions, the scenarios' versions, a data
+race between its readers and writers) are this branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).

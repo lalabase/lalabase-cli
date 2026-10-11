@@ -46,7 +46,7 @@ type Scenario string
 const (
 	// Normal: everything succeeds.
 	Normal Scenario = "normal"
-	// Older: a server before S1: list_notifications without
+	// Older: a 0.7.0 server, before S1: list_notifications without
 	// organisation_id, get_ticket without the paging arguments, no
 	// update_ticket, post_comment without format.
 	Older Scenario = "older"
@@ -91,6 +91,12 @@ const (
 	// meanwhile); the start and the writes are as in Normal.
 	SlowReads Scenario = "slow-reads"
 )
+
+// scenarioVersions are the versions the scenarios of older servers name
+// in initialize, so the client shows them as older than the tested one,
+// as it shows the real thing. Every other scenario names the contract
+// copy's.
+var scenarioVersions = map[Scenario]string{Older: "0.7.0", S1Only: "0.9.0", S2Only: "0.10.0"}
 
 // Scenarios lists them, for a tool's usage line.
 func Scenarios() []Scenario {
@@ -153,11 +159,12 @@ type Fixture struct {
 	log      []Request
 	attempts map[string]int
 	// C1f (marks.go), C2a (writes.go): the changes carried out, the keys
-	// seen, the result each key answered first, the changes on the
-	// tickets and the comments added, the number of the last comment.
+	// seen, the result each key answered first with the arguments it was
+	// used with, the changes on the tickets and the comments added, the
+	// number of the last comment.
 	mutations []Mutation
 	keys      []string
-	results   map[string]map[string]any
+	results   map[string]storedResult
 	edits     map[string]*ticketEdit
 	nextPost  int
 }
@@ -201,7 +208,7 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 	if err := json.Unmarshal(contractJSON, &file); err != nil {
 		return nil, fmt.Errorf("inbox fixture: the contract copy does not read: %w", err)
 	}
-	f := &Fixture{scenario: scenario, attempts: map[string]int{}, rows: map[string][]map[string]any{}, results: map[string]map[string]any{}, dropped: map[string]bool{}, edits: map[string]*ticketEdit{}}
+	f := &Fixture{scenario: scenario, attempts: map[string]int{}, rows: map[string][]map[string]any{}, results: map[string]storedResult{}, dropped: map[string]bool{}, edits: map[string]*ticketEdit{}}
 	var initialize struct {
 		Result json.RawMessage `json:"result"`
 	}
@@ -209,6 +216,13 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 		return nil, errors.New("inbox fixture: the contract copy records no initialize")
 	}
 	f.initialize = initialize.Result
+	if version, ok := scenarioVersions[scenario]; ok {
+		named, err := withServerVersion(f.initialize, version)
+		if err != nil {
+			return nil, err
+		}
+		f.initialize = named
+	}
 	var tools struct {
 		Result struct {
 			Tools []json.RawMessage `json:"tools"`
@@ -374,6 +388,21 @@ func synthesise(template, org map[string]any, first, n int, ticketOf func(number
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// withServerVersion is the recorded initialize with another server
+// version.
+func withServerVersion(result json.RawMessage, version string) (json.RawMessage, error) {
+	var body map[string]any
+	if err := json.Unmarshal(result, &body); err != nil {
+		return nil, err
+	}
+	info, _ := body["serverInfo"].(map[string]any)
+	if info == nil {
+		return nil, errors.New("inbox fixture: the recorded initialize names no server")
+	}
+	info["version"] = version
+	return json.Marshal(body)
 }
 
 // dropArgument removes an argument from a tool's input schema.
