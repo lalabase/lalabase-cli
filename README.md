@@ -5,7 +5,12 @@ full-screen interface) and for scripts and Claude Code (plain text or JSON).
 
 **Status:** organisations, the unread inbox, the tickets, marking as read
 and a disk cache between runs (slices C1b to C1f and C1e: C1 is complete).
-The interface verifies the token, lists the
+C2a lays the ground for the writes of C2 (a comment, the status, an
+assignment, the title of a ticket): the contract copy at MCP 0.11.0, the
+adapters of `update_ticket` and plain text comments, the features
+`ticket_update` and `comment_plain` (`auth status` lists them), the
+gateway's one write path and the fixture's writes; nothing new on the
+screen yet. The interface verifies the token, lists the
 organisations with their unread counts, shows the unread notifications of
 one organisation page by page, opens the ticket a notification names, and
 per organisation its projects, the tickets of a project page by page with a
@@ -291,13 +296,23 @@ expands), 3 in Handbuch, 5 in Archiv; the first organisation's rows name
 Website-Relaunch's tickets (row 6 names ticket #6), the second's name
 tickets the fixture does not have. It
 binds to 127.0.0.1 only, accepts one synthetic token (`inboxfixture.Token`)
-and refuses everything but the reads of C1 and its one write,
-`mark_notification_read`: a marked row leaves the unread pages and the
-counts, a key seen before answers the original result without a second
-change, and the fixture logs attempts (`Requests`), keys (`Keys`) and the
-changes it carried out (`Mutations`) apart, for the tests. Scenarios:
+and refuses everything but the reads of C1 and the writes of C1f and C2:
+`mark_notification_read` (a marked row leaves the unread pages and the
+counts), `update_ticket` (one change per call, validated as the server
+does with its texts; the status keys are the five of every project, "me"
+is the person of `/me`, a stranger cannot be assigned) and `post_comment`
+(plain or HTML; a plain body comes back as sent with the edge blank lines
+gone; the author's unread rows naming the ticket are read afterwards, as
+on the server). A change shows in the list, the ticket and the summary
+from then on, a key seen before answers the original result without a
+second change, and the fixture logs attempts (`Requests`), keys (`Keys`)
+and the changes it carried out (`Mutations`, with their kind) apart, for
+the tests. A tool a scenario took out of `tools/list` is unknown to the
+fixture, as to the server. Scenarios:
 `normal`, `older` (no organisation filter, no paging of comments, no
-expansion), `temporary` (page 2 of the first organisation's inbox and of
+expansion, no `update_ticket`, no `format`), `s1-only` (a 0.9.0 server:
+no `update_ticket`, no `format`), `s2-only` (a 0.10.0 server: no
+`format`, so a comment is HTML to it), `temporary` (page 2 of the first organisation's inbox and of
 Website-Relaunch's tickets fails twice, `R` succeeds; so does page 2 of
 ticket #6's comments), `429` (one short pause, on page 2 and on the first
 attempt of every write), `401` (the session expires, also on a preview of
@@ -305,9 +320,13 @@ ticket #2 and on a write), `vanished` (ticket #6's newest comment is still
 on its page, but read whole it is "not found"), `read-only` (the token may
 not write), `unknown-write` (`/me` without `read_only`), `no-mark-read`
 (the tool is missing), `refusals` (marking the first organisation's row #2
-is refused as archived, #3 is not found, #4 is not allowed), `lost` (every
-write is carried out and its answer is lost), `slow` (every write is
-answered after 1.5 s), `slow-reads` (every inbox page of one organisation
+is refused as archived, #3 is not found, #4 is not allowed; on
+Website-Relaunch's tickets, #2 refuses a status and an assignment as
+`value_not_allowed`, a title as `validation_failed` and a comment as
+forbidden, #3 a status as `no_status_field`, #4 every write as forbidden,
+#5 every write as vanished, #7 an assignment as `user_not_assignable`),
+`lost` (every write is carried out and its answer is lost), `slow` (every
+write is answered after 1.5 s), `slow-reads` (every inbox page of one organisation
 and every ticket is answered after 1.5 s: what the disk cache shows
 meanwhile after a restart). Ticket #6 of Website-Relaunch has a description and
 two comments the server shortened, 30 comments and twelve attachments with
@@ -397,12 +416,18 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   letters, digits or `._:-`, a form the server keeps unchanged); an adapter
   refuses a write without one before sending. An answer to a write never
   replaces or drops the record: a refused write keeps it, a successful one
-  keeps it and asks for a reload. The interface's one write (`r`, C1f) runs
-  through the gateway as the person's job of kind Write, never shared, the
-  key made at the key press from the session, the operation's number and
-  the clock; the gateway confirms a success only when the answer names the
-  notification asked for as read, anything else after a request that left
-  is an unknown outcome.
+  keeps it and asks for a reload. Every write of the interface runs
+  through the gateway's one path (`Write`, C2a; `r` of C1f is its first
+  caller) as the person's job of kind Write, never shared, the key made at
+  the key press from the session, the operation's number and the clock.
+  The gateway confirms a success only when the answer carries the write:
+  the notification asked for as read, the ticket asked for with the status
+  or the title sent, the person among its assignees, a comment of that
+  ticket; anything else after a request that left is an unknown outcome.
+  `update_ticket` sends exactly one change (a status key, a title, or
+  `"me"` to add; nobody is ever removed) and refuses a change of none or
+  two before sending; `post_comment` sends `format: plain` only when asked
+  (feature `comment_plain`), so an older server gets the request it knows.
 * **Adapters** (`internal/api`): one per tool and REST reader, each with a
   `Spec` naming the arguments it sends and the fields it needs back (present
   and not null; a field that may be null is marked `?`). The same
@@ -410,9 +435,13 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   input schemas; the server version decides nothing), the runtime check of
   every answer, and the compatibility test against the contract copy.
   Arguments a newer server brings (server slice S1: `organisation_id`, the
-  pages and the full text of `get_ticket`) are optional in the spec, each
-  checked by the feature that sends it, so an older server keeps the base
-  feature. An answer to such a request must carry the fields it relies on
+  pages and the full text of `get_ticket`; S2b: `format` of
+  `post_comment`) are optional in the spec, each checked by the feature
+  that sends it, so an older server keeps the base feature. A tool a
+  slice brings whole (S2: `update_ticket`) is a feature of its own, on
+  only when every argument its spec declares is in the schema. The
+  contract copy is at MCP 0.11.0; a 0.9.0 or 0.10.0 server is shown as
+  older than the tested version and works with what its schemas say. An answer to such a request must carry the fields it relies on
   (a page without `posts_pages` is a protocol error, not page 0 of 0). A
   missing or hidden comment asked for by `post_id` comes back as a refusal
   (`comment_not_found`), not as "not found": the cache would drop the ticket.

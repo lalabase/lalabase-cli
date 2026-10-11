@@ -3,8 +3,11 @@
 Working notes for coding agents in this repository (Claude Code reads this
 file through `CLAUDE.md`). The README says what the
 program does; this file says how to change it without repeating mistakes the
-reviews of C0 already found. Status: 2026-10-10, main at C1f (mark as
-read, #13); C1e (the disk cache) is this branch, and with it C1 is complete.
+reviews of C0 already found. Status: 2026-10-11, main at C1 complete (C1e,
+the disk cache, #14); C2a (the ground for the writes of C2: the contract
+copy at MCP 0.11.0, the gateway's one write path, `update_ticket` and plain
+comments in the adapters, the features and the fixture's writes) is this
+branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
@@ -33,7 +36,7 @@ on a Mac before every merge, by running the tests here.
 | `internal/diskcache` | the disk cache (C1e): one directory per profile, one lock per run, a replay of the journal, every file checked before it is an entry |
 | `internal/privatefs` | the one threat model of the client's private files (the config, its lock, the disk cache): owners, modes, the directory chain, macOS access lists, locks |
 | `internal/queue` | the one queue every request goes through |
-| `internal/gateway` | reads from the queue to the interface: one typed message per waiter, and `Scope`, which checks a result before it is cached |
+| `internal/gateway` | reads from the queue to the interface: one typed message per waiter, `Scope`, which checks a result before it is cached, and the one write path (`Write`), which confirms a success only from the answer |
 | `internal/worker` | the supervisor: the only place a goroutine is started, its panics become one fatal error |
 | `internal/ui` | the root Bubble Tea model: owns every piece of state, issues reads through the gateway, builds the screen; `view/` renders it and knows nothing else |
 | `internal/present` | the display values the views take: opaque, cleaned once, a cast cannot forge one |

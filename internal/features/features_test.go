@@ -2,6 +2,7 @@ package features
 
 import (
 	"encoding/json"
+	"os"
 	"slices"
 	"testing"
 
@@ -27,10 +28,10 @@ func contractTools(t *testing.T) ([]transport.Tool, *contract.File) {
 	return tools, file
 }
 
-var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.9.0"}
+var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.11.0"}
 
-// On the contract the client was built against (MCP 0.9.0, server slice S1
-// included), every feature is on.
+// On the contract the client was built against (MCP 0.11.0, server slices
+// S1, S2 and S2b included), every feature is on.
 func TestOnTheContractEveryFeatureIsOn(t *testing.T) {
 	tools, _ := contractTools(t)
 	report := Detect(contractServer, tools)
@@ -49,28 +50,41 @@ func TestOnTheContractEveryFeatureIsOn(t *testing.T) {
 func TestEveryEnabledFeatureFindsItsFieldsInTheRecordedAnswers(t *testing.T) {
 	tools, file := contractTools(t)
 	report := Detect(contractServer, tools)
+	// The recorded successes a feature's fields are checked against where
+	// they are not the tool's one "ok": update_ticket records one per
+	// kind, the plain comment lives in a group of its own.
+	successes := map[string][][2]string{
+		"ticket_update": {{"update_ticket", "ok_status"}, {"update_ticket", "ok_assign"}, {"update_ticket", "ok_title"}},
+		"comment_plain": {{"post_comment_formats", "plain"}},
+	}
 	for _, f := range All {
 		if !report.Enabled[f.Name] {
 			continue
 		}
-		ex, ok := file.Contract.MCP.Calls[f.Spec.Tool]["ok"]
+		cases, ok := successes[f.Name]
 		if !ok {
-			t.Errorf("%s: the contract records no ok answer of %s", f.Name, f.Spec.Tool)
-			continue
+			cases = [][2]string{{f.Spec.Tool, "ok"}}
 		}
-		var body struct {
-			Result struct {
-				Content []struct {
-					Text string `json:"text"`
-				} `json:"content"`
-			} `json:"result"`
-		}
-		if err := json.Unmarshal(ex.Response.Body, &body); err != nil || len(body.Result.Content) == 0 {
-			t.Fatalf("%s: %v", f.Name, err)
-		}
-		missing, err := api.Missing([]byte(body.Result.Content[0].Text), f.Spec.Required)
-		if err != nil || len(missing) > 0 {
-			t.Errorf("%s: the recorded answer lacks %v (%v)", f.Name, missing, err)
+		for _, c := range cases {
+			ex, ok := file.Contract.MCP.Calls[c[0]][c[1]]
+			if !ok {
+				t.Errorf("%s: the contract records no %s/%s", f.Name, c[0], c[1])
+				continue
+			}
+			var body struct {
+				Result struct {
+					Content []struct {
+						Text string `json:"text"`
+					} `json:"content"`
+				} `json:"result"`
+			}
+			if err := json.Unmarshal(ex.Response.Body, &body); err != nil || len(body.Result.Content) == 0 {
+				t.Fatalf("%s: %v", f.Name, err)
+			}
+			missing, err := api.Missing([]byte(body.Result.Content[0].Text), f.Spec.Required)
+			if err != nil || len(missing) > 0 {
+				t.Errorf("%s: the recorded %s/%s lacks %v (%v)", f.Name, c[0], c[1], missing, err)
+			}
 		}
 	}
 	for _, spec := range []api.Spec{api.MeSpec, api.OrganisationsSpec, api.ProjectsSpec} {
@@ -141,14 +155,14 @@ func TestAMissingToolSwitchesOffItsFeatures(t *testing.T) {
 // something off.
 func TestANewerServerWithMoreToolsIsANotice(t *testing.T) {
 	tools, _ := contractTools(t)
-	tools = append(tools, transport.Tool{Name: "update_ticket", InputSchema: json.RawMessage(`{"type":"object","properties":{"ticket_id":{}}}`)})
-	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.9.0"}, tools)
+	tools = append(tools, transport.Tool{Name: "delete_ticket", InputSchema: json.RawMessage(`{"type":"object","properties":{"ticket_id":{}}}`)})
+	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.11.0"}, tools)
 	for _, f := range All {
-		if f.Since == "" && !report.Enabled[f.Name] {
+		if !report.Enabled[f.Name] {
 			t.Errorf("%s went off on a newer server", f.Name)
 		}
 	}
-	if !slices.Contains(report.Unused, "update_ticket") {
+	if !slices.Contains(report.Unused, "delete_ticket") {
 		t.Errorf("unused %v", report.Unused)
 	}
 }
@@ -191,7 +205,13 @@ func TestFeaturesNameTheArgumentsTheirAdaptersSend(t *testing.T) {
 			}
 		}
 		if f.Since != "" && len(f.ExtraArgs) == 0 {
-			t.Errorf("%s waits for %s but needs nothing new", f.Name, f.Since)
+			// A slice brings an argument of a tool the contract had, or a
+			// tool of its own: never a feature that an older server has.
+			for _, g := range All {
+				if g.Since == "" && g.Spec.Tool == f.Spec.Tool {
+					t.Errorf("%s waits for %s but needs nothing %s lacks", f.Name, f.Since, g.Name)
+				}
+			}
 		}
 	}
 }
@@ -250,6 +270,8 @@ func TestAnS1ArgumentSwitchesOffOnlyItsFeature(t *testing.T) {
 		{"get_ticket", "posts_page", "ticket_posts_paged", "ticket"},
 		{"get_ticket", "attachments_page", "ticket_posts_paged", "ticket_full_text"},
 		{"get_ticket", "post_id", "ticket_full_text", "ticket_posts_paged"},
+		// S2b: a 0.10.0 server has update_ticket and no plain comments.
+		{"post_comment", "format", "comment_plain", "comment"},
 	}
 	for _, c := range cases {
 		tools, _ := contractTools(t)
@@ -294,6 +316,7 @@ func TestEachOptionalArgumentBelongsToItsFeature(t *testing.T) {
 		"attachments_page": "ticket_posts_paged",
 		"full_text":        "ticket_full_text",
 		"post_id":          "ticket_full_text",
+		"format":           "comment_plain",
 	}
 	seen := map[string]bool{}
 	for _, f := range All {
@@ -308,5 +331,70 @@ func TestEachOptionalArgumentBelongsToItsFeature(t *testing.T) {
 		if !seen[arg] {
 			t.Errorf("no feature checks %s", arg)
 		}
+	}
+}
+
+// toolsListOf reads a recorded tools/list kept beside the tests.
+func toolsListOf(t *testing.T, path string) []transport.Tool {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Result struct {
+			Tools []transport.Tool `json:"tools"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil || len(body.Result.Tools) == 0 {
+		t.Fatalf("%s: %v", path, err)
+	}
+	return body.Result.Tools
+}
+
+// On the server before S2 (MCP 0.9.0, its tools/list kept in testdata) the
+// two write features of C2 are off, with the reason named, and the ten
+// features of C1 stay on: a 0.9.0 server keeps everything it had.
+func TestOnTheServerBeforeS2TheWriteFeaturesAreOff(t *testing.T) {
+	tools := toolsListOf(t, "testdata/tools_list_0.9.0.json")
+	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.9.0"}, tools)
+	on := 0
+	for _, f := range All {
+		want := f.Since != "S2" && f.Since != "S2b"
+		if report.Enabled[f.Name] != want {
+			t.Errorf("%s on %v on a 0.9.0 server (missing %v)", f.Name, report.Enabled[f.Name], report.Missing[f.Name])
+		}
+		if report.Enabled[f.Name] {
+			on++
+		}
+	}
+	if on != 10 {
+		t.Errorf("%d features on, want the ten of C1", on)
+	}
+	if !slices.Contains(report.Missing["ticket_update"], "tool update_ticket") || !slices.Contains(report.Missing["comment_plain"], "post_comment: argument format") {
+		t.Errorf("missing %v / %v", report.Missing["ticket_update"], report.Missing["comment_plain"])
+	}
+	if !report.BelowTested {
+		t.Error("0.9.0 is not below the tested 0.11.0")
+	}
+}
+
+// A 0.10.0 server (S2 without S2b) has update_ticket and no plain
+// comments: the status, assignment and title can be written, a comment
+// cannot.
+func TestOnAServerWithS2AloneOnlyThePlainCommentIsOff(t *testing.T) {
+	tools, _ := contractTools(t)
+	for i, tool := range tools {
+		if tool.Name != "post_comment" {
+			continue
+		}
+		var schema map[string]any
+		_ = json.Unmarshal(tool.InputSchema, &schema)
+		delete(schema["properties"].(map[string]any), "format")
+		tools[i].InputSchema, _ = json.Marshal(schema)
+	}
+	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.10.0"}, tools)
+	if !report.Enabled["ticket_update"] || report.Enabled["comment_plain"] || !report.Enabled["comment"] || !report.BelowTested {
+		t.Fatalf("ticket_update %v, comment_plain %v, comment %v, below %v", report.Enabled["ticket_update"], report.Enabled["comment_plain"], report.Enabled["comment"], report.BelowTested)
 	}
 }

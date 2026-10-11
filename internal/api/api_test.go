@@ -63,7 +63,9 @@ func TestMissingRefusesTheWrongShape(t *testing.T) {
 }
 
 // replayCase serves one recorded answer of the contract and records the
-// arguments the adapter sent.
+// arguments the adapter sent. tool is the contract's group, which names
+// the tool or, for a second set of cases of one tool, a group of its own
+// (post_comment_formats); the tool called is read from the recorded request.
 func replayCase(t *testing.T, tool, name string) (*API, *map[string]any) {
 	t.Helper()
 	return replayRecorded(t, tool, name, false)
@@ -87,6 +89,14 @@ func replayRecorded(t *testing.T, tool, name string, older bool) (*API, *map[str
 	if !ok {
 		t.Fatalf("the contract has no %s/%s", tool, name)
 	}
+	var recorded struct {
+		Params struct {
+			Name string `json:"name"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(ex.Request, &recorded); err != nil || recorded.Params.Name == "" {
+		t.Fatalf("the recorded request of %s/%s names no tool", tool, name)
+	}
 	sent := map[string]any{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -97,8 +107,8 @@ func replayRecorded(t *testing.T, tool, name string, older bool) (*API, *map[str
 			} `json:"params"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
-		if req.Params.Name != tool {
-			t.Errorf("called %s, want %s", req.Params.Name, tool)
+		if req.Params.Name != recorded.Params.Name {
+			t.Errorf("called %s, want %s", req.Params.Name, recorded.Params.Name)
 		}
 		sent = req.Params.Arguments
 		// The recorded answer under the id of this request.
@@ -148,7 +158,7 @@ func TestNotificationsReadsTheRecordedInbox(t *testing.T) {
 		t.Fatalf("%v %s", ans.Class, ans.Message)
 	}
 	if page.Meta.UnreadTotal != 1 || len(page.Data) != 1 || page.Data[0].ID != unread || page.Data[0].Organisation.ID != org ||
-		page.Data[0].Ticket == nil || page.Data[0].Ticket.Number != 1 || len(page.Meta.ByOrganisation) != 1 {
+		page.Data[0].Ticket == nil || page.Data[0].Ticket.Number != 2 || page.Data[0].Ticket.ID != export || len(page.Meta.ByOrganisation) != 1 {
 		t.Fatalf("decoded %+v", page)
 	}
 	assertSentDeclared(t, NotificationsSpec, *sent)
@@ -212,7 +222,7 @@ func TestAMissingTicketIsNotFound(t *testing.T) {
 
 func TestPostCommentSendsBodyAndKey(t *testing.T) {
 	api, sent := replayCase(t, "post_comment", "ok")
-	comment, ans := api.PostComment(context.Background(), website, login, "Behoben in 2.4.1.", "key-0003")
+	comment, ans := api.PostComment(context.Background(), website, login, "Behoben in 2.4.1.", CommentOptions{}, "key-0003")
 	if !ans.OK() || comment.BodyText != "Behoben in 2.4.1." || comment.TicketID != login {
 		t.Fatalf("%v %+v", ans.Class, comment)
 	}
@@ -313,7 +323,7 @@ func TestAnOlderServersNotFoundIsRecognisedByEveryOneRecordAdapter(t *testing.T)
 	if _, ans := replayOlder(t, "get_ticket", "empty").Ticket(ctx, website, missing); ans.Class != transport.NotFound {
 		t.Errorf("Ticket: got %v %q", ans.Class, ans.Message)
 	}
-	if _, ans := replayOlder(t, "post_comment", "empty").PostComment(ctx, website, missing, "Hallo", "key-0004"); ans.Class != transport.NotFound {
+	if _, ans := replayOlder(t, "post_comment", "empty").PostComment(ctx, website, missing, "Hallo", CommentOptions{}, "key-0004"); ans.Class != transport.NotFound {
 		t.Errorf("PostComment: got %v %q", ans.Class, ans.Message)
 	}
 	if _, ans := replayOlder(t, "mark_notification_read", "empty").MarkNotificationRead(ctx, missing, "key-0005"); ans.Class != transport.NotFound {
@@ -338,7 +348,7 @@ func TestAWriteWithoutAnIdempotencyKeyIsRefusedBeforeSending(t *testing.T) {
 	defer srv.Close()
 	c, _ := transport.New(srv.URL, "lalab_pat_test")
 	api := New(c)
-	if _, ans := api.PostComment(context.Background(), website, login, "Hallo", ""); ans.Class != transport.InvalidInput {
+	if _, ans := api.PostComment(context.Background(), website, login, "Hallo", CommentOptions{}, ""); ans.Class != transport.InvalidInput {
 		t.Errorf("PostComment: got %v", ans.Class)
 	}
 	if _, ans := api.MarkNotificationRead(context.Background(), unread, ""); ans.Class != transport.InvalidInput {
@@ -394,7 +404,7 @@ func TestAnIdempotencyKeyOfTheWrongFormIsRefusedBeforeSending(t *testing.T) {
 	c, _ := transport.New(srv.URL, "lalab_pat_test")
 	api := New(c)
 	for _, key := range []string{" \t\n", "short", "key with spaces", " key-0001", strings.Repeat("k", 129), "key-0001\x00"} {
-		if _, ans := api.PostComment(context.Background(), website, login, "Hallo", key); ans.Class != transport.InvalidInput {
+		if _, ans := api.PostComment(context.Background(), website, login, "Hallo", CommentOptions{}, key); ans.Class != transport.InvalidInput {
 			t.Errorf("PostComment with %q: got %v", key, ans.Class)
 		}
 		if _, ans := api.MarkNotificationRead(context.Background(), unread, key); ans.Class != transport.InvalidInput {
@@ -463,7 +473,7 @@ func TestADeletedUserDoesNotBreakTheTicketOrTheInbox(t *testing.T) {
 	}
 
 	text = recordedText(t, "post_comment", func(p map[string]any) { p["author"].(map[string]any)["name"] = nil })
-	if _, ans := replayText(t, text).PostComment(context.Background(), website, login, "x", "key-0009"); !ans.OK() {
+	if _, ans := replayText(t, text).PostComment(context.Background(), website, login, "x", CommentOptions{}, "key-0009"); !ans.OK() {
 		t.Fatalf("comment: %v %q", ans.Class, ans.Message)
 	}
 }
@@ -471,7 +481,7 @@ func TestADeletedUserDoesNotBreakTheTicketOrTheInbox(t *testing.T) {
 // Turning an answer into a protocol error keeps what the transport knew: a
 // write that reached the server stays "sent", so it is reloaded, not resent.
 func TestAProtocolErrorKeepsSentAndStatus(t *testing.T) {
-	_, ans := replayText(t, `{}`).PostComment(context.Background(), website, login, "x", "key-0010")
+	_, ans := replayText(t, `{}`).PostComment(context.Background(), website, login, "x", CommentOptions{}, "key-0010")
 	if ans.Class != transport.Protocol || !ans.Sent || ans.Status != 200 {
 		t.Fatalf("got %v sent=%v status=%d", ans.Class, ans.Sent, ans.Status)
 	}
@@ -503,7 +513,7 @@ func TestAPersonWithoutAnIDIsAProtocolError(t *testing.T) {
 		},
 		"new comment author": func() transport.Answer {
 			text := recordedText(t, "post_comment", func(p map[string]any) { p["author"].(map[string]any)["id"] = nil })
-			_, ans := replayText(t, text).PostComment(ctx, website, login, "x", "key-0011")
+			_, ans := replayText(t, text).PostComment(ctx, website, login, "x", CommentOptions{}, "key-0011")
 			return ans
 		},
 	}

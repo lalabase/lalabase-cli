@@ -139,13 +139,14 @@ func TestTheTargetIsTheRowOrTheTicketOpenedFromIt(t *testing.T) {
 		t.Fatalf("o not offered: %q", helpText(h.m))
 	}
 	h.drive(h.press("o"))
-	if a.origin == nil || a.origin.notification != second || a.origin.ticket != login || a.detail == nil || a.detail.id != login || h.m.focus != view.Object {
+	export := ticketID(website, 2) // the second row names ticket #2
+	if a.origin == nil || a.origin.notification != second || a.origin.ticket != export || a.detail == nil || a.detail.id != export || h.m.focus != view.Object {
 		t.Fatalf("origin %+v, detail %+v, focus %d", a.origin, a.detail, h.m.focus)
 	}
 	if got := h.m.crumbs()[2].String(); got != "Ticket" {
 		t.Fatalf("crumb %q", got)
 	}
-	mustContain(t, h.paneText(), "#1 Login bricht ab", "Notification: unread")
+	mustContain(t, h.paneText(), "#2 Export als CSV", "Notification: unread")
 	// Opening marked nothing.
 	if len(h.f.markCalls()) != 1 {
 		t.Fatal("opening the ticket wrote")
@@ -154,7 +155,7 @@ func TestTheTargetIsTheRowOrTheTicketOpenedFromIt(t *testing.T) {
 	if calls := h.f.markCalls(); len(calls) != 2 || calls[1].id != second {
 		t.Fatalf("calls %+v", calls)
 	}
-	if op := a.marks[second]; op == nil || op.state != markConfirmed || op.ticket != login || op.project != website {
+	if op := a.marks[second]; op == nil || op.state != markConfirmed || op.ticket != export || op.project != website {
 		t.Fatalf("op %+v", op)
 	}
 	// The ticket stays open and usable after the mark; its row left the
@@ -192,9 +193,10 @@ func TestTheTargetIsTheRowOrTheTicketOpenedFromIt(t *testing.T) {
 	}
 	h.drive(h.chooseTickets(orgA))
 	h.drive(h.openProject(website))
-	a.tickets.selected = login
+	linked := ticketID(website, 3) // the third row names ticket #3
+	a.tickets.selected = linked
 	h.drive(h.press("enter"))
-	if a.detail == nil || a.detail.id != login || !a.detail.cached && !a.detail.known {
+	if a.detail == nil || a.detail.id != linked || !a.detail.cached && !a.detail.known {
 		t.Fatalf("the ticket did not open from the section: %+v", a.detail)
 	}
 	if a.origin != nil || h.m.allowed()[MarkRead] {
@@ -1029,7 +1031,7 @@ func TestThePageCorrectionAfterAMarkKeepsTheTicket(t *testing.T) {
 	if a.origin == nil || a.detail == nil || !a.detail.known || h.m.focus != view.Object {
 		t.Fatalf("the correction took the ticket: origin %v, detail %v, focus %d", a.origin, a.detail != nil, h.m.focus)
 	}
-	mustContain(t, h.paneText(), "#1 Login bricht ab", "Notification: unread · Marked as read")
+	mustContain(t, h.paneText(), "#26 Ticket 26", "Notification: unread · Marked as read") // the only row of page 2 names ticket #26
 	h.drive(h.press("esc"))
 	if a.origin != nil || h.m.focus != view.List || a.active.opened != "" || a.active.selected == "" {
 		t.Fatalf("after esc: origin %v, focus %d, opened %q, selected %q", a.origin, h.m.focus, a.active.opened, a.active.selected)

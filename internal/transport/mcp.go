@@ -86,7 +86,7 @@ func legacyNotFound(call Call) []string {
 	}
 	var texts []string
 	switch call.Tool {
-	case "get_ticket", "post_comment":
+	case "get_ticket", "post_comment", "update_ticket":
 		if id, ok := call.Args["ticket_id"].(string); ok {
 			texts = append(texts, "No ticket found for "+strings.TrimSpace(id)+".")
 		}

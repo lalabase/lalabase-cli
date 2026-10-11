@@ -646,11 +646,87 @@ func (a *API) TicketByNumber(ctx context.Context, projectID string, number int) 
 	return t, a.call(ctx, TicketSpec, map[string]any{"project_id": projectID, "number": strconv.Itoa(number)}, &t)
 }
 
+// --- update_ticket (server slice S2, MCP 0.10.0) --------------------------------
+
+var UpdateTicketSpec = Spec{
+	Name: "update_ticket", Tool: "update_ticket",
+	// remove_assignee_ids is declared, so the feature needs the whole tool
+	// (S2 as built), and never sent: the client adds, it removes nobody.
+	Args:      []string{"project_id", "ticket_id", "title", "status", "add_assignee_ids", "remove_assignee_ids", "idempotency_key"},
+	OneRecord: true,
+	// The summary the server answers with carries the fields of a list row.
+	Required: []string{"id", "number", "title", "status?", "updated_at", "assignees[].id", "assignees[].name"},
+}
+
+// TicketChange is the one change of a ticket an update sends: exactly one
+// of the three is set. Status is a key of the project's
+// meta.available_statuses, Title the whole new title, AddMe adds the person
+// the token belongs to (sent as "me", which the server resolves; nobody is
+// removed).
+type TicketChange struct {
+	Status string
+	Title  string
+	AddMe  bool
+}
+
+// kinds counts the changes set.
+func (c TicketChange) kinds() int {
+	n := 0
+	if c.Status != "" {
+		n++
+	}
+	if c.Title != "" {
+		n++
+	}
+	if c.AddMe {
+		n++
+	}
+	return n
+}
+
+// UpdateTicket is a write of one change: key is the idempotency key of the
+// person's action. A change that sets none or more than one field is
+// refused before sending, as the server would after a round trip. The
+// answer is the ticket's summary, decoded as a list row.
+func (a *API) UpdateTicket(ctx context.Context, projectID, ticketID string, c TicketChange, key string) (TicketRow, transport.Answer) {
+	if ans, ok := checkKey(UpdateTicketSpec, key); !ok {
+		return TicketRow{}, ans
+	}
+	if c.kinds() != 1 {
+		return TicketRow{}, transport.Answer{Class: transport.InvalidInput, Message: UpdateTicketSpec.Name + ": exactly one change per call: a status, a title or an assignment"}
+	}
+	args := map[string]any{"project_id": projectID, "ticket_id": ticketID, "idempotency_key": key}
+	switch {
+	case c.Status != "":
+		args["status"] = c.Status
+	case c.Title != "":
+		args["title"] = c.Title
+	case c.AddMe:
+		args["add_assignee_ids"] = []string{"me"}
+	}
+	var row TicketRow
+	return row, a.call(ctx, UpdateTicketSpec, args, &row)
+}
+
+// --- post_comment --------------------------------------------------------------
+
 var CommentSpec = Spec{
 	Name: "post_comment", Tool: "post_comment",
-	Args:      []string{"project_id", "ticket_id", "body", "idempotency_key"},
+	Args: []string{"project_id", "ticket_id", "body", "idempotency_key"},
+	// format is the plain text body (feature comment_plain, MCP 0.11.0): a
+	// server without it takes HTML, which this client never writes.
+	Optional:  []string{"format"},
 	OneRecord: true,
 	Required:  []string{"id", "ticket_id", "author?.id", "author?.name?", "body_text", "is_private", "created_at"},
+}
+
+// CommentOptions are the arguments of post_comment a newer server brings.
+// The zero value sends none of them.
+type CommentOptions struct {
+	// Plain: the body is literal text; the server escapes it, turns line
+	// breaks into markup and keeps body_text as sent. Needs the feature
+	// comment_plain.
+	Plain bool
 }
 
 type Comment struct {
@@ -663,11 +739,14 @@ type Comment struct {
 }
 
 // PostComment is a write: key is the idempotency key of the person's action.
-func (a *API) PostComment(ctx context.Context, projectID, ticketID, body, key string) (Comment, transport.Answer) {
+func (a *API) PostComment(ctx context.Context, projectID, ticketID, body string, o CommentOptions, key string) (Comment, transport.Answer) {
 	if ans, ok := checkKey(CommentSpec, key); !ok {
 		return Comment{}, ans
 	}
 	args := map[string]any{"project_id": projectID, "ticket_id": ticketID, "body": body, "idempotency_key": key}
+	if o.Plain {
+		args["format"] = "plain"
+	}
 	var c Comment
 	return c, a.call(ctx, CommentSpec, args, &c)
 }

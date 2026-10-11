@@ -127,8 +127,12 @@ func (d recordedData) rows(org string, first, n int) []api.Notification {
 		row := d.rowTmpl
 		row.ID = idOf(first + i)
 		row.Organisation = api.Ref{ID: org, Name: "Org " + org[len(org)-1:]}
+		// The row names the ticket of Website with its number, as the
+		// fixture's rows do, so the tickets harness answers it whatever
+		// ticket the recorder's template names (a row of B names a ticket
+		// the harness does not have).
 		ticket := *d.rowTmpl.Ticket
-		ticket.Number = first + i
+		ticket.ID, ticket.Number, ticket.Title, ticket.ProjectID = ticketID(website, first+i), first+i, ticketTitle(first+i), website
 		row.Ticket = &ticket
 		row.Message = "Message " + row.ID[len(row.ID)-4:]
 		out = append(out, row)

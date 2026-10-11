@@ -649,6 +649,12 @@ func TestALegacyNotFoundUsesTheServersNormalisedAddress(t *testing.T) {
 	if got := clientAt(t, answer("No notification found for n-1.").URL).CallTool(context.Background(), notification); got.Class != NotFound {
 		t.Errorf("notification id with spaces: got %v", got.Class)
 	}
+	// update_ticket (S2) answers a missing ticket with the sentence of
+	// get_ticket; a cached ticket a write finds gone must leave the cache.
+	update := Call{Tool: "update_ticket", OneRecord: true, Args: map[string]any{"ticket_id": " t-1 ", "status": "new"}}
+	if got := clientAt(t, answer("No ticket found for t-1.").URL).CallTool(context.Background(), update); got.Class != NotFound {
+		t.Errorf("update_ticket: got %v", got.Class)
+	}
 }
 
 // A catalogue of three valid pages is read whole; the page limit only stops
