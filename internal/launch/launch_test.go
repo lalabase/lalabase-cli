@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -493,5 +494,13 @@ func TestNoITermInsideAMultiplexer(t *testing.T) {
 	}
 	if l := New(Config{TermProgram: "iTerm.app", SessionID: "w0t1p2:" + sessionUUID}); iTermPossible && l.session == "" {
 		t.Fatal("no session without a multiplexer")
+	}
+}
+
+// Review round 6, F2: the iTerm path exists on macOS and nowhere else; the
+// tests of New follow the constant, so it is pinned here.
+func TestITermIsPossibleOnMacOSAlone(t *testing.T) {
+	if iTermPossible != (runtime.GOOS == "darwin") {
+		t.Fatalf("iTermPossible is %v on %s", iTermPossible, runtime.GOOS)
 	}
 }

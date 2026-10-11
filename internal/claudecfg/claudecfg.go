@@ -385,7 +385,7 @@ func globalFiles(home, configDir string) []string {
 // under. Claude Code keys a project by the root of the main checkout when
 // the folder lies in a git repository (a worktree's too), else by the folder
 // itself. Every candidate is returned: the folder as given and resolved,
-// every directory above it with a .git up to the first one that is a
+// every directory above either with a .git up to the first one that is a
 // directory or a regular file, and for a worktree the main checkout's root.
 // Reading more keys than Claude Code uses can only stop a launch.
 func ProjectKeys(folder string) []string {
@@ -401,14 +401,25 @@ func ProjectKeys(folder string) []string {
 		return keys
 	}
 	add(real)
-	for dir := real; ; {
+	// Both paths are walked: the physical one Claude Code resolves, and
+	// the one as given, in case it keys by that (review round 6 of C7).
+	walkToRoot(real, add)
+	walkToRoot(folder, add)
+	return keys
+}
+
+// walkToRoot adds every directory from dir upwards that has a .git, and for
+// a .git that is not a directory the main checkouts it names, up to the
+// first .git that is a directory or a regular file.
+func walkToRoot(dir string, add func(string)) {
+	for {
 		// Any .git may mark a root: a directory, a worktree's file, a link
 		// (review round 2 of C7).
 		info, err := os.Lstat(filepath.Join(dir, ".git"))
 		if err == nil {
 			add(dir)
 			if !info.IsDir() {
-				if main, ok := mainCheckout(dir); ok {
+				for _, main := range mainCheckouts(dir) {
 					add(main)
 				}
 			}
@@ -418,39 +429,49 @@ func ProjectKeys(folder string) []string {
 			// on upwards. So the walk goes on past every .git but a
 			// directory or a regular file (review round 5 of C7).
 			if info.IsDir() || info.Mode().IsRegular() {
-				return keys
+				return
 			}
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return keys
+			return
 		}
 		dir = parent
 	}
 }
 
-// mainCheckout follows a worktree's .git file ("gitdir: <dir>") to the
+// mainCheckouts follows a worktree's .git file ("gitdir: <dir>") to the
 // common directory its git directory names ("commondir") and returns the
 // checkout that common directory belongs to, or for a bare repository the
-// repository itself, as Claude Code keys it. A .git file without a common
-// directory (a submodule) has no main checkout.
-func mainCheckout(root string) (string, bool) {
+// repository itself, as Claude Code keys it. A relative common directory is
+// read against the git directory as written and against its real path (git
+// takes the real one; review round 6 of C7), so there may be two. A .git
+// file without a common directory (a submodule) has no main checkout.
+func mainCheckouts(root string) []string {
 	gitdir, ok := pointer(filepath.Join(root, ".git"), "gitdir: ", root)
 	if !ok {
-		return "", false
+		return nil
 	}
-	common, ok := pointer(filepath.Join(gitdir, "commondir"), "", gitdir)
-	if !ok {
-		return "", false
+	bases := []string{gitdir}
+	if real, err := filepath.EvalSymlinks(gitdir); err == nil && real != gitdir {
+		bases = append(bases, real)
 	}
-	if filepath.Base(common) == ".git" {
-		common = filepath.Dir(common)
+	var mains []string
+	for _, base := range bases {
+		common, ok := pointer(filepath.Join(base, "commondir"), "", base)
+		if !ok {
+			continue
+		}
+		if filepath.Base(common) == ".git" {
+			common = filepath.Dir(common)
+		}
+		main, err := filepath.EvalSymlinks(common)
+		if err != nil || slices.Contains(mains, main) {
+			continue
+		}
+		mains = append(mains, main)
 	}
-	main, err := filepath.EvalSymlinks(common)
-	if err != nil {
-		return "", false
-	}
-	return main, true
+	return mains
 }
 
 // pointer reads a one-line git pointer file: the path after prefix,

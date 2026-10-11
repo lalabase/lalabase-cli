@@ -191,8 +191,9 @@ navigation again.
   * **Which folder.** `[profiles.<name>.folders]` in `config.toml` maps a
     project id to an absolute path or one under `~/`; without an entry,
     the folder `lalabase` was started in. The folder must exist; a path
-    with a control character, a line break, an invisible character or a
-    backslash is refused.
+    with a control character, a line break, a format character (such as a
+    direction mark or a zero-width space), a line or paragraph separator,
+    broken UTF-8 or a backslash is refused.
     ```toml
     [profiles.default.folders]
     00000000-0000-4000-8000-000000000031 = "~/dev/website"
@@ -203,9 +204,9 @@ navigation again.
     local scope of the folder's git root (keys compared without case; past
     a `.git` that is neither a directory nor a file, such as a broken link,
     the outer root is read too), and
-    every `.mcp.json` in the folder and above it, on the path as given and
-    with its links resolved (a `.git` link or a bare repository's worktree
-    counts as a git root). Keys are read as written (`url`, not `URL`),
+    every `.mcp.json` in the folder and above it, git roots and `.mcp.json`
+    both on the path as given and with its links resolved (a `.git` link or
+    a bare repository's worktree counts as a git root). Keys are read as written (`url`, not `URL`),
     as Claude Code reads them; a file it would read otherwise (bytes that
     are not UTF-8, a lone UTF-16 surrogate escape) stops the launch, and an address with an
     escape in its path names no server. Servers whose names give the same tool name
@@ -504,7 +505,9 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   `claude`): the source guard allows `os/exec` there, by name, and refuses
   it and the process calls of `os` and `syscall` in every other production
   file of the client, and every raw system call of `syscall` and
-  `x/sys/unix` but the one the access list reader makes.
+  `x/sys/unix` (any name with `Syscall` in it) but the one the access list
+  reader makes in `internal/privatefs`. A syntax guard: a `go:linkname` to
+  such a function is not seen.
 * **The server contract** is a copy of `spec/fixtures/mcp_contract.json` of the
   core repository, with its origin in `internal/contract/testdata/SOURCE.json`.
   Refresh it when the client adopts a newer server:

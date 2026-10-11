@@ -128,6 +128,12 @@ func TestOnlyTheLaunchPackageStartsAChildProcess(t *testing.T) {
 		"internal/profile/raw.go":  `package profile; import u "golang.org/x/sys/unix"; func f() { u.RawSyscall6(u.SYS_EXECVE, 0, 0, 0, 0, 0, 0) }`,
 		"cmd/lalabase/value.go":    `package main; import "golang.org/x/sys/unix"; var f = unix.Syscall6; func g() { f(unix.SYS_GETATTRLIST, 0, 0, 0, 0, 0, 0) }`,
 		"cmd/lalabase/sys9.go":     `package main; import "syscall"; var _ = syscall.Syscall9`,
+		// Review round 6: Syscall6 with another number outside the
+		// access list reader's package, a raw call by another prefix,
+		// and the access list reader's call outside its package.
+		"cmd/lalabase/unix6.go":      `package main; import "golang.org/x/sys/unix"; func f() { unix.Syscall6(unix.SYS_EXECVE, 0, 0, 0, 0, 0, 0) }`,
+		"cmd/lalabase/allthreads.go": `package main; import "syscall"; func f() { syscall.AllThreadsSyscall(syscall.SYS_EXECVE, 0, 0, 0) }`,
+		"cmd/lalabase/getattr.go":    `package main; import "golang.org/x/sys/unix"; func f() { unix.Syscall6(unix.SYS_GETATTRLIST, 0, 0, 0, 0, 0, 0) }`,
 	} {
 		if got := inspectUI(map[string]string{name: source}); len(got) == 0 {
 			t.Errorf("missed %s", name)

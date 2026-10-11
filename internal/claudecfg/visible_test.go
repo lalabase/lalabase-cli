@@ -490,3 +490,55 @@ func TestAHighSurrogateAtTheEndIsLone(t *testing.T) {
 		}
 	}
 }
+
+// Review round 6, F5: a folder reached through a link is walked on both
+// paths, so the git root on the physical path and the one on the path as
+// given are both keys.
+func TestProjectKeysWalkTheGivenAndThePhysicalPath(t *testing.T) {
+	root := realDir(t)
+	repo := filepath.Join(root, "repo")
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, "sub"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(repo, link); err != nil {
+		t.Fatal(err)
+	}
+	got := ProjectKeys(filepath.Join(link, "sub"))
+	slices.Sort(got)
+	want := []string{link, filepath.Join(link, "sub"), repo, filepath.Join(repo, "sub")}
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("keys %v, want %v", got, want)
+	}
+}
+
+// Review round 6, F7: a worktree whose gitdir is named through a link. Git
+// resolves the common directory from the git directory's real path; the
+// path as written is kept as a key as well.
+func TestTheMainCheckoutOfAGitdirReachedThroughALink(t *testing.T) {
+	root := realDir(t)
+	main := filepath.Join(root, "main")
+	wt := filepath.Join(root, "wt")
+	gitdir := filepath.Join(main, ".git", "worktrees", "wt")
+	for _, dir := range []string{gitdir, wt} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(gitdir, filepath.Join(root, "gitdirlink")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(wt, ".git"), "gitdir: "+filepath.Join(root, "gitdirlink")+"\n")
+	write(t, filepath.Join(gitdir, "commondir"), "../..\n")
+	got := ProjectKeys(wt)
+	if !slices.Contains(got, main) {
+		t.Errorf("keys %v lack the main checkout %s", got, main)
+	}
+	if !slices.Contains(got, filepath.Dir(root)) {
+		t.Errorf("keys %v lack the lexical reading %s", got, filepath.Dir(root))
+	}
+}

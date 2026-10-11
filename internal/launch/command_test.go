@@ -84,6 +84,9 @@ func TestTheTicketsAddressIsChecked(t *testing.T) {
 		{Ticket{Project: "00000000000040008000000000000031", ID: ticketID, Number: 1}, false},
 		{Ticket{Project: "00000000-0000-4000-8000-00000000003g", ID: ticketID, Number: 1}, false},
 		{Ticket{Project: projectID, ID: "x'; rm -rf ~ #", Number: 1}, false},
+		// Review round 6, F1: text before a valid id.
+		{Ticket{Project: "x'; touch y #" + projectID, ID: ticketID, Number: 1}, false},
+		{Ticket{Project: projectID, ID: "\n" + ticketID, Number: 1}, false},
 	} {
 		if got := checkTicket(c.t); got != c.ok {
 			t.Errorf("%+v: %v, want %v", c.t, got, c.ok)

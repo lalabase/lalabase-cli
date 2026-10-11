@@ -32,6 +32,12 @@ func TestTheLaunchReadsTheCommandsEnvironment(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("config\n got %+v\nwant %+v", got, want)
 	}
+	// Review round 6, F6: another terminal is passed on as it is.
+	vars["TERM_PROGRAM"] = "Apple_Terminal"
+	if got := launchConfig(env, p, sup); got.TermProgram != "Apple_Terminal" {
+		t.Errorf("terminal %q", got.TermProgram)
+	}
+	vars["TERM_PROGRAM"] = "iTerm.app"
 	for _, key := range []string{"TMUX", "STY", "ZELLIJ"} {
 		vars[key] = "1"
 		if got := launchConfig(env, p, sup); got.Multiplexer != key {

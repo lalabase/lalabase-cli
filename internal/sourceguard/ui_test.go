@@ -202,22 +202,26 @@ func inspectChildProcesses(name string, file *ast.File, aliases map[string]strin
 	return findings
 }
 
-// rawSyscall is the one raw system call the client makes, and the number
-// it may carry: anything else by number would be any call at all.
+// rawSyscall is the one raw system call the client makes, the number it
+// may carry and the package it is made in (the access list reader):
+// anything else by number would be any call at all.
 const (
 	rawSyscall       = "Syscall6"
 	rawSyscallNumber = "SYS_GETATTRLIST"
+	rawSyscallDir    = "internal/privatefs"
 )
 
 // rawSyscallPackages offer raw system calls (Syscall, Syscall6, RawSyscall,
-// ...): by number, any call at all, the start of a program among them
-// (review round 5 of #22).
+// AllThreadsSyscall, ...): by number, any call at all, the start of a
+// program among them (review rounds 5 and 6 of #22).
 var rawSyscallPackages = map[string]bool{"syscall": true, "golang.org/x/sys/unix": true}
 
-// inspectRawSyscalls: a raw system call is x/sys/unix's Syscall6, called
-// with rawSyscallNumber of the same package as its first argument; a
-// number, a variable or another constant is refused, and so is every other
-// raw system call of syscall and x/sys/unix, called or taken as a value.
+// inspectRawSyscalls: a raw system call is x/sys/unix's Syscall6, called in
+// rawSyscallDir with rawSyscallNumber of the same package as its first
+// argument; a number, a variable or another constant is refused, and so is
+// every other name of syscall and x/sys/unix with Syscall in it, called or
+// taken as a value. Not seen, by design (a syntax guard): a go:linkname to
+// such a function.
 func inspectRawSyscalls(name string, file *ast.File, aliases map[string]string) []string {
 	var findings []string
 	allowed := map[*ast.SelectorExpr]bool{}
@@ -248,6 +252,9 @@ func inspectRawSyscalls(name string, file *ast.File, aliases map[string]string) 
 		if !named {
 			findings = append(findings, name+": "+rawSyscall+" with a system call other than "+rawSyscallNumber)
 		}
+		if path.Dir(name) != rawSyscallDir {
+			findings = append(findings, name+": "+rawSyscall+" outside "+rawSyscallDir)
+		}
 		allowed[sel] = true
 		return true
 	})
@@ -257,7 +264,7 @@ func inspectRawSyscalls(name string, file *ast.File, aliases map[string]string) 
 			return true
 		}
 		pkg, ok := sel.X.(*ast.Ident)
-		if ok && rawSyscallPackages[aliases[pkg.Name]] && (strings.HasPrefix(sel.Sel.Name, "Syscall") || strings.HasPrefix(sel.Sel.Name, "RawSyscall")) {
+		if ok && rawSyscallPackages[aliases[pkg.Name]] && strings.Contains(sel.Sel.Name, "Syscall") {
 			findings = append(findings, name+": raw system call "+aliases[pkg.Name]+"."+sel.Sel.Name)
 		}
 		return true
