@@ -25,6 +25,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gboyke/lalabase-cli/internal/safefile"
 )
@@ -221,6 +222,11 @@ func readJSON(path string, maxBytes int64, out any) error {
 	}
 	if err != nil {
 		return err
+	}
+	// Bytes that are not UTF-8 decode to one U+FFFD each here and to one
+	// per broken sequence in JavaScript (review round 3 of C7).
+	if !utf8.Valid(data) {
+		return fmt.Errorf("%s: not UTF-8; Claude Code reads it differently", path)
 	}
 	if loneSurrogate(data) {
 		return fmt.Errorf("%s: a lone UTF-16 surrogate escape; Claude Code reads it differently", path)

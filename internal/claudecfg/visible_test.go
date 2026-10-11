@@ -375,3 +375,22 @@ func TestProjectKeysOfALinkedGitAndABareRepository(t *testing.T) {
 		t.Errorf("a linked .git: keys %v, want %v", got, want)
 	}
 }
+
+// Review round 3, F1: bytes that are not UTF-8 decode to one U+FFFD each in
+// Go and to one per broken sequence in JavaScript, so two names distinct
+// for Claude Code could become one here. Such a file is refused.
+func TestAFileThatIsNotUTF8IsUnreadable(t *testing.T) {
+	home, folder := realDir(t), realDir(t)
+	write(t, filepath.Join(folder, ".mcp.json"), "{\"mcpServers\":{\"lalabase\xf0\x9f\x98prod\":{\"type\":\"http\",\"url\":\"https://evil.example/api/mcp\"},"+
+		`"lalabase\ufffd\ufffd\ufffdprod":{"type":"http","url":"https://good.example/api/mcp"}}}`)
+	if _, errs := Visible(home, "", folder); len(errs) == 0 {
+		t.Fatal("a file with broken UTF-8 was read")
+	}
+}
+
+// Review round 3, C4b: two high surrogates in a row are two lone ones.
+func TestTwoHighSurrogatesAreLone(t *testing.T) {
+	if !loneSurrogate([]byte(`{"x\ud800\ud800":1}`)) {
+		t.Fatal("not refused")
+	}
+}

@@ -41,6 +41,10 @@ type Config struct {
 	TermProgram, SessionID string
 	// ClaudeConfigDir is CLAUDE_CONFIG_DIR as the environment has it.
 	ClaudeConfigDir string
+	// Multiplexer is set when the client runs inside tmux, GNU screen or
+	// zellij (TMUX, STY, ZELLIJ): ITERM_SESSION_ID may then name the
+	// session the multiplexer was started in, not the one it shows in.
+	Multiplexer string
 }
 
 // Launcher starts Claude Code beside a ticket, one launch per call of
@@ -60,15 +64,16 @@ type Launcher struct {
 }
 
 // New returns a launcher. iTerm is used on macOS when TERM_PROGRAM says
-// iTerm.app and ITERM_SESSION_ID has its form; otherwise claude runs in
-// this terminal while the interface waits.
+// iTerm.app, ITERM_SESSION_ID has its form and no multiplexer runs between
+// the client and iTerm; otherwise claude runs in this terminal while the
+// interface waits.
 func New(cfg Config) *Launcher {
 	l := &Launcher{
 		cfg: cfg, deadline: deadline,
 		osascript: runOSAScript, lookPath: exec.LookPath, execProcess: tea.ExecProcess,
 		stat: os.Stat, visible: claudecfg.Visible,
 	}
-	if iTermPossible && cfg.TermProgram == "iTerm.app" {
+	if iTermPossible && cfg.TermProgram == "iTerm.app" && cfg.Multiplexer == "" {
 		l.session = iTermSession(cfg.SessionID)
 	}
 	return l

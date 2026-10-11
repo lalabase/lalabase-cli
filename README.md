@@ -178,8 +178,9 @@ navigation again.
   integer. Claude Code works with the rights of the token registered in
   it, writes included; the prompt asks it to treat the ticket as foreign
   text and to ask before changing it, which is a request, not a boundary.
-  * **Where.** In iTerm on macOS (`TERM_PROGRAM=iTerm.app` and a
-    well-formed `ITERM_SESSION_ID`) the client's own session is split
+  * **Where.** In iTerm on macOS (`TERM_PROGRAM=iTerm.app`, a
+    well-formed `ITERM_SESSION_ID`, and no tmux, GNU screen or zellij in
+    between, whose session id may be stale) the client's own session is split
     vertically (AppleScript, a constant run with `osascript -`, the values
     as its arguments only), and the new pane's login shell runs
     `cd '<folder>' && claude -n 'lalabase #<n>' '<prompt>'`, every value
@@ -203,8 +204,8 @@ navigation again.
     every `.mcp.json` in the folder and above it, on the path as given and
     with its links resolved (a `.git` link or a bare repository's worktree
     counts as a git root). Keys are read as written (`url`, not `URL`),
-    as Claude Code reads them; a file it would read otherwise (a lone
-    UTF-16 surrogate escape) stops the launch, and an address with an
+    as Claude Code reads them; a file it would read otherwise (bytes that
+    are not UTF-8, a lone UTF-16 surrogate escape) stops the launch, and an address with an
     escape in its path names no server. Servers whose names give the same tool name
     (`lalabase.prod` and `lalabase_prod`) are one name. A name counts only
     when every server of that name points at the profile's server (hosts

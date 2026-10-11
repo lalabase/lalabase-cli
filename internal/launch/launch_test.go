@@ -468,3 +468,30 @@ func TestAKilledChildDoesNotHoldTheLaunch(t *testing.T) {
 		t.Fatalf("the launch waited %v", took)
 	}
 }
+
+// Review round 3, P57: of osascript's error output the first 4 KiB are
+// kept, whatever comes after.
+func TestTheErrorOutputIsCapped(t *testing.T) {
+	var c capped
+	for range 3 {
+		if n, err := c.Write(make([]byte, 3000)); n != 3000 || err != nil {
+			t.Fatalf("write %d, %v", n, err)
+		}
+	}
+	if len(c.b) != maxStderr {
+		t.Fatalf("kept %d bytes", len(c.b))
+	}
+}
+
+// Review round 3, F2: inside a terminal multiplexer ITERM_SESSION_ID may
+// name the session the multiplexer was started in, not the one it shows in
+// now; the launch runs claude here instead of splitting a session.
+func TestNoITermInsideAMultiplexer(t *testing.T) {
+	l := New(Config{TermProgram: "iTerm.app", SessionID: "w0t1p2:" + sessionUUID, Multiplexer: "screen"})
+	if l.session != "" {
+		t.Fatalf("session %q inside a multiplexer", l.session)
+	}
+	if l := New(Config{TermProgram: "iTerm.app", SessionID: "w0t1p2:" + sessionUUID}); iTermPossible && l.session == "" {
+		t.Fatal("no session without a multiplexer")
+	}
+}
