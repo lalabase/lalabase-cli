@@ -79,7 +79,10 @@ type Call struct {
 // legacyNotFound are the exact texts a server before 0.7.0 answers a missing
 // record of a call with, naming the id or number that was asked for. Kept
 // here beside legacyErrors: every sentence the client reads of an older
-// server stands in one place.
+// server stands in one place. update_ticket is listed for completeness
+// (its sentence is get_ticket's): a server that has the tool (0.10.0 on)
+// always sends the machine field. What a write's "not found" does is the
+// cache's decision (cache.Decide): the record stays, a reload decides.
 func legacyNotFound(call Call) []string {
 	if !call.OneRecord {
 		return nil

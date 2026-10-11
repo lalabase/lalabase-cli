@@ -326,21 +326,30 @@ tickets the fixture does not have. It
 binds to 127.0.0.1 only, accepts one synthetic token (`inboxfixture.Token`)
 and refuses everything but the reads of C1 and the writes of C1f and C2:
 `mark_notification_read` (a marked row leaves the unread pages and the
-counts), `update_ticket` (one change per call, validated as the server
-does with its texts; the status keys are the five of every project, "me"
-is the person of `/me`, a stranger cannot be assigned) and `post_comment`
-(plain or HTML; a plain body comes back as sent with the edge blank lines
-gone; the author's unread rows naming the ticket are read afterwards, as
-on the server). A change shows in the list, the ticket and the summary
-from then on, a key seen before answers the original result without a
-second change, and the fixture logs attempts (`Requests`), keys (`Keys`)
-and the changes it carried out (`Mutations`, with their kind) apart, for
-the tests. A tool a scenario took out of `tools/list` is unknown to the
-fixture, as to the server. Scenarios:
-`normal`, `older` (no organisation filter, no paging of comments, no
-expansion, no `update_ticket`, no `format`), `s1-only` (a 0.9.0 server:
-no `update_ticket`, no `format`), `s2-only` (a 0.10.0 server: no
-`format`, so a comment is HTML to it), `temporary` (page 2 of the first organisation's inbox and of
+counts), `update_ticket` (one change per call, validated in the server's
+order with its texts and its trimming, ASCII and NUL as `String#strip`,
+every Unicode space for a title; the status keys are the five of every
+project, "me" is the person of `/me`, a user id in capitals or without
+dashes names the same person, a stranger cannot be assigned) and
+`post_comment` (plain or HTML; a plain body comes back as the server
+stores and reads it, CR and CRLF as LF, the edge blank lines gone, a run
+of blank lines as one paragraph break; an HTML body comes back as
+ActionText reads it, a paragraph ending in two line breaks, `br` as one,
+entities as characters; the author's unread rows naming the ticket are
+read afterwards, as on the server). A change shows in the list, the
+ticket and the summary from then on. A key seen before answers as the
+server's dispatcher does: the original result for the same arguments,
+without a second change, an invalid input for other ones, before the new
+arguments are read, and the store is one for all three writes. The
+fixture logs attempts (`Requests`), keys (`Keys`) and the changes it
+carried out (`Mutations`, with their kind) apart, for the tests. A tool a
+scenario took out of `tools/list` is unknown to the fixture, as to the
+server, and a scenario standing for an older server names that server's
+version in `initialize`. Scenarios:
+`normal`, `older` (a 0.7.0 server: no organisation filter, no paging of
+comments, no expansion, no `update_ticket`, no `format`), `s1-only` (a
+0.9.0 server: no `update_ticket`, no `format`), `s2-only` (a 0.10.0
+server: no `format`, so a comment is HTML to it), `temporary` (page 2 of the first organisation's inbox and of
 Website-Relaunch's tickets fails twice, `R` succeeds; so does page 2 of
 ticket #6's comments), `429` (one short pause, on page 2 and on the first
 attempt of every write), `401` (the session expires, also on a preview of

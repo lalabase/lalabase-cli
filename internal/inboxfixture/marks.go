@@ -10,14 +10,15 @@ import (
 	"time"
 )
 
-// The one write of the fixture (C1f): mark_notification_read. It is the
-// only tool besides the reads of C1 the fixture answers; every other tool
-// stays refused. A marked row is read from then on: it leaves the unread
-// pages and the counts, as on the server. The fixture keeps three logs
-// apart, for the tests: every HTTP attempt (Requests, with the key the
-// attempt carried), the idempotency keys it saw (Keys) and the changes it
-// carried out (Mutations). A key seen before answers the original result
-// and changes nothing, as the server does.
+// The first write of the fixture (C1f): mark_notification_read; the
+// writes of C2 are in writes.go, with the key store they share (replay,
+// remember) and the scenario gate. A marked row is read from then on: it
+// leaves the unread pages and the counts, as on the server. The fixture
+// keeps three logs apart, for the tests: every HTTP attempt (Requests,
+// with the key the attempt carried), the idempotency keys it saw (Keys)
+// and the changes it carried out (Mutations). A key seen before answers
+// the original result and changes nothing, as the server does; with other
+// arguments it is refused.
 
 // Mutation is one change the fixture carried out: its kind (the Mutation
 // constants in writes.go), the notification or the ticket it changed, and
@@ -70,12 +71,15 @@ func (f *Fixture) findRow(id string) (map[string]any, int) {
 	return nil, 0
 }
 
-// unread are the rows of org not marked as read.
+// unread are the rows of org not marked as read, as copies: the caller
+// serialises them after f.mu is released, while a mark (markRead) or a
+// comment (postComment, core #989) changes the rows under the lock.
+// Called with f.mu held.
 func (f *Fixture) unread(org string) []map[string]any {
 	var out []map[string]any
 	for _, row := range f.rows[org] {
 		if read, _ := row["read"].(bool); !read {
-			out = append(out, row)
+			out = append(out, copyMap(row))
 		}
 	}
 	return out
@@ -84,15 +88,21 @@ func (f *Fixture) unread(org string) []map[string]any {
 // markRead answers mark_notification_read.
 func (f *Fixture) markRead(w http.ResponseWriter, r *http.Request, args map[string]any, reply func(int, any, any), req Request) {
 	id, _ := args["notification_id"].(string)
-	key, _ := args["idempotency_key"].(string)
+	key, raw := writeKey(args)
 	f.mu.Lock()
-	f.keys = append(f.keys, key)
+	f.keys = append(f.keys, raw)
 	f.mu.Unlock()
 	if id == "" {
 		reply(http.StatusOK, toolError("invalid_input", "invalid notification_id format"), nil)
 		return
 	}
 	if f.writeGate(w, "mark:"+id, reply, req) {
+		return
+	}
+	// The dispatcher: a key seen before (the tool is token-scoped, no
+	// project).
+	if answer := f.replay(key, args); answer != nil {
+		reply(http.StatusOK, answer, nil)
 		return
 	}
 	f.mu.Lock()
@@ -117,21 +127,11 @@ func (f *Fixture) markRead(w http.ResponseWriter, r *http.Request, args map[stri
 		}
 		f.mu.Lock()
 	}
-	// A key seen before: the original result, no second change.
-	if key != "" {
-		if result, ok := f.results[key]; ok {
-			f.mu.Unlock()
-			reply(http.StatusOK, toolObject(result), nil)
-			return
-		}
-	}
 	// The change itself, and its record.
 	at := "2026-01-05T10:00:00Z"
 	row["read"], row["read_at"], row["state"] = true, at, "read"
 	result := map[string]any{"id": id, "state": "read", "read_at": at}
-	if key != "" {
-		f.results[key] = result
-	}
+	f.remember(key, args, result)
 	f.mutations = append(f.mutations, Mutation{Kind: MutationMarkRead, Notification: id, Key: key})
 	f.mu.Unlock()
 	f.answerWrite(w, r, reply, req, result)

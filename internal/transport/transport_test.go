@@ -650,7 +650,10 @@ func TestALegacyNotFoundUsesTheServersNormalisedAddress(t *testing.T) {
 		t.Errorf("notification id with spaces: got %v", got.Class)
 	}
 	// update_ticket (S2) answers a missing ticket with the sentence of
-	// get_ticket; a cached ticket a write finds gone must leave the cache.
+	// get_ticket, so the answer is classified like get_ticket's. A server
+	// with update_ticket (0.10.0 on) sends the machine field, so this
+	// sentence alone never decides on the real thing; and a write's "not
+	// found" keeps the cached ticket (cache.Decide), only a read's removes.
 	update := Call{Tool: "update_ticket", OneRecord: true, Args: map[string]any{"ticket_id": " t-1 ", "status": "new"}}
 	if got := clientAt(t, answer("No ticket found for t-1.").URL).CallTool(context.Background(), update); got.Class != NotFound {
 		t.Errorf("update_ticket: got %v", got.Class)

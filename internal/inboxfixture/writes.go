@@ -13,13 +13,19 @@ import (
 
 // The writes of C2 (C2a): update_ticket, one change per call, and
 // post_comment with a plain or an HTML body. The fixture validates as the
-// server does, in the server's order, with the server's texts, keeps the
-// changes as an overlay over its synthetic rows (edits), appends comments
-// to its tickets, and answers a key seen before with the original result
-// without a second change. A comment marks the author's unread rows that
-// name the ticket as read (core #989), so the counts and the pages change
-// as on the server. The scenarios act on every write through writeGate
-// and answerWrite, which mark_notification_read uses too (marks.go).
+// server does, in the server's order (the SDK's schema, the dispatcher's
+// project and key, then the tool), with the server's texts and the
+// server's trimming (String#strip: ASCII and NUL; a title: every Unicode
+// space), keeps the changes as an overlay over its synthetic rows (edits),
+// appends comments to its tickets, and answers a key seen before as the
+// dispatcher does (replay): the original result for the same arguments,
+// without a second change, an invalid input for other ones. A plain body
+// comes back as the server stores and reads it (paragraphs, plainText),
+// an HTML body as ActionText reads it (htmlText). A comment marks the
+// author's unread rows that name the ticket as read (core #989), so the
+// counts and the pages change as on the server. The scenarios act on
+// every write through writeGate and answerWrite, which
+// mark_notification_read uses too (marks.go).
 
 // ticketEdit is what the writes changed on one ticket: the row fields
 // (title, status, assignees, updated_at) and the comments added, oldest
@@ -51,6 +57,8 @@ const (
 	textInvalidFormat    = "Invalid arguments: value at `/format` is not one of: [\"html\", \"plain\"]"
 	textFormatNotString  = "Invalid arguments: value at `/format` is not a string, value at `/format` is not one of: [\"html\", \"plain\"]"
 	textProjectNotFound  = "Project not found or not accessible."
+	textProjectRequired  = "project_id is required"
+	textKeyMismatch      = "idempotency_key already used with different parameters"
 	textNotAuthorized    = "Not authorized."
 	textReadOnly         = "This token is read-only; writes are not permitted."
 	// maxTitle and maxAssignees are the server's bounds.
@@ -75,11 +83,116 @@ const (
 var uuidForm = regexp.MustCompile(`^(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32})$`)
 
 // edgeBlankLines is a run of blank lines (ASCII spaces and tabs) at either
-// edge of a plain body (Posts::PlainTextBody in the core).
-var edgeBlankLines = regexp.MustCompile(`^(?:[ \t]*\n)+|(?:\n[ \t]*)+$`)
+// edge of a plain body, paragraphBreak one inside it (Posts::PlainTextBody
+// in the core).
+var (
+	edgeBlankLines = regexp.MustCompile(`^(?:[ \t]*\n)+|(?:\n[ \t]*)+$`)
+	paragraphBreak = regexp.MustCompile(`\n(?:[ \t]*\n)+`)
+)
 
-// htmlTag is what the fixture strips from an HTML body for body_text.
-var htmlTag = regexp.MustCompile(`<[^>]*>`)
+// subdivisionFlag is one of the three flags TicketTitle::FLAG keeps the
+// tag characters for (England, Scotland, Wales).
+var subdivisionFlag = regexp.MustCompile(`\x{1F3F4}\x{E0067}\x{E0062}(?:\x{E0065}\x{E006E}\x{E0067}|\x{E0073}\x{E0063}\x{E0074}|\x{E0077}\x{E006C}\x{E0073})\x{E007F}`)
+
+// storedResult is what a key answered first, with the fingerprint of the
+// arguments it was used with.
+type storedResult struct {
+	fingerprint string
+	result      map[string]any
+}
+
+// fingerprint is the server's (Mcp::IdempotencyStore): the arguments
+// without the key, keys in one order.
+func fingerprint(args map[string]any) string {
+	rest := copyMap(args)
+	delete(rest, "idempotency_key")
+	out, _ := json.Marshal(rest)
+	return string(out)
+}
+
+// replay is the dispatcher's answer to a key seen before: the original
+// result for the same arguments, the mismatch for other ones, nil for a
+// key not seen. It runs before the tool's own checks, as on the server,
+// and the store is one per token, shared by every write tool.
+func (f *Fixture) replay(key string, args map[string]any) map[string]any {
+	if key == "" {
+		return nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	stored, ok := f.results[key]
+	switch {
+	case !ok:
+		return nil
+	case stored.fingerprint != fingerprint(args):
+		return toolError("invalid_input", textKeyMismatch)
+	}
+	return toolObject(stored.result)
+}
+
+// remember pins a result that wrote to its key. Called with f.mu held.
+func (f *Fixture) remember(key string, args map[string]any, result map[string]any) {
+	if key != "" {
+		f.results[key] = storedResult{fingerprint: fingerprint(args), result: result}
+	}
+}
+
+// writeKey is the key of a write as the dispatcher reads it, and as it
+// was sent (for the log).
+func writeKey(args map[string]any) (key, raw string) {
+	raw, _ = args["idempotency_key"].(string)
+	return rubyStrip(raw), raw
+}
+
+// rubyStrip is String#strip: ASCII whitespace and NUL at the edges,
+// nothing else. A title is trimmed of every Unicode space instead
+// (TicketTitle::EDGE_SPACES).
+func rubyStrip(s string) string {
+	return strings.Trim(s, "\x00\t\n\v\f\r ")
+}
+
+// dashed is the one spelling of a user id the server stores
+// (Lalabase::Uuid.dashed): lower case, the 32-hex form with its dashes.
+// Called with an id uuidForm accepted.
+func dashed(id string) string {
+	id = strings.ToLower(id)
+	if strings.Contains(id, "-") {
+		return id
+	}
+	return id[0:8] + "-" + id[8:12] + "-" + id[12:16] + "-" + id[16:20] + "-" + id[20:]
+}
+
+// plainText is body_text of a plain body: Posts::PlainTextBody stores it
+// as paragraphs (CR and CRLF become LF, blank lines at the edges go, a
+// run of blank lines inside separates paragraphs, a paragraph of
+// whitespace only is dropped), and ActionText reads the paragraphs back
+// with two line breaks between them.
+func plainText(body string) string {
+	text := strings.ReplaceAll(strings.ReplaceAll(body, "\r\n", "\n"), "\r", "\n")
+	text = edgeBlankLines.ReplaceAllString(text, "")
+	var paragraphs []string
+	for _, p := range paragraphBreak.Split(text, -1) {
+		if strings.TrimFunc(p, unicode.IsSpace) != "" {
+			paragraphs = append(paragraphs, p)
+		}
+	}
+	return strings.Join(paragraphs, "\n\n")
+}
+
+// projectOf is the dispatcher's gate on project_id: required, and one the
+// fixture has. It says whether the write goes on.
+func (f *Fixture) projectOf(args map[string]any, reply func(int, any, any)) (string, bool) {
+	project, _ := args["project_id"].(string)
+	if rubyStrip(project) == "" {
+		reply(http.StatusOK, toolError("invalid_input", textProjectRequired), nil)
+		return "", false
+	}
+	if _, ok := ticketCounts[project]; !ok {
+		reply(http.StatusOK, toolError("not_found", textProjectNotFound), nil)
+		return "", false
+	}
+	return project, true
+}
 
 // editOf is a copy of what the writes changed on a ticket, or nil.
 func (f *Fixture) editOf(id string) *ticketEdit {
@@ -167,12 +280,21 @@ func (f *Fixture) summary(project string, n int) map[string]any {
 
 // updateTicket answers update_ticket.
 func (f *Fixture) updateTicket(w http.ResponseWriter, r *http.Request, args map[string]any, reply func(int, any, any), req Request) {
-	key, _ := args["idempotency_key"].(string)
+	key, raw := writeKey(args)
 	f.mu.Lock()
-	f.keys = append(f.keys, key)
+	f.keys = append(f.keys, raw)
 	f.mu.Unlock()
 	id, _ := args["ticket_id"].(string)
 	if f.writeGate(w, "update:"+id, reply, req) {
+		return
+	}
+	// The dispatcher: the project, then a key seen before.
+	project, ok := f.projectOf(args, reply)
+	if !ok {
+		return
+	}
+	if answer := f.replay(key, args); answer != nil {
+		reply(http.StatusOK, answer, nil)
 		return
 	}
 	// The request alone: unknown keys, the ticket id, one kind, the value.
@@ -188,7 +310,7 @@ func (f *Fixture) updateTicket(w http.ResponseWriter, r *http.Request, args map[
 		reply(http.StatusOK, toolError("invalid_input", "unknown arguments: "+strings.Join(unknown, ", ")), nil)
 		return
 	}
-	id = strings.TrimSpace(id)
+	id = rubyStrip(id)
 	switch {
 	case id == "":
 		reply(http.StatusOK, toolError("invalid_input", "ticket_id is required"), nil)
@@ -234,11 +356,6 @@ func (f *Fixture) updateTicket(w http.ResponseWriter, r *http.Request, args map[
 		return
 	}
 	// The ticket, in its project.
-	project, _ := args["project_id"].(string)
-	if _, ok := ticketCounts[project]; !ok {
-		reply(http.StatusOK, toolError("not_found", textProjectNotFound), nil)
-		return
-	}
 	n := ticketNumber(project, id)
 	if n == 0 {
 		reply(http.StatusOK, toolEmpty("No ticket found for "+id+"."), nil)
@@ -262,13 +379,6 @@ func (f *Fixture) updateTicket(w http.ResponseWriter, r *http.Request, args map[
 		}
 	}
 	f.mu.Lock()
-	if key != "" {
-		if result, ok := f.results[key]; ok {
-			f.mu.Unlock()
-			reply(http.StatusOK, toolObject(result), nil)
-			return
-		}
-	}
 	e := f.edit(id)
 	switch kind {
 	case MutationTitle:
@@ -298,9 +408,7 @@ func (f *Fixture) updateTicket(w http.ResponseWriter, r *http.Request, args map[
 	f.mu.Unlock()
 	result := f.summary(project, n)
 	f.mu.Lock()
-	if key != "" {
-		f.results[key] = result
-	}
+	f.remember(key, args, result)
 	f.mu.Unlock()
 	f.answerWrite(w, r, reply, req, result)
 }
@@ -322,9 +430,10 @@ func (f *Fixture) currentAssignees(project string, n int) ([]any, bool) {
 }
 
 // checkTitle is the server's title rule (Lalabase::Tools::TicketTitle):
-// a string, one line without control or invisible characters, with a
-// character that shows, at most 255 characters after the edges are
-// trimmed. Refused, never cleaned.
+// a string, one line without control or invisible characters (tag
+// characters only inside the three subdivision flags), with a character
+// that draws, at most 255 characters after every Unicode space at the
+// edges is trimmed. Refused, never cleaned.
 func checkTitle(value any) (string, map[string]any) {
 	title, ok := value.(string)
 	if !ok {
@@ -333,15 +442,11 @@ func checkTitle(value any) (string, map[string]any) {
 	if !utf8.ValidString(title) {
 		return "", toolError("invalid_input", "title must be valid UTF-8")
 	}
-	for _, r := range title {
-		if forbiddenInTitle(r) {
-			return "", toolError("invalid_input", "title must be one line without control characters")
-		}
+	if strings.ContainsFunc(title, forbiddenInTitle) || strings.ContainsFunc(subdivisionFlag.ReplaceAllString(title, ""), tagCharacter) {
+		return "", toolError("invalid_input", "title must be one line without control characters")
 	}
 	title = strings.TrimFunc(title, unicode.IsSpace)
-	if !strings.ContainsFunc(title, func(r rune) bool {
-		return unicode.IsLetter(r) || unicode.IsNumber(r) || unicode.IsPunct(r) || unicode.IsSymbol(r)
-	}) {
+	if !strings.ContainsFunc(title, drawsInTitle) {
 		return "", toolError("invalid_input", "title is required")
 	}
 	if utf8.RuneCountInString(title) > maxTitle {
@@ -350,8 +455,9 @@ func checkTitle(value any) (string, map[string]any) {
 	return title, nil
 }
 
-// forbiddenInTitle: a control character that is no space, a line break
-// or tab, an invisible or direction character, a tag character.
+// forbiddenInTitle (TicketTitle::FORBIDDEN): a control character that is
+// no space, a line break or tab, an invisible or direction character. Tag
+// characters are checked apart (tagCharacter), the flags taken out.
 func forbiddenInTitle(r rune) bool {
 	switch {
 	case unicode.IsControl(r) && !unicode.IsSpace(r):
@@ -362,10 +468,24 @@ func forbiddenInTitle(r rune) bool {
 		return true
 	case r >= 0x202A && r <= 0x202E, r >= 0x2060 && r <= 0x2064, r >= 0x2066 && r <= 0x2069, r >= 0xFFF9 && r <= 0xFFFB:
 		return true
-	case r >= 0xE0000 && r <= 0xE007F:
-		return true
 	}
 	return false
+}
+
+// tagCharacter (TicketTitle::TAG_CHARS): invisible text outside a flag.
+func tagCharacter(r rune) bool {
+	return r >= 0xE0000 && r <= 0xE007F
+}
+
+// drawsInTitle (TicketTitle::VISIBLE): a letter, digit, punctuation or
+// symbol, minus the ones Unicode files as such but that draw nothing (the
+// Hangul fillers, the blank Braille pattern).
+func drawsInTitle(r rune) bool {
+	switch r {
+	case 0x115F, 0x1160, 0x3164, 0xFFA0, 0x2800:
+		return false
+	}
+	return unicode.IsLetter(r) || unicode.IsNumber(r) || unicode.IsPunct(r) || unicode.IsSymbol(r)
 }
 
 func checkStatus(value any) (string, map[string]any) {
@@ -373,16 +493,17 @@ func checkStatus(value any) (string, map[string]any) {
 	if !ok {
 		return "", toolError("invalid_input", "status must be a string")
 	}
-	status = strings.TrimSpace(status)
+	status = rubyStrip(status)
 	if status == "" {
 		return "", toolError("invalid_input", "status is required")
 	}
 	return status, nil
 }
 
-// checkAssignees reads both lists: strings, "me" or a UUID, at most 50,
-// at least one person over both, no person in both. "me" is the person the
-// fixture's /me names.
+// checkAssignees reads both lists: strings, "me" or a UUID (in the one
+// spelling the server stores, dashed), at most 50, at least one person
+// over both, no person in both. "me" is the person the fixture's /me
+// names.
 func (f *Fixture) checkAssignees(args map[string]any, hasAdd, hasRemove bool) (add, remove []string, refusal map[string]any) {
 	read := func(name string, present bool) ([]string, map[string]any) {
 		if !present {
@@ -398,7 +519,7 @@ func (f *Fixture) checkAssignees(args map[string]any, hasAdd, hasRemove bool) (a
 			if !ok {
 				return nil, toolError("invalid_input", name+` must be a list of user UUIDs or "me"`)
 			}
-			ids = append(ids, strings.TrimSpace(s))
+			ids = append(ids, rubyStrip(s))
 		}
 		if len(ids) > maxAssignees {
 			return nil, toolError("invalid_input", fmt.Sprintf("at most %d user ids per list", maxAssignees))
@@ -411,7 +532,7 @@ func (f *Fixture) checkAssignees(args map[string]any, hasAdd, hasRemove bool) (a
 			if !uuidForm.MatchString(id) {
 				return nil, toolError("invalid_input", "invalid user id in "+name)
 			}
-			ids[i] = strings.ToLower(id)
+			ids[i] = dashed(id)
 		}
 		return ids, nil
 	}
@@ -462,9 +583,9 @@ func (f *Fixture) refuseWrite(project string, n int, kind string) map[string]any
 
 // postComment answers post_comment.
 func (f *Fixture) postComment(w http.ResponseWriter, r *http.Request, args map[string]any, reply func(int, any, any), req Request) {
-	key, _ := args["idempotency_key"].(string)
+	key, raw := writeKey(args)
 	f.mu.Lock()
-	f.keys = append(f.keys, key)
+	f.keys = append(f.keys, raw)
 	f.mu.Unlock()
 	id, _ := args["ticket_id"].(string)
 	if f.writeGate(w, "comment:"+id, reply, req) {
@@ -491,7 +612,16 @@ func (f *Fixture) postComment(w http.ResponseWriter, r *http.Request, args map[s
 		reply(http.StatusOK, toolError("invalid_input", "Invalid arguments: value at `/body` is not a string"), nil)
 		return
 	}
-	id = strings.TrimSpace(id)
+	// The dispatcher: the project, then a key seen before.
+	project, ok := f.projectOf(args, reply)
+	if !ok {
+		return
+	}
+	if answer := f.replay(key, args); answer != nil {
+		reply(http.StatusOK, answer, nil)
+		return
+	}
+	id = rubyStrip(id)
 	switch {
 	case id == "":
 		reply(http.StatusOK, toolError("invalid_input", "ticket_id is required"), nil)
@@ -508,19 +638,16 @@ func (f *Fixture) postComment(w http.ResponseWriter, r *http.Request, args map[s
 		reply(http.StatusOK, toolError("invalid_input", "body must not contain NUL bytes"), nil)
 		return
 	}
+	// Decided on what would be stored: a plain body is required when its
+	// paragraphs are, an HTML body when its markup is.
 	var text string
 	if plain {
-		text = edgeBlankLines.ReplaceAllString(strings.ReplaceAll(strings.ReplaceAll(body, "\r\n", "\n"), "\r", "\n"), "")
+		text = plainText(body)
 	} else {
-		text = htmlTag.ReplaceAllString(body, "")
+		text = htmlText(body)
 	}
-	if strings.TrimSpace(text) == "" {
+	if text == "" && (plain || rubyStrip(body) == "") {
 		reply(http.StatusOK, toolError("invalid_input", "body is required"), nil)
-		return
-	}
-	project, _ := args["project_id"].(string)
-	if _, ok := ticketCounts[project]; !ok {
-		reply(http.StatusOK, toolError("not_found", textProjectNotFound), nil)
 		return
 	}
 	n := ticketNumber(project, id)
@@ -534,13 +661,6 @@ func (f *Fixture) postComment(w http.ResponseWriter, r *http.Request, args map[s
 	}
 	private := args["is_private"] == true || args["is_private"] == "true"
 	f.mu.Lock()
-	if key != "" {
-		if result, ok := f.results[key]; ok {
-			f.mu.Unlock()
-			reply(http.StatusOK, toolObject(result), nil)
-			return
-		}
-	}
 	f.nextPost++
 	post := map[string]any{
 		"id":         fmt.Sprintf("00000000-0000-4000-8000-%012d", 900000+f.nextPost),
@@ -566,9 +686,7 @@ func (f *Fixture) postComment(w http.ResponseWriter, r *http.Request, args map[s
 	f.mutations = append(f.mutations, Mutation{Kind: MutationComment, Ticket: id, Key: key})
 	result := copyMap(post)
 	delete(result, "body_html")
-	if key != "" {
-		f.results[key] = result
-	}
+	f.remember(key, args, result)
 	f.mu.Unlock()
 	f.answerWrite(w, r, reply, req, result)
 }
