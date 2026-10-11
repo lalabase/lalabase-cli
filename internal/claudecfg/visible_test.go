@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -412,5 +413,80 @@ func TestAWrongTypeAloneMakesTheServerAProblem(t *testing.T) {
 	}
 	if !loneSurrogate([]byte(`{"x\ud800\ue000":1}`)) {
 		t.Error("a high surrogate before U+E000 was not refused")
+	}
+}
+
+// Review round 5, F1: Claude Code takes a .git as a root only when it is a
+// directory or a file, or a link to one whose target it accepts; past
+// anything else it goes on upwards to the next root, and keys the local
+// scope there. A .git of another kind keeps its directory as a key and the
+// walk goes on to the next directory or file named .git.
+func TestProjectKeysGoOnPastAGitClaudeCodeSkips(t *testing.T) {
+	root := realDir(t)
+	outer := filepath.Join(root, "outer")
+	for _, dir := range []string{filepath.Join(outer, ".git"), filepath.Join(outer, "dangling", "deep"), filepath.Join(outer, "fifo"), filepath.Join(outer, "linked"), filepath.Join(outer, "data")} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink("nowhere", filepath.Join(outer, "dangling", ".git")); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(outer, "fifo", ".git"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A link to a directory: Claude Code may refuse its target by checks
+	// of its own, so the walk reads on past it as well.
+	if err := os.Symlink(filepath.Join(outer, "data"), filepath.Join(outer, "linked", ".git")); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		folder string
+		want   []string
+	}{
+		{filepath.Join(outer, "dangling", "deep"), []string{filepath.Join(outer, "dangling", "deep"), filepath.Join(outer, "dangling"), outer}},
+		{filepath.Join(outer, "fifo"), []string{filepath.Join(outer, "fifo"), outer}},
+		{filepath.Join(outer, "linked"), []string{filepath.Join(outer, "linked"), outer}},
+	} {
+		got := ProjectKeys(c.folder)
+		slices.Sort(got)
+		want := slices.Clone(c.want)
+		slices.Sort(want)
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: keys %v, want %v", c.folder, got, want)
+		}
+	}
+}
+
+// Review round 5, F1, through Visible: the outer root's local server is
+// seen from below a broken .git link.
+func TestVisibleSeesTheOuterRootPastABrokenGitLink(t *testing.T) {
+	home, root := realDir(t), realDir(t)
+	sub := filepath.Join(root, "sub")
+	for _, dir := range []string{filepath.Join(root, ".git"), sub} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink("nowhere", filepath.Join(sub, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(home, ".claude.json"), `{"projects":{"`+root+`":{"mcpServers":{"lalabase":{"type":"http","url":"https://evil.example/api/mcp","headers":{"Authorization":"Bearer `+tokenA+`"}}}}}}`)
+	entries, errs := Visible(home, "", sub)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	if len(entries) != 1 || entries[0].Scope != "local" || entries[0].BaseURL != "https://evil.example" {
+		t.Fatalf("entries %+v", entries)
+	}
+}
+
+// Review round 5, F2: a high surrogate escape at the very end of the data
+// is lone, and reading past the end must not panic.
+func TestAHighSurrogateAtTheEndIsLone(t *testing.T) {
+	for _, data := range []string{`"\ud800`, `"\ud800\`, `"\ud800\u`} {
+		if !loneSurrogate([]byte(data)) {
+			t.Errorf("%q: not refused", data)
+		}
 	}
 }

@@ -384,9 +384,10 @@ func globalFiles(home, configDir string) []string {
 // ProjectKeys are the paths Claude Code may file a folder's local servers
 // under. Claude Code keys a project by the root of the main checkout when
 // the folder lies in a git repository (a worktree's too), else by the folder
-// itself. Every candidate is returned: the folder as given and resolved, its
-// git root, and for a worktree the main checkout's root. Reading more keys
-// than Claude Code uses can only stop a launch.
+// itself. Every candidate is returned: the folder as given and resolved,
+// every directory above it with a .git up to the first one that is a
+// directory or a regular file, and for a worktree the main checkout's root.
+// Reading more keys than Claude Code uses can only stop a launch.
 func ProjectKeys(folder string) []string {
 	folder = filepath.Clean(folder)
 	keys := []string{folder}
@@ -401,7 +402,7 @@ func ProjectKeys(folder string) []string {
 	}
 	add(real)
 	for dir := real; ; {
-		// Any .git marks a root: a directory, a worktree's file, a link
+		// Any .git may mark a root: a directory, a worktree's file, a link
 		// (review round 2 of C7).
 		info, err := os.Lstat(filepath.Join(dir, ".git"))
 		if err == nil {
@@ -411,7 +412,14 @@ func ProjectKeys(folder string) []string {
 					add(main)
 				}
 			}
-			return keys
+			// Claude Code stops at a directory or a file, and at a link
+			// to one only when it accepts the link's target by checks of
+			// its own; past anything else (a broken link, a FIFO) it goes
+			// on upwards. So the walk goes on past every .git but a
+			// directory or a regular file (review round 5 of C7).
+			if info.IsDir() || info.Mode().IsRegular() {
+				return keys
+			}
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {

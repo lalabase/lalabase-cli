@@ -200,7 +200,9 @@ navigation again.
   * **Which server.** Claude Code's configuration as it applies in that
     folder is read: the user scope of every global file it may read (under
     the home and `CLAUDE_CONFIG_DIR`, the legacy `.config.json` too), the
-    local scope of the folder's git root (keys compared without case), and
+    local scope of the folder's git root (keys compared without case; past
+    a `.git` that is neither a directory nor a file, such as a broken link,
+    the outer root is read too), and
     every `.mcp.json` in the folder and above it, on the path as given and
     with its links resolved (a `.git` link or a bare repository's worktree
     counts as a git root). Keys are read as written (`url`, not `URL`),
@@ -501,7 +503,8 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
 * **Child processes** start in `internal/launch` alone (C7: `osascript` and
   `claude`): the source guard allows `os/exec` there, by name, and refuses
   it and the process calls of `os` and `syscall` in every other production
-  file of the client.
+  file of the client, and every raw system call of `syscall` and
+  `x/sys/unix` but the one the access list reader makes.
 * **The server contract** is a copy of `spec/fixtures/mcp_contract.json` of the
   core repository, with its origin in `internal/contract/testdata/SOURCE.json`.
   Refresh it when the client adopts a newer server:

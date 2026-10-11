@@ -209,11 +209,18 @@ const (
 	rawSyscallNumber = "SYS_GETATTRLIST"
 )
 
-// inspectRawSyscalls: a call of x/sys/unix's Syscall6 names rawSyscallNumber
-// of the same package as its first argument; a number, a variable or
-// another constant is refused.
+// rawSyscallPackages offer raw system calls (Syscall, Syscall6, RawSyscall,
+// ...): by number, any call at all, the start of a program among them
+// (review round 5 of #22).
+var rawSyscallPackages = map[string]bool{"syscall": true, "golang.org/x/sys/unix": true}
+
+// inspectRawSyscalls: a raw system call is x/sys/unix's Syscall6, called
+// with rawSyscallNumber of the same package as its first argument; a
+// number, a variable or another constant is refused, and so is every other
+// raw system call of syscall and x/sys/unix, called or taken as a value.
 func inspectRawSyscalls(name string, file *ast.File, aliases map[string]string) []string {
 	var findings []string
+	allowed := map[*ast.SelectorExpr]bool{}
 	ast.Inspect(file, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
@@ -229,6 +236,7 @@ func inspectRawSyscalls(name string, file *ast.File, aliases map[string]string) 
 		}
 		if len(call.Args) == 0 {
 			findings = append(findings, name+": "+rawSyscall+" without a system call")
+			allowed[sel] = true
 			return true
 		}
 		named := false
@@ -239,6 +247,18 @@ func inspectRawSyscalls(name string, file *ast.File, aliases map[string]string) 
 		}
 		if !named {
 			findings = append(findings, name+": "+rawSyscall+" with a system call other than "+rawSyscallNumber)
+		}
+		allowed[sel] = true
+		return true
+	})
+	ast.Inspect(file, func(node ast.Node) bool {
+		sel, ok := node.(*ast.SelectorExpr)
+		if !ok || allowed[sel] {
+			return true
+		}
+		pkg, ok := sel.X.(*ast.Ident)
+		if ok && rawSyscallPackages[aliases[pkg.Name]] && (strings.HasPrefix(sel.Sel.Name, "Syscall") || strings.HasPrefix(sel.Sel.Name, "RawSyscall")) {
+			findings = append(findings, name+": raw system call "+aliases[pkg.Name]+"."+sel.Sel.Name)
 		}
 		return true
 	})

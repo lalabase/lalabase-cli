@@ -119,6 +119,15 @@ func TestOnlyTheLaunchPackageStartsAChildProcess(t *testing.T) {
 		"internal/profile/x.go":       `package profile; import "os/exec"; var _ = exec.Command`,
 		"internal/launch/sub/x.go":    `package sub; import "os/exec"; var _ = exec.Command`,
 		"internal/launch/x_darwin.go": `package launch; import "os"; var _ = os.StartProcess`,
+		// Review round 5, F3: a raw system call can start a program by
+		// number, so every one is refused but the access list reader's.
+		"cmd/lalabase/execve.go":   `package main; import "syscall"; func f() { syscall.Syscall(syscall.SYS_EXECVE, 0, 0, 0) }`,
+		"cmd/lalabase/raw.go":      `package main; import "syscall"; func f() { syscall.RawSyscall(syscall.SYS_FORK, 0, 0, 0) }`,
+		"cmd/lalabase/raw6.go":     `package main; import "syscall"; func f() { syscall.Syscall6(syscall.SYS_EXECVE, 0, 0, 0, 0, 0, 0) }`,
+		"cmd/lalabase/unixcall.go": `package main; import "golang.org/x/sys/unix"; func f() { unix.Syscall(unix.SYS_EXECVE, 0, 0, 0) }`,
+		"internal/profile/raw.go":  `package profile; import u "golang.org/x/sys/unix"; func f() { u.RawSyscall6(u.SYS_EXECVE, 0, 0, 0, 0, 0, 0) }`,
+		"cmd/lalabase/value.go":    `package main; import "golang.org/x/sys/unix"; var f = unix.Syscall6; func g() { f(unix.SYS_GETATTRLIST, 0, 0, 0, 0, 0, 0) }`,
+		"cmd/lalabase/sys9.go":     `package main; import "syscall"; var _ = syscall.Syscall9`,
 	} {
 		if got := inspectUI(map[string]string{name: source}); len(got) == 0 {
 			t.Errorf("missed %s", name)
