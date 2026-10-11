@@ -229,8 +229,8 @@ func row(r present.Row, width, trailingWidth int, cursor, twoLines bool, method 
 		weight = present.Faint
 	}
 	valueWeight := weight
-	if r.Highlight {
-		valueWeight = present.Strong
+	if r.TrailingStyle != present.Plain {
+		valueWeight = r.TrailingStyle
 	}
 	first := styled(marker+primary, weight) + styled(value, valueWeight)
 	if !twoLines {

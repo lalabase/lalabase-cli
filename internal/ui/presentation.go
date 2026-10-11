@@ -209,7 +209,10 @@ func (m Model) chooserColumn() present.Column {
 			if cnt.known {
 				row.Trailing = uitext.Fill(uitext.CountValue, cnt.value)
 				// Nothing unread is quiet; unread asks for attention.
-				row.Quiet, row.Highlight = cnt.value == 0, cnt.value > 0
+				row.Quiet = cnt.value == 0
+				if cnt.value > 0 {
+					row.TrailingStyle = present.Strong
+				}
 			}
 			row.Active = a.active != nil && a.active.org == e.org
 		} else {

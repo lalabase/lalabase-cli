@@ -107,7 +107,7 @@ func TestRowValuesAlignAndWeigh(t *testing.T) {
 	}
 	nav := present.Column{Title: present.NewInline("Organisations"), Cursor: -1, Rows: []present.Row{
 		{Primary: present.NewInline("Inbox"), Trailing: present.NewInline("0"), Quiet: true},
-		{Primary: present.NewInline("Inbox"), Trailing: present.NewInline("12"), Highlight: true},
+		{Primary: present.NewInline("Inbox"), Trailing: present.NewInline("12"), TrailingStyle: present.Strong},
 	}}
 	got = pane(nav, 20, 4, false, ansi.WcWidth)
 	if !strings.HasPrefix(got[1], faint) || strings.Contains(got[1], bold) {
@@ -128,5 +128,23 @@ func TestANarrowListKeepsItsTitles(t *testing.T) {
 	got := pane(c, 30, 4, false, ansi.WcWidth)
 	if ansi.Strip(got[1]) != "  #2 Export als CSV        new" || ansi.Strip(got[2]) != "  #1 Login         in_progress" {
 		t.Fatalf("rows %q", ansiStripAll(got[1:3]))
+	}
+}
+
+// A status's tone is a colour of the terminal's own palette (cyan, yellow,
+// green: the user's theme picks the shade), and only the status takes it.
+func TestAStatusIsDrawnInTheTerminalsOwnColours(t *testing.T) {
+	for style, sgr := range map[present.Style]string{present.StatusOpen: "36", present.StatusActive: "33", present.StatusDone: "32"} {
+		c := present.Column{Title: present.NewInline("Tickets"), Cursor: -1, Rows: []present.Row{
+			{Primary: present.NewInline("#2 Export"), Trailing: present.NewInline("fertig"), TrailingStyle: style},
+		}}
+		got := pane(c, 30, 2, false, ansi.WcWidth)[1]
+		if !strings.Contains(got, "\x1b["+sgr+"mfertig") || strings.Contains(got, sgr+"m  #2") {
+			t.Errorf("%v: %q", style, got)
+		}
+	}
+	lines := wrapStyled("fertig · Website", present.LineStyle{Lead: len("fertig"), LeadStyle: present.StatusDone, RestStyle: present.Faint}, 40, ansi.WcWidth)
+	if got := lines[0].render(40, ansi.WcWidth); !strings.Contains(got, "\x1b[32mfertig") || !strings.Contains(got, faint+" · Website") {
+		t.Fatalf("the facts line: %q", got)
 	}
 }

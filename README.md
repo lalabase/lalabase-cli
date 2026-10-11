@@ -47,8 +47,16 @@ navigation again.
   without unread notifications is faint, an unread count bold. Free text
   wraps at 80 columns at most, however wide the pane. Times are shown in
   the computer's time zone, to the minute, as "28 Aug 15:45", with the year
-  when it is not the current one ("3 Nov 2025 09:12"). Bold and faint only
-  weigh the text: a terminal without them shows the same words.
+  when it is not the current one ("3 Nov 2025 09:12"). A ticket's status,
+  in the list and at the head of the ticket, takes the tone of what it means
+  in its project, which the server sends as `status_functions`: cyan for new
+  or open, yellow in progress, green done (completed or closed), faint in the
+  backlog. The client never guesses a meaning from a status name, since every
+  project names its statuses its own way; a status without a function, or
+  from a server before the field, has no tone. The colours are the
+  terminal's own sixteen, so the theme picks the shade, and `NO_COLOR` turns
+  them off. Bold, faint and colour only weigh the text: a terminal without
+  them shows the same words.
 
 * **The start** asks `/api/v1/me` first; only after that succeeds it reads
   the server's capabilities (`initialize`, `tools/list`), the organisations

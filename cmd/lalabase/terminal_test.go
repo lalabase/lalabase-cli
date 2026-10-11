@@ -58,6 +58,8 @@ type terminalOptions struct {
 	// left there (the disk cache, C1e); empty for a fresh one. cacheHome,
 	// when set, is the child's XDG_CACHE_HOME.
 	home, cacheHome string
+	// env is added to the child's environment (NO_COLOR=1).
+	env []string
 }
 
 func startTerminal(t *testing.T, scenario string, width uint16) *terminalProcess {
@@ -109,6 +111,7 @@ func startTerminalWith(t *testing.T, scenario string, width uint16, opts termina
 	if opts.cacheHome != "" {
 		cmd.Env = append(cmd.Env, "XDG_CACHE_HOME="+opts.cacheHome)
 	}
+	cmd.Env = append(cmd.Env, opts.env...)
 	cmd.Dir = home
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = slave, slave, slave
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}

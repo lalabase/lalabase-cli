@@ -54,9 +54,10 @@ type Row struct {
 	// Quiet: the entry holds nothing to act on (an inbox without unread
 	// notifications) and is drawn faint.
 	Quiet bool
-	// Highlight: the value at the end asks for attention (unread
-	// notifications) and is drawn bold.
-	Highlight bool
+	// TrailingStyle is how the value at the end is drawn when not as the
+	// row: bold when it asks for attention (unread notifications), a
+	// status in the tone of its meaning.
+	TrailingStyle Style
 }
 
 // Style is how part of a line is drawn. Text stays readable on a terminal
@@ -68,6 +69,13 @@ const (
 	Plain Style = iota
 	Strong
 	Faint
+	// The tones of a ticket's status, by what it means in its project
+	// (the server's status functions): open, being worked on, done. The
+	// status's name stands in the tone, so the colour never carries the
+	// meaning alone; a status waiting in the backlog is Faint.
+	StatusOpen
+	StatusActive
+	StatusDone
 )
 
 // LineStyle is how one line of a column's text is drawn: its first Lead

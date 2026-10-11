@@ -11,6 +11,9 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
 
+// viewSGR are the SGR parameters the view writes itself.
+var viewSGR = map[int]bool{0: true, 1: true, 2: true, 22: true, 32: true, 33: true, 36: true, 39: true}
+
 func TestShellBodyColumnsStayAligned(t *testing.T) {
 	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
 		for _, tc := range []struct {
@@ -79,10 +82,11 @@ func assertViewSafe(t *testing.T, text string) {
 				forbidden("non-SGR CSI")
 				return
 			}
-			// The view's own attributes: reset, bold, faint, and the end of
-			// bold and faint. Foreign text brings none (it is cleaned).
+			// The view's own attributes: reset, bold, faint, the end of
+			// bold and faint, the three tones of a status (green, yellow,
+			// cyan) and their end. Foreign text brings none (it is cleaned).
 			for _, param := range params {
-				if n := param.Param(0); n != 0 && n != 1 && n != 2 && n != 22 {
+				if !viewSGR[param.Param(0)] {
 					forbidden("unexpected SGR")
 				}
 			}

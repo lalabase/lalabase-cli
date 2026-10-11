@@ -106,9 +106,16 @@ func copyMap(m map[string]any) map[string]any {
 // server's order.
 var statusKeys = []string{"new", "in_progress", "resolved", "closed", "backlog"}
 
+// statusMeanings are the status functions of each key, as the core sends
+// them with a ticket (status_functions).
+var statusMeanings = map[string][]any{
+	"new": {"is_new"}, "in_progress": {"is_in_progress"}, "resolved": {"is_completed"}, "closed": {"is_closed"}, "backlog": {"is_backlog"},
+}
+
 // ticketRows are the rows of a project: #1 and #2 keep the recorded
 // titles, the rest are "Ticket n"; every third is unassigned, every fourth
-// has no status; what the writes changed (C2a) lies over that.
+// has no status; a status means what its name says (status_functions);
+// what the writes changed (C2a) lies over that.
 func (f *Fixture) ticketRows(project string) []map[string]any {
 	titles := map[int]string{1: "Login bricht ab", 2: "Export als CSV"}
 	var out []map[string]any
@@ -122,12 +129,12 @@ func (f *Fixture) ticketRows(project string) []map[string]any {
 		if i%3 == 0 {
 			row["assignees"] = []any{}
 		}
-		row["status"] = "new"
+		row["status"], row["status_functions"] = "new", statusMeanings["new"]
 		if i == 1 {
-			row["status"] = "in_progress"
+			row["status"], row["status_functions"] = "in_progress", statusMeanings["in_progress"]
 		}
 		if i%4 == 0 {
-			row["status"] = nil
+			row["status"], row["status_functions"] = nil, []any{}
 		}
 		if e := f.editOf(row["id"].(string)); e != nil {
 			for k, v := range e.row {
@@ -388,7 +395,7 @@ func (f *Fixture) ticketRecord(project string, n, postsPage, perPage int, newest
 	rows := f.ticketRows(project)
 	row := rows[n-1]
 	t := copyMap(f.ticketTmpl)
-	for _, k := range []string{"id", "number", "title", "status", "assignees"} {
+	for _, k := range []string{"id", "number", "title", "status", "status_functions", "assignees"} {
 		t[k] = row[k]
 	}
 	t["project"] = map[string]any{"id": project, "name": f.projectName(project)}
@@ -397,7 +404,7 @@ func (f *Fixture) ticketRecord(project string, n, postsPage, perPage int, newest
 	attachments := []any{map[string]any{"filename": "design.pdf", "content_type": "application/pdf", "byte_size": 1024}, map[string]any{"filename": "screenshot.png", "content_type": "image/png", "byte_size": 2048}}
 	switch n {
 	case 2:
-		t["description_html"], t["description_text"], t["assignees"], t["creator"], t["status"] = "", "", []any{}, nil, nil
+		t["description_html"], t["description_text"], t["assignees"], t["creator"], t["status"], t["status_functions"] = "", "", []any{}, nil, nil, []any{}
 		posts, attachments = []any{}, []any{}
 	case 3:
 		posts = nil
