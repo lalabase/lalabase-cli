@@ -147,6 +147,8 @@ func (l *Launcher) here(folder string, t Ticket, server string, done func(Kind, 
 func (l *Launcher) folder(project string) (string, Kind, string) {
 	path, ok := l.cfg.Folders[project]
 	switch {
+	case !ok && l.cfg.Cwd == "":
+		return "", NoFolder, "the folder lalabase was started in is unknown"
 	case !ok:
 		path = l.cfg.Cwd
 	case strings.HasPrefix(path, "~/"):

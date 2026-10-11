@@ -49,6 +49,9 @@ type Session struct {
 	// Disk opens the disk cache of the profile after /me confirmed the
 	// identity (C1e); nil for memory alone.
 	Disk *diskcache.Opener
+	// Launcher starts Claude Code beside the ticket shown (C7); nil
+	// offers no x.
+	Launcher Launcher
 }
 
 // WithSession gives the model a session to run.

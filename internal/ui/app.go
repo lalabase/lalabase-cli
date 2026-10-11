@@ -202,6 +202,10 @@ type app struct {
 	// disk is the disk cache (C1e), outside reset: an ended session still
 	// has its namespace to remove from it.
 	disk *diskState
+
+	// launch is the launch of Claude Code beside a ticket (C7), outside
+	// reset: its numbering goes on, so a late answer frees nothing.
+	launch launchState
 }
 
 func newApp(s Session) *app {

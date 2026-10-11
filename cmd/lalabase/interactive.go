@@ -11,6 +11,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/diskcache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
+	"github.com/gboyke/lalabase-cli/internal/launch"
 	"github.com/gboyke/lalabase-cli/internal/profile"
 	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/terminal"
@@ -78,6 +79,13 @@ func runInteractive(name string, env Env) int {
 				// The disk cache (C1e): under the user's cache directory,
 				// opened only after /me confirmed the identity.
 				Disk: &diskcache.Opener{Root: diskcache.Root(env.Getenv, env.Home)},
+				// Claude Code beside the ticket (C7): the profile's server
+				// and folders, the start folder, and the two variables that
+				// say whether this is an iTerm session.
+				Launcher: launch.New(launch.Config{
+					Supervisor: sup, Home: env.Home, Cwd: env.Cwd, Server: p.URL, Folders: p.Folders,
+					TermProgram: env.Getenv("TERM_PROGRAM"), SessionID: env.Getenv("ITERM_SESSION_ID"),
+				}),
 			})), sup)
 		}
 	}

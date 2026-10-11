@@ -44,6 +44,8 @@ const (
 	Expand
 	// C1f: mark a notification as read.
 	MarkRead
+	// C7: Claude Code beside the ticket.
+	Launch
 )
 
 type keyAction struct {
@@ -118,6 +120,8 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: Expand}
 	case "r":
 		return keyAction{Kind: MarkRead}
+	case "x":
+		return keyAction{Kind: Launch}
 	}
 	return keyAction{}
 }
@@ -385,6 +389,9 @@ func (m Model) ticketBindings() []binding {
 	}
 	if _, ok := m.expandTarget(); ok {
 		out = append(out, binding{Expand, uitext.ExpandKey, uitext.ExpandHelp})
+	}
+	if _, ok := m.launchTarget(); ok {
+		out = append(out, binding{Launch, uitext.LaunchKey, uitext.LaunchHelp})
 	}
 	return append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
 }

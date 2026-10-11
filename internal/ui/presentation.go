@@ -94,6 +94,8 @@ func (m Model) screen() present.Screen {
 		s.Status = uitext.Fill(uitext.RateLimited, a.pause.In(a.loc).Format("15:04:05"))
 	case a.diskStatus() != 0:
 		s.Status = uitext.Inline(a.diskStatus())
+	case a.launchShown():
+		s.Status = a.launch.notice
 	}
 	return s
 }
