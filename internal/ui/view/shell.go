@@ -139,7 +139,7 @@ func pane(c present.Column, width, height int, focused bool, method ansi.Method)
 	body := height - at
 	var content []string
 	if c.Rows != nil {
-		content = rows(c, width, body, method)
+		content = rows(c, width, body, focused, method)
 	} else {
 		content = scrolled(c, width, body, method)
 	}
@@ -151,8 +151,9 @@ func pane(c present.Column, width, height int, focused bool, method ansi.Method)
 }
 
 // rows renders the visible rows, the cursor kept in sight: the offset moves
-// only when the cursor would be outside.
-func rows(c present.Column, width, body int, method ansi.Method) []string {
+// only when the cursor would be outside. In the focused pane the cursor
+// row is a bar; elsewhere its marker alone shows it.
+func rows(c present.Column, width, body int, focused bool, method ansi.Method) []string {
 	if body <= 0 || width <= 0 {
 		return nil
 	}
@@ -175,7 +176,8 @@ func rows(c present.Column, width, body int, method ansi.Method) []string {
 	}
 	var out []string
 	for i := offset; i < len(c.Rows) && len(out)+h <= body; i++ {
-		out = append(out, row(c.Rows[i], width, trailing, i == c.Cursor, h == 2, method)...)
+		cursor := i == c.Cursor
+		out = append(out, row(c.Rows[i], width, trailing, cursor, cursor && focused, h == 2, method)...)
 	}
 	return out
 }
@@ -188,8 +190,13 @@ const minAligned = 20
 // row is one entry: a marker, the first line with its trailing value at
 // the end, in a column trailingWidth wide, and the second line indented
 // and faint. The entry in use is bold, one with nothing to act on faint, a
-// value that asks for attention bold.
-func row(r present.Row, width, trailingWidth int, cursor, twoLines bool, method ansi.Method) []string {
+// value that asks for attention bold. A bar (the cursor row of the focused
+// pane) is drawn reversed over the pane's whole width, both lines of it,
+// so the eye finds where the keys act; faint and a status's tone give way
+// in it (faint on a reversed ground is hard to read, and a tone would turn
+// into a coloured block), bold stays. The marker stays too: a terminal
+// that draws no attributes still shows the cursor.
+func row(r present.Row, width, trailingWidth int, cursor, bar, twoLines bool, method ansi.Method) []string {
 	marker := "  "
 	if cursor {
 		marker = "> "
@@ -232,11 +239,25 @@ func row(r present.Row, width, trailingWidth int, cursor, twoLines bool, method 
 	if r.TrailingStyle != present.Plain {
 		valueWeight = r.TrailingStyle
 	}
+	if bar {
+		lines := []string{reversed(marker+primary+value, width, r.Active, method)}
+		if twoLines {
+			lines = append(lines, reversed("  "+fit(r.Secondary.String(), max(0, width-2), method), width, false, method))
+		}
+		return lines
+	}
 	first := styled(marker+primary, weight) + styled(value, valueWeight)
 	if !twoLines {
 		return []string{first}
 	}
 	return []string{first, "  " + styled(fit(r.Secondary.String(), max(0, width-2), method), present.Faint)}
+}
+
+// reversed draws a line of a bar: padded to the width, every cell of it
+// reversed, bold when strong.
+func reversed(text string, width int, strong bool, method ansi.Method) string {
+	text += strings.Repeat(" ", max(0, width-method.StringWidth(text)))
+	return lipgloss.NewStyle().Reverse(true).Bold(strong).Render(text)
 }
 
 // scrolled renders free text from its offset, clamped so the last line is
