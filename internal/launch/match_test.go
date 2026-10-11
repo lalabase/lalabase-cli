@@ -36,6 +36,7 @@ func TestSameServer(t *testing.T) {
 		{"https://lalabase.com?x=1", "https://lalabase.com", false},
 		{"https://lalabase.com#x", "https://lalabase.com", false},
 		{"ftp://lalabase.com", "ftp://lalabase.com", false},
+		{"https://lalabase.com/t%65nant", "https://lalabase.com/t%65nant", false},
 		{"", "", false},
 		{"lalabase.com", "lalabase.com", false},
 	} {

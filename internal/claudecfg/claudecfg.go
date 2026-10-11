@@ -222,10 +222,69 @@ func readJSON(path string, maxBytes int64, out any) error {
 	if err != nil {
 		return err
 	}
+	if loneSurrogate(data) {
+		return fmt.Errorf("%s: a lone UTF-16 surrogate escape; Claude Code reads it differently", path)
+	}
 	if err := json.Unmarshal(data, out); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	return nil
+}
+
+// loneSurrogate reports a \u escape of a UTF-16 surrogate without its
+// partner in a JSON string. Go decodes one as U+FFFD, JavaScript keeps it:
+// two names distinct for Claude Code could become one here and hide a
+// server (review round 2 of C7). A file holding one is refused.
+func loneSurrogate(data []byte) bool {
+	in := false
+	for i := 0; i < len(data); i++ {
+		switch c := data[i]; {
+		case !in:
+			in = c == '"'
+		case c == '"':
+			in = false
+		case c == '\\' && i+1 < len(data) && data[i+1] == 'u':
+			r, ok := hex4(data, i+2)
+			if !ok {
+				return false // malformed: json.Unmarshal refuses it
+			}
+			i += 5
+			switch {
+			case 0xD800 <= r && r < 0xDC00:
+				next, ok := hex4(data, i+3)
+				if i+2 >= len(data) || data[i+1] != '\\' || data[i+2] != 'u' || !ok || next < 0xDC00 || next > 0xDFFF {
+					return true
+				}
+				i += 6
+			case 0xDC00 <= r && r <= 0xDFFF:
+				return true
+			}
+		case c == '\\':
+			i++ // the escaped character, a backslash or a quote among them
+		}
+	}
+	return false
+}
+
+// hex4 reads four hex digits at data[at:].
+func hex4(data []byte, at int) (rune, bool) {
+	if at+4 > len(data) {
+		return 0, false
+	}
+	var r rune
+	for _, c := range data[at : at+4] {
+		switch {
+		case '0' <= c && c <= '9':
+			r = r<<4 | rune(c-'0')
+		case 'a' <= c && c <= 'f':
+			r = r<<4 | rune(c-'a'+10)
+		case 'A' <= c && c <= 'F':
+			r = r<<4 | rune(c-'A'+10)
+		default:
+			return 0, false
+		}
+	}
+	return r, true
 }
 
 // Visible lists every server Claude Code may use when it starts in folder,
@@ -336,10 +395,12 @@ func ProjectKeys(folder string) []string {
 	}
 	add(real)
 	for dir := real; ; {
+		// Any .git marks a root: a directory, a worktree's file, a link
+		// (review round 2 of C7).
 		info, err := os.Lstat(filepath.Join(dir, ".git"))
-		if err == nil && (info.IsDir() || info.Mode().IsRegular()) {
+		if err == nil {
 			add(dir)
-			if info.Mode().IsRegular() {
+			if !info.IsDir() {
 				if main, ok := mainCheckout(dir); ok {
 					add(main)
 				}
@@ -356,7 +417,8 @@ func ProjectKeys(folder string) []string {
 
 // mainCheckout follows a worktree's .git file ("gitdir: <dir>") to the
 // common directory its git directory names ("commondir") and returns the
-// checkout that common directory belongs to. A .git file without a common
+// checkout that common directory belongs to, or for a bare repository the
+// repository itself, as Claude Code keys it. A .git file without a common
 // directory (a submodule) has no main checkout.
 func mainCheckout(root string) (string, bool) {
 	gitdir, ok := pointer(filepath.Join(root, ".git"), "gitdir: ", root)
@@ -364,10 +426,13 @@ func mainCheckout(root string) (string, bool) {
 		return "", false
 	}
 	common, ok := pointer(filepath.Join(gitdir, "commondir"), "", gitdir)
-	if !ok || filepath.Base(common) != ".git" {
+	if !ok {
 		return "", false
 	}
-	main, err := filepath.EvalSymlinks(filepath.Dir(common))
+	if filepath.Base(common) == ".git" {
+		common = filepath.Dir(common)
+	}
+	main, err := filepath.EvalSymlinks(common)
 	if err != nil {
 		return "", false
 	}
@@ -459,6 +524,11 @@ func baseURL(raw string) (string, error) {
 	}
 	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
 		return "", errors.New("unknown address form: a user, query or fragment in the address")
+	}
+	// An escape in the path is decoded here and kept in Claude Code's
+	// request (/tenant%2Fapi/mcp is not /tenant/api/mcp).
+	if strings.Contains(u.EscapedPath(), "%") {
+		return "", errors.New("unknown address form: an escaped character in the path")
 	}
 	path := strings.TrimRight(u.Path, "/")
 	base, ok := strings.CutSuffix(path, "/api/mcp")

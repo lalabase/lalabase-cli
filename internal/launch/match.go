@@ -147,6 +147,11 @@ func normalBase(raw string) (string, bool) {
 		host = net.JoinHostPort(host, port)
 		host = strings.TrimSuffix(host, ":")
 	}
+	// An escape in the path means another request target in Claude Code
+	// than here; refused like the address in claudecfg.
+	if strings.Contains(u.EscapedPath(), "%") {
+		return "", false
+	}
 	return scheme + "://" + host + strings.TrimRight(u.EscapedPath(), "/"), true
 }
 

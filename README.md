@@ -201,8 +201,11 @@ navigation again.
     the home and `CLAUDE_CONFIG_DIR`, the legacy `.config.json` too), the
     local scope of the folder's git root (keys compared without case), and
     every `.mcp.json` in the folder and above it, on the path as given and
-    with its links resolved. Keys are read as written (`url`, not `URL`),
-    as Claude Code reads them. Servers whose names give the same tool name
+    with its links resolved (a `.git` link or a bare repository's worktree
+    counts as a git root). Keys are read as written (`url`, not `URL`),
+    as Claude Code reads them; a file it would read otherwise (a lone
+    UTF-16 surrogate escape) stops the launch, and an address with an
+    escape in its path names no server. Servers whose names give the same tool name
     (`lalabase.prod` and `lalabase_prod`) are one name. A name counts only
     when every server of that name points at the profile's server (hosts
     compared in ASCII only), so a repository's `.mcp.json` cannot redirect

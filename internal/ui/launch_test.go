@@ -288,3 +288,17 @@ func TestXNeedsTheRecordOfTheTicketAskedFor(t *testing.T) {
 		t.Error("x not offered for the ticket restored")
 	}
 }
+
+// Review round 2, P27: once a launch is answered, a second answer with its
+// number changes nothing.
+func TestXSecondAnswerToALaunchChangesNothing(t *testing.T) {
+	h := newHarness(t)
+	h.withLauncher()
+	h.openSix()
+	h.drive(h.press("x"))
+	ref := h.m.app.launch.ref
+	h.feed(launch.Done{Ref: ref, Ticket: h.shownTicket(), Kind: launch.NoClaude})
+	if got := h.status(); got != "Claude Code opened beside #6" {
+		t.Fatalf("status %q", got)
+	}
+}
