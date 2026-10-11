@@ -101,22 +101,22 @@ func TestRowsKeepTheCursorInSightAndCountTheNotice(t *testing.T) {
 }
 
 // Free text scrolls by its offset; the last line is kept in sight and an
-// overflow is marked.
+// overflow is marked. The text keeps the last column free for the bar.
 func TestTextScrollsByOffset(t *testing.T) {
 	c := present.Column{Title: present.NewInline("Details"), Text: present.NewBody("one\ntwo\nthree\nfour\nfive")}
 	got := pane(c, 8, 4, false, ansi.WcWidth)
-	if !reflect.DeepEqual(ansiStripAll(got), []string{"Details ", "one     ", "two     ", "three…  "}) {
-		t.Fatalf("top: %q", got)
+	if !reflect.DeepEqual(ansiStripAll(got), []string{"Details ", "one    \u2503", "two    \u2503", "three… \u254e"}) {
+		t.Fatalf("top: %q", ansiStripAll(got))
 	}
 	c.Offset = 3
 	got = pane(c, 8, 4, false, ansi.WcWidth)
-	if !reflect.DeepEqual(ansiStripAll(got), []string{"Details ", "three   ", "four    ", "five    "}) {
-		t.Fatalf("clamped offset: %q", got)
+	if !reflect.DeepEqual(ansiStripAll(got), []string{"Details ", "three  \u254e", "four   \u2503", "five   \u2503"}) {
+		t.Fatalf("clamped offset: %q", ansiStripAll(got))
 	}
 	c.Offset = 1
 	got = pane(c, 8, 4, false, ansi.WcWidth)
-	if !reflect.DeepEqual(ansiStripAll(got), []string{"Details ", "two     ", "three   ", "four…   "}) {
-		t.Fatalf("offset 1: %q", got)
+	if !reflect.DeepEqual(ansiStripAll(got), []string{"Details ", "two    \u2503", "three  \u2503", "four…  \u254e"}) {
+		t.Fatalf("offset 1: %q", ansiStripAll(got))
 	}
 }
 

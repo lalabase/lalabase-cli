@@ -101,7 +101,7 @@ func Extent(c present.Column, g Geometry, which Pane, method ansi.Method) int {
 	if width <= 0 {
 		return 0
 	}
-	return len(textLines(c, width, method))
+	return len(textLines(c, textWidth(width), method))
 }
 
 // compactBelow is the body height below which rows show their first line
@@ -141,7 +141,7 @@ func pane(c present.Column, width, height int, focused bool, method ansi.Method)
 	if c.Rows != nil {
 		content = rows(c, width, body, focused, method)
 	} else {
-		content = scrolled(c, width, body, method)
+		content = scrollable(c, width, body, method)
 	}
 	copy(lines[at:], content)
 	for i := range lines {
@@ -260,18 +260,89 @@ func reversed(text string, width int, strong bool, method ansi.Method) string {
 	return lipgloss.NewStyle().Reverse(true).Bold(strong).Render(text)
 }
 
+// The scrollbar of a free-text pane: a track down the pane's last column
+// and on it a thumb, as long as the share of the text in sight and where
+// that share is. The two differ in shape, not only in weight, so a
+// terminal without attributes shows them; neither is the separator
+// between panes.
+const (
+	thumb = "\u2503" // heavy vertical
+	track = "\u254e" // light double dash vertical
+)
+
+// textWidth is the width a free-text pane wraps its text at: the pane less
+// the scrollbar's column and a space before it, always, overflow or not. A
+// part of a text (the place of a comment, which the ticket pane measures)
+// then wraps as the whole does, and Extent counts what the pane draws. A
+// pane too narrow for both has no bar.
+func textWidth(width int) int {
+	if width < 3 {
+		return width
+	}
+	return width - 2
+}
+
+// scrollable is free text with its scrollbar when it overflows: the text
+// at textWidth, each line padded, the bar in the pane's last column.
+func scrollable(c present.Column, width, body int, method ansi.Method) []string {
+	inner := textWidth(width)
+	lines, offset, total := scrolledAt(c, inner, body, method)
+	if inner == width || total <= body {
+		return lines
+	}
+	bar := scrollbar(body, total, offset)
+	for i := range lines {
+		lines[i] += strings.Repeat(" ", max(0, width-1-method.StringWidth(lines[i]))) + bar[i]
+	}
+	return lines
+}
+
+// scrollbar is the bar's cells for a body of the given height over total
+// lines from offset (clamped, so total-body at the end). The thumb is the
+// visible share, at least one cell; it touches the bottom only at the end
+// and, where there is room for a place between, the top only at the top,
+// so a thumb at either end means it.
+func scrollbar(body, total, offset int) []string {
+	length := max(1, min(body, (body*body+total/2)/total))
+	room, last := body-length, total-body
+	start := (offset*room + last/2) / last
+	if offset < last && room >= 1 {
+		start = min(start, room-1)
+	}
+	if offset > 0 && room >= 2 {
+		start = max(start, 1)
+	}
+	cells := make([]string, body)
+	for i := range cells {
+		if i >= start && i < start+length {
+			cells[i] = thumb
+		} else {
+			cells[i] = lipgloss.NewStyle().Faint(true).Render(track)
+		}
+	}
+	return cells
+}
+
 // scrolled renders free text from its offset, clamped so the last line is
 // still in sight; an overflow is marked on the last line.
 func scrolled(c present.Column, width, body int, method ansi.Method) []string {
+	lines, _, _ := scrolledAt(c, width, body, method)
+	return lines
+}
+
+// scrolledAt is scrolled with the clamped offset and the number of lines
+// the text wraps into.
+func scrolledAt(c present.Column, width, body int, method ansi.Method) (lines []string, offset, total int) {
 	if width <= 0 || body <= 0 {
-		return nil
+		return nil, 0, 0
 	}
 	all := textLines(c, width, method)
-	offset := max(0, min(c.Offset, max(0, len(all)-body)))
+	total = len(all)
+	offset = max(0, min(c.Offset, max(0, len(all)-body)))
 	all = all[offset:]
 	overflow := len(all) > body
 	all = all[:min(len(all), body)]
-	lines := make([]string, len(all))
+	lines = make([]string, len(all))
 	for i, l := range all {
 		lines[i] = l.render(width, method)
 	}
@@ -279,5 +350,5 @@ func scrolled(c present.Column, width, body int, method ansi.Method) []string {
 		last := len(all) - 1
 		lines[last] = fit(all[last].plain()+uitext.Inline(uitext.Ellipsis).String(), width, method)
 	}
-	return lines
+	return lines, offset, total
 }
