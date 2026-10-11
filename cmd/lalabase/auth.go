@@ -292,10 +292,12 @@ func authImport(args []string, globalProfile string, env Env) int {
 	// still what the person was asked about.
 	err = profile.Update(path, func(current *profile.File) error {
 		now, stillExists := current.Profiles[target]
-		if stillExists != exists || now != old {
+		if stillExists != exists || !now.Same(old) {
 			return errChangedMeanwhile
 		}
-		current.Profiles[target] = profile.Entry{URL: chosen.BaseURL, Token: chosen.Token}
+		// The folders stay (C7): they name projects and folders, not the
+		// token, and were written by hand.
+		current.Profiles[target] = profile.Entry{URL: chosen.BaseURL, Token: chosen.Token, Folders: now.Folders}
 		file = *current
 		return nil
 	})

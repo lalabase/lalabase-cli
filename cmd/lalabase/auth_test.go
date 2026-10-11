@@ -251,6 +251,32 @@ func TestReplacingAProfileDropsItsWriteReleaseAndSaysSo(t *testing.T) {
 	}
 }
 
+// C7: auth import replaces a profile's server and token and keeps the
+// folders the person wrote into it by hand, and every other profile whole.
+func TestImportKeepsTheFoldersOfTheProfile(t *testing.T) {
+	srv := fakeServer(t, "Anna Albers")
+	h := newHarness(t)
+	h.claudeConfig(t, httpEntry("lalabase", srv.URL, writeToken))
+	mine := map[string]string{"00000000-0000-4000-8000-000000000031": "~/dev/website"}
+	theirs := map[string]string{"00000000-0000-4000-8000-000000000032": "/srv/agent"}
+	if err := profile.Save(h.configPath(), profile.File{Profiles: map[string]profile.Entry{
+		"default": {URL: "https://old.example", Token: "lalab_pat_OLDOLDOLDOLD", Folders: mine},
+		"agent":   {URL: "https://old.example", Token: "lalab_pat_AGENTAGENTAG", Folders: theirs},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if code := h.run("1\ny\n", true, "auth", "import"); code != 0 {
+		t.Fatalf("exit %d %s", code, h.err.String())
+	}
+	file := h.config(t)
+	if entry := file.Profiles["default"]; entry.Token != writeToken || len(entry.Folders) != 1 || entry.Folders["00000000-0000-4000-8000-000000000031"] != "~/dev/website" {
+		t.Fatalf("default after import: %+v", entry)
+	}
+	if entry := file.Profiles["agent"]; len(entry.Folders) != 1 || entry.Folders["00000000-0000-4000-8000-000000000032"] != "/srv/agent" {
+		t.Fatalf("agent after import: %+v", entry)
+	}
+}
+
 func TestImportUnderAChosenName(t *testing.T) {
 	srv := fakeServer(t, "Anna Albers")
 	h := newHarness(t)
@@ -428,7 +454,7 @@ func TestImportDoesNotOverwriteAProfileThatChangedMeanwhile(t *testing.T) {
 			if code != 1 || !strings.Contains(h.err.String(), "changed") {
 				t.Fatalf("exit %d\n%s%s", code, h.out.String(), h.err.String())
 			}
-			if entry := h.config(t).Profiles["default"]; entry != meanwhile {
+			if entry := h.config(t).Profiles["default"]; !entry.Same(meanwhile) {
 				t.Fatalf("overwritten: %+v", entry)
 			}
 		})
