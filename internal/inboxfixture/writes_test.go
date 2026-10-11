@@ -42,6 +42,9 @@ func TestTheTicketWritesWorkAgainstTheFixture(t *testing.T) {
 	if s := page.Data[5].Status; s == nil || *s != "resolved" || page.Data[4].Status == nil || *page.Data[4].Status != "new" {
 		t.Fatalf("the list does not show the status: %+v / %+v", page.Data[5], page.Data[4])
 	}
+	if f := page.Data[5].StatusFunctions; len(f) != 1 || f[0] != "is_completed" || len(row.StatusFunctions) != 1 || row.StatusFunctions[0] != "is_completed" {
+		t.Fatalf("the new status keeps the old meaning: %q / %q", f, row.StatusFunctions)
+	}
 	// #6 is unassigned (every third ticket): assigning me gives one
 	// assignee; #1's recorded assignee is me already, so I stay one.
 	row, ans = a.UpdateTicket(ctx, ProjectWebsite, six, api.TicketChange{AddMe: true}, "key-00000002")

@@ -165,9 +165,6 @@ func TestTheClientKnowsEveryStatusFunctionTheCoreSends(t *testing.T) {
 		}
 	}
 	if seen == 0 {
-		// The copy predates the field (core lalabase/lalabase#990): refreshing
-		// it is its own step, since the core's recorded data changed under
-		// the mark-read tests since 0.9.0.
-		t.Skip("the contract copy predates status_functions; refresh it with tools/update-contract")
+		t.Fatal("no recorded answer carries status_functions")
 	}
 }
