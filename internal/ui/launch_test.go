@@ -6,8 +6,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/launch"
+	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
 
@@ -300,5 +303,97 @@ func TestXSecondAnswerToALaunchChangesNothing(t *testing.T) {
 	h.feed(launch.Done{Ref: ref, Ticket: h.shownTicket(), Kind: launch.NoClaude})
 	if got := h.status(); got != "Claude Code opened beside #6" {
 		t.Fatalf("status %q", got)
+	}
+}
+
+// A notice that does not fit beside the context line gets a line of its
+// own under it instead of being cut: x has no other answer when no split
+// opens. Where it fits, it stays beside the context and the body keeps its
+// line. Either way the screen is as high as the terminal and the help is
+// whole.
+func TestTheNoticeIsShownWholeAtEveryWidth(t *testing.T) {
+	const notice = "No MCP server of Claude Code's for https://lalabase.com"
+	for width := len(notice); width <= 200; width++ {
+		h := newHarness(t)
+		f := h.withLauncher()
+		f.kind = launch.NoServer
+		h.openSix()
+		h.m.width, h.m.height = width, 24
+		before := h.m.geometry()
+		msg := h.press("x")().(launch.Done)
+		msg.Detail = "https://lalabase.com"
+		h.feed(msg)
+		lines := strings.Split(ansi.Strip(h.m.View().Content), "\n")
+		if len(lines) != 24 {
+			t.Fatalf("width %d: %d lines, want 24", width, len(lines))
+		}
+		if !strings.HasSuffix(strings.TrimRight(lines[1], " "), "| "+notice) && strings.TrimRight(lines[2], " ") != notice {
+			t.Fatalf("width %d: the notice is not whole under the header:\n%s", width, strings.Join(lines[:3], "\n"))
+		}
+		after := h.m.geometry()
+		beside := strings.Contains(lines[1], notice)
+		if context := strings.TrimRight(lines[1], " "); !beside && len(context+" | "+notice) <= width {
+			t.Fatalf("width %d: the notice took a line of its own beside room for it: %q", width, context)
+		}
+		if beside != (after.BodyHeight == before.BodyHeight) {
+			t.Fatalf("width %d: beside=%v, body %d before, %d after", width, beside, before.BodyHeight, after.BodyHeight)
+		}
+		if help := strings.Join(lines[24-after.HelpHeight:], "\n"); !strings.Contains(help, "Claude Code") {
+			t.Fatalf("width %d: the help is not whole:\n%s", width, help)
+		}
+	}
+}
+
+// A notice on a line of its own takes it from the body: the frame stays as
+// high as the terminal, the focused pane keeps a line, a terminal is not
+// made small by it, and the scroll keys follow the body that is left.
+func TestANoticeOnItsOwnLineKeepsTheFrame(t *testing.T) {
+	for _, number := range []int{6, 7} {
+		h := newHarness(t)
+		f := h.withLauncher()
+		f.kind = launch.NoServer
+		h.openTickets(website)
+		h.m.app.tickets.selected = ticketID(website, number)
+		h.drive(h.press("enter"))
+		msg := h.press("x")().(launch.Done)
+		msg.Detail = "https://lalabase.com; Claude Code has: https://staging.example"
+		h.feed(msg)
+		own := 0
+		// The widths around each change of columns; every width is a minute
+		// under the race detector.
+		for _, width := range []int{40, 79, 80, 119, 120, 160} {
+			for height := 8; height <= 40; height++ {
+				h.m.width, h.m.height = width, height
+				g := h.m.geometry()
+				lines := strings.Split(ansi.Strip(h.m.View().Content), "\n")
+				if len(lines) != height {
+					t.Fatalf("#%d %dx%d: %d lines", number, width, height, len(lines))
+				}
+				notice := h.m.app.launch.notice
+				h.m.app.launch.notice = present.Inline{}
+				bare := h.m.geometry().Small
+				h.m.app.launch.notice = notice
+				if g.Small != bare {
+					t.Fatalf("#%d %dx%d: the notice changed small from %v", number, width, height, bare)
+				}
+				if g.Small {
+					continue
+				}
+				c := h.m.objectColumn()
+				extent, capacity := view.Extent(c, g, view.Object, h.m.widthMethod), view.Capacity(c, g)
+				if g.NoticeHeight == 1 {
+					own++
+					if capacity < 1 {
+						t.Fatalf("#%d %dx%d: the notice leaves the pane no line", number, width, height)
+					}
+				}
+				if offered := h.m.allowed()[PageDown]; offered != (extent > capacity) {
+					t.Fatalf("#%d %dx%d: extent=%d capacity=%d notice=%d offered=%v\n%s", number, width, height, extent, capacity, g.NoticeHeight, offered, strings.Join(lines, "\n"))
+				}
+			}
+		}
+		if own == 0 {
+			t.Fatalf("#%d: the notice never had a line of its own", number)
+		}
 	}
 }

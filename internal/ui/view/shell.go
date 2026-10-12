@@ -32,22 +32,16 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 	if s.Identity.String() != "" {
 		header += " | " + s.Identity.String()
 	}
-	context := s.Context.String()
-	if g.Columns == 1 {
-		context = s.Crumbs[0].String()
-		if focus >= List {
-			context += " > " + s.Crumbs[1].String()
-		}
-		if focus == Object {
-			context += " > " + s.Crumbs[2].String()
-		}
-	} else if g.Columns == 2 && focus == Navigation {
-		context = s.Chooser.Title.String()
+	context := contextLine(s, g, focus)
+	lines := []string{fit(header, g.Width, method)}
+	switch {
+	case s.Status.String() == "":
+		lines = append(lines, fit(context, g.Width, method))
+	case g.NoticeHeight > 0:
+		lines = append(lines, fit(context, g.Width, method), fit(s.Status.String(), g.Width, method))
+	default:
+		lines = append(lines, fit(context+statusSeparator+s.Status.String(), g.Width, method))
 	}
-	if s.Status.String() != "" {
-		context += " | " + s.Status.String()
-	}
-	lines := []string{fit(header, g.Width, method), fit(context, g.Width, method)}
 	panes := Visible(g, focus)
 	columns := make([][]string, len(panes))
 	for i, p := range panes {
@@ -61,6 +55,38 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 		lines = append(lines, strings.Join(parts, lipgloss.NewStyle().Faint(true).Render(Separator)))
 	}
 	return strings.Join(append(lines, helpLines...), "\n")
+}
+
+// statusSeparator stands between the context and a notice beside it.
+const statusSeparator = " | "
+
+// contextLine is where the person is: the context of two and three
+// columns, the breadcrumb of one, the chooser's title while two columns
+// show it.
+func contextLine(s present.Screen, g Geometry, focus Pane) string {
+	switch {
+	case g.Columns == 1:
+		context := s.Crumbs[0].String()
+		if focus >= List {
+			context += " > " + s.Crumbs[1].String()
+		}
+		if focus == Object {
+			context += " > " + s.Crumbs[2].String()
+		}
+		return context
+	case g.Columns == 2 && focus == Navigation:
+		return s.Chooser.Title.String()
+	}
+	return s.Context.String()
+}
+
+// NoticeFits: the screen's status notice stands whole beside the context
+// line of this geometry. One that does not fit gets a line of its own
+// (Geometry.NoticeHeight), so it is never cut to a few words: for some
+// keys (x) it is the only answer.
+func NoticeFits(s present.Screen, g Geometry, focus Pane, method ansi.Method) bool {
+	status := s.Status.String()
+	return status == "" || method.StringWidth(contextLine(s, g, focus)+statusSeparator+status) <= g.Width
 }
 
 func column(s present.Screen, which Pane) present.Column {

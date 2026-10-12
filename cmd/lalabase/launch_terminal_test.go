@@ -109,6 +109,35 @@ func TestPTYLaunchRunsClaudeHereAndComesBack(t *testing.T) {
 	}
 }
 
+// x where Claude Code knows no server of the profile's, on an 80-column
+// terminal: the notice does not fit beside the context line and stands
+// whole on a line of its own. Until it had one, it was cut to "No MCP
+// server of Cl…" and x seemed to do nothing.
+func TestPTYLaunchNoticeIsWholeOnANarrowTerminal(t *testing.T) {
+	_, url := fixtureServer(t, inboxfixture.Normal)
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(home, "bin")
+	if err := os.MkdirAll(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil { //nolint:gosec // a test program
+		t.Fatal(err)
+	}
+	c := startTerminalWith(t, "launch-no-server", 80, terminalOptions{
+		url: url, marker: "Token can write: yes", limit: inboxLimit, home: home,
+		env: []string{"PATH=" + bin + ":/usr/bin:/bin"},
+	})
+	if err := c.ready(); err != nil {
+		t.Fatalf("%v\n%s", err, c.bytes())
+	}
+	openWebsite(t, c, 80)
+	c.act(t, keyEnter, 80, "esc back")
+	c.act(t, "x", 80, "No MCP server of Claude Code's for "+url)
+}
+
 func read(t *testing.T, path string) string {
 	t.Helper()
 	deadline := time.Now().Add(readyLimit)

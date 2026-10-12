@@ -1,6 +1,9 @@
 package ui
 
-import "github.com/gboyke/lalabase-cli/internal/ui/view"
+import (
+	"github.com/gboyke/lalabase-cli/internal/present"
+	"github.com/gboyke/lalabase-cli/internal/ui/view"
+)
 
 // navigationWidth is the width of the navigation in three columns.
 const navigationWidth = 24
@@ -43,5 +46,30 @@ func layoutWith(width, height, helpLines int, focus view.Pane) view.Geometry {
 func (m Model) geometry() view.Geometry {
 	g := layoutWith(m.width, m.height, len(view.HelpLines(m.help(), m.width, m.widthMethod)), m.focus)
 	g.Small = g.Small || m.small()
-	return g
+	return m.withNotice(g)
+}
+
+// withNotice is the geometry with a line of its own for a status notice
+// that does not fit beside the context line, taken from the body. A
+// notice never makes a terminal small: where the focused column would
+// keep no row, it stays beside the context, cut (a small terminal shows
+// neither line).
+func (m Model) withNotice(g view.Geometry) view.Geometry {
+	if m.app == nil {
+		return g
+	}
+	status := m.status()
+	if status.String() == "" {
+		return g
+	}
+	s := present.Screen{Context: m.context(), Crumbs: m.crumbs(), Chooser: m.chooserColumn(), Status: status}
+	if view.NoticeFits(s, g, m.focus, m.widthMethod) {
+		return g
+	}
+	n := g
+	n.NoticeHeight, n.BodyHeight = 1, g.BodyHeight-1
+	if view.Capacity(m.focusedColumn(), n) < 1 {
+		return g
+	}
+	return n
 }
