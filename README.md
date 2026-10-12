@@ -43,7 +43,10 @@ its width, the object gets the rest, and `Esc` back to the list brings the
 navigation again.
 
 * **How it is drawn.** Panes stand apart by a faint line with a space on
-  either side. Lists keep their values (a status, a count) in one
+  either side. A notice (an expired session, a rate-limit pause, the disk
+  cache, what `x` did) stands beside the context line under the header;
+  one that does not fit there takes a line of its own under it, from the
+  panes, and is not cut. Lists keep their values (a status, a count) in one
   right-aligned column, and the second line of an entry is faint; an inbox
   without unread notifications is faint, an unread count bold. Free text
   wraps at 80 columns at most, however wide the pane. Times are shown in

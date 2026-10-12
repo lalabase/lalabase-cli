@@ -416,7 +416,7 @@ func (m Model) withoutIdleScroll(out []binding) []binding {
 		return out
 	}
 	without := append(out[:at:at], out[at+1:]...)
-	g := layoutWith(m.width, m.height, len(view.HelpLines(toHelp(without), m.width, m.widthMethod)), m.focus)
+	g := m.withNotice(layoutWith(m.width, m.height, len(view.HelpLines(toHelp(without), m.width, m.widthMethod)), m.focus))
 	c := m.objectColumn()
 	if view.Extent(c, g, view.Object, m.widthMethod) > view.Capacity(c, g) {
 		return out

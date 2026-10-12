@@ -10,12 +10,14 @@ const (
 
 // Geometry is the frame of one render: the terminal, the columns and the
 // lines the help takes at the bottom, so every active binding is shown and
-// the body gets what is left.
+// the body gets what is left. NoticeHeight is 1 when the status notice
+// stands on a line of its own under the context line (NoticeFits), else 0.
 type Geometry struct {
 	Width, Height, BodyHeight               int
 	Columns                                 int
 	NavigationWidth, ListWidth, ObjectWidth int
 	HelpHeight                              int
+	NoticeHeight                            int
 	Small                                   bool
 }
 

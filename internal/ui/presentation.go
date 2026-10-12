@@ -85,19 +85,27 @@ func (m Model) screen() present.Screen {
 	}
 	s.Identity = m.identity()
 	s.Context = m.context()
+	s.Status = m.status()
+	return s
+}
+
+// status is the notice beside the context line, the most urgent first: an
+// expired session, a rate-limit pause, the disk cache, a launch's outcome.
+func (m Model) status() present.Inline {
+	a := m.app
 	switch {
 	case a.expired && a.disk != nil && a.disk.clearFailed:
-		s.Status = uitext.Inline(uitext.SessionExpiredDiskKept)
+		return uitext.Inline(uitext.SessionExpiredDiskKept)
 	case a.expired:
-		s.Status = uitext.Inline(uitext.SessionExpired)
+		return uitext.Inline(uitext.SessionExpired)
 	case a.pause.After(a.now()):
-		s.Status = uitext.Fill(uitext.RateLimited, a.pause.In(a.loc).Format("15:04:05"))
+		return uitext.Fill(uitext.RateLimited, a.pause.In(a.loc).Format("15:04:05"))
 	case a.diskStatus() != 0:
-		s.Status = uitext.Inline(a.diskStatus())
+		return uitext.Inline(a.diskStatus())
 	case a.launchShown():
-		s.Status = a.launch.notice
+		return a.launch.notice
 	}
-	return s
+	return present.Inline{}
 }
 
 func (m Model) identity() present.Inline {
