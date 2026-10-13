@@ -38,7 +38,7 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 	case s.Status.String() == "":
 		lines = append(lines, fit(context, g.Width, method))
 	case g.NoticeHeight > 0:
-		lines = append(lines, fit(context, g.Width, method), fit(s.Status.String(), g.Width, method))
+		lines = append(append(lines, fit(context, g.Width, method)), noticeLines(s.Status.String(), g.Width, g.NoticeHeight, method)...)
 	default:
 		lines = append(lines, fit(context+statusSeparator+s.Status.String(), g.Width, method))
 	}
@@ -80,13 +80,31 @@ func contextLine(s present.Screen, g Geometry, focus Pane) string {
 	return s.Context.String()
 }
 
-// NoticeFits: the screen's status notice stands whole beside the context
-// line of this geometry. One that does not fit gets a line of its own
-// (Geometry.NoticeHeight), so it is never cut to a few words: for some
-// keys (x) it is the only answer.
-func NoticeFits(s present.Screen, g Geometry, focus Pane, method ansi.Method) bool {
+// NoticeLines is the number of lines the screen's status notice needs
+// under the context line of this geometry: 0 when there is none or it
+// stands whole beside the context, else the lines it wraps into at the
+// width. The caller gives it as many as the body can spare
+// (Geometry.NoticeHeight), so it is not cut to a few words: for some keys
+// (x) it is the only answer, and the longest notices are instructions.
+func NoticeLines(s present.Screen, g Geometry, focus Pane, method ansi.Method) int {
 	status := s.Status.String()
-	return status == "" || method.StringWidth(contextLine(s, g, focus)+statusSeparator+status) <= g.Width
+	if status == "" || method.StringWidth(contextLine(s, g, focus)+statusSeparator+status) <= g.Width {
+		return 0
+	}
+	return len(wrapBody(status, g.Width, method))
+}
+
+// noticeLines is the notice wrapped at the width into at most height
+// lines; what does not fit is marked on the last one.
+func noticeLines(status string, width, height int, method ansi.Method) []string {
+	wrapped := wrapBody(status, width, method)
+	if len(wrapped) > height {
+		wrapped = append(wrapped[:height-1:height-1], strings.Join(wrapped[height-1:], " ")+uitext.Inline(uitext.Ellipsis).String())
+	}
+	for i, line := range wrapped {
+		wrapped[i] = fit(line, width, method)
+	}
+	return wrapped
 }
 
 func column(s present.Screen, which Pane) present.Column {

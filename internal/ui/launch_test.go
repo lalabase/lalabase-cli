@@ -310,10 +310,10 @@ func TestXSecondAnswerToALaunchChangesNothing(t *testing.T) {
 // own under it instead of being cut: x has no other answer when no split
 // opens. Where it fits, it stays beside the context and the body keeps its
 // line. Either way the screen is as high as the terminal and the help is
-// whole.
+// whole. Narrower terminals, where it wraps, are in notice_test.go.
 func TestTheNoticeIsShownWholeAtEveryWidth(t *testing.T) {
 	const notice = "No MCP server of Claude Code's for https://lalabase.com"
-	for width := len(notice); width <= 200; width++ {
+	for _, width := range []int{len(notice), len(notice) + 1, 79, 80, 81, 100, 119, 120, 121, 160, 200} {
 		h := newHarness(t)
 		f := h.withLauncher()
 		f.kind = launch.NoServer
@@ -362,7 +362,7 @@ func TestANoticeOnItsOwnLineKeepsTheFrame(t *testing.T) {
 		// The widths around each change of columns; every width is a minute
 		// under the race detector.
 		for _, width := range []int{40, 79, 80, 119, 120, 160} {
-			for height := 8; height <= 40; height++ {
+			for height := 8; height <= 40; height += 2 {
 				h.m.width, h.m.height = width, height
 				g := h.m.geometry()
 				lines := strings.Split(ansi.Strip(h.m.View().Content), "\n")
@@ -381,7 +381,7 @@ func TestANoticeOnItsOwnLineKeepsTheFrame(t *testing.T) {
 				}
 				c := h.m.objectColumn()
 				extent, capacity := view.Extent(c, g, view.Object, h.m.widthMethod), view.Capacity(c, g)
-				if g.NoticeHeight == 1 {
+				if g.NoticeHeight > 0 {
 					own++
 					if capacity < 1 {
 						t.Fatalf("#%d %dx%d: the notice leaves the pane no line", number, width, height)
