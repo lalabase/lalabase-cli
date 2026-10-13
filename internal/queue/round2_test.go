@@ -33,26 +33,35 @@ func TestARetryCarriesALaterFlightNumber(t *testing.T) {
 		}()
 		return out
 	}
+	// A broken queue fails the test within the deadline instead of hanging
+	// it for the whole package's timeout, where it would look like a race.
+	receive := func(who string, ch <-chan shared) shared {
+		t.Helper()
+		select {
+		case got := <-ch:
+			return got
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s: no answer", who)
+		}
+		return shared{}
+	}
 	a := doShared("a", ga)
 	waitStarted(t, ga)
 	ga.release <- transport.Answer{Class: transport.Temporary, Status: 503, Sent: true} // a retries after the delay
+	// b is sent while a's retry waits on the clock, so a retry numbered at
+	// its failure instead of at its send is behind b every time.
+	waitTimers(t, clock, 1)
 	b := doShared("b", gb)
 	waitStarted(t, gb)
 	gb.release <- ok()
-	between := <-b
+	between := receive("b", b)
 	if !between.ans.OK() || between.flight == 0 {
 		t.Fatalf("b: %v, flight %d", between.ans.Class, between.flight)
-	}
-	for deadline := time.Now().Add(2 * time.Second); clock.pending() == 0; {
-		if time.Now().After(deadline) {
-			t.Fatal("the retry is not waiting on the clock")
-		}
-		time.Sleep(time.Millisecond)
 	}
 	clock.Advance(time.Second)
 	waitStarted(t, ga) // the retry
 	ga.release <- ok()
-	retried := <-a
+	retried := receive("a", a)
 	if !retried.ans.OK() {
 		t.Fatalf("a: %v", retried.ans.Class)
 	}
