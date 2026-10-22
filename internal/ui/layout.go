@@ -49,11 +49,12 @@ func (m Model) geometry() view.Geometry {
 	return m.withNotice(g)
 }
 
-// withNotice is the geometry with a line of its own for a status notice
-// that does not fit beside the context line, taken from the body. A
-// notice never makes a terminal small: where the focused column would
-// keep no row, it stays beside the context, cut (a small terminal shows
-// neither line).
+// withNotice is the geometry with lines of their own for a status notice
+// that does not fit beside the context line, taken from the body: as many
+// as it wraps into, or as many as leave the focused column a row, the
+// last of them cut. A notice never makes a terminal small: where not one
+// line leaves that row, it stays beside the context, cut (a small
+// terminal shows neither line).
 func (m Model) withNotice(g view.Geometry) view.Geometry {
 	if m.app == nil {
 		return g
@@ -63,13 +64,13 @@ func (m Model) withNotice(g view.Geometry) view.Geometry {
 		return g
 	}
 	s := present.Screen{Context: m.context(), Crumbs: m.crumbs(), Chooser: m.chooserColumn(), Status: status}
-	if view.NoticeFits(s, g, m.focus, m.widthMethod) {
-		return g
+	focused := m.focusedColumn()
+	for lines := view.NoticeLines(s, g, m.focus, m.widthMethod); lines > 0; lines-- {
+		n := g
+		n.NoticeHeight, n.BodyHeight = lines, g.BodyHeight-lines
+		if view.Capacity(focused, n) >= 1 {
+			return n
+		}
 	}
-	n := g
-	n.NoticeHeight, n.BodyHeight = 1, g.BodyHeight-1
-	if view.Capacity(m.focusedColumn(), n) < 1 {
-		return g
-	}
-	return n
+	return g
 }
