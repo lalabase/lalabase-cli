@@ -94,6 +94,14 @@ navigation again.
   ticket), `PgUp`/`PgDn` move by a screen, `←`/`→` move the focus, `q`
   quits with 0, Ctrl-C and SIGINT with 130. The help line names exactly
   the keys that act, on as many lines as it takes.
+* **The mouse wheel** scrolls the object pane (a ticket, the details of a
+  notification) by three lines when the pointer is over it, whether the
+  pane has the focus or stands beside the list; like `PgUp`/`PgDn` it lets
+  go of the place the pane kept in sight. Anywhere else the wheel does
+  nothing. The interface asks the terminal for button and wheel reports
+  (modes 1002 and 1006, never every motion) and switches them off when it
+  leaves, so selecting text needs the terminal's modifier while it runs
+  (Option in iTerm2, Fn in Terminal.app).
 * **The ticket pane.** When the cursor rests on a ticket row for 300 ms and
   the object pane is on the screen (three columns and two columns always,
   one column with the pane focused), the ticket is read as a preview: background work, at

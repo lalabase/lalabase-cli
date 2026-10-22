@@ -58,9 +58,14 @@ func terminalOutputError(output string) error {
 				switch values[0] {
 				// 7 is auto-wrap, which the renderer switches off while it
 				// draws (seen on Linux during a resize).
-				case 7, 25, 1049, 2004, 2026, 2027:
+				case 7, 25, 1002, 1006, 1049, 2004, 2026, 2027:
 					return
 				}
+			}
+			// Every motion (1003) is never asked for; Bubble Tea switches it
+			// off with the buttons (1002) when it leaves.
+			if prefix == '?' && final == 'l' && one(1003) {
+				return
 			}
 			if prefix == '?' && final == 'W' && one(5) {
 				return
@@ -194,12 +199,12 @@ func TestTerminalOutputAllowsRendererGrammar(t *testing.T) {
 	for _, params := range []string{"", "0", "1", "2", "22", "0;1;2;22", "32", "33", "36", "39", "22;33"} {
 		allowed = append(allowed, "\x1b["+params+"m")
 	}
-	for _, mode := range []int{7, 25, 1049, 2004, 2026, 2027} {
+	for _, mode := range []int{7, 25, 1002, 1006, 1049, 2004, 2026, 2027} {
 		for _, final := range []byte{'h', 'l'} {
 			allowed = append(allowed, fmt.Sprintf("\x1b[?%d%c", mode, final))
 		}
 	}
-	allowed = append(allowed, "\x1b[?2026$p", "\x1b[?2027$p", "\x1b[?5W", "\x1b[?u", "\x1b[>1u", "\x1b[<1u", "\x1b[>4;2m", "\x1b[>4m")
+	allowed = append(allowed, "\x1b[?1003l", "\x1b[?2026$p", "\x1b[?2027$p", "\x1b[?5W", "\x1b[?u", "\x1b[>1u", "\x1b[<1u", "\x1b[>4;2m", "\x1b[>4m")
 	for _, final := range []byte{'A', 'B', 'C', 'D', 'E', 'F', 'G', 'X', 'd', 'P', '@', 'L', 'M', 'S', 'T'} {
 		for _, params := range []string{"", "0", "1", "4095", "4096"} {
 			allowed = append(allowed, "\x1b["+params+string(final))
@@ -232,6 +237,9 @@ func TestTerminalOutputRejectsControlFamilies(t *testing.T) {
 		"\x00", "\x07", "\u009b", "\u202e", "\u2066", "\u2069", "\xff",
 		"\x1b[1:2m", "\x1b[1 m", "\x1b[?25$p", "\x1b[?2026;2027$p",
 		"\x1b[?1048h", "\x1b[?25;1049h", "\x1b[?4W", "\x1b[?1u",
+		// The mouse: any motion, the X10 and normal modes, the other
+		// encodings, and buttons and SGR in one sequence.
+		"\x1b[?1003h", "\x1b[?9h", "\x1b[?1000h", "\x1b[?1005h", "\x1b[?1015h", "\x1b[?1016h", "\x1b[?1002;1006h",
 		"\x1b[>2u", "\x1b[<2u", "\x1b[>4;3m", "\x1b[31m",
 		"\x1b[", "\x1b]52;c;YQ==", "\x1bPdata", "\x1b_payload", "\x1b^payload", "\x1bXpayload",
 	}
