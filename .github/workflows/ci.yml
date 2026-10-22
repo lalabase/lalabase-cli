@@ -36,13 +36,15 @@ jobs:
         run: go vet ./...
       - name: go test
         # A hanging test fails within the limit instead of holding the job.
-        run: go test -race -count=1 -timeout 5m ./...
+        # internal/ui runs its screen sweeps one after another, over four
+        # minutes under -race here: the limit leaves room above that.
+        run: go test -race -count=1 -timeout 10m ./...
       - name: fuzz the cleaning function briefly
         run: go test -run='^$' -fuzz=FuzzCleanedTextIsTerminalSafe -fuzztime=20s ./internal/clean/
 
   terminal-macos:
     runs-on: macos-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -53,9 +55,9 @@ jobs:
       - name: test the terminal alone
         # The PTY cases wait a few seconds for the renderer's reaction; run
         # them without the other packages' load on the same cores.
-        run: go test -race -count=1 -timeout 5m ./cmd/lalabase/
+        run: go test -race -count=1 -timeout 10m ./cmd/lalabase/
       - name: test platform boundaries
-        run: go test -race -count=1 -timeout 5m ./internal/ui/... ./internal/worker/ ./internal/gateway/ ./internal/queue/ ./internal/present/ ./internal/uitext/ ./internal/terminal/ ./internal/sourceguard/ ./internal/profile/ ./internal/privatefs/ ./internal/safefile/ ./internal/diskcache/ ./internal/api/ ./internal/features/ ./internal/cache/ ./internal/inboxfixture/ ./tools/inbox-fixture/ ./internal/launch/ ./internal/claudecfg/
+        run: go test -race -count=1 -timeout 10m ./internal/ui/... ./internal/worker/ ./internal/gateway/ ./internal/queue/ ./internal/present/ ./internal/uitext/ ./internal/terminal/ ./internal/sourceguard/ ./internal/profile/ ./internal/privatefs/ ./internal/safefile/ ./internal/diskcache/ ./internal/api/ ./internal/features/ ./internal/cache/ ./internal/inboxfixture/ ./tools/inbox-fixture/ ./internal/launch/ ./internal/claudecfg/
 
   lint:
     runs-on: ubuntu-latest
