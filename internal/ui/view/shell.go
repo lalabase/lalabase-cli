@@ -38,9 +38,11 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 	case s.Status.String() == "":
 		lines = append(lines, fit(context, g.Width, method))
 	case g.NoticeHeight > 0:
-		lines = append(lines, fit(context, g.Width, method), fit(s.Status.String(), g.Width, method))
+		notice := screenLine{{text: s.Status.String(), style: s.StatusStyle}}
+		lines = append(lines, fit(context, g.Width, method), notice.render(g.Width, method))
 	default:
-		lines = append(lines, fit(context+statusSeparator+s.Status.String(), g.Width, method))
+		line := screenLine{{text: context + statusSeparator}, {text: s.Status.String(), style: s.StatusStyle}}
+		lines = append(lines, line.render(g.Width, method))
 	}
 	panes := Visible(g, focus)
 	columns := make([][]string, len(panes))

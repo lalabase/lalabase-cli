@@ -46,7 +46,11 @@ navigation again.
   either side. A notice (an expired session, a rate-limit pause, the disk
   cache, what `x` did) stands beside the context line under the header;
   one that does not fit there takes a line of its own under it, from the
-  panes, and is not cut. Lists keep their values (a status, a count) in one
+  panes, and is not cut. Its tone comes from the state it reports, never
+  from its words: bold red when something did not work (an `x` that
+  opened nothing or ended in an error, an expired session, the disk cache
+  unusable), yellow while the client waits (a launch running, a rate-limit
+  pause), plain otherwise; the text says the same without colour. Lists keep their values (a status, a count) in one
   right-aligned column, and the second line of an entry is faint; an inbox
   without unread notifications is faint, an unread count bold. Free text
   wraps at 80 columns at most, however wide the pane. Times are shown in

@@ -85,27 +85,28 @@ func (m Model) screen() present.Screen {
 	}
 	s.Identity = m.identity()
 	s.Context = m.context()
-	s.Status = m.status()
+	s.Status, s.StatusStyle = m.status()
 	return s
 }
 
 // status is the notice beside the context line, the most urgent first: an
-// expired session, a rate-limit pause, the disk cache, a launch's outcome.
-func (m Model) status() present.Inline {
+// expired session, a rate-limit pause, the disk cache, a launch's outcome;
+// with its tone, from the same state.
+func (m Model) status() (present.Inline, present.Style) {
 	a := m.app
 	switch {
 	case a.expired && a.disk != nil && a.disk.clearFailed:
-		return uitext.Inline(uitext.SessionExpiredDiskKept)
+		return uitext.Inline(uitext.SessionExpiredDiskKept), present.NoticeProblem
 	case a.expired:
-		return uitext.Inline(uitext.SessionExpired)
+		return uitext.Inline(uitext.SessionExpired), present.NoticeProblem
 	case a.pause.After(a.now()):
-		return uitext.Fill(uitext.RateLimited, a.pause.In(a.loc).Format("15:04:05"))
+		return uitext.Fill(uitext.RateLimited, a.pause.In(a.loc).Format("15:04:05")), present.NoticeWaiting
 	case a.diskStatus() != 0:
-		return uitext.Inline(a.diskStatus())
+		return uitext.Inline(a.diskStatus()), present.NoticeProblem
 	case a.launchShown():
-		return a.launch.notice
+		return a.launch.notice, a.launch.tone
 	}
-	return present.Inline{}
+	return present.Inline{}, present.Plain
 }
 
 func (m Model) identity() present.Inline {
