@@ -13,6 +13,9 @@ type Screen struct {
 	// Status is a notice beside the context (a rate-limit pause, an expired
 	// session); empty for none.
 	Status Inline
+	// StatusStyle is the notice's tone: Plain, NoticeProblem or
+	// NoticeWaiting.
+	StatusStyle Style
 	// Crumbs are the names of the three panes, for the breadcrumb of one
 	// column.
 	Crumbs  [3]Inline
@@ -76,6 +79,12 @@ const (
 	StatusOpen
 	StatusActive
 	StatusDone
+	// The tones of the status notice beside the context, by the state it
+	// reports: something did not work (a launch, the session, the disk
+	// cache), or the client waits (a launch running, a rate-limit pause).
+	// The notice's text says what; the tone only makes it seen.
+	NoticeProblem
+	NoticeWaiting
 )
 
 // LineStyle is how one line of a column's text is drawn: its first Lead

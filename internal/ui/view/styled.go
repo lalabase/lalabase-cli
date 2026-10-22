@@ -77,6 +77,10 @@ func styled(text string, s present.Style) string {
 		return lipgloss.NewStyle().Foreground(lipgloss.Yellow).Render(text)
 	case present.StatusDone:
 		return lipgloss.NewStyle().Foreground(lipgloss.Green).Render(text)
+	case present.NoticeProblem:
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Red).Render(text)
+	case present.NoticeWaiting:
+		return lipgloss.NewStyle().Foreground(lipgloss.Yellow).Render(text)
 	}
 	return text
 }

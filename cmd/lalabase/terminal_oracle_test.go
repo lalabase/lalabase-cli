@@ -103,7 +103,7 @@ func TestTerminalRestorationOracleRejectsCorruptedOutput(t *testing.T) {
 			t.Errorf("accepted unrestored mode %d", mode)
 		}
 	}
-	for _, bad := range []string{terminalHostile, "\x1b]52;c;YQ==\x07", "\x1b[31m", "\xff"} {
+	for _, bad := range []string{terminalHostile, "\x1b]52;c;YQ==\x07", "\x1b[35m", "\xff"} {
 		if err := terminalRestorationError(valid + bad); err == nil {
 			t.Errorf("restoration accepted hostile bytes %q", bad)
 		}

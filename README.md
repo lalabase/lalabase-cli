@@ -47,12 +47,17 @@ navigation again.
   cache, what `x` did) stands beside the context line under the header;
   one that does not fit there takes the lines under it, from the panes,
   wrapped and whole. Only where that would leave the pane in focus no row
-  is it cut, marked with "…". Lists keep their values (a status, a count)
-  in one right-aligned column, and the second line of an entry is faint;
-  an inbox without unread notifications is faint, an unread count bold.
-  Free text wraps at 80 columns at most, however wide the pane. Times are
-  shown in the computer's time zone, to the minute, as "28 Aug 15:45", with
-  the year when it is not the current one ("3 Nov 2025 09:12").
+  is it cut, marked with "…". Its tone comes from the state it reports,
+  never from its words: bold red when something did not work (an `x` that
+  opened nothing or ended in an error, an expired session, the disk cache
+  unusable), yellow while the client waits (a launch running, a rate-limit
+  pause), plain otherwise; the text says the same without colour. Lists
+  keep their values (a status, a count) in one right-aligned column, and
+  the second line of an entry is faint; an inbox without unread
+  notifications is faint, an unread count bold. Free text wraps at 80
+  columns at most, however wide the pane. Times are shown in the
+  computer's time zone, to the minute, as "28 Aug 15:45", with the year
+  when it is not the current one ("3 Nov 2025 09:12").
   A ticket's status,
   in the list and at the head of the ticket, takes the tone of what it means
   in its project, which the server sends as `status_functions`: cyan for new

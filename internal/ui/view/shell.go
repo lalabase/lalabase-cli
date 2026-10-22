@@ -38,9 +38,10 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 	case s.Status.String() == "":
 		lines = append(lines, fit(context, g.Width, method))
 	case g.NoticeHeight > 0:
-		lines = append(append(lines, fit(context, g.Width, method)), noticeLines(s.Status.String(), g.Width, g.NoticeHeight, method)...)
+		lines = append(append(lines, fit(context, g.Width, method)), noticeLines(s.Status.String(), s.StatusStyle, g.Width, g.NoticeHeight, method)...)
 	default:
-		lines = append(lines, fit(context+statusSeparator+s.Status.String(), g.Width, method))
+		line := screenLine{{text: context + statusSeparator}, {text: s.Status.String(), style: s.StatusStyle}}
+		lines = append(lines, line.render(g.Width, method))
 	}
 	panes := Visible(g, focus)
 	columns := make([][]string, len(panes))
@@ -95,14 +96,15 @@ func NoticeLines(s present.Screen, g Geometry, focus Pane, method ansi.Method) i
 }
 
 // noticeLines is the notice wrapped at the width into at most height
-// lines; what does not fit is marked on the last one.
-func noticeLines(status string, width, height int, method ansi.Method) []string {
+// lines, each in the notice's tone; what does not fit is marked on the
+// last one.
+func noticeLines(status string, style present.Style, width, height int, method ansi.Method) []string {
 	wrapped := wrapBody(status, width, method)
 	if len(wrapped) > height {
 		wrapped = append(wrapped[:height-1:height-1], strings.Join(wrapped[height-1:], " ")+uitext.Inline(uitext.Ellipsis).String())
 	}
 	for i, line := range wrapped {
-		wrapped[i] = fit(line, width, method)
+		wrapped[i] = screenLine{{text: line, style: style}}.render(width, method)
 	}
 	return wrapped
 }

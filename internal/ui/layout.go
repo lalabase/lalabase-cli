@@ -59,7 +59,7 @@ func (m Model) withNotice(g view.Geometry) view.Geometry {
 	if m.app == nil {
 		return g
 	}
-	status := m.status()
+	status, _ := m.status()
 	if status.String() == "" {
 		return g
 	}

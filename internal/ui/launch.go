@@ -21,6 +21,7 @@ type launchState struct {
 	busy   bool
 	ticket string
 	notice present.Inline
+	tone   present.Style
 }
 
 // launchTarget is the address of the ticket the pane shows, when x may
@@ -49,7 +50,7 @@ func (m Model) launchClaude() (Model, tea.Cmd) {
 	a := m.app
 	a.launch.ref++
 	a.launch.busy, a.launch.ticket = true, t.ID
-	a.launch.notice = uitext.Fill(uitext.Launching, t.Number)
+	a.launch.notice, a.launch.tone = uitext.Fill(uitext.Launching, t.Number), present.NoticeWaiting
 	return m, a.deps.Launcher.Launch(a.launch.ref, t)
 }
 
@@ -61,7 +62,18 @@ func (m Model) receiveLaunch(d launch.Done) {
 		return
 	}
 	a.launch.busy, a.launch.ticket = false, d.Ticket.ID
-	a.launch.notice = launchNotice(d)
+	a.launch.notice, a.launch.tone = launchNotice(d), launchTone(d.Kind)
+}
+
+// launchTone is the notice's tone by the outcome: plain when Claude Code
+// opened or ended, a problem for every outcome that opened nothing or
+// ended in an error.
+func launchTone(k launch.Kind) present.Style {
+	switch k {
+	case launch.Opened, launch.Ended, launch.Canceled:
+		return present.Plain
+	}
+	return present.NoticeProblem
 }
 
 // launchShown: the pane shows the ticket the notice is about.

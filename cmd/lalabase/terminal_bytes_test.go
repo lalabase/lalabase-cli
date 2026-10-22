@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-const terminalHostile = "\x1b[2J\x1b[31mCSI\x1b[0m\x1b]8;;https://evil.invalid\x07LINK\x1b]8;;\x1b\\\x1b]52;c;YQ==\x1b\\\x1bPpayload\x1b\\\x07\u202e\u2066\u2069\xff\u009b"
+const terminalHostile = "\x1b[2J\x1b[35mCSI\x1b[0m\x1b]8;;https://evil.invalid\x07LINK\x1b]8;;\x1b\\\x1b]52;c;YQ==\x1b\\\x1bPpayload\x1b\\\x07\u202e\u2066\u2069\xff\u009b"
 
 func terminalOutputError(output string) error {
 	if !utf8.ValidString(output) {
@@ -84,12 +84,12 @@ func terminalOutputError(output string) error {
 				case 'm':
 					// Reset, bold, faint and the end of both, reversed (the
 					// cursor bar) and its end, the three tones of a status
-					// (green, yellow, cyan) and the end of a colour: the
-					// view's own attributes. No other colour, no other
-					// attribute.
+					// (green, yellow, cyan), red for a notice of a problem
+					// and the end of a colour: the view's own attributes.
+					// No other colour, no other attribute.
 					for _, n := range values {
 						switch n {
-						case 0, 1, 2, 7, 22, 27, 32, 33, 36, 39:
+						case 0, 1, 2, 7, 22, 27, 31, 32, 33, 36, 39:
 						default:
 							reject(fmt.Sprintf("SGR %d", n))
 						}
@@ -150,7 +150,7 @@ func terminalOutputError(output string) error {
 }
 
 func TestTerminalOutputAllowlist(t *testing.T) {
-	for _, bad := range []string{terminalHostile, "\x1b[31m", "\x1b[34m", "\x1b[35m", "\x1b[37m", "\x1b[91m", "\x1b[41m", "\x1b[38;5;2m", "\x1b[38;2;0;200;0m", "\x1b[3m", "\x1b[4m", "\x1b[5m", "\x1b[8t", "\x1b]8;;https://evil.invalid\x07", "\x1b]52;c;YQ==\x1b\\", "\x1bPdata\x1b\\", "\x07", "\u202e", "\xff", "\x1b[",
+	for _, bad := range []string{terminalHostile, "\x1b[34m", "\x1b[35m", "\x1b[37m", "\x1b[91m", "\x1b[41m", "\x1b[38;5;2m", "\x1b[38;2;0;200;0m", "\x1b[3m", "\x1b[4m", "\x1b[5m", "\x1b[8t", "\x1b]8;;https://evil.invalid\x07", "\x1b]52;c;YQ==\x1b\\", "\x1bPdata\x1b\\", "\x07", "\u202e", "\xff", "\x1b[",
 		// Other ESC commands than the reverse index, and tab moves with
 		// a parameter out of range.
 		"\x1b7", "\x1b8", "\x1bc", "\x1b(0", "\x1b[5000I", "\x1b[5000Z"} {
@@ -196,7 +196,7 @@ func TestPTYHostilePlaceholderBytes(t *testing.T) {
 
 func TestTerminalOutputAllowsRendererGrammar(t *testing.T) {
 	allowed := []string{"plain 界 e\u0301", "\r\n\b\t", "\u200c\u200d\u00ad"}
-	for _, params := range []string{"", "0", "1", "2", "22", "0;1;2;22", "32", "33", "36", "39", "22;33"} {
+	for _, params := range []string{"", "0", "1", "2", "22", "0;1;2;22", "31", "1;31", "32", "33", "36", "39", "22;33"} {
 		allowed = append(allowed, "\x1b["+params+"m")
 	}
 	for _, mode := range []int{7, 25, 1002, 1006, 1049, 2004, 2026, 2027} {
@@ -240,7 +240,7 @@ func TestTerminalOutputRejectsControlFamilies(t *testing.T) {
 		// The mouse: any motion, the X10 and normal modes, the other
 		// encodings, and buttons and SGR in one sequence.
 		"\x1b[?1003h", "\x1b[?9h", "\x1b[?1000h", "\x1b[?1005h", "\x1b[?1015h", "\x1b[?1016h", "\x1b[?1002;1006h",
-		"\x1b[>2u", "\x1b[<2u", "\x1b[>4;3m", "\x1b[31m",
+		"\x1b[>2u", "\x1b[<2u", "\x1b[>4;3m", "\x1b[35m",
 		"\x1b[", "\x1b]52;c;YQ==", "\x1bPdata", "\x1b_payload", "\x1b^payload", "\x1bXpayload",
 	}
 	for _, final := range []byte{'A', 'B', 'C', 'D', 'E', 'F', 'G', 'X', 'd', 'P', '@', 'L', 'M', 'S', 'T'} {
