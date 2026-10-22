@@ -55,7 +55,7 @@ func terminalRestorationError(output string) error {
 	for _, tc := range []struct {
 		mode int
 		end  bool
-	}{{1049, false}, {25, true}, {2004, false}} {
+	}{{1049, false}, {25, true}, {2004, false}, {1002, false}, {1006, false}} {
 		events := terminalModes(output)[tc.mode]
 		if len(events) < 2 || events[0] == tc.end || events[len(events)-1] != tc.end {
 			return fmt.Errorf("mode %d not restored: %v", tc.mode, events)
@@ -83,11 +83,11 @@ func TestTermiosOracleComparesEveryAttribute(t *testing.T) {
 }
 
 func TestTerminalRestorationOracleRejectsCorruptedOutput(t *testing.T) {
-	valid := "\x1b[?1049h\x1b[?25l\x1b[?2004hNo data loaded\x1b[?1049l\x1b[?25h\x1b[?2004l"
+	valid := "\x1b[?1049h\x1b[?25l\x1b[?2004h\x1b[?1002h\x1b[?1006hNo data loaded\x1b[?1049l\x1b[?25h\x1b[?2004l\x1b[?1002l\x1b[?1003l\x1b[?1006l"
 	if err := terminalRestorationError(valid); err != nil {
 		t.Fatal(err)
 	}
-	for _, mode := range []int{1049, 25, 2004} {
+	for _, mode := range []int{1049, 25, 2004, 1002, 1006} {
 		for _, final := range []byte{'h', 'l'} {
 			sequence := fmt.Sprintf("\x1b[?%d%c", mode, final)
 			bad := strings.ReplaceAll(valid, sequence, "")

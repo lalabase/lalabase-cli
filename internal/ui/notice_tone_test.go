@@ -100,3 +100,24 @@ func TestAFailedLaunchIsDrawnInItsTone(t *testing.T) {
 		t.Fatalf("the notice was not drawn both beside the context and on its own line: %v", seen)
 	}
 }
+
+// A notice wrapped over the lines under the context keeps its tone on
+// every one of them.
+func TestAWrappedNoticeKeepsItsToneOnEveryLine(t *testing.T) {
+	h := newHarness(t)
+	f := h.withLauncher()
+	f.kind = launch.NoPermission
+	h.openSix()
+	h.drive(h.press("x"))
+	h.m.width, h.m.height = 40, 24
+	g := h.m.geometry()
+	if g.NoticeHeight < 2 {
+		t.Fatalf("the notice takes %d lines at 40 columns, want it wrapped", g.NoticeHeight)
+	}
+	lines := strings.Split(h.m.View().Content, "\n")
+	for i := 2; i < 2+g.NoticeHeight; i++ {
+		if !strings.HasPrefix(lines[i], "\x1b[1;31m") {
+			t.Fatalf("notice line %d is not drawn as a problem: %q", i-1, lines[i])
+		}
+	}
+}

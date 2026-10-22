@@ -45,17 +45,20 @@ navigation again.
 * **How it is drawn.** Panes stand apart by a faint line with a space on
   either side. A notice (an expired session, a rate-limit pause, the disk
   cache, what `x` did) stands beside the context line under the header;
-  one that does not fit there takes a line of its own under it, from the
-  panes, and is not cut. Its tone comes from the state it reports, never
-  from its words: bold red when something did not work (an `x` that
+  one that does not fit there takes the lines under it, from the panes,
+  wrapped and whole. Only where that would leave the pane in focus no row
+  is it cut, marked with "…". Its tone comes from the state it reports,
+  never from its words: bold red when something did not work (an `x` that
   opened nothing or ended in an error, an expired session, the disk cache
   unusable), yellow while the client waits (a launch running, a rate-limit
-  pause), plain otherwise; the text says the same without colour. Lists keep their values (a status, a count) in one
-  right-aligned column, and the second line of an entry is faint; an inbox
-  without unread notifications is faint, an unread count bold. Free text
-  wraps at 80 columns at most, however wide the pane. Times are shown in
-  the computer's time zone, to the minute, as "28 Aug 15:45", with the year
-  when it is not the current one ("3 Nov 2025 09:12"). A ticket's status,
+  pause), plain otherwise; the text says the same without colour. Lists
+  keep their values (a status, a count) in one right-aligned column, and
+  the second line of an entry is faint; an inbox without unread
+  notifications is faint, an unread count bold. Free text wraps at 80
+  columns at most, however wide the pane. Times are shown in the
+  computer's time zone, to the minute, as "28 Aug 15:45", with the year
+  when it is not the current one ("3 Nov 2025 09:12").
+  A ticket's status,
   in the list and at the head of the ticket, takes the tone of what it means
   in its project, which the server sends as `status_functions`: cyan for new
   or open, yellow in progress, green done (completed or closed), faint in the
@@ -96,6 +99,14 @@ navigation again.
   ticket), `PgUp`/`PgDn` move by a screen, `←`/`→` move the focus, `q`
   quits with 0, Ctrl-C and SIGINT with 130. The help line names exactly
   the keys that act, on as many lines as it takes.
+* **The mouse wheel** scrolls the object pane (a ticket, the details of a
+  notification) by three lines when the pointer is over it, whether the
+  pane has the focus or stands beside the list; like `PgUp`/`PgDn` it lets
+  go of the place the pane kept in sight. Anywhere else the wheel does
+  nothing. The interface asks the terminal for button and wheel reports
+  (modes 1002 and 1006, never every motion) and switches them off when it
+  leaves, so selecting text needs the terminal's modifier while it runs
+  (Option in iTerm2, Fn in Terminal.app).
 * **The ticket pane.** When the cursor rests on a ticket row for 300 ms and
   the object pane is on the screen (three columns and two columns always,
   one column with the pane focused), the ticket is read as a preview: background work, at
