@@ -86,6 +86,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyPressMsg:
 		return m.key(msg)
+	case tea.MouseWheelMsg:
+		return m.wheel(msg), nil
 	}
 	return m, nil
 }
@@ -270,20 +272,64 @@ func (m Model) movePage(delta int) (Model, tea.Cmd) {
 			a.projects.moveSelection(rows)
 		}
 	case view.Object:
-		c := m.objectColumn()
-		capacity := max(1, view.Capacity(c, g))
-		top := max(0, view.Extent(c, g, view.Object, m.widthMethod)-capacity)
-		switch {
-		case a.detail != nil:
-			// From where the pane is now, the anchor's place included; the
-			// scroll is the person's, the anchor is let go.
-			a.detail.offset = max(0, min(top, min(top, c.Offset)+delta*capacity))
-			a.detail.follow = anchorNone
-		case a.active != nil:
-			a.active.detailOffset = max(0, min(top, a.active.detailOffset+delta*capacity))
-		}
+		m.scrollObject(g, delta*max(1, view.Capacity(m.objectColumn(), g)))
 	}
 	return m, nil
+}
+
+// wheelLines is how far one turn of the mouse wheel scrolls the object
+// pane, the step most terminal programs take.
+const wheelLines = 3
+
+// wheel scrolls the object pane by a turn of the wheel over its body,
+// wherever the focus is: the pane in sight is the one under the pointer.
+// Anywhere else, sideways or without a session, the wheel does nothing.
+func (m Model) wheel(msg tea.MouseWheelMsg) Model {
+	if m.app == nil {
+		return m
+	}
+	g := m.geometry()
+	if g.Small || !overObject(g, m.focus, msg.X, msg.Y) {
+		return m
+	}
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		m.scrollObject(g, -wheelLines)
+	case tea.MouseWheelDown:
+		m.scrollObject(g, wheelLines)
+	}
+	return m
+}
+
+// overObject is whether the cell x, y lies in the object pane's body: below
+// the header, the context line and a notice on a line of its own, above
+// the help, and right of the last separator (the pane is the rightmost,
+// or the only one when it has the focus in one column).
+func overObject(g view.Geometry, focus view.Pane, x, y int) bool {
+	top := 2 + g.NoticeHeight
+	if y < top || y >= top+g.BodyHeight || x < 0 || x >= g.Width {
+		return false
+	}
+	if g.Columns == 1 {
+		return focus == view.Object
+	}
+	return x >= g.Width-g.ObjectWidth
+}
+
+// scrollObject scrolls the object pane by lines, clamped to its text.
+func (m Model) scrollObject(g view.Geometry, lines int) {
+	a := m.app
+	c := m.objectColumn()
+	top := max(0, view.Extent(c, g, view.Object, m.widthMethod)-max(1, view.Capacity(c, g)))
+	switch {
+	case a.detail != nil:
+		// From where the pane is now, the anchor's place included; the
+		// scroll is the person's, the anchor is let go.
+		a.detail.offset = max(0, min(top, min(top, c.Offset)+lines))
+		a.detail.follow = anchorNone
+	case a.active != nil:
+		a.active.detailOffset = max(0, min(top, a.active.detailOffset+lines))
+	}
 }
 
 // open is Enter: in the chooser the highlighted entry, in the list the
