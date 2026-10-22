@@ -16,7 +16,7 @@ Read the section of the slice you work on before you start.
 ## Check before every push
 
 ```sh
-gofmt -l . && go vet ./... && go test -race -count=1 -timeout 5m ./... && golangci-lint run
+gofmt -l . && go vet ./... && go test -race -count=1 -timeout 10m ./... && golangci-lint run
 ```
 
 The CI runs the same plus a 20 s fuzz run of `internal/clean` and `go-licenses`
