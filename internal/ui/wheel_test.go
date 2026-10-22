@@ -26,6 +26,22 @@ func (h *harness) objectCell() (x, y int) {
 	return g.Width - g.ObjectWidth, 2 + g.NoticeHeight
 }
 
+// untilStill repeats a scroll until the ticket stops moving and returns
+// where it stopped. Every step lays out the whole screen, which is slow
+// under the race detector: as few as the text needs, and a bound.
+func (h *harness) untilStill(scroll func()) int {
+	h.t.Helper()
+	for range 200 {
+		before := h.m.app.detail.offset
+		scroll()
+		if h.m.app.detail.offset == before {
+			return before
+		}
+	}
+	h.t.Fatalf("still moving at offset %d", h.m.app.detail.offset)
+	return 0
+}
+
 // The interface asks for the mouse's buttons and wheel, never its motion.
 func TestTheViewReportsTheWheel(t *testing.T) {
 	h := newHarness(t)
@@ -70,23 +86,14 @@ func TestTheWheelScrollsTheTicket(t *testing.T) {
 	if got := h.m.app.detail.offset; got != wheelLines {
 		t.Fatalf("back up: offset %d", got)
 	}
-	for range 500 {
-		h.wheel(tea.MouseWheelDown, x, y)
-	}
-	end := h.m.app.detail.offset
-	for range 50 {
-		h.press("pgdown")
-	}
-	if end == 0 || h.m.app.detail.offset != end {
+	end := h.untilStill(func() { h.wheel(tea.MouseWheelDown, x, y) })
+	if got := h.untilStill(func() { h.press("pgdown") }); end == 0 || got != end {
 		t.Fatalf("the wheel ends at %d, pgdown at %d", end, h.m.app.detail.offset)
 	}
 	if h.m.app.detail.post != post {
 		t.Fatal("the wheel moved the selected comment")
 	}
-	for range 500 {
-		h.wheel(tea.MouseWheelUp, x, y)
-	}
-	if got := h.m.app.detail.offset; got != 0 {
+	if got := h.untilStill(func() { h.wheel(tea.MouseWheelUp, x, y) }); got != 0 {
 		t.Fatalf("at the top: offset %d", got)
 	}
 }
