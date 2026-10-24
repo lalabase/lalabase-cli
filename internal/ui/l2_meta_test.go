@@ -159,3 +159,20 @@ func TestTabKeepsTheHeadingInSightBesideTheMetaBar(t *testing.T) {
 		t.Fatalf("the heading is not the pane's first line:\n%s", strings.Join(lines[:8], "\n"))
 	}
 }
+
+// Review round 2 of #32: a status without a function the client knows (an
+// older server, a new function) is a plain value in the bar, not faint
+// like the labels.
+func TestAStatusWithoutAKnownFunctionIsPlainInTheBar(t *testing.T) {
+	h := newHarness(t)
+	h.showLogin()
+	h.m.width = 160
+	for _, functions := range [][]string{nil, {"is_unknown"}} {
+		h.m.app.detail.record.StatusFunctions = functions
+		for _, l := range h.m.objectColumn().Meta {
+			if l.Text.String() == "in_progress" && l.Style != present.Plain {
+				t.Fatalf("functions %v: the status drawn %v, want plain", functions, l.Style)
+			}
+		}
+	}
+}

@@ -135,3 +135,22 @@ func TestExtentMeasuresTheTextBesideTheBar(t *testing.T) {
 		t.Fatalf("below the threshold: %d, want %d", got, narrow)
 	}
 }
+
+// Review round 2 of #32: the rule is faint, and a bar exactly as long as
+// the body is whole: its last line keeps its style and no mark.
+func TestTheMetaBarsRuleIsFaintAndAFullBarIsWhole(t *testing.T) {
+	c := metaColumn()
+	c.Meta = c.Meta[:5] // Status, in progress, "", People, Anna Albers
+	lines := content(c, 80, len(c.Meta), true, ansi.WcWidth)
+	for i, line := range lines {
+		if !strings.Contains(line, faint+metaRule) {
+			t.Fatalf("line %d: the rule is not faint: %q", i, line)
+		}
+	}
+	// The bar's part of the line: the text before it marks its own overflow.
+	last := lines[len(lines)-1]
+	last = last[strings.LastIndex(last, metaRule):]
+	if strings.Contains(last, "…") || !strings.HasSuffix(strings.TrimRight(ansi.Strip(last), " "), "Anna Albers") || strings.Contains(last, faint+"Anna") {
+		t.Fatalf("a full bar is marked as cut: %q", last)
+	}
+}
