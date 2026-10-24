@@ -240,6 +240,10 @@ const (
 	PathStep
 	PathDetail
 	You
+	BarStatus
+	BarProject
+	BarPeople
+	BarUpdated
 	count
 )
 
@@ -370,4 +374,6 @@ var english = map[ID]string{
 	PathStep: " › ", PathDetail: " · ",
 	// The mark after the name of the token's own person in a comment.
 	You: "(you)",
+	// The labels of a ticket's meta bar.
+	BarStatus: "Status", BarProject: "Project", BarPeople: "People", BarUpdated: "Updated",
 }

@@ -161,7 +161,7 @@ func Extent(c present.Column, g Geometry, which Pane, method ansi.Method) int {
 	if c.Rows != nil {
 		return len(c.Rows)
 	}
-	width := InnerWidth(g, which)
+	width := textArea(c, InnerWidth(g, which))
 	if width <= 0 {
 		return 0
 	}
@@ -240,9 +240,12 @@ func content(c present.Column, width, height int, focused bool, method ansi.Meth
 	}
 	body := height - at
 	var drawn []string
-	if c.Rows != nil {
+	switch text := textArea(c, width); {
+	case c.Rows != nil:
 		drawn = rows(c, width, body, focused, method)
-	} else {
+	case text < width:
+		drawn = besideMeta(scrollable(c, text, body, method), c.Meta, text, body, method)
+	default:
 		drawn = scrollable(c, width, body, method)
 	}
 	copy(lines[at:], drawn)
@@ -480,4 +483,52 @@ func scrolledAt(c present.Column, width, body int, method ansi.Method) (lines []
 		lines[last] = fit(all[last].plain()+uitext.Inline(uitext.Ellipsis).String(), width, method)
 	}
 	return lines, offset, total
+}
+
+// The meta bar of a wide ticket pane (L2): metaCells on the pane's right,
+// a faint rule with a space either side and the lines after it; the text
+// keeps at least minMetaText cells, its scrollbar included.
+const (
+	metaRule    = "\u2502"
+	metaCells   = 24
+	minMetaText = 52
+)
+
+// MetaFits: a pane of this inner width has room for the meta bar beside
+// its text. The model asks it before it builds the bar, so the facts stand
+// either in the bar or in the ticket's head, never in both or neither.
+func MetaFits(width int) bool { return width >= minMetaText+metaCells }
+
+// textArea is the width of a free-text pane's text: the pane less the meta
+// bar where it stands.
+func textArea(c present.Column, width int) int {
+	if c.Rows == nil && len(c.Meta) > 0 && MetaFits(width) {
+		return width - metaCells
+	}
+	return width
+}
+
+// besideMeta puts the meta bar after the text's lines, each padded to the
+// text's width; the bar starts at the top whatever the text's offset, and
+// a bar longer than the body is cut, its last line marked.
+func besideMeta(text []string, meta []present.MetaLine, width, body int, method ansi.Method) []string {
+	room := metaCells - 3
+	rule := " " + lipgloss.NewStyle().Faint(true).Render(metaRule) + " "
+	lines := make([]string, body)
+	for i := range lines {
+		left := ""
+		if i < len(text) {
+			left = text[i]
+		}
+		lines[i] = left + strings.Repeat(" ", max(0, width-method.StringWidth(left))) + rule
+		if i >= len(meta) {
+			continue
+		}
+		value, style := fit(meta[i].Text.String(), room, method), meta[i].Style
+		if i == body-1 && len(meta) > body {
+			value, style = fit(meta[i].Text.String()+uitext.Inline(uitext.Ellipsis).String(), room, method), present.Faint
+		}
+		lines[i] += styled(value, style)
+	}
+	return lines
 }

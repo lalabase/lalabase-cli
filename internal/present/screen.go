@@ -46,6 +46,16 @@ type Column struct {
 	// Offset is the first visible row, or line of the text. The view clamps
 	// it to what fits and keeps the cursor in sight.
 	Offset int
+	// Meta is the bar of facts on the right of a ticket's text (L2), one
+	// entry per line; nil for none. The view draws it only where the pane
+	// is wide enough (view.MetaFits), and it does not scroll.
+	Meta []MetaLine
+}
+
+// MetaLine is one line of the meta bar: a label or a value, in its style.
+type MetaLine struct {
+	Text  Inline
+	Style Style
 }
 
 // Row is one entry of a list: a first line with an optional value at its
