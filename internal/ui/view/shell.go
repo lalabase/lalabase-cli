@@ -9,7 +9,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
-// Render draws the screen into the geometry: a header, a context line, the
+// Render draws the screen into the geometry: a header, the path line, the
 // visible panes side by side, each in its frame, and the help at the
 // bottom. The help lines
 // were counted into the geometry by the caller (HelpLines), so nothing of
@@ -62,7 +62,7 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 	return strings.Join(append(lines, helpLines...), "\n")
 }
 
-// statusSeparator stands between the context and a notice beside it.
+// statusSeparator stands between the path and a notice beside it.
 const statusSeparator = " | "
 
 // contextLine is where the person is: the path of two and three columns,
@@ -87,9 +87,9 @@ func contextLine(s present.Screen, g Geometry, focus Pane) string {
 }
 
 // NoticeLines is the number of lines the screen's status notice needs
-// under the context line of this geometry: 0 when there is none or it
-// stands whole beside the context, else the lines it wraps into at the
-// width; for a hint, which takes the context line itself, the lines it
+// under the path line of this geometry: 0 when there is none or it
+// stands whole beside the path, else the lines it wraps into at the
+// width; for a hint, which takes the path line itself, the lines it
 // wraps into after that one. The caller gives it as many as the body can spare
 // (Geometry.NoticeHeight), so it is not cut to a few words: for some keys
 // (x) it is the only answer, and the longest notices are instructions.

@@ -73,7 +73,8 @@ func (m Model) receiveLaunch(d launch.Done) tea.Cmd {
 	}
 	a.launch.busy, a.launch.ticket = false, d.Ticket.ID
 	a.launch.notice, a.launch.tone = launchNotice(d), launchTone(d.Kind)
-	a.launch.until = time.Time{}
+	// The launch cleared the deadline when it started (launchClaude): a
+	// problem or a canceled launch has none.
 	if a.launch.tone != present.Plain || a.launch.notice.String() == "" {
 		return nil
 	}

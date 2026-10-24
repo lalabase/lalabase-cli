@@ -13,7 +13,7 @@ const navigationWidth = 26
 func layout(width, height int) view.Geometry { return layoutWith(width, height, 1, view.List) }
 
 // layoutWith is the geometry for a help of helpLines lines: the body gets
-// what the header, the context line and the help leave; the panes' widths
+// what the header, the path line and the help leave; the panes' widths
 // are their frames' and add up to the width. With the object in
 // focus three columns become two: the list keeps its width and the object
 // takes the navigation's, so a ticket or a notification is read wide.
@@ -51,11 +51,11 @@ func (m Model) geometry() view.Geometry {
 }
 
 // withNotice is the geometry with lines of their own for a status notice
-// that does not fit beside the context line, taken from the body: as many
-// as it wraps into, or as many as leave the focused column a row, the
-// last of them cut. A notice never makes a terminal small: where not one
-// line leaves that row, it stays beside the context, cut (a small
-// terminal shows neither line).
+// that does not fit beside the path (or, a hint, in its place), taken from
+// the body: as many as it wraps into, or as many as leave the focused
+// column a row, the last of them cut. A notice never makes a terminal
+// small: where not one line leaves that row, it stays in the path's line,
+// cut (a small terminal shows neither line).
 func (m Model) withNotice(g view.Geometry) view.Geometry {
 	if m.app == nil {
 		return g

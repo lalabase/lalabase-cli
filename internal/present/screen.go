@@ -91,8 +91,8 @@ const (
 	StatusOpen
 	StatusActive
 	StatusDone
-	// The tones of the status notice beside the context, by the state it
-	// reports: something did not work (a launch, the session, the disk
+	// The tones of a notice beside the path (a hint, which takes the
+	// path's place, is Plain), by the state it reports: something did not work (a launch, the session, the disk
 	// cache), or the client waits (a launch running, a rate-limit pause).
 	// The notice's text says what; the tone only makes it seen.
 	NoticeProblem

@@ -75,11 +75,11 @@ navigation again.
   or open, yellow in progress, green done (completed or closed), faint in the
   backlog. A done ticket is faint in the list, its status green and faint,
   so the open ones stand out. Where the ticket pane is wide enough (76
-  cells of text, so from 158 columns with the list in focus, or from 120
+  cells inside its frame, so from 158 columns with the list in focus, or from 120
   with the ticket in focus), the ticket's facts stand in a bar on its
   right, which does not scroll: Status in its tone, Project, People (the
   assignees, then the creator) and Updated, the labels faint, a long name
-  cut with "…"; the head then shows the title alone. In a narrower pane
+  cut with "…"; the head then drops its line of facts. In a narrower pane
   they stay in one faint line under the title. Comments by the token's own
   person show the author as "Name (you)", blue and bold; every other author
   is bold without colour. Only the user id from `/api/v1/me` decides, never

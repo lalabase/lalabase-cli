@@ -86,7 +86,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			if msg.Until.Equal(a.pause) {
 				a.pause = time.Time{}
 			}
-			if !a.launch.until.IsZero() && msg.Until.Equal(a.launch.until) {
+			if msg.Until.Equal(a.launch.until) {
 				a.launch.notice, a.launch.until = present.Inline{}, time.Time{}
 			}
 		}
@@ -309,7 +309,7 @@ func (m Model) wheel(msg tea.MouseWheelMsg) Model {
 }
 
 // overObject is whether the cell x, y lies in the object pane's body: below
-// the header, the context line and a notice on a line of its own, above
+// the header, the path line and a notice on a line of its own, above
 // the help, and inside the last frame (the pane is the rightmost, or the
 // only one when it has the focus in one column).
 func overObject(g view.Geometry, focus view.Pane, x, y int) bool {

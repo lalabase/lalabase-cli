@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/gboyke/lalabase-cli/internal/gateway"
@@ -193,5 +194,69 @@ func TestAHintIsWholeInEveryFocusWidthAndHeight(t *testing.T) {
 	}
 	if wrapped == 0 || cut == 0 {
 		t.Fatalf("the sweep saw %d wrapped and %d cut hints, want both", wrapped, cut)
+	}
+}
+
+// Review round 1 of #32: the hint's end must wake the model, or a quiet
+// screen keeps the hint until the next key. With the Events of a live
+// lifetime, the launch's answer issues the expiry, and it comes back with
+// the hint's deadline after 5 s by the real clock; a problem issues none.
+func TestAHintsAnswerIssuesItsExpiry(t *testing.T) {
+	h := newHarness(t)
+	f := h.withLauncher()
+	h.openSix()
+	a := h.m.app
+	ev := gateway.NewEvents(h.live)
+	a.deps.Events, a.session = ev, ev.Session()
+	msg := h.press("x")()
+	var cmd tea.Cmd
+	h.m, cmd = step(t, h.m, msg)
+	if cmd == nil {
+		t.Fatal("the hint issued no expiry")
+	}
+	until := a.launch.until
+	start := time.Now()
+	got := h.background(cmd)
+	select {
+	case m := <-got:
+		if m != (gateway.Expired{Session: ev.Session(), Until: until}) {
+			t.Fatalf("the expiry: %#v, want the hint's deadline %v", m, until)
+		}
+		if waited := time.Since(start); waited < hintFor-time.Second {
+			t.Fatalf("the expiry came after %v, want about %v", waited, hintFor)
+		}
+		h.feed(m)
+	case <-time.After(hintFor + wall):
+		t.Fatal("no expiry")
+	}
+	if got := h.status(); got != "" {
+		t.Fatalf("the hint stayed after its expiry: %q", got)
+	}
+	f.kind = launch.NoClaude
+	msg = h.press("x")()
+	if _, cmd = step(t, h.m, msg); cmd != nil {
+		t.Fatal("a problem issued a command")
+	}
+}
+
+// Review round 1 of #32: an older hint's expiry leaves a launch that runs
+// and a problem that came after the hint.
+func TestAnOldHintsExpiryLeavesALaunchAndAProblem(t *testing.T) {
+	h := newHarness(t)
+	f := h.withLauncher()
+	h.openSix()
+	h.drive(h.press("x"))
+	old := h.m.app.launch.until
+	h.now = h.now.Add(2 * time.Second)
+	f.kind = launch.NoClaude
+	cmd := h.press("x")
+	h.feed(gateway.Expired{Session: h.m.app.session, Until: old})
+	if got := h.status(); got != "Opening Claude Code beside #6…" {
+		t.Fatalf("an old hint's expiry dropped the launch running: %q", got)
+	}
+	h.drive(cmd)
+	h.feed(gateway.Expired{Session: h.m.app.session, Until: old})
+	if got := h.status(); got != "claude was not found on the PATH" {
+		t.Fatalf("an old hint's expiry dropped the problem: %q", got)
 	}
 }
