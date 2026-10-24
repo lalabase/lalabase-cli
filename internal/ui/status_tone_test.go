@@ -100,7 +100,7 @@ func TestTheTicketHeadDrawsTheStatusInItsTone(t *testing.T) {
 		h.openSix()
 		d := h.m.app.detail
 		d.record.StatusFunctions = c.functions
-		tl := ticketText(d, true, "", h.m.app.when)
+		tl := ticketText(d, ticketContext{paged: true, when: h.m.app.when})
 		status := statusOf(d.record.Status)
 		st := tl.styles[1]
 		if !strings.HasPrefix(tl.lines[1], status+" · ") || st.Lead != len(status) || st.LeadStyle != c.want || st.RestStyle != present.Faint {

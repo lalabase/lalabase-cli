@@ -87,6 +87,10 @@ const (
 	// The notice's text says what; the tone only makes it seen.
 	NoticeProblem
 	NoticeWaiting
+	// Own is the token's own person among a ticket's comment authors
+	// (L2): everyone else is Strong. A text mark beside the name says the
+	// same without colour.
+	Own
 )
 
 // LineStyle is how one line of a column's text is drawn: its first Lead

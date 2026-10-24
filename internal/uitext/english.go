@@ -239,6 +239,7 @@ const (
 	// L2: the layout after the design review.
 	PathStep
 	PathDetail
+	You
 	count
 )
 
@@ -367,4 +368,6 @@ var english = map[ID]string{
 	LaunchFailed:           "iTerm could not open a pane",
 	// L2: the path in the second line, its places and their details.
 	PathStep: " › ", PathDetail: " · ",
+	// The mark after the name of the token's own person in a comment.
+	You: "(you)",
 }

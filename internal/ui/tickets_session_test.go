@@ -381,7 +381,7 @@ func TestOpenJoinsAPendingPreviewAndEscGoesBack(t *testing.T) {
 		t.Fatalf("after the results: %+v focus %d", d, h.m.focus)
 	}
 	text := h.m.screen().Object.Text.String()
-	for _, want := range []string{"#1 Login bricht ab", "in_progress · Website-Relaunch · assigned Anna Albers", "Nach dem Absenden bleibt die Seite weiß.", "Comments · newest first · page 1 of 1 · 2 readable comments", "Anna Albers  5 Jan 09:26", "Ich schaue es mir an.", "Ben Berger  5 Jan 09:25", "Tritt nur in Safari auf.", "Attachments · page 1 of 1 · 2 in all", "\ndesign.pdf · ", "\nscreenshot.png · "} {
+	for _, want := range []string{"#1 Login bricht ab", "in_progress · Website-Relaunch · assigned Anna Albers", "Nach dem Absenden bleibt die Seite weiß.", "Comments · newest first · page 1 of 1 · 2 readable comments", "Anna Albers (you)  5 Jan 09:26", "Ich schaue es mir an.", "Ben Berger  5 Jan 09:25", "Tritt nur in Safari auf.", "Attachments · page 1 of 1 · 2 in all", "\ndesign.pdf · ", "\nscreenshot.png · "} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the pane lacks %q:\n%s", want, text)
 		}

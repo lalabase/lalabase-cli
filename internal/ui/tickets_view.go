@@ -163,7 +163,7 @@ func (m Model) detailColumn() present.Column {
 		c.Text = uitext.Body(uitext.NoItem)
 		return c
 	}
-	t := ticketText(d, a.pagedOn(), m.originLine(), a.when)
+	t := ticketText(d, ticketContext{paged: a.pagedOn(), origin: m.originLine(), when: a.when, me: a.ownID()})
 	c.Text = present.NewBody(strings.Join(t.lines, "\n"))
 	c.Styles = t.styles
 	c.Offset = d.offset
@@ -239,11 +239,30 @@ var (
 	noteLine  = present.LineStyle{Indent: 2, RestStyle: present.Faint}
 )
 
+// ticketContext is what the pane's text takes beside the record: whether
+// the server pages, the line of the notification it was opened from, the
+// clock, and the token's own person (empty while it is not known).
+type ticketContext struct {
+	paged  bool
+	origin string
+	when   func(string) string
+	me     string
+}
+
+// ownID is the user id of the token's own person: empty until /me
+// succeeded, so nobody is taken for the own person before.
+func (a *app) ownID() string {
+	if a.steps[stepMe].state != ready {
+		return ""
+	}
+	return a.me.User.ID
+}
+
 // ticketText is the body of the pane. Every field is foreign; a one-line
 // field is cleaned as one line, so a title cannot open a line of its own,
 // but a description or a comment keeps its lines.
-func ticketText(d *detailView, paged bool, origin string, when func(string) string) ticketLines {
-	r := d.record
+func ticketText(d *detailView, c ticketContext) ticketLines {
+	r, paged, origin, when := d.record, c.paged, c.origin, c.when
 	t := ticketLines{posts: map[string]int{}}
 	// The head: the title, then one faint line of its facts.
 	t.addLead(uitext.Fill(uitext.TicketNumber, r.Number).String()+" "+textOr(r.Title, uitext.UntitledTicket), present.Strong, "", present.Strong)
@@ -305,9 +324,13 @@ func ticketText(d *detailView, paged bool, origin string, when func(string) stri
 			break
 		}
 		// The head: the author bold, the time faint; the text indented
-		// below it.
+		// below it. The token's own person (by the id alone, never the
+		// name) is blue and marked, so the mark stays without colour.
 		t.posts[p.ID] = len(t.lines)
-		author := present.NewInline(personOf(p.Author)).String()
+		author, tone := present.NewInline(personOf(p.Author)).String(), present.Strong
+		if c.me != "" && p.Author != nil && p.Author.ID == c.me {
+			author, tone = author+" "+uitext.Inline(uitext.You).String(), present.Own
+		}
 		if d.area == areaComments && p.ID == d.post {
 			author = uitext.Inline(uitext.SelectedComment).String() + author
 		}
@@ -315,7 +338,7 @@ func ticketText(d *detailView, paged bool, origin string, when func(string) stri
 		if p.IsPrivate {
 			rest += " · " + uitext.Inline(uitext.Private).String()
 		}
-		t.addLead(author, present.Strong, rest, present.Faint)
+		t.addLead(author, tone, rest, present.Faint)
 		switch {
 		case e != nil && e.post == p.ID && e.unavailable:
 			// The server said the comment is missing: its text is hidden
