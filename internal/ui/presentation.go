@@ -155,30 +155,32 @@ func (a *app) orgName(org, opened string) string {
 	return name
 }
 
-// context names where the person is: the open view's organisation (by the
-// name it had when it was opened, when the directory lost it), the
-// section, the project, the search and the page.
+// context is the path to where the person is: the open view's
+// organisation (by the name it had when it was opened, when the directory
+// lost it), the section and the project as places, the search and the page
+// as their details.
 func (m Model) context() present.Inline {
 	a := m.app
 	if a.expired {
 		return uitext.Inline(uitext.Organisations)
 	}
+	step, detail := uitext.Inline(uitext.PathStep).String(), uitext.Inline(uitext.PathDetail).String()
 	if v := a.active; v != nil {
-		text := a.orgName(v.org, v.name) + " | " + uitext.Inline(uitext.Inbox).String()
+		text := a.orgName(v.org, v.name) + step + uitext.Inline(uitext.Inbox).String()
 		if v.known {
-			text += " | " + uitext.Fill(uitext.PageOf, v.page, lastPage(v.total, v.perPage)).String()
+			text += detail + uitext.Fill(uitext.PageOf, v.page, lastPage(v.total, v.perPage)).String()
 		}
 		return present.NewInline(text)
 	}
 	if p := a.projects; p != nil {
-		text := a.orgName(p.org, p.name) + " | " + uitext.Inline(uitext.Tickets).String()
+		text := a.orgName(p.org, p.name) + step + uitext.Inline(uitext.Tickets).String()
 		if v := a.tickets; v != nil {
-			text += " | " + textOr(v.projectName, uitext.UnnamedProject)
+			text += step + textOr(v.projectName, uitext.UnnamedProject)
 			if v.query != "" {
-				text += " | " + uitext.Fill(uitext.SearchFor, v.query).String()
+				text += detail + uitext.Fill(uitext.SearchFor, v.query).String()
 			}
 			if v.known {
-				text += " | " + uitext.Fill(uitext.PageOf, v.page, lastPage(v.total, v.perPage)).String()
+				text += detail + uitext.Fill(uitext.PageOf, v.page, lastPage(v.total, v.perPage)).String()
 			}
 		}
 		return present.NewInline(text)

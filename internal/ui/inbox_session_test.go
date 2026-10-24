@@ -148,7 +148,7 @@ func TestHighlightingSendsNothingAndEnterChooses(t *testing.T) {
 	if a.active == nil || a.active.org != orgA || len(a.active.rows) != 25 || h.m.focus != view.List {
 		t.Fatalf("active %+v focus %d", a.active, h.m.focus)
 	}
-	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH | Inbox | page 1 of 2" {
+	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH › Inbox · page 1 of 2" {
 		t.Fatalf("context %q", got)
 	}
 	// Enter in the list opens the details from the row, without a request.
@@ -283,7 +283,7 @@ func TestAShrunkInboxIsCorrectedOnce(t *testing.T) {
 	if a.active.page != 2 || len(a.active.rows) != 5 || len(h.f.inboxCalls()) != before+2 {
 		t.Fatalf("after the shrink: page %d, %d rows, %d reads", a.active.page, len(a.active.rows), len(h.f.inboxCalls())-before)
 	}
-	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH | Inbox | page 2 of 2" {
+	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH › Inbox · page 2 of 2" {
 		t.Fatalf("context %q", got)
 	}
 	// Another shrink during the correction: stop, offer R.

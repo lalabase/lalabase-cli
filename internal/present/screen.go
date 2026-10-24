@@ -7,8 +7,8 @@ package present
 type Screen struct {
 	// Identity follows the profile in the header: whose token this is.
 	Identity Inline
-	// Context is the context line of two and three columns: where the
-	// person is.
+	// Context is the path in the second line of two and three columns:
+	// where the person is.
 	Context Inline
 	// Status is a notice beside the context (a rate-limit pause, an expired
 	// session); empty for none.

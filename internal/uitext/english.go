@@ -236,6 +236,9 @@ const (
 	LaunchSessionGone
 	LaunchNoAnswer
 	LaunchFailed
+	// L2: the layout after the design review.
+	PathStep
+	PathDetail
 	count
 )
 
@@ -362,4 +365,6 @@ var english = map[ID]string{
 	LaunchSessionGone:      "iTerm did not find this session; nothing opened",
 	LaunchNoAnswer:         "iTerm did not answer within 5 s; a pane may still open. If macOS asks for permission, allow it",
 	LaunchFailed:           "iTerm could not open a pane",
+	// L2: the path in the second line, its places and their details.
+	PathStep: " › ", PathDetail: " · ",
 }

@@ -62,18 +62,19 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 // statusSeparator stands between the context and a notice beside it.
 const statusSeparator = " | "
 
-// contextLine is where the person is: the context of two and three
-// columns, the breadcrumb of one, the chooser's title while two columns
-// show it.
+// contextLine is where the person is: the path of two and three columns,
+// the path of the panes in one, the chooser's title while two columns show
+// it.
 func contextLine(s present.Screen, g Geometry, focus Pane) string {
 	switch {
 	case g.Columns == 1:
+		step := uitext.Inline(uitext.PathStep).String()
 		context := s.Crumbs[0].String()
 		if focus >= List {
-			context += " > " + s.Crumbs[1].String()
+			context += step + s.Crumbs[1].String()
 		}
 		if focus == Object {
-			context += " > " + s.Crumbs[2].String()
+			context += step + s.Crumbs[2].String()
 		}
 		return context
 	case g.Columns == 2 && focus == Navigation:

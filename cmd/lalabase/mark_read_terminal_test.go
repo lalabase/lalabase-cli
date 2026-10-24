@@ -43,7 +43,7 @@ func openInboxA(t *testing.T, c *terminalProcess, width uint16) {
 	t.Helper()
 	c.expect(t, "the directory and the counters", width, "All organisations", "Nordlicht GmbH", "Südwind AG", "33", "30")
 	c.moveTo(t, keyDown, width, "Nordlicht GmbH", "Inbox", 1)
-	c.act(t, keyEnter, width, "#1 Benachrichtigung", "Nordlicht GmbH | Inbox | page 1 of 2")
+	c.act(t, keyEnter, width, "#1 Benachrichtigung", "Nordlicht GmbH › Inbox · page 1 of 2")
 }
 
 // openRow6Details moves to the sixth row and opens its details. The fifth

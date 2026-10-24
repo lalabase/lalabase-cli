@@ -20,7 +20,7 @@ func TestR1DirectoryRemovalDoesNotRelabelActiveInbox(t *testing.T) {
 	h.drive(h.press("R"))
 	h.press("esc")
 	text := ansi.Strip(h.m.View().Content)
-	if h.m.app.active != nil && h.m.app.active.org == orgA && len(h.m.app.active.rows) > 0 && strings.Contains(text, "All organisations | Inbox") {
+	if h.m.app.active != nil && h.m.app.active.org == orgA && len(h.m.app.active.rows) > 0 && strings.Contains(text, "All organisations › Inbox") {
 		t.Fatalf("filtered A rows relabelled as global after directory removal: active.org=%q first.row.org=%q\n%s", h.m.app.active.org, h.m.app.active.rows[0].Organisation.ID, text)
 	}
 }
