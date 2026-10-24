@@ -17,11 +17,18 @@ const ReadingWidth = 80
 // indent is dropped, so a narrow pane does not lose its text to margins.
 const minIndented = 12
 
-// Separator stands between two panes, drawn faint; SeparatorWidth is its
-// width in cells, which the layout leaves for it.
+// The frame of a pane: rounded corners, the title in the top border, a
+// space inside either side, so the text does not touch it. It takes
+// frameCells of a pane's width and frameLines of its height; the panes
+// stand side by side, the frames are what parts them.
 const (
-	Separator      = " │ "
-	SeparatorWidth = 3
+	frameTopLeft     = "\u256d"
+	frameTopRight    = "\u256e"
+	frameBottomLeft  = "\u2570"
+	frameBottomRight = "\u256f"
+	frameSide        = "\u2502"
+	frameCells       = 4
+	frameLines       = 2
 )
 
 // rule is the character of a heading's rule.
@@ -63,26 +70,40 @@ func (l screenLine) render(width int, method ansi.Method) string {
 // terminal's own sixteen colours, so the user's theme picks the shade, and
 // a terminal without colour (NO_COLOR) draws the text alone.
 func styled(text string, s present.Style) string {
+	if strings.TrimSpace(text) == "" || s == present.Plain {
+		return text
+	}
+	return styleOf(s).Render(text)
+}
+
+// quieted draws text in a style and faint: a status's tone stays seen in
+// a row that holds nothing to act on.
+func quieted(text string, s present.Style) string {
 	if strings.TrimSpace(text) == "" {
 		return text
 	}
+	return styleOf(s).Faint(true).Render(text)
+}
+
+func styleOf(s present.Style) lipgloss.Style {
+	style := lipgloss.NewStyle()
 	switch s {
 	case present.Strong:
-		return lipgloss.NewStyle().Bold(true).Render(text)
+		return style.Bold(true)
 	case present.Faint:
-		return lipgloss.NewStyle().Faint(true).Render(text)
+		return style.Faint(true)
 	case present.StatusOpen:
-		return lipgloss.NewStyle().Foreground(lipgloss.Cyan).Render(text)
+		return style.Foreground(lipgloss.Cyan)
 	case present.StatusActive:
-		return lipgloss.NewStyle().Foreground(lipgloss.Yellow).Render(text)
+		return style.Foreground(lipgloss.Yellow)
 	case present.StatusDone:
-		return lipgloss.NewStyle().Foreground(lipgloss.Green).Render(text)
+		return style.Foreground(lipgloss.Green)
 	case present.NoticeProblem:
-		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Red).Render(text)
+		return style.Bold(true).Foreground(lipgloss.Red)
 	case present.NoticeWaiting:
-		return lipgloss.NewStyle().Foreground(lipgloss.Yellow).Render(text)
+		return style.Foreground(lipgloss.Yellow)
 	}
-	return text
+	return style
 }
 
 // textLines wraps a column's free text into screen lines: line by line,

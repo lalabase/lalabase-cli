@@ -9,13 +9,14 @@ import (
 
 func TestLayoutBreakpoints(t *testing.T) {
 	for _, tc := range []struct{ width, columns, nav, list, object int }{
-		{79, 1, 0, 79, 0}, {80, 2, 0, 30, 47}, {119, 2, 0, 46, 70}, {120, 3, 24, 36, 54}, {160, 3, 24, 52, 78},
+		{79, 1, 0, 79, 0}, {80, 2, 0, 32, 48}, {119, 2, 0, 47, 72}, {120, 3, 26, 37, 57}, {160, 3, 26, 53, 81},
 	} {
 		g := layout(tc.width, 24)
 		if g.Columns != tc.columns || g.NavigationWidth != tc.nav || g.ListWidth != tc.list || g.ObjectWidth != tc.object {
 			t.Fatalf("width %d: %+v", tc.width, g)
 		}
-		if g.NavigationWidth+g.ListWidth+g.ObjectWidth+(g.Columns-1)*view.SeparatorWidth != tc.width {
+		// The frames part the panes: their widths add up to the screen's.
+		if g.NavigationWidth+g.ListWidth+g.ObjectWidth != tc.width {
 			t.Fatalf("wrong cell budget: %+v", g)
 		}
 		if g.BodyHeight != 21 {
@@ -68,7 +69,7 @@ func TestLayoutSmallDimensions(t *testing.T) {
 func TestTheObjectInFocusTakesTheNavigationsRoom(t *testing.T) {
 	for _, width := range []int{120, 160, 200} {
 		three, focused := layoutWith(width, 24, 1, view.List), layoutWith(width, 24, 1, view.Object)
-		if focused.Columns != 2 || focused.ListWidth != three.ListWidth || focused.ListWidth+focused.ObjectWidth+view.SeparatorWidth != width {
+		if focused.Columns != 2 || focused.ListWidth != three.ListWidth || focused.ListWidth+focused.ObjectWidth != width {
 			t.Fatalf("width %d: %+v (three columns %+v)", width, focused, three)
 		}
 	}

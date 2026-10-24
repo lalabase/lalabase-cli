@@ -15,6 +15,26 @@ var sgr = regexp.MustCompile(`\x1b\[([0-9;]*)m`)
 // cellAttrs follows the SGR state through a line and returns, per cell,
 // whether it is drawn reversed, and the parameters set while it was.
 func cellAttrs(line string) (reversed []bool, params map[int]bool) {
+	return cellsWith(line, 7, 27)
+}
+
+// grounded counts the cells of a line drawn on the grey ground (bright
+// black, SGR 100).
+func grounded(line string) int {
+	cells, _ := cellsWith(line, 100, 49)
+	n := 0
+	for _, on := range cells {
+		if on {
+			n++
+		}
+	}
+	return n
+}
+
+// cellsWith follows the SGR state through a line and returns, per cell,
+// whether the parameter set is on (set, until off or a reset), and the
+// parameters set while it was.
+func cellsWith(line string, set, off int) (cells []bool, params map[int]bool) {
 	params = map[int]bool{}
 	on := false
 	rest := line
@@ -25,7 +45,7 @@ func cellAttrs(line string) (reversed []bool, params map[int]bool) {
 			text = rest[:loc[0]]
 		}
 		for range ansi.WcWidth.StringWidth(text) {
-			reversed = append(reversed, on)
+			cells = append(cells, on)
 		}
 		if loc == nil {
 			break
@@ -40,9 +60,9 @@ func cellAttrs(line string) (reversed []bool, params map[int]bool) {
 		}
 		for _, n := range seq {
 			switch n {
-			case 0, 27:
+			case 0, off:
 				on = false
-			case 7:
+			case set:
 				on = true
 			}
 		}
@@ -53,7 +73,7 @@ func cellAttrs(line string) (reversed []bool, params map[int]bool) {
 		}
 		rest = rest[loc[1]:]
 	}
-	return reversed, params
+	return cells, params
 }
 
 // reversedCells counts the cells of a line drawn reversed.
@@ -78,10 +98,10 @@ func TestTheCursorRowOfTheFocusedPaneIsABar(t *testing.T) {
 		{Primary: present.NewInline("#3 Archiv"), Trailing: present.NewInline("done"), TrailingStyle: present.StatusDone, Secondary: present.NewInline("Anna"), Quiet: true},
 	}}
 	const width = 32
-	got := pane(c, width, 12, true, ansi.WcWidth)
+	got := content(c, width, 11, true, ansi.WcWidth)
 	for i, line := range got {
 		want := 0
-		if i == 3 || i == 4 {
+		if i == 2 || i == 3 {
 			want = width
 		}
 		if n := reversedCells(line); n != want {
@@ -91,41 +111,61 @@ func TestTheCursorRowOfTheFocusedPaneIsABar(t *testing.T) {
 			t.Errorf("line %d is %d cells wide", i, w)
 		}
 	}
-	if !strings.HasPrefix(ansi.Strip(got[3]), "> #2 Catering") {
-		t.Fatalf("the marker is gone from the bar: %q", ansi.Strip(got[3]))
+	if !strings.HasPrefix(ansi.Strip(got[2]), "> #2 Catering") {
+		t.Fatalf("the marker is gone from the bar: %q", ansi.Strip(got[2]))
 	}
-	for _, i := range []int{3, 4} {
+	for _, i := range []int{2, 3} {
 		_, params := cellAttrs(got[i])
 		if params[2] || params[33] || params[36] || params[32] {
 			t.Fatalf("line %d: faint or a tone inside the bar: %v in %q", i, params, got[i])
 		}
 	}
-	if _, params := cellAttrs(got[3]); !params[1] {
-		t.Fatalf("the active entry lost its bold in the bar: %q", got[3])
+	if _, params := cellAttrs(got[2]); !params[1] {
+		t.Fatalf("the active entry lost its bold in the bar: %q", got[2])
 	}
-	if _, params := cellAttrs(got[4]); params[1] {
-		t.Fatalf("the second line is bold in the bar: %q", got[4])
+	if _, params := cellAttrs(got[3]); params[1] {
+		t.Fatalf("the second line is bold in the bar: %q", got[3])
 	}
 	// The rows outside the bar keep their styles.
-	if !strings.Contains(got[1], "\x1b[36m") || !strings.Contains(got[2], faint+"Ben") {
-		t.Fatalf("a row outside the bar lost its style: %q %q", got[1], got[2])
+	if !strings.Contains(got[0], "\x1b[36m") || !strings.Contains(got[1], faint+"Ben") {
+		t.Fatalf("a row outside the bar lost its style: %q %q", got[0], got[1])
 	}
 }
 
-// A pane without the focus keeps the marker alone, as before.
-func TestAnUnfocusedPaneMarksItsCursorWithoutABar(t *testing.T) {
-	c := present.Column{Title: present.NewInline("Organisations"), Cursor: 0, Rows: []present.Row{
-		entry("Nordlicht GmbH", "30", "", true),
-		entry("Website", "2", "", false),
+// A pane without the focus draws its cursor row on the grey ground, over
+// the pane's whole width and both lines, never reversed: the place stays
+// seen while the keys act elsewhere. The marker stays, bold stays, faint
+// and a tone give way as in the focused bar.
+func TestAnUnfocusedPaneDrawsItsCursorOnTheGreyGround(t *testing.T) {
+	c := present.Column{Title: present.NewInline("Tickets"), Cursor: 0, Rows: []present.Row{
+		{Primary: present.NewInline("#1 Login"), Trailing: present.NewInline("done"), TrailingStyle: present.StatusDone, Secondary: present.NewInline("Ben"), Active: true, Quiet: true},
+		{Primary: present.NewInline("#2 Catering"), Trailing: present.NewInline("open"), Secondary: present.NewInline("Kai")},
 	}}
-	got := pane(c, 24, 4, false, ansi.WcWidth)
+	const width = 24
+	got := content(c, width, 9, false, ansi.WcWidth)
 	for i, line := range got {
+		want := 0
+		if i < 2 {
+			want = width
+		}
+		if n := grounded(line); n != want {
+			t.Errorf("line %d (%q): %d cells on the ground, want %d", i, ansi.Strip(line), n, want)
+		}
 		if n := reversedCells(line); n != 0 {
-			t.Fatalf("line %d reversed in an unfocused pane: %q", i, line)
+			t.Errorf("line %d reversed in an unfocused pane: %q", i, line)
 		}
 	}
-	if !strings.HasPrefix(ansi.Strip(got[1]), "> Nordlicht") {
-		t.Fatalf("the marker: %q", ansi.Strip(got[1]))
+	if !strings.HasPrefix(ansi.Strip(got[0]), "> #1 Login") {
+		t.Fatalf("the marker: %q", ansi.Strip(got[0]))
+	}
+	for _, i := range []int{0, 1} {
+		_, params := cellsWith(got[i], 100, 49)
+		if params[2] || params[32] {
+			t.Fatalf("line %d: faint or a tone on the ground: %v in %q", i, params, got[i])
+		}
+	}
+	if _, params := cellsWith(got[0], 100, 49); !params[1] {
+		t.Fatalf("the active entry lost its bold on the ground: %q", got[0])
 	}
 }
 
@@ -137,17 +177,23 @@ func TestTheBarFillsThePaneInEveryLayout(t *testing.T) {
 		width, height int
 		lines         []int
 	}{
-		"overflow": {present.Column{Cursor: 0, Rows: []present.Row{entry("A very long organisation name", "12345", "", false)}}, 10, 3, []int{1}},
-		"compact":  {present.Column{Cursor: 1, Rows: []present.Row{entry("a", "", "b", false), entry("c", "", "d", false)}}, 12, 5, []int{2}},
-		"heading":  {present.Column{Cursor: 0, Rows: []present.Row{entry("Inbox", "", "", false)}}, 12, 3, []int{1}},
-		"wide":     {present.Column{Cursor: 0, Rows: []present.Row{entry("x", "1", "", false)}}, 90, 3, []int{1}},
+		"overflow": {present.Column{Cursor: 0, Rows: []present.Row{entry("A very long organisation name", "12345", "", false)}}, 10, 2, []int{0}},
+		"compact":  {present.Column{Cursor: 1, Rows: []present.Row{entry("a", "", "b", false), entry("c", "", "d", false)}}, 12, 4, []int{1}},
+		"heading":  {present.Column{Cursor: 0, Rows: []present.Row{entry("Inbox", "", "", false)}}, 12, 2, []int{0}},
+		"wide":     {present.Column{Cursor: 0, Rows: []present.Row{entry("x", "1", "", false)}}, 90, 2, []int{0}},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			got := pane(tc.c, tc.width, tc.height, true, ansi.WcWidth)
-			for _, i := range tc.lines {
-				if n := reversedCells(got[i]); n != tc.width {
-					t.Fatalf("line %d: %d of %d cells reversed: %q", i, n, tc.width, got[i])
+			for _, focused := range []bool{true, false} {
+				count := reversedCells
+				if !focused {
+					count = grounded
+				}
+				got := content(tc.c, tc.width, tc.height, focused, ansi.WcWidth)
+				for _, i := range tc.lines {
+					if n := count(got[i]); n != tc.width {
+						t.Fatalf("focused %v, line %d: %d of %d cells in the bar: %q", focused, i, n, tc.width, got[i])
+					}
 				}
 			}
 		})

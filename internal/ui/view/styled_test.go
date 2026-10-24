@@ -98,23 +98,23 @@ func TestRowValuesAlignAndWeigh(t *testing.T) {
 		{Primary: present.NewInline("#2 Landingpage"), Trailing: present.NewInline("in_progress"), Secondary: present.NewInline("Anna")},
 		{Primary: present.NewInline("#10 Catering"), Trailing: present.NewInline("new"), Secondary: present.NewInline("Kai")},
 	}}
-	got := pane(c, 32, 12, false, ansi.WcWidth)
-	if ansi.Strip(got[1]) != "  #2 Landingpage     in_progress" || ansi.Strip(got[3]) != "  #10 Catering               new" {
-		t.Fatalf("rows %q", ansiStripAll(got[1:5]))
+	got := content(c, 32, 11, false, ansi.WcWidth)
+	if ansi.Strip(got[0]) != "  #2 Landingpage     in_progress" || ansi.Strip(got[2]) != "  #10 Catering               new" {
+		t.Fatalf("rows %q", ansiStripAll(got[0:4]))
 	}
-	if !strings.Contains(got[2], faint+"Anna") {
-		t.Fatalf("the second line is not faint: %q", got[2])
+	if !strings.Contains(got[1], faint+"Anna") {
+		t.Fatalf("the second line is not faint: %q", got[1])
 	}
 	nav := present.Column{Title: present.NewInline("Organisations"), Cursor: -1, Rows: []present.Row{
 		{Primary: present.NewInline("Inbox"), Trailing: present.NewInline("0"), Quiet: true},
 		{Primary: present.NewInline("Inbox"), Trailing: present.NewInline("12"), TrailingStyle: present.Strong},
 	}}
-	got = pane(nav, 20, 4, false, ansi.WcWidth)
-	if !strings.HasPrefix(got[1], faint) || strings.Contains(got[1], bold) {
-		t.Fatalf("the quiet entry: %q", got[1])
+	got = content(nav, 20, 3, false, ansi.WcWidth)
+	if !strings.HasPrefix(got[0], faint) || strings.Contains(got[0], bold) {
+		t.Fatalf("the quiet entry: %q", got[0])
 	}
-	if strings.Contains(got[2], faint) || !strings.Contains(got[2], bold+"12") || strings.Contains(got[2], bold+"  Inbox") {
-		t.Fatalf("the highlighted value: %q", got[2])
+	if strings.Contains(got[1], faint) || !strings.Contains(got[1], bold+"12") || strings.Contains(got[1], bold+"  Inbox") {
+		t.Fatalf("the highlighted value: %q", got[1])
 	}
 }
 
@@ -125,9 +125,9 @@ func TestANarrowListKeepsItsTitles(t *testing.T) {
 		{Primary: present.NewInline("#2 Export als CSV"), Trailing: present.NewInline("new")},
 		{Primary: present.NewInline("#1 Login"), Trailing: present.NewInline("in_progress")},
 	}}
-	got := pane(c, 30, 4, false, ansi.WcWidth)
-	if ansi.Strip(got[1]) != "  #2 Export als CSV        new" || ansi.Strip(got[2]) != "  #1 Login         in_progress" {
-		t.Fatalf("rows %q", ansiStripAll(got[1:3]))
+	got := content(c, 30, 3, false, ansi.WcWidth)
+	if ansi.Strip(got[0]) != "  #2 Export als CSV        new" || ansi.Strip(got[1]) != "  #1 Login         in_progress" {
+		t.Fatalf("rows %q", ansiStripAll(got[0:2]))
 	}
 }
 
@@ -138,7 +138,7 @@ func TestAStatusIsDrawnInTheTerminalsOwnColours(t *testing.T) {
 		c := present.Column{Title: present.NewInline("Tickets"), Cursor: -1, Rows: []present.Row{
 			{Primary: present.NewInline("#2 Export"), Trailing: present.NewInline("fertig"), TrailingStyle: style},
 		}}
-		got := pane(c, 30, 2, false, ansi.WcWidth)[1]
+		got := content(c, 30, 1, false, ansi.WcWidth)[0]
 		if !strings.Contains(got, "\x1b["+sgr+"mfertig") || strings.Contains(got, sgr+"m  #2") {
 			t.Errorf("%v: %q", style, got)
 		}

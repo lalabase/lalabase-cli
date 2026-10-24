@@ -35,7 +35,8 @@ func Visible(g Geometry, focus Pane) []Pane {
 	return []Pane{List, Object}
 }
 
-// ColumnWidth is the width of one pane in this geometry.
+// ColumnWidth is the width of one pane in this geometry, its frame
+// included.
 func ColumnWidth(g Geometry, which Pane) int {
 	switch {
 	case g.Columns == 3 && which == Navigation:
@@ -44,4 +45,10 @@ func ColumnWidth(g Geometry, which Pane) int {
 		return g.ObjectWidth
 	}
 	return g.ListWidth
+}
+
+// InnerWidth is the width of a pane's text: the pane less its frame's two
+// sides and the space inside each.
+func InnerWidth(g Geometry, which Pane) int {
+	return max(0, ColumnWidth(g, which)-frameCells)
 }

@@ -112,8 +112,8 @@ func TestTheWheelScrollsOnlyOverTheObjectPane(t *testing.T) {
 		button tea.MouseButton
 		x, y   int
 	}{
-		{"over the list", tea.MouseWheelDown, x - view.SeparatorWidth - 1, y},
-		{"over the separator", tea.MouseWheelDown, x - 1, y},
+		{"over the list", tea.MouseWheelDown, x - 3, y},
+		{"over the list's frame", tea.MouseWheelDown, x - 1, y},
 		{"over the header", tea.MouseWheelDown, x, 0},
 		{"over the context line", tea.MouseWheelDown, x, 1},
 		{"over the help", tea.MouseWheelDown, x, g.Height - 1},

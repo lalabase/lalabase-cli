@@ -6,14 +6,15 @@ import (
 )
 
 // navigationWidth is the width of the navigation in three columns.
-const navigationWidth = 24
+const navigationWidth = 26
 
 // layout is the geometry with one help line and the list in focus, the
 // shell's case.
 func layout(width, height int) view.Geometry { return layoutWith(width, height, 1, view.List) }
 
 // layoutWith is the geometry for a help of helpLines lines: the body gets
-// what the header, the context line and the help leave. With the object in
+// what the header, the context line and the help leave; the panes' widths
+// are their frames' and add up to the width. With the object in
 // focus three columns become two: the list keeps its width and the object
 // takes the navigation's, so a ticket or a notification is read wide.
 func layoutWith(width, height, helpLines int, focus view.Pane) view.Geometry {
@@ -22,18 +23,18 @@ func layoutWith(width, height, helpLines int, focus view.Pane) view.Geometry {
 	g := view.Geometry{Width: width, Height: height, BodyHeight: max(0, height-2-helpLines), HelpHeight: helpLines, Small: width < 24 || height < 8}
 	switch {
 	case width >= 120:
-		rest := width - navigationWidth - 2*view.SeparatorWidth
+		rest := width - navigationWidth
 		g.Columns, g.NavigationWidth = 3, navigationWidth
 		g.ListWidth = rest * 2 / 5
 		g.ObjectWidth = rest - g.ListWidth
 		if focus == view.Object {
 			g.Columns, g.NavigationWidth = 2, 0
-			g.ObjectWidth = width - view.SeparatorWidth - g.ListWidth
+			g.ObjectWidth = width - g.ListWidth
 		}
 	case width >= 80:
 		g.Columns = 2
-		g.ListWidth = (width - view.SeparatorWidth) * 2 / 5
-		g.ObjectWidth = width - view.SeparatorWidth - g.ListWidth
+		g.ListWidth = width * 2 / 5
+		g.ObjectWidth = width - g.ListWidth
 	default:
 		g.Columns, g.ListWidth = 1, width
 	}

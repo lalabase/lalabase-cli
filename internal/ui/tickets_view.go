@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -35,8 +36,11 @@ func (m Model) projectsColumn() present.Column {
 }
 
 // ticketsColumn is the page of tickets: number and title, the status at
-// the end, the assignees and the time of the last change below. While the
-// search line is open it takes the notice.
+// the end, the assignees and the time of the last change below. The
+// numbers stand right-aligned in a column as wide as the page's widest, so
+// the titles and the lines below them start in one column; a done ticket
+// is quiet, so the open ones stand out. While the search line is open it
+// takes the notice.
 func (m Model) ticketsColumn() present.Column {
 	v := m.app.tickets
 	c := present.Column{Title: uitext.Inline(uitext.Tickets), Cursor: -1}
@@ -52,16 +56,24 @@ func (m Model) ticketsColumn() present.Column {
 		}
 		c.Notice = v.notice(empty, len(v.rows) == 0)
 	}
+	numbers := make([]string, len(v.rows))
+	width := 0
+	for i, r := range v.rows {
+		numbers[i] = uitext.Fill(uitext.TicketNumber, r.Number).String()
+		width = max(width, len(numbers[i]))
+	}
 	c.Rows = make([]present.Row, 0, len(v.rows))
 	for i, r := range v.rows {
 		if r.ID == v.selected {
 			c.Cursor = i
 		}
+		tone := statusStyle(r.StatusFunctions, present.Plain)
 		c.Rows = append(c.Rows, present.Row{
-			Primary:       present.NewInline(uitext.Fill(uitext.TicketNumber, r.Number).String() + " " + textOr(r.Title, uitext.UntitledTicket)),
+			Primary:       present.NewInline(fmt.Sprintf("%*s %s", width, numbers[i], textOr(r.Title, uitext.UntitledTicket))),
 			Trailing:      present.NewInline(bounded(statusOf(r.Status), maxStatus)),
-			TrailingStyle: statusStyle(r.StatusFunctions, present.Plain),
-			Secondary:     present.NewInline(assigneesOf(r.Assignees) + " · " + m.app.when(r.UpdatedAt)),
+			TrailingStyle: tone,
+			Secondary:     present.NewInline(strings.Repeat(" ", width+1) + assigneesOf(r.Assignees) + " · " + m.app.when(r.UpdatedAt)),
+			Quiet:         tone == present.StatusDone,
 		})
 	}
 	c.Offset = v.offset

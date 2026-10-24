@@ -25,9 +25,10 @@ func openSix(t *testing.T, c *terminalProcess, width uint16) {
 	t.Helper()
 	openWebsite(t, c, width)
 	for n := 2; n <= 6; n++ {
-		title := fmt.Sprintf("> #%d Ticket %d", n, n)
+		// The numbers stand right-aligned as wide as the page's widest.
+		title := fmt.Sprintf(">  #%d Ticket %d", n, n)
 		if n == 2 {
-			title = "> #2 Export als CSV"
+			title = ">  #2 Export als CSV"
 		}
 		c.act(t, keyDown, width, title)
 	}
