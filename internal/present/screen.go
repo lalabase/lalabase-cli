@@ -10,10 +10,12 @@ type Screen struct {
 	// Context is the path in the second line of two and three columns:
 	// where the person is.
 	Context Inline
-	// Status is a notice beside the context (a rate-limit pause, an expired
-	// session); empty for none.
+	// Status is a notice of the second line; empty for none. A problem or
+	// a wait (a rate-limit pause, an expired session) stands beside the
+	// path; a plain one is a short hint (what x did), which stands in the
+	// path's place.
 	Status Inline
-	// StatusStyle is the notice's tone: Plain, NoticeProblem or
+	// StatusStyle is the notice's tone: Plain (a hint), NoticeProblem or
 	// NoticeWaiting.
 	StatusStyle Style
 	// Crumbs are the names of the three panes, for the breadcrumb of one

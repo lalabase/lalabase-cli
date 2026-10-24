@@ -38,6 +38,9 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 	switch {
 	case s.Status.String() == "":
 		lines = append(lines, fit(context, g.Width, method))
+	case isHint(s):
+		// A hint takes the path's line, and the lines it wraps into under it.
+		lines = append(lines, noticeLines(s.Status.String(), s.StatusStyle, g.Width, g.NoticeHeight+1, method)...)
 	case g.NoticeHeight > 0:
 		lines = append(append(lines, fit(context, g.Width, method)), noticeLines(s.Status.String(), s.StatusStyle, g.Width, g.NoticeHeight, method)...)
 	default:
@@ -86,15 +89,28 @@ func contextLine(s present.Screen, g Geometry, focus Pane) string {
 // NoticeLines is the number of lines the screen's status notice needs
 // under the context line of this geometry: 0 when there is none or it
 // stands whole beside the context, else the lines it wraps into at the
-// width. The caller gives it as many as the body can spare
+// width; for a hint, which takes the context line itself, the lines it
+// wraps into after that one. The caller gives it as many as the body can spare
 // (Geometry.NoticeHeight), so it is not cut to a few words: for some keys
 // (x) it is the only answer, and the longest notices are instructions.
 func NoticeLines(s present.Screen, g Geometry, focus Pane, method ansi.Method) int {
 	status := s.Status.String()
-	if status == "" || method.StringWidth(contextLine(s, g, focus)+statusSeparator+status) <= g.Width {
+	switch {
+	case status == "":
+		return 0
+	case isHint(s):
+		// The first line is the path's.
+		return len(wrapBody(status, g.Width, method)) - 1
+	case method.StringWidth(contextLine(s, g, focus)+statusSeparator+status) <= g.Width:
 		return 0
 	}
 	return len(wrapBody(status, g.Width, method))
+}
+
+// isHint: the screen's notice is a short hint (plain), which stands in the
+// path's place (L2); a problem or a wait stands beside it.
+func isHint(s present.Screen) bool {
+	return s.Status.String() != "" && s.StatusStyle == present.Plain
 }
 
 // noticeLines is the notice wrapped at the width into at most height

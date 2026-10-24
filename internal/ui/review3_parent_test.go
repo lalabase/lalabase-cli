@@ -138,7 +138,7 @@ func TestR3ExpiredMailboxEveryMessageAndLateCommands(t *testing.T) {
 			case "batch":
 				msg = tea.BatchMsg{}
 			case "pause":
-				msg = gateway.PauseEnded{Session: a.session, Until: h.now.Add(time.Second)}
+				msg = gateway.Expired{Session: a.session, Until: h.now.Add(time.Second)}
 			case "resize":
 				msg = tea.WindowSizeMsg{Width: 90, Height: 20}
 			case "key":

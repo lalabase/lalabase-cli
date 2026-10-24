@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/launch"
 	"github.com/gboyke/lalabase-cli/internal/present"
@@ -15,14 +17,20 @@ type Launcher interface {
 }
 
 // launchState is the one launch at a time: its number, whether it runs, and
-// the notice of the newest one with the ticket it was for.
+// the notice of the newest one with the ticket it was for. A plain notice
+// is a hint (L2): it is shown until its deadline, a problem or a launch
+// running has none.
 type launchState struct {
 	ref    uint64
 	busy   bool
 	ticket string
 	notice present.Inline
 	tone   present.Style
+	until  time.Time
 }
+
+// hintFor is how long a hint stands in the path's place.
+const hintFor = 5 * time.Second
 
 // launchTarget is the address of the ticket the pane shows, when x may
 // launch: a launcher, no launch running, and a ticket shown whole, the
@@ -51,18 +59,30 @@ func (m Model) launchClaude() (Model, tea.Cmd) {
 	a.launch.ref++
 	a.launch.busy, a.launch.ticket = true, t.ID
 	a.launch.notice, a.launch.tone = uitext.Fill(uitext.Launching, t.Number), present.NoticeWaiting
+	a.launch.until = time.Time{}
 	return m, a.deps.Launcher.Launch(a.launch.ref, t)
 }
 
 // receiveLaunch takes the answer of the launch running and frees x; any
-// other answer is late and changes nothing.
-func (m Model) receiveLaunch(d launch.Done) {
+// other answer is late and changes nothing. A hint gets its deadline, and
+// the Events wake the model when it has come, so the path is drawn again.
+func (m Model) receiveLaunch(d launch.Done) tea.Cmd {
 	a := m.app
 	if a == nil || !a.launch.busy || d.Ref != a.launch.ref {
-		return
+		return nil
 	}
 	a.launch.busy, a.launch.ticket = false, d.Ticket.ID
 	a.launch.notice, a.launch.tone = launchNotice(d), launchTone(d.Kind)
+	a.launch.until = time.Time{}
+	if a.launch.tone != present.Plain || a.launch.notice.String() == "" {
+		return nil
+	}
+	now := a.now()
+	a.launch.until = now.Add(hintFor)
+	if a.deps.Events == nil {
+		return nil
+	}
+	return a.deps.Events.Expiry(a.launch.until, now)
 }
 
 // launchTone is the notice's tone by the outcome: plain when Claude Code
@@ -76,8 +96,12 @@ func launchTone(k launch.Kind) present.Style {
 	return present.NoticeProblem
 }
 
-// launchShown: the pane shows the ticket the notice is about.
+// launchShown: the pane shows the ticket the notice is about, and a hint's
+// deadline has not come by the model's clock.
 func (a *app) launchShown() bool {
+	if a.launch.tone == present.Plain && !a.launch.until.After(a.now()) {
+		return false
+	}
 	return a.launch.notice.String() != "" && a.detail != nil && a.detail.id == a.launch.ticket
 }
 

@@ -89,9 +89,10 @@ func (m Model) screen() present.Screen {
 	return s
 }
 
-// status is the notice beside the context line, the most urgent first: an
+// status is the notice of the second line, the most urgent first: an
 // expired session, a rate-limit pause, the disk cache, a launch's outcome;
-// with its tone, from the same state.
+// with its tone, from the same state. A plain one is a hint, which the
+// view draws in the path's place.
 func (m Model) status() (present.Inline, present.Style) {
 	a := m.app
 	switch {

@@ -69,7 +69,7 @@ func TestR2Observed401BeforeNonDataEventClearsScreenAndCache(t *testing.T) {
 			case "resize":
 				h.feed(tea.WindowSizeMsg{Width: 100, Height: 30})
 			case "pause expiry":
-				h.feed(gateway.PauseEnded{Session: a.session, Until: until})
+				h.feed(gateway.Expired{Session: a.session, Until: until})
 			case "q", "ctrl+c":
 				h.press(event)
 			case "late startup":

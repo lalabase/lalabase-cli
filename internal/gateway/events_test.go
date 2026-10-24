@@ -110,7 +110,7 @@ func TestTheExpiryNamesItsDeadline(t *testing.T) {
 	defer life.Stop(wall)
 	ev := NewEvents(life)
 	until := time.Now().Add(20 * time.Millisecond)
-	if msg := result(t, run(ev.Expiry(until, time.Now()))); msg != (PauseEnded{Session: ev.Session(), Until: until}) {
+	if msg := result(t, run(ev.Expiry(until, time.Now()))); msg != (Expired{Session: ev.Session(), Until: until}) {
 		t.Fatalf("got %#v", msg)
 	}
 	far := time.Now().Add(time.Hour)

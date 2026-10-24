@@ -60,11 +60,11 @@ func (m Model) withNotice(g view.Geometry) view.Geometry {
 	if m.app == nil {
 		return g
 	}
-	status, _ := m.status()
+	status, tone := m.status()
 	if status.String() == "" {
 		return g
 	}
-	s := present.Screen{Context: m.context(), Crumbs: m.crumbs(), Chooser: m.chooserColumn(), Status: status}
+	s := present.Screen{Context: m.context(), Crumbs: m.crumbs(), Chooser: m.chooserColumn(), Status: status, StatusStyle: tone}
 	focused := m.focusedColumn()
 	for lines := view.NoticeLines(s, g, m.focus, m.widthMethod); lines > 0; lines-- {
 		n := g

@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/launch"
+	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
@@ -68,8 +69,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case gateway.MarkReadResult:
 		return m.receiveMark(msg)
 	case launch.Done:
-		m.receiveLaunch(msg)
-		return m, nil
+		return m, m.receiveLaunch(msg)
 	case gateway.Result:
 		// A read refused before it was sent: its waiter is freed, nothing
 		// is shown of it.
@@ -79,9 +79,16 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.due(msg)
 	case gateway.Wake:
 		return m.wake(msg)
-	case gateway.PauseEnded:
-		if a := m.app; a != nil && msg.Session == a.session && msg.Until.Equal(a.pause) {
-			a.pause = time.Time{}
+	case gateway.Expired:
+		// The deadline of a pause or of a hint: whichever still shows it
+		// is over.
+		if a := m.app; a != nil && msg.Session == a.session {
+			if msg.Until.Equal(a.pause) {
+				a.pause = time.Time{}
+			}
+			if !a.launch.until.IsZero() && msg.Until.Equal(a.launch.until) {
+				a.launch.notice, a.launch.until = present.Inline{}, time.Time{}
+			}
 		}
 		return m, nil
 	case tea.KeyPressMsg:
