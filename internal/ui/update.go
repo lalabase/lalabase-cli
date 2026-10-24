@@ -303,8 +303,8 @@ func (m Model) wheel(msg tea.MouseWheelMsg) Model {
 
 // overObject is whether the cell x, y lies in the object pane's body: below
 // the header, the context line and a notice on a line of its own, above
-// the help, and right of the last separator (the pane is the rightmost,
-// or the only one when it has the focus in one column).
+// the help, and inside the last frame (the pane is the rightmost, or the
+// only one when it has the focus in one column).
 func overObject(g view.Geometry, focus view.Pane, x, y int) bool {
 	top := 2 + g.NoticeHeight
 	if y < top || y >= top+g.BodyHeight || x < 0 || x >= g.Width {

@@ -10,7 +10,8 @@ import (
 )
 
 // Render draws the screen into the geometry: a header, a context line, the
-// visible panes side by side, and the help at the bottom. The help lines
+// visible panes side by side, each in its frame, and the help at the
+// bottom. The help lines
 // were counted into the geometry by the caller (HelpLines), so nothing of
 // it is cut.
 func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string {
@@ -53,7 +54,7 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 		for i := range columns {
 			parts[i] = columns[i][row]
 		}
-		lines = append(lines, strings.Join(parts, lipgloss.NewStyle().Faint(true).Render(Separator)))
+		lines = append(lines, strings.Join(parts, ""))
 	}
 	return strings.Join(append(lines, helpLines...), "\n")
 }
@@ -120,10 +121,10 @@ func column(s present.Screen, which Pane) present.Column {
 }
 
 // Capacity is the number of rows (or lines of text) a column of this
-// geometry shows at once: the body less the title and the notice, divided
-// by the row height.
+// geometry shows at once: the body less the frame (the title stands in its
+// top border) and the notice, divided by the row height.
 func Capacity(c present.Column, g Geometry) int {
-	body := g.BodyHeight - 1
+	body := g.BodyHeight - frameLines
 	if c.Notice.String() != "" {
 		body--
 	}
@@ -137,13 +138,13 @@ func Capacity(c present.Column, g Geometry) int {
 }
 
 // Extent is what a column holds: its rows, or the lines its text wraps
-// into at the pane's width. More than Capacity means there is something
-// to scroll to.
+// into inside the pane's frame. More than Capacity means there is
+// something to scroll to.
 func Extent(c present.Column, g Geometry, which Pane, method ansi.Method) int {
 	if c.Rows != nil {
 		return len(c.Rows)
 	}
-	width := ColumnWidth(g, which)
+	width := InnerWidth(g, which)
 	if width <= 0 {
 		return 0
 	}
@@ -168,28 +169,66 @@ func rowHeight(c present.Column, body int) int {
 	return 1
 }
 
+// pane is a column in its frame, width by height: the title in the top
+// border, the text inside the sides. The focused pane's frame is blue and
+// bold, the others' faint, so the eye finds where the keys act. A pane too
+// small for a frame is its text alone.
 func pane(c present.Column, width, height int, focused bool, method ansi.Method) []string {
 	if height <= 0 {
 		return nil
 	}
-	lines := make([]string, height)
-	lines[0] = inline(c.Title, width, method)
-	if focused {
-		lines[0] = lipgloss.NewStyle().Bold(true).Render(lines[0])
+	if width <= frameCells || height <= frameLines {
+		return content(c, width, height, focused, method)
 	}
-	at := 1
-	if c.Notice.String() != "" && height > 1 {
-		lines[1] = inline(c.Notice, width, method)
-		at = 2
+	border := lipgloss.NewStyle().Faint(true)
+	title := lipgloss.NewStyle()
+	if focused {
+		border = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Blue)
+		title = title.Bold(true)
+	}
+	run := width - 2 // the border between the corners
+	lines := make([]string, 0, height)
+	lines = append(lines, frameTop(c.Title.String(), run, border, title, method))
+	left, right := border.Render(frameSide)+" ", " "+border.Render(frameSide)
+	for _, line := range content(c, width-frameCells, height-frameLines, focused, method) {
+		lines = append(lines, left+line+right)
+	}
+	return append(lines, border.Render(frameBottomLeft+strings.Repeat(rule, run)+frameBottomRight))
+}
+
+// frameTop is the top border, run cells between its corners, with the
+// title in it, "╭─ Title ───╮"; a title wider than the border is cut, a
+// border without room for one has none.
+func frameTop(text string, run int, border, title lipgloss.Style, method ansi.Method) string {
+	room := run - 3 // the rule before the title and a space either side
+	text = fit(text, max(0, room), method)
+	if room < 1 || text == "" {
+		return border.Render(frameTopLeft + strings.Repeat(rule, run) + frameTopRight)
+	}
+	rest := run - 3 - method.StringWidth(text)
+	return border.Render(frameTopLeft+rule+" ") + title.Render(text) + border.Render(" "+strings.Repeat(rule, rest)+frameTopRight)
+}
+
+// content is what stands inside a pane's frame, width by height, every
+// line padded to the width: the notice, then the rows or the text.
+func content(c present.Column, width, height int, focused bool, method ansi.Method) []string {
+	if height <= 0 {
+		return nil
+	}
+	lines := make([]string, height)
+	at := 0
+	if c.Notice.String() != "" {
+		lines[0] = inline(c.Notice, width, method)
+		at = 1
 	}
 	body := height - at
-	var content []string
+	var drawn []string
 	if c.Rows != nil {
-		content = rows(c, width, body, focused, method)
+		drawn = rows(c, width, body, focused, method)
 	} else {
-		content = scrollable(c, width, body, method)
+		drawn = scrollable(c, width, body, method)
 	}
-	copy(lines[at:], content)
+	copy(lines[at:], drawn)
 	for i := range lines {
 		lines[i] += strings.Repeat(" ", max(0, width-method.StringWidth(lines[i])))
 	}
@@ -197,8 +236,8 @@ func pane(c present.Column, width, height int, focused bool, method ansi.Method)
 }
 
 // rows renders the visible rows, the cursor kept in sight: the offset moves
-// only when the cursor would be outside. In the focused pane the cursor
-// row is a bar; elsewhere its marker alone shows it.
+// only when the cursor would be outside. The cursor row is a bar: reversed
+// in the focused pane, on a grey ground elsewhere.
 func rows(c present.Column, width, body int, focused bool, method ansi.Method) []string {
 	if body <= 0 || width <= 0 {
 		return nil
@@ -223,7 +262,14 @@ func rows(c present.Column, width, body int, focused bool, method ansi.Method) [
 	var out []string
 	for i := offset; i < len(c.Rows) && len(out)+h <= body; i++ {
 		cursor := i == c.Cursor
-		out = append(out, row(c.Rows[i], width, trailing, cursor, cursor && focused, h == 2, method)...)
+		bar := noBar
+		switch {
+		case cursor && focused:
+			bar = focusBar
+		case cursor:
+			bar = restBar
+		}
+		out = append(out, row(c.Rows[i], width, trailing, cursor, bar, h == 2, method)...)
 	}
 	return out
 }
@@ -233,16 +279,29 @@ func rows(c present.Column, width, body int, focused bool, method ansi.Method) [
 // more of a title than the alignment is worth.
 const minAligned = 20
 
+// barKind is how a cursor row is drawn: not at all (not the cursor), as
+// the bar of the focused pane, or as the quieter bar of a pane without the
+// focus.
+type barKind uint8
+
+const (
+	noBar barKind = iota
+	focusBar
+	restBar
+)
+
 // row is one entry: a marker, the first line with its trailing value at
 // the end, in a column trailingWidth wide, and the second line indented
-// and faint. The entry in use is bold, one with nothing to act on faint, a
-// value that asks for attention bold. A bar (the cursor row of the focused
-// pane) is drawn reversed over the pane's whole width, both lines of it,
-// so the eye finds where the keys act; faint and a status's tone give way
-// in it (faint on a reversed ground is hard to read, and a tone would turn
-// into a coloured block), bold stays. The marker stays too: a terminal
-// that draws no attributes still shows the cursor.
-func row(r present.Row, width, trailingWidth int, cursor, bar, twoLines bool, method ansi.Method) []string {
+// and faint. The entry in use is bold, one with nothing to act on faint
+// (its value's tone faint with it), a value that asks for attention bold.
+// A bar (the cursor row) is drawn over the pane's whole width, both lines
+// of it: reversed in the focused pane, so the eye finds where the keys
+// act, on the terminal's grey (colour 8) elsewhere, so the place stays
+// seen beside it. Faint and a status's tone give way in it (faint on a
+// reversed ground is hard to read, and a tone would turn into a coloured
+// block), bold stays. The marker stays too: a terminal that draws no
+// attributes still shows the cursor.
+func row(r present.Row, width, trailingWidth int, cursor bool, bar barKind, twoLines bool, method ansi.Method) []string {
 	marker := "  "
 	if cursor {
 		marker = "> "
@@ -285,25 +344,32 @@ func row(r present.Row, width, trailingWidth int, cursor, bar, twoLines bool, me
 	if r.TrailingStyle != present.Plain {
 		valueWeight = r.TrailingStyle
 	}
-	if bar {
-		lines := []string{reversed(marker+primary+value, width, r.Active, method)}
+	if bar != noBar {
+		lines := []string{barLine(marker+primary+value, width, r.Active, bar, method)}
 		if twoLines {
-			lines = append(lines, reversed("  "+fit(r.Secondary.String(), max(0, width-2), method), width, false, method))
+			lines = append(lines, barLine("  "+fit(r.Secondary.String(), max(0, width-2), method), width, false, bar, method))
 		}
 		return lines
 	}
 	first := styled(marker+primary, weight) + styled(value, valueWeight)
+	if r.Quiet && r.TrailingStyle != present.Plain {
+		first = styled(marker+primary, weight) + quieted(value, r.TrailingStyle)
+	}
 	if !twoLines {
 		return []string{first}
 	}
 	return []string{first, "  " + styled(fit(r.Secondary.String(), max(0, width-2), method), present.Faint)}
 }
 
-// reversed draws a line of a bar: padded to the width, every cell of it
-// reversed, bold when strong.
-func reversed(text string, width int, strong bool, method ansi.Method) string {
+// barLine draws a line of a bar: padded to the width, every cell of it
+// reversed or on the grey ground, bold when strong.
+func barLine(text string, width int, strong bool, bar barKind, method ansi.Method) string {
 	text += strings.Repeat(" ", max(0, width-method.StringWidth(text)))
-	return lipgloss.NewStyle().Reverse(true).Bold(strong).Render(text)
+	style := lipgloss.NewStyle().Reverse(true)
+	if bar == restBar {
+		style = lipgloss.NewStyle().Background(lipgloss.BrightBlack)
+	}
+	return style.Bold(strong).Render(text)
 }
 
 // The scrollbar of a free-text pane: a track down the pane's last column

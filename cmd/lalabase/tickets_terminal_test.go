@@ -57,8 +57,13 @@ func sortTicketRequests(f *inboxfixture.Fixture) ticketRequests {
 // cursorUnder reports whether the chooser's cursor is on the section row
 // right under the organisation's heading: the headings carry no marker,
 // and every organisation has an "Inbox" row. The chooser is the leftmost
-// pane whenever it shows, so the lines start with it.
+// pane whenever it shows, so the lines start with it, inside its frame
+// and the space within.
 func cursorUnder(lines []string, heading, section string) bool {
+	lines = append([]string(nil), lines...)
+	for i := range lines {
+		lines[i] = strings.TrimPrefix(lines[i], "\u2502 ")
+	}
 	for i, line := range lines {
 		if !strings.HasPrefix(line, "  "+heading) {
 			continue

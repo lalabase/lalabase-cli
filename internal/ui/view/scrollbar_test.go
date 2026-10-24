@@ -18,6 +18,17 @@ func numbered(n int) present.Column {
 	return present.Column{Title: present.NewInline("Ticket"), Text: present.NewBody(strings.Join(lines, "\n"))}
 }
 
+// inside is the text of a framed pane: its lines between the top and the
+// bottom border, plain, without the sides and the space inside them.
+func inside(lines []string) []string {
+	var out []string
+	for _, l := range lines[1 : len(lines)-1] {
+		plain := []rune(ansi.Strip(l))
+		out = append(out, string(plain[2:len(plain)-2]))
+	}
+	return out
+}
+
 // barOf reads the scrollbar from a pane's body lines: the last cell of
 // each, "" when a line ends in neither the thumb nor the track.
 func barOf(lines []string) string {
@@ -55,8 +66,8 @@ func TestScrollbarShowsWhereTheTextIs(t *testing.T) {
 		{top + 50, ".......###"},
 	} {
 		c.Offset = tc.offset
-		got := pane(c, width, height, true, ansi.WcWidth)
-		if bar := barOf(got[1:]); bar != tc.want {
+		got := content(c, width, height-1, true, ansi.WcWidth)
+		if bar := barOf(got); bar != tc.want {
 			t.Errorf("offset %d: bar %q, want %q", tc.offset, bar, tc.want)
 		}
 		for i, line := range got {
@@ -65,9 +76,13 @@ func TestScrollbarShowsWhereTheTextIs(t *testing.T) {
 			}
 		}
 	}
-	// The title line carries no bar.
-	if strings.ContainsAny(ansi.Strip(pane(c, width, height, true, ansi.WcWidth)[0]), thumb+track) {
-		t.Fatal("a bar on the title line")
+	// The frame carries no bar, nor does its title.
+	framed := pane(c, width+frameCells, height+1, true, ansi.WcWidth)
+	if strings.ContainsAny(ansi.Strip(framed[0]+framed[len(framed)-1]), thumb+track) {
+		t.Fatal("a bar on the frame")
+	}
+	if bar := barOf(inside(framed)); bar != ".......###" {
+		t.Fatalf("framed: bar %q", bar)
 	}
 }
 
@@ -75,8 +90,8 @@ func TestScrollbarShowsWhereTheTextIs(t *testing.T) {
 func TestScrollbarThumbKeepsOneCell(t *testing.T) {
 	c := numbered(5000)
 	c.Offset = 2500
-	got := pane(c, 20, 6, false, ansi.WcWidth)
-	if bar := barOf(got[1:]); strings.Count(bar, "#") != 1 || strings.Count(bar, ".") != 4 {
+	got := content(c, 20, 5, false, ansi.WcWidth)
+	if bar := barOf(got); strings.Count(bar, "#") != 1 || strings.Count(bar, ".") != 4 {
 		t.Fatalf("bar %q", bar)
 	}
 }
@@ -105,14 +120,14 @@ func TestExtentAndTheDrawnTextAgree(t *testing.T) {
 	words := strings.Repeat("abcd efgh ", 30)
 	for _, width := range []int{8, 9, 10, 11, 12, 20, 40, 79, 80, 81, 82, 120} {
 		for _, text := range []string{words, words + "\nEND", "short", strings.Repeat("x", 81) + "\nEND"} {
-			g := Geometry{Columns: 2, ObjectWidth: width, BodyHeight: 7}
+			g := Geometry{Columns: 2, ObjectWidth: width + frameCells, BodyHeight: 8}
 			c := present.Column{Text: present.NewBody(text)}
 			extent, capacity := Extent(c, g, Object, ansi.WcWidth), Capacity(c, g)
 			c.Offset = max(0, extent-capacity)
-			got := pane(c, width, g.BodyHeight, true, ansi.WcWidth)
+			got := pane(c, g.ObjectWidth, g.BodyHeight, true, ansi.WcWidth)
 			var shown []string
-			for _, l := range got[1:] {
-				shown = append(shown, strings.TrimRight(strings.TrimRight(strings.TrimRight(ansi.Strip(l), " "), thumb+track), " "))
+			for _, l := range inside(got) {
+				shown = append(shown, strings.TrimRight(strings.TrimRight(strings.TrimRight(l, " "), thumb+track), " "))
 			}
 			lines := textLines(c, textWidth(width), ansi.WcWidth)
 			if len(lines) != extent {
@@ -132,7 +147,7 @@ func TestExtentAndTheDrawnTextAgree(t *testing.T) {
 func TestThePartOfATextWrapsAsTheWhole(t *testing.T) {
 	head := strings.Repeat("abcd ", 4) // 19 cells and a space: one line at 20, two at 18
 	whole := head + "\n" + strings.Repeat("more\n", 30)
-	g := Geometry{Columns: 2, ObjectWidth: 20, BodyHeight: 7}
+	g := Geometry{Columns: 2, ObjectWidth: 20 + frameCells, BodyHeight: 8}
 	part := Extent(present.Column{Text: present.NewBody(head)}, g, Object, ansi.WcWidth)
 	all := textLines(present.Column{Text: present.NewBody(whole)}, textWidth(20), ansi.WcWidth)
 	if part < 1 || strings.TrimSpace(all[part].plain()) != "more" {

@@ -43,7 +43,9 @@ func TestBodyPreservesNonbreakingSpaces(t *testing.T) {
 }
 
 // An entry that exactly fits stays on the line; one that does not goes to
-// the next line, never away: every active binding is shown.
+// the next line, never away: every active binding is shown. A key is a key
+// cap, a space either side of it, so it stays apart from its words
+// without attributes.
 func TestHelpWrapsInsteadOfDroppingBindings(t *testing.T) {
 	bindings := []present.KeyHelp{
 		{Key: present.NewInline("q"), Help: present.NewInline("quit")},
@@ -54,8 +56,8 @@ func TestHelpWrapsInsteadOfDroppingBindings(t *testing.T) {
 			width int
 			want  []string
 		}{
-			{23, []string{"q quit", "ctrl+c interrupt"}}, {24, []string{"q quit  ctrl+c interrupt"}}, {25, []string{"q quit  ctrl+c interrupt"}},
-			{5, []string{"q qu…", "ctrl…"}},
+			{25, []string{" q quit", " ctrl+c interrupt"}}, {26, []string{" q quit   ctrl+c interrupt"}}, {27, []string{" q quit   ctrl+c interrupt"}},
+			{5, []string{" q q…", " ctr…"}},
 		} {
 			lines := HelpLines(bindings, tc.width, method)
 			for i := range lines {
@@ -65,6 +67,10 @@ func TestHelpWrapsInsteadOfDroppingBindings(t *testing.T) {
 				t.Errorf("method %d, width %d: %q, want %q", method, tc.width, lines, tc.want)
 			}
 		}
+	}
+	// The key cap is reversed, the description faint.
+	if got := HelpLines(bindings, 80, ansi.WcWidth)[0]; !strings.Contains(got, "\x1b[7m q \x1b[m"+faint) || !strings.Contains(got, faint+"quit") {
+		t.Fatalf("key caps: %q", got)
 	}
 	if HelpLines(nil, 80, ansi.WcWidth) != nil || HelpLines(bindings, 0, ansi.WcWidth) != nil {
 		t.Fatal("help without bindings or width")

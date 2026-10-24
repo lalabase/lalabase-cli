@@ -42,8 +42,9 @@ opened ticket or notification takes the navigation's room: the list keeps
 its width, the object gets the rest, and `Esc` back to the list brings the
 navigation again.
 
-* **How it is drawn.** Panes stand apart by a faint line with a space on
-  either side. A notice (an expired session, a rate-limit pause, the disk
+* **How it is drawn.** Every pane stands in a rounded frame with its title
+  in the top border and a space inside either side; the pane in focus has a
+  blue, bold frame and a bold title, the others a faint frame. A notice (an expired session, a rate-limit pause, the disk
   cache, what `x` did) stands beside the context line under the header;
   one that does not fit there takes the lines under it, from the panes,
   wrapped and whole. Only where that would leave the pane in focus no row
@@ -54,7 +55,9 @@ navigation again.
   pause), plain otherwise; the text says the same without colour. Lists
   keep their values (a status, a count) in one right-aligned column, and
   the second line of an entry is faint; an inbox without unread
-  notifications is faint, an unread count bold. Free text wraps at 80
+  notifications is faint, an unread count bold. Ticket numbers stand
+  right-aligned as wide as the page's widest, so the titles and the lines
+  under them start in one column. Free text wraps at 80
   columns at most, however wide the pane. Times are shown in the
   computer's time zone, to the minute, as "28 Aug 15:45", with the year
   when it is not the current one ("3 Nov 2025 09:12").
@@ -62,16 +65,19 @@ navigation again.
   in the list and at the head of the ticket, takes the tone of what it means
   in its project, which the server sends as `status_functions`: cyan for new
   or open, yellow in progress, green done (completed or closed), faint in the
-  backlog. The client never guesses a meaning from a status name, since every
+  backlog. A done ticket is faint in the list, its status green and faint,
+  so the open ones stand out. The client never guesses a meaning from a status name, since every
   project names its statuses its own way; a status without a function, or
   from a server before the field, has no tone. The colours are the
   terminal's own sixteen, so the theme picks the shade, and `NO_COLOR` turns
   them off. Bold, faint and colour only weigh the text: a terminal without
   them shows the same words. The cursor row of the focused pane is a bar,
   reversed over the pane's width (both lines of a two-line entry), in which
-  faint and a status's tone give way and bold stays; the other panes mark
-  their cursor with `>` alone, which the bar keeps too, so the cursor shows
-  without any attribute. Free text that is longer than its pane (a ticket,
+  faint and a status's tone give way and bold stays; the other panes draw
+  their cursor row the same way on the terminal's grey (colour 8) instead of
+  reversed. Both keep the marker `>`, so the cursor shows without any
+  attribute. The help at the bottom draws each key as a key cap, reversed
+  with a space either side, its description faint. Free text that is longer than its pane (a ticket,
   the details of a notification) carries a scrollbar in the pane's last
   column: a thumb (`┃`) as long as the share in sight and where it is, on a
   faint track (`╎`); the thumb touches the bottom only at the end. The text

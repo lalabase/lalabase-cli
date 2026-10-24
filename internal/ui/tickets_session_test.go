@@ -120,10 +120,15 @@ func TestTheChooserHasSectionsAndEnterOpensProjectsThenTickets(t *testing.T) {
 	if s.List.Title.String() != "Tickets" || s.Context.String() != "Nordlicht GmbH | Tickets | Website-Relaunch | page 1 of 2" {
 		t.Fatalf("title %q context %q", s.List.Title.String(), s.Context.String())
 	}
-	if s.List.Rows[0].Primary.String() != "#1 Login bricht ab" || s.List.Rows[0].Trailing.String() != "in_progress" || s.List.Rows[0].Secondary.String() != "Anna Albers · 5 Jan 09:26" {
+	// The numbers stand right-aligned as wide as the page's widest (#25),
+	// the line below starts under the title.
+	if s.List.Rows[0].Primary.String() != " #1 Login bricht ab" || s.List.Rows[0].Trailing.String() != "in_progress" || s.List.Rows[0].Secondary.String() != "    Anna Albers · 5 Jan 09:26" {
 		t.Fatalf("row 0 %+v", s.List.Rows[0])
 	}
-	if s.List.Rows[2].Secondary.String() != "Unassigned · 5 Jan 09:26" || s.List.Rows[3].Trailing.String() != "No status" {
+	if !strings.HasPrefix(s.List.Rows[24].Primary.String(), "#25 ") {
+		t.Fatalf("row 24 %+v", s.List.Rows[24])
+	}
+	if s.List.Rows[2].Secondary.String() != "    Unassigned · 5 Jan 09:26" || s.List.Rows[3].Trailing.String() != "No status" {
 		t.Fatalf("rows 2, 3: %+v %+v", s.List.Rows[2], s.List.Rows[3])
 	}
 	if len(h.f.detailReads()) != 0 {

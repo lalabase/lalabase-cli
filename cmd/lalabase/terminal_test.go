@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -644,11 +645,12 @@ func TestPTYResizePreservesFocus(t *testing.T) {
 	if err := c.send("\x1b[C"); err != nil {
 		t.Fatal(err)
 	}
-	// The title in bold; the renderer may join the bold with the end of
-	// the separator's faint ("\x1b[22;1m").
+	// The focused pane's frame in blue, its title in it; the renderer
+	// joins the blue with what it ends ("\x1b[34;22;1m") and may end the
+	// blue just before the title.
+	focused := regexp.MustCompile(`\x1b\[[0-9;]*\b34\b[0-9;]*m\x{256d}\x{2500} (\x1b\[[0-9;]*m)?Object`)
 	if err := c.until("object focus", readyLimit, func() bool {
-		out := c.bytes()[offset:]
-		return strings.Contains(out, "\x1b[1mObject") || strings.Contains(out, ";1mObject")
+		return focused.MatchString(c.bytes()[offset:])
 	}); err != nil {
 		t.Fatalf("%v: %q", err, c.bytes()[offset:])
 	}

@@ -58,7 +58,8 @@ func statusRows(h *harness) {
 }
 
 // The list draws each row's status in its tone; a row without a meaning,
-// as every row of a server before the field, stays plain.
+// as every row of a server before the field, stays plain. A done row is
+// quiet, whatever else its status means; no other row is.
 func TestTheTicketListDrawsTheStatusInItsTone(t *testing.T) {
 	h := newHarness(t)
 	h.start()
@@ -69,10 +70,13 @@ func TestTheTicketListDrawsTheStatusInItsTone(t *testing.T) {
 	seen := 0
 	for _, r := range h.m.ticketsColumn().Rows {
 		for prefix, style := range want {
-			if strings.HasPrefix(r.Primary.String(), prefix) {
+			if strings.HasPrefix(strings.TrimSpace(r.Primary.String()), prefix) {
 				seen++
 				if r.TrailingStyle != style {
 					t.Errorf("%s (%s): %v, want %v", r.Primary.String(), r.Trailing.String(), r.TrailingStyle, style)
+				}
+				if r.Quiet != (style == present.StatusDone) {
+					t.Errorf("%s (%s): quiet %v", r.Primary.String(), r.Trailing.String(), r.Quiet)
 				}
 			}
 		}

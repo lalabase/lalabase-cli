@@ -45,7 +45,7 @@ func TestPTYStatusTones(t *testing.T) {
 			openWebsite(t, c, 120)
 			// The cursor bar draws #1 without its tone; one row down, #1
 			// is an ordinary row again.
-			c.act(t, keyDown, 120, "> #2 Export als CSV")
+			c.act(t, keyDown, 120, ">  #2 Export als CSV")
 			if err := c.send("q"); err != nil {
 				t.Fatal(err)
 			}

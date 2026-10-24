@@ -12,14 +12,22 @@ import (
 )
 
 // viewSGR are the SGR parameters the view writes itself.
-var viewSGR = map[int]bool{0: true, 1: true, 2: true, 7: true, 22: true, 32: true, 33: true, 36: true, 39: true}
+var viewSGR = map[int]bool{0: true, 1: true, 2: true, 7: true, 22: true, 32: true, 33: true, 34: true, 36: true, 39: true, 49: true, 100: true}
 
 func TestShellBodyColumnsStayAligned(t *testing.T) {
 	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
+		// The cells of the frames' sides and corners, the same on every line
+		// of the body: each pane's first and last column; with the object
+		// in focus three columns become two.
 		for _, tc := range []struct {
-			width      int
-			separators []int
-		}{{80, []int{31}}, {119, []int{47}}, {120, []int{25, 64}}, {121, []int{25, 64}}} {
+			width          int
+			frames, object []int
+		}{
+			{80, []int{0, 31, 32, 79}, nil},
+			{119, []int{0, 46, 47, 118}, nil},
+			{120, []int{0, 25, 26, 62, 63, 119}, []int{0, 36, 37, 119}},
+			{121, []int{0, 25, 26, 63, 64, 120}, []int{0, 37, 38, 120}},
+		} {
 			for _, height := range []int{8, 24} {
 				for _, focus := range []view.Pane{view.Navigation, view.List, view.Object} {
 					m := NewWithContent("Büro", "Größe 👩\u200d👩\u200d👧\u200d👦\n界 e\u0301", "Änderung 🇩🇪\n👍🏽")
@@ -35,20 +43,19 @@ func TestShellBodyColumnsStayAligned(t *testing.T) {
 						if cells := method.StringWidth(line); cells != tc.width {
 							t.Fatalf("method %d, width %d, focus %d, row %d: %d cells: %q", method, tc.width, focus, row, cells, line)
 						}
-						var separators []int
+						var frames []int
 						plain := ansi.Strip(line)
 						for offset, r := range plain {
-							if r == '\u2502' {
-								separators = append(separators, method.StringWidth(plain[:offset]))
+							if strings.ContainsRune("\u2502\u256d\u256e\u2570\u256f", r) {
+								frames = append(frames, method.StringWidth(plain[:offset]))
 							}
 						}
-						want := tc.separators
-						if len(want) == 2 && focus == view.Object {
-							// The object in focus takes the navigation's room.
-							want = []int{want[1] - want[0] - view.SeparatorWidth + 1}
+						want := tc.frames
+						if tc.object != nil && focus == view.Object {
+							want = tc.object
 						}
-						if !reflect.DeepEqual(separators, want) {
-							t.Fatalf("width %d, focus %d, row %d: separators %v, want %v", tc.width, focus, row, separators, want)
+						if !reflect.DeepEqual(frames, want) {
+							t.Fatalf("width %d, focus %d, row %d: frames at %v, want %v", tc.width, focus, row, frames, want)
 						}
 					}
 				}

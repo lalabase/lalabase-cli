@@ -90,8 +90,7 @@ var reachableImports = map[string][]string{
 	"net/http/httptrace": {"ClientTrace", "GotConnInfo", "WithClientTrace", "WroteRequestInfo"},
 	// Their writing names are refused below (Println, Fprint, Writer,
 	// WithoutCatchPanics).
-	"charm.land/bubbletea/v2": nil, "charm.land/bubbles/v2/help": nil, "charm.land/bubbles/v2/key": nil,
-	"charm.land/lipgloss/v2": nil, "github.com/charmbracelet/x/ansi": nil,
+	"charm.land/bubbletea/v2": nil, "charm.land/lipgloss/v2": nil, "github.com/charmbracelet/x/ansi": nil,
 }
 
 // fileSystemImports are what the three packages that keep the client's
