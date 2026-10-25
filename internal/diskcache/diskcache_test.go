@@ -111,6 +111,19 @@ func TestRootFollowsAnAbsoluteXDGCacheHomeOrTheHome(t *testing.T) {
 	}
 }
 
+// The profile's directory is the disk cache's and, below it, the launch
+// files' (C7b): one rule for both.
+func TestProfileDir(t *testing.T) {
+	if got, err := ProfileDir("/home/u/.cache/lalabase/cli", "default"); err != nil || got != "/home/u/.cache/lalabase/cli/default" {
+		t.Fatalf("%q, %v", got, err)
+	}
+	for _, c := range [][2]string{{"relative", "default"}, {"", "default"}, {"/c", ".."}, {"/c", "a/b"}, {"/c", ".hidden"}, {"/c", ""}} {
+		if got, err := ProfileDir(c[0], c[1]); err == nil {
+			t.Errorf("%q: %q passed", c, got)
+		}
+	}
+}
+
 // Nothing foreign becomes a path: a profile that could leave the root or
 // hide, a root that is no absolute path.
 func TestOpenRefusesAProfileOrRootThatCannotNameADirectory(t *testing.T) {

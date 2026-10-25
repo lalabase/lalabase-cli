@@ -182,6 +182,16 @@ func (c *Client) Get(ctx context.Context, apiPath string) Answer {
 	return ans
 }
 
+// MCPAddress is the address of the MCP endpoint, as every MCP request of
+// this client goes to it: the launch of Claude Code hands it over (C7b).
+func (c *Client) MCPAddress() string {
+	u, err := c.resolve(mcpPath)
+	if err != nil {
+		panic(err) // a constant path under /api/
+	}
+	return u.String()
+}
+
 // resolve joins an API path to the base address. Only a plain path under
 // /api/ is accepted; anything that could leave the API (another host, a dot
 // segment) is refused before a request is made.

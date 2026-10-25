@@ -20,16 +20,9 @@ const (
 	NoFolder
 	NotADirectory
 	BadFolder
-	// ConfigUnreadable: Claude Code's configuration could not be read.
-	ConfigUnreadable
-	// NoServer: no MCP server of Claude Code's points at the profile's
-	// server (detail: both).
-	NoServer
-	// Conflict: a server name points at the profile's server and elsewhere
-	// (detail: the name and the other place).
-	Conflict
-	// BadName: the only fitting server name cannot go into the prompt.
-	BadName
+	// NoFiles: the launch's files (the server file, the script) could not
+	// be written (detail: why).
+	NoFiles
 	// NoClaude: claude is not on the PATH (the fallback).
 	NoClaude
 	// NoPermission: macOS refused to let this terminal control iTerm
@@ -46,9 +39,9 @@ const (
 )
 
 // Done is the message of one launch: the caller's reference, the ticket it
-// was for, what came of it and the value the status line names (a path, a
-// server, a name). Detail may hold text from a project's .mcp.json: it is
-// foreign and cleaned where it is shown.
+// was for, what came of it and the value the status line names (a path, an
+// error). Detail may hold a path from the person's config or an error of
+// the file system: it is cleaned where it is shown.
 type Done struct {
 	Ref    uint64
 	Ticket Ticket

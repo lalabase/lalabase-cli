@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -12,6 +13,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/diskcache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/launch"
+	"github.com/gboyke/lalabase-cli/internal/launchdir"
 	"github.com/gboyke/lalabase-cli/internal/profile"
 	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/terminal"
@@ -80,7 +82,7 @@ func runInteractive(name string, env Env) int {
 				// opened only after /me confirmed the identity.
 				Disk: &diskcache.Opener{Root: diskcache.Root(env.Getenv, env.Home)},
 				// Claude Code beside the ticket (C7).
-				Launcher: launch.New(launchConfig(env, p, sup)),
+				Launcher: launch.New(launchConfig(env, p, client.MCPAddress(), sup)),
 			})), sup)
 		}
 	}
@@ -89,6 +91,9 @@ func runInteractive(name string, env Env) int {
 	// The terminal is restored here. A fatal error counts even when its
 	// message lost the race against the person quitting.
 	sup.Stop(workerCleanup)
+	// The launch files older than a day go on quit too (C7b); one that
+	// cannot be removed waits for the next run.
+	_ = launchdir.Prune(launchFiles(env, p), time.Now())
 	if sup.Err() != nil {
 		fmt.Fprintln(env.Stderr, uitext.Inline(uitext.RunError).String())
 		return 1
@@ -104,11 +109,11 @@ func runInteractive(name string, env Env) int {
 }
 
 // launchConfig is what the launch of Claude Code beside a ticket (C7) reads:
-// the profile's server and folders, the start folder, the variables that
-// say whether this is an iTerm session and whether a multiplexer runs in
-// between, and where Claude Code keeps its configuration. The interface
+// the profile's MCP address, token and folders, the directory of its launch
+// files, the start folder, and the variables that say whether this is an
+// iTerm session and whether a multiplexer runs in between. The interface
 // reads no environment itself.
-func launchConfig(env Env, p profile.Profile, sup *worker.Supervisor) launch.Config {
+func launchConfig(env Env, p profile.Profile, mcp string, sup *worker.Supervisor) launch.Config {
 	multiplexer := ""
 	for _, key := range []string{"TMUX", "STY", "ZELLIJ"} {
 		if env.Getenv(key) != "" {
@@ -116,8 +121,19 @@ func launchConfig(env Env, p profile.Profile, sup *worker.Supervisor) launch.Con
 		}
 	}
 	return launch.Config{
-		Supervisor: sup, Home: env.Home, Cwd: env.Cwd, Server: p.URL, Folders: p.Folders,
+		Supervisor: sup, Home: env.Home, Cwd: env.Cwd, MCP: mcp, Token: p.Token, Folders: p.Folders,
+		Files:       launchFiles(env, p),
 		TermProgram: env.Getenv("TERM_PROGRAM"), SessionID: env.Getenv("ITERM_SESSION_ID"),
-		ClaudeConfigDir: env.Getenv("CLAUDE_CONFIG_DIR"), Multiplexer: multiplexer,
+		Multiplexer: multiplexer,
 	}
+}
+
+// launchFiles is the directory of the profile's launch files, beside its
+// disk cache: <cache root>/<profile>/l. "" when there is none.
+func launchFiles(env Env, p profile.Profile) string {
+	dir, err := diskcache.ProfileDir(diskcache.Root(env.Getenv, env.Home), p.Name)
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "l")
 }

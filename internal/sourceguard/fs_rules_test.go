@@ -9,7 +9,8 @@ import (
 
 // C1e: the three packages that touch the file system for the interface
 // (internal/diskcache, internal/privatefs, internal/safefile) import what
-// fileSystemImports names, by name, and nothing more; the output and
+// fileSystemImports names, by name, and nothing more (internal/launchdir,
+// the fourth since C7b, is reached through the launch: launch_rules_test.go); the output and
 // goroutine rules hold there as everywhere the interface reaches; no other
 // reachable package gets their imports; the views cannot reach them.
 

@@ -84,7 +84,7 @@ func TestTheNoticeIsWholeInEveryFocusWidthAndHeight(t *testing.T) {
 		method ansi.Method
 	}{
 		{"short", "Rate limited until 15:04:05", ansi.GraphemeWidth},
-		{"medium", "No MCP server of Claude Code's for https://lalabase.com; Claude Code has", ansi.GraphemeWidth},
+		{"medium", "Folder not found: /home/anna/dev/website/relaunch-2026/relaunch-2026/rel", ansi.GraphemeWidth},
 		{"long", "macOS does not let this terminal control iTerm: allow it in System Settings > Privacy & Security > Automation", ansi.GraphemeWidth},
 		// A joined emoji takes two cells as one grapheme and six in the
 		// terminal's wcwidth mode: the decision measures as the drawing.
@@ -150,7 +150,7 @@ func TestTheNoticeLeavesTheFocusedListARowWithTheSearchLineOpen(t *testing.T) {
 // pages are counted in the body that is left.
 func TestPageDownReachesTheEndBesideANoticeOnItsOwnLines(t *testing.T) {
 	for _, notice := range []string{
-		"No MCP server of Claude Code's for https://lalabase.com",
+		"Folder not found: /home/anna/dev/website/relaunch-2026x",
 		"macOS does not let this terminal control iTerm: allow it in System Settings > Privacy & Security > Automation",
 	} {
 		h := newHarness(t)

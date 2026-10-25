@@ -123,6 +123,19 @@ func Root(getenv func(string) string, home string) string {
 	return filepath.Join(home, ".cache", "lalabase", "cli")
 }
 
+// ProfileDir is the directory of a profile under root: the disk cache's,
+// and the launch files' below it (internal/launchdir). root must be
+// absolute and the profile's name a directory's name.
+func ProfileDir(root, profile string) (string, error) {
+	if !filepath.IsAbs(root) {
+		return "", errors.New("no cache directory: the root is not an absolute path")
+	}
+	if !profileForm.MatchString(profile) {
+		return "", fmt.Errorf("profile %q cannot name a cache directory", profile)
+	}
+	return filepath.Join(root, profile), nil
+}
+
 // Opener opens the disk cache of a profile under Root.
 type Opener struct {
 	Root string
@@ -175,13 +188,11 @@ type record struct {
 // the pruning. Nothing is read or written before this, so a session that
 // never confirmed its identity touches no disk.
 func (o Opener) Open(profile string, now time.Time) (*Cache, error) {
-	if !filepath.IsAbs(o.Root) {
-		return nil, errors.New("no cache directory: the root is not an absolute path")
+	dir, err := ProfileDir(o.Root, profile)
+	if err != nil {
+		return nil, err
 	}
-	if !profileForm.MatchString(profile) {
-		return nil, fmt.Errorf("profile %q cannot name a cache directory", profile)
-	}
-	c := &Cache{dir: filepath.Join(o.Root, profile), faults: o.Faults, index: map[string]fileMeta{}}
+	c := &Cache{dir: dir, faults: o.Faults, index: map[string]fileMeta{}}
 	if err := c.step("mkdir", c.dir); err != nil {
 		return nil, err
 	}

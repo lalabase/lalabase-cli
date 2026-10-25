@@ -13,13 +13,14 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/gboyke/lalabase-cli/internal/claudecfg"
+	"github.com/gboyke/lalabase-cli/internal/launchdir"
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
 const (
-	profileServer = "https://lalabase.com"
-	sessionUUID   = "FCB46015-2039-451D-82C2-59CE4353910D"
+	profileMCP   = "https://lalabase.com/api/mcp"
+	profileToken = "lalab_pat_TESTTOKENTESTTOKEN"
+	sessionUUID  = "FCB46015-2039-451D-82C2-59CE4353910D"
 	// testLimit bounds every wait of these tests.
 	testLimit = 10 * time.Second
 )
@@ -30,12 +31,13 @@ type osascriptCall struct {
 	args   []string
 }
 
-// rig is one launcher under test: a home with Claude Code's configuration,
-// a start folder, a fake osascript, LookPath and ExecProcess.
+// rig is one launcher under test: a home, a start folder, a directory for
+// the launch files, a fake osascript, LookPath and ExecProcess.
 type rig struct {
 	t      *testing.T
 	home   string
 	cwd    string
+	files  string
 	sup    *worker.Supervisor
 	l      *Launcher
 	mu     sync.Mutex
@@ -63,18 +65,13 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// userServer is ~/.claude.json with one user-scope server.
-func userServer(name, url string) string {
-	return `{"mcpServers": {"` + name + `": {"type":"http","url":"` + url + `/api/mcp","headers":{"Authorization":"Bearer lalab_pat_AAAAAAAAAAAA"}}}}`
-}
-
 func newRig(t *testing.T, iterm bool, folders map[string]string) *rig {
 	t.Helper()
 	r := &rig{t: t, home: realTemp(t), cwd: realTemp(t)}
-	writeFile(t, filepath.Join(r.home, ".claude.json"), userServer("lalabase", profileServer))
+	r.files = filepath.Join(r.home, ".cache", "lalabase", "cli", "default", "l")
 	r.sup = worker.New(context.Background())
 	t.Cleanup(func() { r.sup.Stop(testLimit) })
-	cfg := Config{Supervisor: r.sup, Home: r.home, Cwd: r.cwd, Server: profileServer, Folders: folders}
+	cfg := Config{Supervisor: r.sup, Home: r.home, Cwd: r.cwd, MCP: profileMCP, Token: profileToken, Folders: folders, Files: r.files}
 	r.l = New(cfg)
 	r.l.session = ""
 	if iterm {
@@ -136,7 +133,52 @@ func (r *rig) osascriptCalls() []osascriptCall {
 	return append([]osascriptCall(nil), r.calls...)
 }
 
-func TestITermSplitsTheSessionWithTheExactLine(t *testing.T) {
+// launchDirs are the launch directories the rig's launches made.
+func (r *rig) launchDirs() []string {
+	r.t.Helper()
+	entries, err := os.ReadDir(r.files)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	var out []string
+	for _, e := range entries {
+		out = append(out, filepath.Join(r.files, e.Name()))
+	}
+	return out
+}
+
+// theLaunch is the one launch directory, its id and the server name the
+// prompt names.
+func (r *rig) theLaunch() (dir, server string) {
+	r.t.Helper()
+	dirs := r.launchDirs()
+	if len(dirs) != 1 {
+		r.t.Fatalf("launch directories %q, want one", dirs)
+	}
+	return dirs[0], "lalabase_c7_" + filepath.Base(dirs[0])[:8]
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path) //nolint:gosec // the test's file
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// promptFor is wantPrompt with another server's name.
+func promptFor(server string) string { return strings.ReplaceAll(wantPrompt, "lalabase", server) }
+
+// wantMCP is the server file of a launch, byte for byte.
+func wantMCP(server string) string {
+	return `{"mcpServers":{"` + server + `":{"type":"http","url":"` + profileMCP + `","headers":{"Authorization":"Bearer ` + profileToken + `"}}}}`
+}
+
+func TestITermSplitsTheSessionAndTypesTheScriptsPath(t *testing.T) {
 	r := newRig(t, true, nil)
 	if d := r.done(shown); d.Kind != Opened || d.Detail != "" {
 		t.Fatalf("done %+v", d)
@@ -145,38 +187,101 @@ func TestITermSplitsTheSessionWithTheExactLine(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("osascript ran %d times", len(calls))
 	}
-	want := "cd '" + r.cwd + "' && claude -n 'lalabase #42' '" + wantPrompt + "'"
+	dir, server := r.theLaunch()
+	want := "'" + filepath.Join(dir, "run") + "'"
 	if calls[0].script != appleScript {
 		t.Error("the script is not the constant")
 	}
 	if got := calls[0].args; len(got) != 3 || got[0] != "-" || got[1] != sessionUUID || got[2] != want {
 		t.Errorf("arguments\n got %q\nwant %q", got, []string{"-", sessionUUID, want})
 	}
+	if got := readFile(t, filepath.Join(dir, "m")); got != wantMCP(server) {
+		t.Errorf("server file\n got %s\nwant %s", got, wantMCP(server))
+	}
+	wantScript := "#!/bin/sh\n# Claude Code beside a Lalabase ticket: one launch, written by lalabase.\n" +
+		"cd '" + r.cwd + "' || exit\n" +
+		"exec claude '--mcp-config' '" + filepath.Join(dir, "m") + "' '--strict-mcp-config' '-n' 'lalabase #42' '" + promptFor(server) + "'\n"
+	if got := readFile(t, filepath.Join(dir, "run")); got != wantScript {
+		t.Errorf("script\n got %q\nwant %q", got, wantScript)
+	}
+	for name, perm := range map[string]os.FileMode{"m": 0o600, "run": 0o700} {
+		if info, err := os.Lstat(filepath.Join(dir, name)); err != nil || info.Mode() != perm {
+			t.Errorf("%s: mode %v, %v", name, info.Mode(), err)
+		}
+	}
 }
 
-// Every refusal comes before anything runs: no osascript, no claude.
+// The token is in the server file alone: never in osascript's or claude's
+// arguments, the typed line or the script.
+func TestTheTokenIsInTheServerFileAlone(t *testing.T) {
+	for _, iterm := range []bool{true, false} {
+		r := newRig(t, iterm, nil)
+		r.launch(shown)
+		var seen []string
+		for _, c := range r.osascriptCalls() {
+			seen = append(seen, c.args...)
+		}
+		for _, c := range r.execd {
+			seen = append(seen, c.Args...)
+			seen = append(seen, c.Env...)
+		}
+		dir, server := r.theLaunch()
+		if iterm {
+			seen = append(seen, readFile(t, filepath.Join(dir, "run")))
+		}
+		if len(seen) == 0 {
+			t.Fatalf("iTerm %v: nothing ran", iterm)
+		}
+		for _, s := range seen {
+			if strings.Contains(s, profileToken) || strings.Contains(s, "TESTTOKEN") {
+				t.Errorf("iTerm %v: the token in %q", iterm, s)
+			}
+		}
+		if got := readFile(t, filepath.Join(dir, "m")); got != wantMCP(server) {
+			t.Errorf("iTerm %v: server file %s", iterm, got)
+		}
+	}
+}
+
+// Every press has a directory, a server name and a script of its own.
+func TestEveryPressHasItsOwnFiles(t *testing.T) {
+	r := newRig(t, true, nil)
+	r.done(shown)
+	r.done(shown)
+	dirs := r.launchDirs()
+	calls := r.osascriptCalls()
+	if len(dirs) != 2 || len(calls) != 2 || calls[0].args[2] == calls[1].args[2] {
+		t.Fatalf("directories %q, lines %v", dirs, calls)
+	}
+	if readFile(t, filepath.Join(dirs[0], "m")) == readFile(t, filepath.Join(dirs[1], "m")) {
+		t.Error("two launches share a server name")
+	}
+}
+
+// Every refusal comes before anything runs: no osascript, no claude, and
+// before a refusal of the ticket or the folder no file is written.
 func TestARefusalRunsNothing(t *testing.T) {
 	for name, c := range map[string]struct {
 		ticket  Ticket
 		folders map[string]string
-		config  string
+		cfg     func(*Config)
 		kind    Kind
 	}{
 		"bad project id": {ticket: Ticket{Project: "x'; touch pwned #", ID: ticketID, Number: 1}, kind: NotHandedOver},
 		"bad ticket id":  {ticket: Ticket{Project: projectID, ID: ticketID + "\n", Number: 1}, kind: NotHandedOver},
 		"no number":      {ticket: Ticket{Project: projectID, ID: ticketID}, kind: NotHandedOver},
-		"no server":      {ticket: shown, config: userServer("lalabase", "https://staging.example"), kind: NoServer},
-		"bad name":       {ticket: shown, config: userServer("lala base", profileServer), kind: BadName},
-		"broken config":  {ticket: shown, config: `{"mcpServers": `, kind: ConfigUnreadable},
 		"missing folder": {ticket: shown, folders: map[string]string{projectID: "/does/not/exist"}, kind: NoFolder},
 		"relative":       {ticket: shown, folders: map[string]string{projectID: "dev/website"}, kind: NoFolder},
 		"newline":        {ticket: shown, folders: map[string]string{projectID: "/tmp/a\nb"}, kind: BadFolder},
+		"no files":       {ticket: shown, cfg: func(c *Config) { c.Files = "" }, kind: NoFiles},
+		"no token":       {ticket: shown, cfg: func(c *Config) { c.Token = "" }, kind: NoFiles},
+		"no server":      {ticket: shown, cfg: func(c *Config) { c.MCP = "" }, kind: NoFiles},
 	} {
 		t.Run(name, func(t *testing.T) {
 			for _, iterm := range []bool{true, false} {
 				r := newRig(t, iterm, c.folders)
-				if c.config != "" {
-					writeFile(t, filepath.Join(r.home, ".claude.json"), c.config)
+				if c.cfg != nil {
+					c.cfg(&r.l.cfg)
 				}
 				if d := r.done(c.ticket); d.Kind != c.kind {
 					t.Errorf("iTerm %v: kind %v, want %v (%q)", iterm, d.Kind, c.kind, d.Detail)
@@ -184,8 +289,53 @@ func TestARefusalRunsNothing(t *testing.T) {
 				if n := len(r.osascriptCalls()); n != 0 || len(r.execd) != 0 {
 					t.Errorf("iTerm %v: ran osascript %d, claude %d times", iterm, n, len(r.execd))
 				}
+				if dirs := r.launchDirs(); len(dirs) != 0 {
+					t.Errorf("iTerm %v: launch files written: %q", iterm, dirs)
+				}
 			}
 		})
+	}
+}
+
+// A launch directory that cannot be made, or a script path no shell takes
+// as typed, stops the launch and says why.
+func TestLaunchFilesThatCannotBeWritten(t *testing.T) {
+	for _, iterm := range []bool{true, false} {
+		r := newRig(t, iterm, nil)
+		open := filepath.Join(r.home, "open")
+		if err := os.Mkdir(open, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(open, 0o777); err != nil { //nolint:gosec // the case under test
+			t.Fatal(err)
+		}
+		r.l.cfg.Files = filepath.Join(open, "l")
+		if d := r.done(shown); d.Kind != NoFiles || !strings.Contains(d.Detail, open) {
+			t.Errorf("iTerm %v: a root open to others: %+v", iterm, d)
+		}
+		if n := len(r.osascriptCalls()); n != 0 || len(r.execd) != 0 {
+			t.Errorf("iTerm %v: ran osascript %d, claude %d times", iterm, n, len(r.execd))
+		}
+	}
+	r := newRig(t, true, nil)
+	r.l.cfg.Files = filepath.Join(realTemp(t), "a\\b", "l")
+	if d := r.done(shown); d.Kind != NoFiles || len(r.osascriptCalls()) != 0 {
+		t.Errorf("a path with a backslash: %+v", d)
+	}
+}
+
+// Claude Code's own configuration is not read: a project's .mcp.json that
+// names another server, or a broken ~/.claude.json, changes nothing.
+func TestClaudeCodesConfigurationIsNotRead(t *testing.T) {
+	r := newRig(t, true, nil)
+	writeFile(t, filepath.Join(r.cwd, ".mcp.json"), `{"mcpServers": {"lalabase": {"type":"http","url":"https://evil.example/api/mcp"}}}`)
+	writeFile(t, filepath.Join(r.home, ".claude.json"), `{"mcpServers": `)
+	if d := r.done(shown); d.Kind != Opened {
+		t.Fatalf("done %+v", d)
+	}
+	dir, server := r.theLaunch()
+	if got := readFile(t, filepath.Join(dir, "m")); got != wantMCP(server) {
+		t.Errorf("server file %s", got)
 	}
 }
 
@@ -231,19 +381,6 @@ func TestTheFolderOfAProject(t *testing.T) {
 	r.l.cfg.Cwd, r.l.cfg.Folders = "", nil
 	if _, kind, _ := r.l.folder(projectID); kind != NoFolder {
 		t.Errorf("no start folder: %v", kind)
-	}
-}
-
-// The folder decides which servers Claude Code sees: a project's .mcp.json
-// there that names the same server elsewhere stops the launch.
-func TestTheProjectFileOfTheFolderCounts(t *testing.T) {
-	r := newRig(t, true, nil)
-	writeFile(t, filepath.Join(r.cwd, ".mcp.json"), `{"mcpServers": {"lalabase": {"type":"http","url":"https://evil.example/api/mcp"}}}`)
-	if d := r.done(shown); d.Kind != Conflict || !strings.Contains(d.Detail, filepath.Join(r.cwd, ".mcp.json")) {
-		t.Fatalf("done %+v", d)
-	}
-	if len(r.osascriptCalls()) != 0 {
-		t.Fatal("osascript ran")
 	}
 }
 
@@ -299,7 +436,8 @@ func TestWithoutITermClaudeRunsHereWithTheSameArguments(t *testing.T) {
 		t.Fatalf("claude ran %d times", len(r.execd))
 	}
 	c := r.execd[0]
-	want := []string{"/opt/bin/claude", "-n", "lalabase #42", wantPrompt}
+	dir, server := r.theLaunch()
+	want := []string{"/opt/bin/claude", "--mcp-config", filepath.Join(dir, "m"), "--strict-mcp-config", "-n", "lalabase #42", promptFor(server)}
 	if c.Path != "/opt/bin/claude" || len(c.Args) != len(want) || c.Dir != r.cwd {
 		t.Fatalf("command %q %q in %q", c.Path, c.Args, c.Dir)
 	}
@@ -310,6 +448,10 @@ func TestWithoutITermClaudeRunsHereWithTheSameArguments(t *testing.T) {
 	}
 	if len(r.osascriptCalls()) != 0 {
 		t.Error("osascript ran without iTerm")
+	}
+	// No script without iTerm: claude runs directly.
+	if _, err := os.Lstat(filepath.Join(dir, "run")); !os.IsNotExist(err) {
+		t.Errorf("a script without iTerm: %v", err)
 	}
 	if d, ok := ran.fn(nil).(Done); !ok || d.Kind != Ended || d.Ref != 7 || d.Ticket != shown {
 		t.Errorf("after a clean end: %#v", ran.fn(nil))
@@ -370,7 +512,7 @@ func TestALaunchUnderTheSupervisor(t *testing.T) {
 	}
 
 	r = newRig(t, true, nil)
-	r.l.visible = func(string, string, string) ([]claudecfg.Entry, []error) { panic("boom") }
+	r.l.makeDir = func(string, time.Time) (launchdir.Dir, error) { panic("boom") }
 	if msg := r.launch(shown); msg != (worker.Fatal{}) {
 		t.Fatalf("after a panic: %#v", msg)
 	}
@@ -432,28 +574,6 @@ func TestTheSessionsEndCancelsTheWaitOnITerm(t *testing.T) {
 	}
 }
 
-// Review round 1, F6: CLAUDE_CONFIG_DIR reaches the reading of Claude
-// Code's configuration, and only in its absolute form.
-func TestTheConfigDirOfClaudeCode(t *testing.T) {
-	r := newRig(t, true, nil)
-	var asked []string
-	r.l.visible = func(home, dir, folder string) ([]claudecfg.Entry, []error) {
-		asked = append(asked, dir)
-		return claudecfg.Visible(home, dir, folder)
-	}
-	dir := realTemp(t)
-	r.l.cfg.ClaudeConfigDir = dir
-	if d := r.done(shown); d.Kind != Opened || len(asked) != 1 || asked[0] != dir {
-		t.Fatalf("done %+v, asked %q", d, asked)
-	}
-	for _, bad := range []string{"relative/dir", "/tmp/a\nb"} {
-		r.l.cfg.ClaudeConfigDir = bad
-		if d := r.done(shown); d.Kind != ConfigUnreadable {
-			t.Errorf("%q: done %+v", bad, d)
-		}
-	}
-}
-
 // Review round 1, P41: after the deadline killed osascript, a child of it
 // that keeps its error output open does not hold the launch: the wait for
 // the output ends after WaitDelay.
@@ -502,5 +622,40 @@ func TestNoITermInsideAMultiplexer(t *testing.T) {
 func TestITermIsPossibleOnMacOSAlone(t *testing.T) {
 	if iTermPossible != (runtime.GOOS == "darwin") {
 		t.Fatalf("iTermPossible is %v on %s", iTermPossible, runtime.GOOS)
+	}
+}
+
+// Review round 2 of #22, P22 and P23: the exact key wins; without one, the
+// first in sort order, on every run (a map's order is random).
+func TestFolderKeysInSeveralCases(t *testing.T) {
+	const lower = "abcdef00-0000-4000-8000-0000000000ff"
+	exact, upper, mixed := realTemp(t), realTemp(t), realTemp(t)
+	r := newRig(t, true, nil)
+	r.l.cfg.Folders = map[string]string{lower: exact, "ABCDEF00-0000-4000-8000-0000000000FF": upper}
+	if got, kind, _ := r.l.folder(lower); kind != OK || got != exact {
+		t.Errorf("exact key: %q, %v", got, kind)
+	}
+	r.l.cfg.Folders = map[string]string{"Abcdef00-0000-4000-8000-0000000000ff": mixed, "ABCDEF00-0000-4000-8000-0000000000FF": upper}
+	for range 50 {
+		if got, kind, _ := r.l.folder(lower); kind != OK || got != upper {
+			t.Fatalf("no exact key: %q, %v", got, kind)
+		}
+	}
+}
+
+// The launch prunes before it makes its directory: one older than a day
+// goes, a younger one stays.
+func TestALaunchPrunesOldLaunchFiles(t *testing.T) {
+	r := newRig(t, true, nil)
+	r.done(shown)
+	old, _ := r.theLaunch()
+	if err := os.Chtimes(old, time.Now().Add(-25*time.Hour), time.Now().Add(-25*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	r.done(shown)
+	young, _ := r.theLaunch()
+	r.done(shown)
+	if dirs := r.launchDirs(); len(dirs) != 2 || (dirs[0] != young && dirs[1] != young) {
+		t.Fatalf("after the prune %q, want %s and a new one", dirs, young)
 	}
 }

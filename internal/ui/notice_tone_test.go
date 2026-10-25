@@ -68,13 +68,13 @@ func TestTheSessionsNoticesTakeTheToneOfTheirState(t *testing.T) {
 // On the screen the notice is drawn in its tone, beside the context and on
 // a line of its own, and nothing else of its line is.
 func TestAFailedLaunchIsDrawnInItsTone(t *testing.T) {
-	const notice = "No MCP server of Claude Code's for https://lalabase.com"
+	const notice = "Folder not found: /home/anna/dev/website/relaunch-2026x"
 	h := newHarness(t)
 	f := h.withLauncher()
-	f.kind = launch.NoServer
+	f.kind = launch.NoFolder
 	h.openSix()
 	msg := h.press("x")().(launch.Done)
-	msg.Detail = "https://lalabase.com"
+	msg.Detail = "/home/anna/dev/website/relaunch-2026x"
 	h.feed(msg)
 	problem := "\x1b[1;31m" + notice + "\x1b[m"
 	seen := map[int]bool{}

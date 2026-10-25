@@ -12,7 +12,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/gboyke/lalabase-cli/internal/claudecfg"
+	"github.com/gboyke/lalabase-cli/internal/launchdir"
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
@@ -30,17 +30,21 @@ const maxStderr = 4 << 10
 // the profile; the interface never reads the environment itself.
 type Config struct {
 	Supervisor *worker.Supervisor
-	// Home is the person's home (Claude Code's configuration, ~/ in a
-	// folder), Cwd the folder the client was started in.
+	// Home is the person's home (~/ in a folder), Cwd the folder the
+	// client was started in.
 	Home, Cwd string
-	// Server is the profile's base address, Folders its project folders.
-	Server  string
-	Folders map[string]string
+	// MCP is the profile's MCP address as the transport resolves it, Token
+	// the profile's token: the one server Claude Code gets (C7b). Folders
+	// are the profile's project folders.
+	MCP, Token string
+	Folders    map[string]string
+	// Files is the directory the launch keeps its files in
+	// (<cache root>/<profile>/l, internal/launchdir); "" when the client
+	// has no cache directory.
+	Files string
 	// TermProgram and SessionID are TERM_PROGRAM and ITERM_SESSION_ID as
 	// the environment has them; their form is checked here.
 	TermProgram, SessionID string
-	// ClaudeConfigDir is CLAUDE_CONFIG_DIR as the environment has it.
-	ClaudeConfigDir string
 	// Multiplexer is set when the client runs inside tmux, GNU screen or
 	// zellij (TMUX, STY, ZELLIJ): ITERM_SESSION_ID may then name the
 	// session the multiplexer was started in, not the one it shows in.
@@ -60,7 +64,8 @@ type Launcher struct {
 	lookPath    func(string) (string, error)
 	execProcess func(*exec.Cmd, tea.ExecCallback) tea.Cmd
 	stat        func(string) (os.FileInfo, error)
-	visible     func(home, configDir, folder string) ([]claudecfg.Entry, []error)
+	makeDir     func(root string, now time.Time) (launchdir.Dir, error)
+	now         func() time.Time
 }
 
 // New returns a launcher. iTerm is used on macOS when TERM_PROGRAM says
@@ -71,7 +76,7 @@ func New(cfg Config) *Launcher {
 	l := &Launcher{
 		cfg: cfg, deadline: deadline,
 		osascript: runOSAScript, lookPath: exec.LookPath, execProcess: tea.ExecProcess,
-		stat: os.Stat, visible: claudecfg.Visible,
+		stat: os.Stat, makeDir: launchdir.Make, now: time.Now,
 	}
 	if iTermPossible && cfg.TermProgram == "iTerm.app" && cfg.Multiplexer == "" {
 		l.session = iTermSession(cfg.SessionID)
@@ -108,25 +113,31 @@ func (l *Launcher) launch(ref uint64, t Ticket) tea.Msg {
 	if kind != OK {
 		return done(kind, detail)
 	}
-	// CLAUDE_CONFIG_DIR moves Claude Code's global file; a relative one
-	// would be relative to a folder this client cannot know.
-	if dir := l.cfg.ClaudeConfigDir; dir != "" && (!filepath.IsAbs(dir) || !passable(dir)) {
-		return done(ConfigUnreadable, "CLAUDE_CONFIG_DIR is no absolute path: "+dir)
+	if l.cfg.MCP == "" || l.cfg.Token == "" {
+		return done(NoFiles, "the profile has no server address or token")
 	}
-	entries, errs := l.visible(l.cfg.Home, l.cfg.ClaudeConfigDir, folder)
-	if len(errs) > 0 {
-		return done(ConfigUnreadable, errs[0].Error())
+	// Claude Code is handed the profile's server in a file of its own,
+	// under a name nothing else has: it reads no server of its own
+	// configuration (--strict-mcp-config), so none can stand in for it.
+	dir, err := l.makeDir(l.cfg.Files, l.now())
+	if err != nil {
+		return done(NoFiles, err.Error())
 	}
-	server, kind, detail := pickServer(entries, l.cfg.Server)
-	if kind != OK {
-		return done(kind, detail)
+	server := serverPrefix + dir.ID[:8]
+	mcp, err := dir.Write(launchdir.MCPConfig, mcpConfig(server, l.cfg.MCP, l.cfg.Token), 0o600)
+	if err != nil {
+		return done(NoFiles, err.Error())
 	}
+	args := claudeArgs(t, server, mcp)
 	if l.session == "" {
-		return l.here(folder, t, server, done)
+		return l.here(folder, args, done)
 	}
-	line, ok := commandLine(folder, t, server)
+	line, ok := typedLine(filepath.Join(dir.Path, launchdir.Script))
 	if !ok {
-		return done(BadFolder, folder)
+		return done(NoFiles, "this path cannot be typed into a shell: "+dir.Path)
+	}
+	if _, err := dir.Write(launchdir.Script, script(folder, args), 0o700); err != nil {
+		return done(NoFiles, err.Error())
 	}
 	ctx, cancel := context.WithTimeout(l.cfg.Supervisor.Context(), l.deadline)
 	defer cancel()
@@ -137,14 +148,14 @@ func (l *Launcher) launch(ref uint64, t Ticket) tea.Msg {
 // here runs claude in this terminal: Bubble Tea gives the terminal up,
 // runs it and takes the terminal back when it ends. No shell: the
 // arguments go to the program as they are.
-func (l *Launcher) here(folder string, t Ticket, server string, done func(Kind, string) Done) tea.Msg {
+func (l *Launcher) here(folder string, args []string, done func(Kind, string) Done) tea.Msg {
 	path, err := l.lookPath("claude")
 	if err != nil {
 		return done(NoClaude, "")
 	}
 	// No context: claude lives as long as the person works in it; the
 	// interface waits meanwhile and has nothing to cancel it for.
-	c := exec.Command(path, claudeArgs(t, server)...) //nolint:noctx // see above
+	c := exec.Command(path, args...) //nolint:noctx // see above
 	c.Dir = folder
 	return l.execProcess(c, func(err error) tea.Msg {
 		if err != nil {

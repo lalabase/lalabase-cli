@@ -882,3 +882,22 @@ func TestOnlyA429CarriesAWindow(t *testing.T) {
 		}
 	}
 }
+
+// The launch of Claude Code hands over the address every MCP request goes
+// to (C7b): the base address as checked, its path kept, /api/mcp after it.
+func TestTheMCPAddress(t *testing.T) {
+	for base, want := range map[string]string{
+		"https://lalabase.com":         "https://lalabase.com/api/mcp",
+		"https://lalabase.com/":        "https://lalabase.com/api/mcp",
+		"https://example.com/tenant//": "https://example.com/tenant/api/mcp",
+		"http://127.0.0.1:18089":       "http://127.0.0.1:18089/api/mcp",
+	} {
+		c, err := New(base, "lalab_pat_X")
+		if err != nil {
+			t.Fatalf("%s: %v", base, err)
+		}
+		if got := c.MCPAddress(); got != want {
+			t.Errorf("%s: %q, want %q", base, got, want)
+		}
+	}
+}

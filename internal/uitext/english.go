@@ -227,10 +227,7 @@ const (
 	LaunchNoFolder
 	LaunchNotADirectory
 	LaunchBadFolder
-	LaunchConfigUnreadable
-	LaunchNoServer
-	LaunchConflict
-	LaunchBadName
+	LaunchNoFiles
 	LaunchNoClaude
 	LaunchNoPermission
 	LaunchSessionGone
@@ -353,23 +350,20 @@ var english = map[ID]string{
 	SessionExpiredDiskKept: "Session expired. Restart lalabase. The disk cache could not be cleared; remove it by hand.",
 	// C7: the launch says what came of it, or why nothing opened.
 	LaunchKey: "x", LaunchHelp: "Claude Code beside",
-	Launching:              "Opening Claude Code beside #%d\u2026",
-	LaunchOpened:           "Claude Code opened beside #%d",
-	LaunchEnded:            "Claude Code ended; back at #%d",
-	LaunchEndedError:       "Claude Code ended with an error: %s",
-	LaunchNotHandedOver:    "This ticket's address cannot be handed over; nothing opened",
-	LaunchNoFolder:         "Folder not found: %s",
-	LaunchNotADirectory:    "Not a folder: %s",
-	LaunchBadFolder:        "This folder cannot be typed into a shell: %s",
-	LaunchConfigUnreadable: "Claude Code's configuration could not be read: %s",
-	LaunchNoServer:         "No MCP server of Claude Code's for %s",
-	LaunchConflict:         "An MCP server name of Claude Code's points at two servers: %s",
-	LaunchBadName:          "This MCP server name cannot go into the prompt, rename it in Claude Code: %s",
-	LaunchNoClaude:         "claude was not found on the PATH",
-	LaunchNoPermission:     "macOS does not let this terminal control iTerm: allow it in System Settings > Privacy & Security > Automation",
-	LaunchSessionGone:      "iTerm did not find this session; nothing opened",
-	LaunchNoAnswer:         "iTerm did not answer within 5 s; a pane may still open. If macOS asks for permission, allow it",
-	LaunchFailed:           "iTerm could not open a pane",
+	Launching:           "Opening Claude Code beside #%d\u2026",
+	LaunchOpened:        "Claude Code opened beside #%d",
+	LaunchEnded:         "Claude Code ended; back at #%d",
+	LaunchEndedError:    "Claude Code ended with an error: %s",
+	LaunchNotHandedOver: "This ticket's address cannot be handed over; nothing opened",
+	LaunchNoFolder:      "Folder not found: %s",
+	LaunchNotADirectory: "Not a folder: %s",
+	LaunchBadFolder:     "This folder cannot be typed into a shell: %s",
+	LaunchNoFiles:       "The files for Claude Code could not be written: %s",
+	LaunchNoClaude:      "claude was not found on the PATH",
+	LaunchNoPermission:  "macOS does not let this terminal control iTerm: allow it in System Settings > Privacy & Security > Automation",
+	LaunchSessionGone:   "iTerm did not find this session; nothing opened",
+	LaunchNoAnswer:      "iTerm did not answer within 5 s; a pane may still open. If macOS asks for permission, allow it",
+	LaunchFailed:        "iTerm could not open a pane",
 	// L2: the path in the second line, its places and their details.
 	PathStep: " › ", PathDetail: " · ",
 	// The mark after the name of the token's own person in a comment.
