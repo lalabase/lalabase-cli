@@ -212,23 +212,27 @@ navigation again.
 * **Claude Code beside the ticket (C7).** `x` in the ticket view (the
   focus on the ticket, the ticket shown whole) starts Claude Code with the
   ticket as its task. It gets the ticket's **address only**: a fixed German
-  prompt with the number, `project_id`, `ticket_id` and the name of its own
-  Lalabase MCP server, and reads the ticket itself with `get_ticket`; no
-  title or other text of the server goes into the command line or the
+  prompt with the number, `project_id`, `ticket_id` and the name of the
+  MCP server it is handed, and reads the ticket itself with `get_ticket`;
+  no title or other text of the server goes into the command line or the
   prompt. The ids pass only as UUIDs, the number only as a positive
-  integer. Claude Code works with the rights of the token registered in
-  it, writes included; the prompt asks it to treat the ticket as foreign
-  text and to ask before changing it, which is a request, not a boundary.
+  integer. Claude Code works with the rights of the profile's token,
+  writes included; the prompt asks it to treat the ticket as foreign text
+  and to ask before changing it, which is a request, not a boundary.
   * **Where.** In iTerm on macOS (`TERM_PROGRAM=iTerm.app`, a
     well-formed `ITERM_SESSION_ID`, and no tmux, GNU screen or zellij in
     between, whose session id may be stale) the client's own session is split
     vertically (AppleScript, a constant run with `osascript -`, the values
-    as its arguments only), and the new pane's login shell runs
-    `cd '<folder>' && claude -n 'lalabase #<n>' '<prompt>'`, every value
-    single-quoted, at most 1000 bytes (a longer line could be lost before
-    the shell reads it). Every press opens a new split. Elsewhere the interface
-    gives the terminal to `claude` (from the `PATH`, no shell, same
-    arguments) and comes back when it ends.
+    as its arguments only), and the new pane's login shell runs the launch
+    script, its path typed single-quoted (C7b). The script, run by `/bin/sh`
+    whatever the person's shell is, does
+    `cd '<folder>' || exit` and
+    `exec claude --mcp-config '<dir>/m' --strict-mcp-config -n 'lalabase #<n>' '<prompt>'`,
+    every value single-quoted; `claude` comes from the `PATH` the pane's
+    shell exports (an alias or a shell function of that name is not used).
+    Every press opens a new split. Elsewhere the interface gives the
+    terminal to `claude` (from the `PATH`, no shell, the same arguments, no
+    script) and comes back when it ends.
   * **Which folder.** `[profiles.<name>.folders]` in `config.toml` maps a
     project id to an absolute path or one under `~/`; without an entry,
     the folder `lalabase` was started in. The folder must exist; a path
@@ -239,29 +243,31 @@ navigation again.
     [profiles.default.folders]
     00000000-0000-4000-8000-000000000031 = "~/dev/website"
     ```
-  * **Which server.** Claude Code's configuration as it applies in that
-    folder is read: the user scope of every global file it may read (under
-    the home and `CLAUDE_CONFIG_DIR`, the legacy `.config.json` too), the
-    local scope of the folder's git root (keys compared without case; past
-    a `.git` that is neither a directory nor a file, such as a broken link,
-    the outer root is read too), and
-    every `.mcp.json` in the folder and above it, git roots and `.mcp.json`
-    both on the path as given and with its links resolved (a `.git` link or
-    a bare repository's worktree counts as a git root). Keys are read as written (`url`, not `URL`),
-    as Claude Code reads them; a file it would read otherwise (bytes that
-    are not UTF-8, a lone UTF-16 surrogate escape) stops the launch, and an address with an
-    escape in its path names no server. Servers whose names give the same tool name
-    (`lalabase.prod` and `lalabase_prod`) are one name. A name counts only
-    when every server of that name points at the profile's server (hosts
-    compared in ASCII only), so a repository's `.mcp.json` cannot redirect
-    the name the prompt uses. None: nothing starts, and the status line
-    names both servers. The name must match `^[A-Za-z0-9_-]{1,64}$`. Not
-    read: managed MCP settings, plugins, claude.ai connectors and an
-    environment of the new pane's shell that differs from the client's.
+  * **Which server (C7b).** Claude Code is handed the profile's server: the
+    client writes it into a file of its own, `m`, with the profile's MCP
+    address and token, under the name `lalabase_c7_<8 hex>` that no server
+    of the person's has, and starts `claude` with `--mcp-config` on that
+    file and `--strict-mcp-config`. The session therefore sees this one
+    server and Claude Code's built-in browser tools, and none of its own
+    configuration (`~/.claude.json`, a repository's `.mcp.json`) or of the
+    claude.ai connectors; the client reads none of Claude Code's files for
+    the launch. The server itself needs no approval; in Claude Code's
+    `default` permission mode every tool call of it asks, since the
+    person's allow rules name their own server, not this one.
+  * **The launch files.** One directory per press,
+    `~/.cache/lalabase/cli/<profile>/l/<16 hex>/` (or under
+    `$XDG_CACHE_HOME`, beside the disk cache), holds `m` (0600) and, in
+    iTerm, the script `run` (0700). They are kept like the client's config
+    (`internal/privatefs`: the whole way checked, the directory the user's
+    alone, every file new and private). The token is in `m` alone, as in
+    `config.toml`: never in a process's arguments, the typed line or the
+    script. Claude Code reads `m` once, at start. A launch directory older
+    than a day goes before the next launch and when the client quits; a
+    younger one stays.
   * **What the status line says:** opening, opened beside `#<n>` (or ended,
-    without iTerm; both as a hint in the path's place for 5 seconds), or why not: the address, the folder, Claude Code's
-    configuration, no matching or a conflicting server, a name outside the
-    pattern, `claude` not on the `PATH`, macOS refusing iTerm control
+    without iTerm; both as a hint in the path's place for 5 seconds), or why not: the address, the folder, the
+    launch files that could not be written (and why), `claude` not on the
+    `PATH`, macOS refusing iTerm control
     (error -1743: allow it in System Settings, Privacy & Security,
     Automation), the session not found, no answer within 5 s (a pane may
     still open). While a

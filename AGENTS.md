@@ -34,7 +34,7 @@ on a Mac before every merge, by running the tests here.
 | `internal/features` | which features a server has, from `tools/list` and input schemas |
 | `internal/cache` | the decisions on an answer, from its class alone, the memory store they act on, and the journal of its changes the disk replays |
 | `internal/diskcache` | the disk cache (C1e): one directory per profile, one lock per run, a replay of the journal, every file checked before it is an entry |
-| `internal/privatefs` | the one threat model of the client's private files (the config, its lock, the disk cache): owners, modes, the directory chain, macOS access lists, locks |
+| `internal/privatefs` | the one threat model of the client's private files (the config, its lock, the disk cache, the launch files): owners, modes, the directory chain, macOS access lists, locks |
 | `internal/queue` | the one queue every request goes through |
 | `internal/gateway` | reads from the queue to the interface: one typed message per waiter, `Scope`, which checks a result before it is cached, and the one write path (`Write`), which confirms a success only from the answer |
 | `internal/worker` | the supervisor: the only place a goroutine is started, its panics become one fatal error |
@@ -45,8 +45,9 @@ on a Mac before every merge, by running the tests here.
 | `internal/inboxfixture` | the loopback stand-in for a server, built from the contract copy; `tools/inbox-fixture` serves it for a person |
 | `internal/profile` | server plus token; the config file, checked through `internal/privatefs` |
 | `internal/safefile` | reading files the client does not control |
-| `internal/claudecfg` | Lalabase entries in Claude Code's configuration (`auth import`), and every server Claude Code may use in a folder (`Visible`, C7) |
-| `internal/launch` | Claude Code beside the ticket (C7): the server name, the folder, the command line, the AppleScript; the only package that starts a child process |
+| `internal/claudecfg` | Lalabase entries in Claude Code's configuration, for `auth import` alone (the launch reads none of it since C7b) |
+| `internal/launch` | Claude Code beside the ticket (C7, C7b): the folder, the server file's bytes, the arguments, the launch script, the typed line, the AppleScript; the only package that starts a child process |
+| `internal/launchdir` | the launch files (C7b): one private directory per press beside the disk cache, its files created exclusively, old ones pruned |
 | `internal/clean` | making foreign text safe for a terminal |
 | `internal/contract` | copy of the core's MCP contract; imported by tests only |
 | `internal/sourceguard` | tests over the repository's own files |
@@ -76,7 +77,7 @@ on a Mac before every merge, by running the tests here.
    Every received 429 pauses, whatever became of its body. A job is retried
    at most once.
 6. **One threat model per area, no exceptions.** For the client's own files
-   (the config, its lock file, the disk cache): another local user without
+   (the config, its lock file, the disk cache, the launch files): another local user without
    root, held in `internal/privatefs` for all of them (README "The config's
    way"). Round 4 of C0c added exceptions (sticky directories, links, root)
    and each one opened the next hole; round 5 replaced them with the one
@@ -106,12 +107,12 @@ on a Mac before every merge, by running the tests here.
     Where the interface and its work reach, production code imports only
     from the guard's allowlist (`reachableImports`); a new import there is a
     decision about writing and goroutines, not a fix for a red guard. The
-    three packages that keep the client's files (`internal/diskcache`,
-    `internal/privatefs`, `internal/safefile`) have their file calls named
-    one by one in `fileSystemImports`, the output and goroutine rules hold
-    there too, and no other package gets those names. Likewise
-    `launchImports` names what `internal/launch` (`os/exec`) and
-    `internal/claudecfg` may use; a child process starts nowhere else. No dot imports
+    four packages that keep the client's files (`internal/diskcache`,
+    `internal/privatefs`, `internal/safefile`, `internal/launchdir`) have
+    their file calls named one by one in `fileSystemImports`, the output
+    and goroutine rules hold there too, and no other package gets those
+    names. Likewise `launchImports` names what `internal/launch`
+    (`os/exec`) may use; a child process starts nowhere else. No dot imports
     anywhere. A function the standard library runs on a goroutine of
     its own (an httptrace hook, a dial, a TLS callback) is set only through
     transport's `onWire` wrappers (`foreignCallbackTypes` in the guard; its
