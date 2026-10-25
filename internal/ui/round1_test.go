@@ -171,7 +171,7 @@ func TestFallbacksJudgeTheCleanedText(t *testing.T) {
 	if got := headingRow(h.m, orgA).Primary.String(); got != "Unnamed organisation" {
 		t.Errorf("organisation %q", got)
 	}
-	if got := s.Context.String(); !strings.HasPrefix(got, "Unnamed organisation | Inbox") {
+	if got := s.Context.String(); !strings.HasPrefix(got, "Unnamed organisation › Inbox") {
 		t.Errorf("context %q", got)
 	}
 	if got := s.List.Rows[0].Primary.String(); got != "#1 No message" {
@@ -301,7 +301,7 @@ func TestADroppedOrganisationKeepsItsNameInTheHeading(t *testing.T) {
 	}
 	h.drive(h.press("R"))
 	h.press("esc")
-	if got := h.m.screen().Context.String(); !strings.HasPrefix(got, "Nordlicht GmbH | Inbox") {
+	if got := h.m.screen().Context.String(); !strings.HasPrefix(got, "Nordlicht GmbH › Inbox") {
 		t.Fatalf("context %q", got)
 	}
 	if h.m.app.highlight != "" {

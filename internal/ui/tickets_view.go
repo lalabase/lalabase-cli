@@ -163,9 +163,15 @@ func (m Model) detailColumn() present.Column {
 		c.Text = uitext.Body(uitext.NoItem)
 		return c
 	}
-	t := ticketText(d, a.pagedOn(), m.originLine(), a.when)
+	// The facts stand in the bar where the pane has room for it, else in
+	// the head; the width alone decides, as for wrappedLines.
+	meta := view.MetaFits(view.InnerWidth(layoutWith(m.width, m.height, 1, m.focus), view.Object))
+	t := ticketText(d, ticketContext{paged: a.pagedOn(), origin: m.originLine(), when: a.when, me: a.ownID(), meta: meta})
 	c.Text = present.NewBody(strings.Join(t.lines, "\n"))
 	c.Styles = t.styles
+	if meta {
+		c.Meta = metaBar(d.record, a.when)
+	}
 	c.Offset = d.offset
 	line := -1
 	switch d.follow {
@@ -177,18 +183,51 @@ func (m Model) detailColumn() present.Column {
 		}
 	}
 	if line >= 0 {
-		c.Offset = m.wrappedLines(t, line)
+		c.Offset = m.wrappedLines(t, line, c.Meta)
 	}
 	return c
 }
 
+// metaBar is the ticket's facts for the bar on the pane's right (L2): its
+// status in the tone of its meaning, its project, its people (each
+// assignee on a line, then the creator) and the time of its last change,
+// each under a faint label. The server sends no time of creation.
+func metaBar(r api.Ticket, when func(string) string) []present.MetaLine {
+	label := func(id uitext.ID) present.MetaLine {
+		return present.MetaLine{Text: uitext.Inline(id), Style: present.Faint}
+	}
+	value := func(text string) present.MetaLine { return present.MetaLine{Text: present.NewInline(text)} }
+	bar := []present.MetaLine{
+		label(uitext.BarStatus),
+		{Text: present.NewInline(statusOf(r.Status)), Style: statusStyle(r.StatusFunctions, present.Plain)},
+		{},
+		label(uitext.BarProject),
+		value(textOr(r.Project.Name, uitext.UnnamedProject)),
+		{},
+		label(uitext.BarPeople),
+	}
+	if len(r.Assignees) == 0 {
+		bar = append(bar, value(uitext.Inline(uitext.Unassigned).String()))
+	}
+	for _, p := range r.Assignees {
+		bar = append(bar, value(textOr(p.Name, uitext.UnknownUser)))
+	}
+	return append(bar,
+		value(uitext.Fill(uitext.MetaCreator, personOf(r.Creator)).String()),
+		present.MetaLine{},
+		label(uitext.BarUpdated),
+		value(when(r.UpdatedAt)),
+	)
+}
+
 // wrappedLines is the number of screen lines the text's first n lines take
-// in the object pane at the current width, in their styles: the place of
-// the line after them. The width alone decides it, never the help, so the
-// help's bindings can ask for the pane without asking for themselves.
-func (m Model) wrappedLines(t ticketLines, n int) int {
+// in the object pane at the current width, in their styles, beside the
+// meta bar if it stands: the place of the line after them. The width alone
+// decides it, never the help, so the help's bindings can ask for the pane
+// without asking for themselves.
+func (m Model) wrappedLines(t ticketLines, n int, meta []present.MetaLine) int {
 	g := layoutWith(m.width, m.height, 1, m.focus)
-	return view.Extent(present.Column{Text: present.NewBody(strings.Join(t.lines[:n], "\n")), Styles: t.styles[:n]}, g, view.Object, m.widthMethod) - boolInt(n == 0)
+	return view.Extent(present.Column{Text: present.NewBody(strings.Join(t.lines[:n], "\n")), Styles: t.styles[:n], Meta: meta}, g, view.Object, m.widthMethod) - boolInt(n == 0)
 }
 
 func boolInt(b bool) int {
@@ -239,25 +278,49 @@ var (
 	noteLine  = present.LineStyle{Indent: 2, RestStyle: present.Faint}
 )
 
+// ticketContext is what the pane's text takes beside the record: whether
+// the server pages, the line of the notification it was opened from, the
+// clock, the token's own person (empty while it is not known), and whether
+// the facts stand in the meta bar instead of the head.
+type ticketContext struct {
+	paged  bool
+	origin string
+	when   func(string) string
+	me     string
+	meta   bool
+}
+
+// ownID is the user id of the token's own person: empty until /me
+// succeeded, so nobody is taken for the own person before.
+func (a *app) ownID() string {
+	if a.steps[stepMe].state != ready {
+		return ""
+	}
+	return a.me.User.ID
+}
+
 // ticketText is the body of the pane. Every field is foreign; a one-line
 // field is cleaned as one line, so a title cannot open a line of its own,
 // but a description or a comment keeps its lines.
-func ticketText(d *detailView, paged bool, origin string, when func(string) string) ticketLines {
-	r := d.record
+func ticketText(d *detailView, c ticketContext) ticketLines {
+	r, paged, origin, when := d.record, c.paged, c.origin, c.when
 	t := ticketLines{posts: map[string]int{}}
-	// The head: the title, then one faint line of its facts.
+	// The head: the title, then one faint line of its facts, unless they
+	// stand in the meta bar.
 	t.addLead(uitext.Fill(uitext.TicketNumber, r.Number).String()+" "+textOr(r.Title, uitext.UntitledTicket), present.Strong, "", present.Strong)
-	assigned := uitext.Inline(uitext.MetaUnassigned).String()
-	if len(r.Assignees) > 0 {
-		assigned = uitext.Fill(uitext.MetaAssigned, assigneesOf(r.Assignees)).String()
+	if !c.meta {
+		assigned := uitext.Inline(uitext.MetaUnassigned).String()
+		if len(r.Assignees) > 0 {
+			assigned = uitext.Fill(uitext.MetaAssigned, assigneesOf(r.Assignees)).String()
+		}
+		// The status leads the facts, in the tone of its meaning.
+		t.addLead(present.NewInline(statusOf(r.Status)).String(), statusStyle(r.StatusFunctions, present.Faint), " · "+strings.Join([]string{
+			textOr(r.Project.Name, uitext.UnnamedProject),
+			assigned,
+			uitext.Fill(uitext.MetaCreator, personOf(r.Creator)).String(),
+			uitext.Fill(uitext.MetaUpdated, when(r.UpdatedAt)).String(),
+		}, " · "), present.Faint)
 	}
-	// The status leads the facts, in the tone of its meaning.
-	t.addLead(present.NewInline(statusOf(r.Status)).String(), statusStyle(r.StatusFunctions, present.Faint), " · "+strings.Join([]string{
-		textOr(r.Project.Name, uitext.UnnamedProject),
-		assigned,
-		uitext.Fill(uitext.MetaCreator, personOf(r.Creator)).String(),
-		uitext.Fill(uitext.MetaUpdated, when(r.UpdatedAt)).String(),
-	}, " · "), present.Faint)
 	if origin != "" {
 		t.add(plainLine, uitext.Inline(uitext.LabelNotification).String()+": "+origin)
 	}
@@ -305,9 +368,13 @@ func ticketText(d *detailView, paged bool, origin string, when func(string) stri
 			break
 		}
 		// The head: the author bold, the time faint; the text indented
-		// below it.
+		// below it. The token's own person (by the id alone, never the
+		// name) is blue and marked, so the mark stays without colour.
 		t.posts[p.ID] = len(t.lines)
-		author := present.NewInline(personOf(p.Author)).String()
+		author, tone := present.NewInline(personOf(p.Author)).String(), present.Strong
+		if c.me != "" && p.Author != nil && p.Author.ID == c.me {
+			author, tone = author+" "+uitext.Inline(uitext.You).String(), present.Own
+		}
 		if d.area == areaComments && p.ID == d.post {
 			author = uitext.Inline(uitext.SelectedComment).String() + author
 		}
@@ -315,7 +382,7 @@ func ticketText(d *detailView, paged bool, origin string, when func(string) stri
 		if p.IsPrivate {
 			rest += " · " + uitext.Inline(uitext.Private).String()
 		}
-		t.addLead(author, present.Strong, rest, present.Faint)
+		t.addLead(author, tone, rest, present.Faint)
 		switch {
 		case e != nil && e.post == p.ID && e.unavailable:
 			// The server said the comment is missing: its text is hidden

@@ -9,7 +9,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
-// Render draws the screen into the geometry: a header, a context line, the
+// Render draws the screen into the geometry: a header, the path line, the
 // visible panes side by side, each in its frame, and the help at the
 // bottom. The help lines
 // were counted into the geometry by the caller (HelpLines), so nothing of
@@ -38,6 +38,9 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 	switch {
 	case s.Status.String() == "":
 		lines = append(lines, fit(context, g.Width, method))
+	case isHint(s):
+		// A hint takes the path's line, and the lines it wraps into under it.
+		lines = append(lines, noticeLines(s.Status.String(), s.StatusStyle, g.Width, g.NoticeHeight+1, method)...)
 	case g.NoticeHeight > 0:
 		lines = append(append(lines, fit(context, g.Width, method)), noticeLines(s.Status.String(), s.StatusStyle, g.Width, g.NoticeHeight, method)...)
 	default:
@@ -59,21 +62,22 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 	return strings.Join(append(lines, helpLines...), "\n")
 }
 
-// statusSeparator stands between the context and a notice beside it.
+// statusSeparator stands between the path and a notice beside it.
 const statusSeparator = " | "
 
-// contextLine is where the person is: the context of two and three
-// columns, the breadcrumb of one, the chooser's title while two columns
-// show it.
+// contextLine is where the person is: the path of two and three columns,
+// the path of the panes in one, the chooser's title while two columns show
+// it.
 func contextLine(s present.Screen, g Geometry, focus Pane) string {
 	switch {
 	case g.Columns == 1:
+		step := uitext.Inline(uitext.PathStep).String()
 		context := s.Crumbs[0].String()
 		if focus >= List {
-			context += " > " + s.Crumbs[1].String()
+			context += step + s.Crumbs[1].String()
 		}
 		if focus == Object {
-			context += " > " + s.Crumbs[2].String()
+			context += step + s.Crumbs[2].String()
 		}
 		return context
 	case g.Columns == 2 && focus == Navigation:
@@ -83,17 +87,30 @@ func contextLine(s present.Screen, g Geometry, focus Pane) string {
 }
 
 // NoticeLines is the number of lines the screen's status notice needs
-// under the context line of this geometry: 0 when there is none or it
-// stands whole beside the context, else the lines it wraps into at the
-// width. The caller gives it as many as the body can spare
+// under the path line of this geometry: 0 when there is none or it
+// stands whole beside the path, else the lines it wraps into at the
+// width; for a hint, which takes the path line itself, the lines it
+// wraps into after that one. The caller gives it as many as the body can spare
 // (Geometry.NoticeHeight), so it is not cut to a few words: for some keys
 // (x) it is the only answer, and the longest notices are instructions.
 func NoticeLines(s present.Screen, g Geometry, focus Pane, method ansi.Method) int {
 	status := s.Status.String()
-	if status == "" || method.StringWidth(contextLine(s, g, focus)+statusSeparator+status) <= g.Width {
+	switch {
+	case status == "":
+		return 0
+	case isHint(s):
+		// The first line is the path's.
+		return len(wrapBody(status, g.Width, method)) - 1
+	case method.StringWidth(contextLine(s, g, focus)+statusSeparator+status) <= g.Width:
 		return 0
 	}
 	return len(wrapBody(status, g.Width, method))
+}
+
+// isHint: the screen's notice is a short hint (plain), which stands in the
+// path's place (L2); a problem or a wait stands beside it.
+func isHint(s present.Screen) bool {
+	return s.Status.String() != "" && s.StatusStyle == present.Plain
 }
 
 // noticeLines is the notice wrapped at the width into at most height
@@ -144,7 +161,7 @@ func Extent(c present.Column, g Geometry, which Pane, method ansi.Method) int {
 	if c.Rows != nil {
 		return len(c.Rows)
 	}
-	width := InnerWidth(g, which)
+	width := textArea(c, InnerWidth(g, which))
 	if width <= 0 {
 		return 0
 	}
@@ -223,9 +240,12 @@ func content(c present.Column, width, height int, focused bool, method ansi.Meth
 	}
 	body := height - at
 	var drawn []string
-	if c.Rows != nil {
+	switch text := textArea(c, width); {
+	case c.Rows != nil:
 		drawn = rows(c, width, body, focused, method)
-	} else {
+	case text < width:
+		drawn = besideMeta(scrollable(c, text, body, method), c.Meta, text, body, method)
+	default:
 		drawn = scrollable(c, width, body, method)
 	}
 	copy(lines[at:], drawn)
@@ -463,4 +483,52 @@ func scrolledAt(c present.Column, width, body int, method ansi.Method) (lines []
 		lines[last] = fit(all[last].plain()+uitext.Inline(uitext.Ellipsis).String(), width, method)
 	}
 	return lines, offset, total
+}
+
+// The meta bar of a wide ticket pane (L2): metaCells on the pane's right,
+// a faint rule with a space either side and the lines after it; the text
+// keeps at least minMetaText cells, its scrollbar included.
+const (
+	metaRule    = "\u2502"
+	metaCells   = 24
+	minMetaText = 52
+)
+
+// MetaFits: a pane of this inner width has room for the meta bar beside
+// its text. The model asks it before it builds the bar, so the facts stand
+// either in the bar or in the ticket's head, never in both or neither.
+func MetaFits(width int) bool { return width >= minMetaText+metaCells }
+
+// textArea is the width of a free-text pane's text: the pane less the meta
+// bar where it stands.
+func textArea(c present.Column, width int) int {
+	if c.Rows == nil && len(c.Meta) > 0 && MetaFits(width) {
+		return width - metaCells
+	}
+	return width
+}
+
+// besideMeta puts the meta bar after the text's lines, each padded to the
+// text's width; the bar starts at the top whatever the text's offset, and
+// a bar longer than the body is cut, its last line marked.
+func besideMeta(text []string, meta []present.MetaLine, width, body int, method ansi.Method) []string {
+	room := metaCells - 3
+	rule := " " + lipgloss.NewStyle().Faint(true).Render(metaRule) + " "
+	lines := make([]string, body)
+	for i := range lines {
+		left := ""
+		if i < len(text) {
+			left = text[i]
+		}
+		lines[i] = left + strings.Repeat(" ", max(0, width-method.StringWidth(left))) + rule
+		if i >= len(meta) {
+			continue
+		}
+		value, style := fit(meta[i].Text.String(), room, method), meta[i].Style
+		if i == body-1 && len(meta) > body {
+			value, style = fit(meta[i].Text.String()+uitext.Inline(uitext.Ellipsis).String(), room, method), present.Faint
+		}
+		lines[i] += styled(value, style)
+	}
+	return lines
 }

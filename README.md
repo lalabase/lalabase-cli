@@ -44,15 +44,23 @@ navigation again.
 
 * **How it is drawn.** Every pane stands in a rounded frame with its title
   in the top border and a space inside either side; the pane in focus has a
-  blue, bold frame and a bold title, the others a faint frame. A notice (an expired session, a rate-limit pause, the disk
-  cache, what `x` did) stands beside the context line under the header;
-  one that does not fit there takes the lines under it, from the panes,
+  blue, bold frame and a bold title, the others a faint frame. The line
+  under the header is a path to where you are: the places parted by `›`,
+  the search and the page by `·`, as in
+  `Nordlicht GmbH › Tickets › Website · search "login" · page 1 of 3` or
+  `Nordlicht GmbH › Inbox · page 1 of 2`; in one column it names the panes
+  (`Organisations › Tickets › Ticket`). A short hint (what `x` did: Claude
+  Code opened or ended) takes the path's place for 5 seconds, then the path
+  is back. A notice of a problem or a wait (an expired session, a
+  rate-limit pause, the disk cache, an `x` running or failed) stands beside
+  the path as long as its state holds. A notice or hint that does not fit
+  takes the lines under it, from the panes,
   wrapped and whole. Only where that would leave the pane in focus no row
   is it cut, marked with "…". Its tone comes from the state it reports,
   never from its words: bold red when something did not work (an `x` that
   opened nothing or ended in an error, an expired session, the disk cache
   unusable), yellow while the client waits (a launch running, a rate-limit
-  pause), plain otherwise; the text says the same without colour. Lists
+  pause), plain for a hint; the text says the same without colour. Lists
   keep their values (a status, a count) in one right-aligned column, and
   the second line of an entry is faint; an inbox without unread
   notifications is faint, an unread count bold. Ticket numbers stand
@@ -66,7 +74,16 @@ navigation again.
   in its project, which the server sends as `status_functions`: cyan for new
   or open, yellow in progress, green done (completed or closed), faint in the
   backlog. A done ticket is faint in the list, its status green and faint,
-  so the open ones stand out. The client never guesses a meaning from a status name, since every
+  so the open ones stand out. Where the ticket pane is wide enough (76
+  cells inside its frame, so from 158 columns with the list in focus, or from 120
+  with the ticket in focus), the ticket's facts stand in a bar on its
+  right, which does not scroll: Status in its tone, Project, People (the
+  assignees, then the creator) and Updated, the labels faint, a long name
+  cut with "…"; the head then drops its line of facts. In a narrower pane
+  they stay in one faint line under the title. Comments by the token's own
+  person show the author as "Name (you)", blue and bold; every other author
+  is bold without colour. Only the user id from `/api/v1/me` decides, never
+  a name, and without colour the "(you)" still says it. The client never guesses a meaning from a status name, since every
   project names its statuses its own way; a status without a function, or
   from a server before the field, has no tone. The colours are the
   terminal's own sixteen, so the theme picks the shade, and `NO_COLOR` turns
@@ -79,7 +96,7 @@ navigation again.
   attribute. The help at the bottom draws each key as a key cap, reversed
   with a space either side, its description faint. Free text that is longer than its pane (a ticket,
   the details of a notification) carries a scrollbar in the pane's last
-  column: a thumb (`┃`) as long as the share in sight and where it is, on a
+  column (beside a meta bar, the last column of the text): a thumb (`┃`) as long as the share in sight and where it is, on a
   faint track (`╎`); the thumb touches the bottom only at the end. The text
   always leaves that column and a space before it free, so it wraps the same
   whether the bar shows or not. In a ticket the bar covers the page of
@@ -242,7 +259,7 @@ navigation again.
     read: managed MCP settings, plugins, claude.ai connectors and an
     environment of the new pane's shell that differs from the client's.
   * **What the status line says:** opening, opened beside `#<n>` (or ended,
-    without iTerm), or why not: the address, the folder, Claude Code's
+    without iTerm; both as a hint in the path's place for 5 seconds), or why not: the address, the folder, Claude Code's
     configuration, no matching or a conflicting server, a name outside the
     pattern, `claude` not on the `PATH`, macOS refusing iTerm control
     (error -1743: allow it in System Settings, Privacy & Security,

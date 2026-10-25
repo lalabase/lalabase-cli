@@ -148,3 +148,18 @@ func TestAStatusIsDrawnInTheTerminalsOwnColours(t *testing.T) {
 		t.Fatalf("the facts line: %q", got)
 	}
 }
+
+// L2 allows magenta in the terminal's bytes for an agent that waits (C9);
+// until then no style of the view draws it.
+func TestNoStyleDrawsMagenta(t *testing.T) {
+	for s := present.Plain; s <= present.Own; s++ {
+		for _, out := range []string{styled("x", s), quieted("x", s)} {
+			if strings.Contains(out, "35m") || strings.Contains(out, ";35;") || strings.Contains(out, "[35;") {
+				t.Errorf("style %d draws magenta: %q", s, out)
+			}
+		}
+	}
+	if got := styled("x", present.Own); got != "\x1b[1;34mx\x1b[m" {
+		t.Fatalf("own: %q", got)
+	}
+}

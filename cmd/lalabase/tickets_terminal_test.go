@@ -100,11 +100,11 @@ func (c *terminalProcess) moveTo(t *testing.T, key string, width uint16, heading
 func openWebsite(t *testing.T, c *terminalProcess, width uint16) {
 	t.Helper()
 	c.moveTo(t, keyDown, width, "Nordlicht GmbH", "Tickets", 2)
-	c.act(t, keyEnter, width, "Projects", "Website-Relaunch", "Nordlicht GmbH | Tickets")
+	c.act(t, keyEnter, width, "Projects", "Website-Relaunch", "Nordlicht GmbH › Tickets")
 	c.act(t, keyDown, width, "> Handbuch")
 	c.act(t, keyDown, width, "> Intern")
 	c.act(t, keyDown, width, "> Website-Relaunch")
-	c.act(t, keyEnter, width, "#1 Login bricht ab", "Nordlicht GmbH | Tickets | Website-Relaunch | page 1 of 2")
+	c.act(t, keyEnter, width, "#1 Login bricht ab", "Nordlicht GmbH › Tickets › Website-Relaunch · page 1 of 2")
 }
 
 func TestPTYTicketsFlow(t *testing.T) {

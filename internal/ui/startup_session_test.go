@@ -472,15 +472,15 @@ func TestARateLimitPauseIsShownAndClearedByItsOwnExpiry(t *testing.T) {
 	if got := h.m.screen().Status.String(); got != "Rate limited until 12:01:00" {
 		t.Fatalf("extended status %q", got)
 	}
-	h.feed(gateway.PauseEnded{Session: h.events.Session(), Until: first})
+	h.feed(gateway.Expired{Session: h.events.Session(), Until: first})
 	if got := h.m.screen().Status.String(); got != "Rate limited until 12:01:00" {
 		t.Fatalf("an old expiry cleared the extended pause: %q", got)
 	}
-	h.feed(gateway.PauseEnded{Session: h.events.Session() + 1, Until: second})
+	h.feed(gateway.Expired{Session: h.events.Session() + 1, Until: second})
 	if got := h.m.screen().Status.String(); got == "" {
 		t.Fatal("another session's expiry cleared the pause")
 	}
-	h.feed(gateway.PauseEnded{Session: h.events.Session(), Until: second})
+	h.feed(gateway.Expired{Session: h.events.Session(), Until: second})
 	if got := h.m.screen().Status.String(); got != "" {
 		t.Fatalf("the pause was not cleared: %q", got)
 	}

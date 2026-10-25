@@ -119,13 +119,13 @@ func TestPTYInboxFlow(t *testing.T) {
 			c, f := startInbox(t, inboxfixture.Temporary, width)
 			c.expect(t, "the directory and the counters", width, "All organisations", "Nordlicht GmbH", "Südwind AG", "33", "30")
 			c.moveTo(t, keyDown, width, "Nordlicht GmbH", "Inbox", 1)
-			c.act(t, keyEnter, width, "#1 Benachrichtigung", "Nordlicht GmbH | Inbox | page 1 of 2")
+			c.act(t, keyEnter, width, "#1 Benachrichtigung", "Nordlicht GmbH › Inbox · page 1 of 2")
 			if width == 120 {
 				// Highlighting another organisation relabels nothing: the
 				// heading is the open inbox's, not the cursor's.
 				c.act(t, keyEsc, width, "esc inbox")
 				c.moveTo(t, keyDown, width, "Südwind AG", "Inbox", 2)
-				if !c.screenShows(width, "Nordlicht GmbH | Inbox | page 1 of 2") {
+				if !c.screenShows(width, "Nordlicht GmbH › Inbox · page 1 of 2") {
 					t.Fatalf("the heading followed the cursor:\n%s", strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
 				}
 				c.act(t, keyEsc, width, "esc organisations")
@@ -181,7 +181,7 @@ const orgA = inboxfixture.OrgA
 func TestPTYInboxExpiresOn401(t *testing.T) {
 	c, _ := startInbox(t, inboxfixture.Unauthorized, 80)
 	c.moveTo(t, keyDown, 80, "Nordlicht GmbH", "Inbox", 1)
-	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "Nordlicht GmbH | Inbox")
+	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "Nordlicht GmbH › Inbox")
 	c.act(t, "]", 80, "Session expired. Restart lalabase.")
 	if c.screenShows(80, "Benachrichtigung") || c.screenShows(80, "Nordlicht") || c.screenShows(80, "Anna Albers") {
 		t.Fatalf("the expiry left data on screen:\n%s", strings.Join(renderScreen(c.bytes(), 24, 80), "\n"))
@@ -208,7 +208,7 @@ func TestPTYInboxExpiresOn401(t *testing.T) {
 func TestPTYInboxShowsTheRateLimitPause(t *testing.T) {
 	c, f := startInbox(t, inboxfixture.RateLimited, 80)
 	c.moveTo(t, keyDown, 80, "Nordlicht GmbH", "Inbox", 1)
-	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "Nordlicht GmbH | Inbox")
+	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "Nordlicht GmbH › Inbox")
 	c.act(t, "]", 80, "Rate limited until")
 	c.expect(t, "the retry after the window", 80, "#26 Benachrichtigung")
 	if err := c.send("q"); err != nil {
@@ -239,7 +239,7 @@ func TestPTYInboxWithoutTheOrganisationFilter(t *testing.T) {
 		t.Fatal("an organisation opened without the filter")
 	}
 	c.moveTo(t, keyUp, 80, "All organisations", "Inbox", 1)
-	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "All organisations | Inbox")
+	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "All organisations › Inbox")
 	if err := c.send("]"); err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestPTYInboxWithoutTheOrganisationFilter(t *testing.T) {
 func TestPTYInboxInterrupt(t *testing.T) {
 	c, _ := startInbox(t, inboxfixture.Normal, 80)
 	c.moveTo(t, keyDown, 80, "Nordlicht GmbH", "Inbox", 1)
-	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "Nordlicht GmbH | Inbox")
+	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "Nordlicht GmbH › Inbox")
 	if err := c.send("\x03"); err != nil {
 		t.Fatal(err)
 	}

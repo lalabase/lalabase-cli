@@ -142,7 +142,7 @@ func TestPTYDiskCacheRestartFlow(t *testing.T) {
 			}
 			c.expect(t, "the directory and the counters", width, "All organisations", "Nordlicht GmbH", "Südwind AG", "33", "30")
 			c.moveTo(t, keyDown, width, "Nordlicht GmbH", "Inbox", 1)
-			c.act(t, keyEnter, width, "Cached", "#1 Benachrichtigung", "Nordlicht GmbH | Inbox | page 1 of 2")
+			c.act(t, keyEnter, width, "Cached", "#1 Benachrichtigung", "Nordlicht GmbH › Inbox · page 1 of 2")
 			c.noticeGone(t, width, "Cached", "#1 Benachrichtigung", "page 1 of 2")
 			openRow6Details(t, c, width)
 			c.act(t, "o", width, "Cached", "#6 Ticket 6", "Description of six")

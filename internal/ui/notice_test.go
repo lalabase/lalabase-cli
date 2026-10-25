@@ -69,10 +69,12 @@ func checkNotice(t *testing.T, h *harness, notice, label string) {
 	}
 }
 
-// showNotice shows text as the launch notice of the ticket open in h.
+// showNotice shows text as the launch notice of the ticket open in h, as
+// a problem: a plain notice is a hint since L2, which takes the path's
+// place for 5 s (l2_hint_test.go sweeps it).
 func showNotice(h *harness, text string) {
 	a := h.m.app
-	a.launch.ticket, a.launch.notice = a.detail.id, present.NewInline(text)
+	a.launch.ticket, a.launch.notice, a.launch.tone = a.detail.id, present.NewInline(text), present.NoticeProblem
 }
 
 func TestTheNoticeIsWholeInEveryFocusWidthAndHeight(t *testing.T) {

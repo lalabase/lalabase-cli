@@ -121,23 +121,25 @@ func (e *Events) Wait() tea.Cmd {
 	}
 }
 
-// PauseEnded says the pause the model showed, with this deadline, is over.
-// A notice that meanwhile shows a later deadline is not cleared by it.
-type PauseEnded struct {
+// Expired says a deadline the model set with Expiry has come: a pause's
+// or a hint's (L2). The model clears only what still shows this deadline,
+// so a later pause or a newer hint is not cleared by it.
+type Expired struct {
 	Session Session
 	Until   time.Time
 }
 
 // Expiry wakes the model when until has come, by the real clock (now is
 // the model's clock at issue, for the wait). This is status maintenance of
-// one notice, not polling: nothing is asked of the server.
+// one notice (a rate-limit pause, a hint), not polling: nothing is asked
+// of the server.
 func (e *Events) Expiry(until, now time.Time) tea.Cmd {
 	wait := until.Sub(now)
 	return func() tea.Msg {
-		msg, ok := worker.Run(e.sup, "gateway: pause expiry", func() tea.Msg {
+		msg, ok := worker.Run(e.sup, "gateway: expiry", func() tea.Msg {
 			select {
 			case <-time.After(wait):
-				return PauseEnded{Session: e.session, Until: until}
+				return Expired{Session: e.session, Until: until}
 			case <-e.sup.Context().Done():
 				return nil
 			}

@@ -7,13 +7,15 @@ package present
 type Screen struct {
 	// Identity follows the profile in the header: whose token this is.
 	Identity Inline
-	// Context is the context line of two and three columns: where the
-	// person is.
+	// Context is the path in the second line of two and three columns:
+	// where the person is.
 	Context Inline
-	// Status is a notice beside the context (a rate-limit pause, an expired
-	// session); empty for none.
+	// Status is a notice of the second line; empty for none. A problem or
+	// a wait (a rate-limit pause, an expired session) stands beside the
+	// path; a plain one is a short hint (what x did), which stands in the
+	// path's place.
 	Status Inline
-	// StatusStyle is the notice's tone: Plain, NoticeProblem or
+	// StatusStyle is the notice's tone: Plain (a hint), NoticeProblem or
 	// NoticeWaiting.
 	StatusStyle Style
 	// Crumbs are the names of the three panes, for the breadcrumb of one
@@ -44,6 +46,16 @@ type Column struct {
 	// Offset is the first visible row, or line of the text. The view clamps
 	// it to what fits and keeps the cursor in sight.
 	Offset int
+	// Meta is the bar of facts on the right of a ticket's text (L2), one
+	// entry per line; nil for none. The view draws it only where the pane
+	// is wide enough (view.MetaFits), and it does not scroll.
+	Meta []MetaLine
+}
+
+// MetaLine is one line of the meta bar: a label or a value, in its style.
+type MetaLine struct {
+	Text  Inline
+	Style Style
 }
 
 // Row is one entry of a list: a first line with an optional value at its
@@ -79,12 +91,16 @@ const (
 	StatusOpen
 	StatusActive
 	StatusDone
-	// The tones of the status notice beside the context, by the state it
-	// reports: something did not work (a launch, the session, the disk
+	// The tones of a notice beside the path (a hint, which takes the
+	// path's place, is Plain), by the state it reports: something did not work (a launch, the session, the disk
 	// cache), or the client waits (a launch running, a rate-limit pause).
 	// The notice's text says what; the tone only makes it seen.
 	NoticeProblem
 	NoticeWaiting
+	// Own is the token's own person among a ticket's comment authors
+	// (L2): everyone else is Strong. A text mark beside the name says the
+	// same without colour.
+	Own
 )
 
 // LineStyle is how one line of a column's text is drawn: its first Lead

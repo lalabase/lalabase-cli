@@ -57,7 +57,7 @@ func TestProjectsAndTicketsAreReadOnlyWhenOpened(t *testing.T) {
 	if got := h.m.screen().List.Notice.String(); got != "No projects." {
 		t.Fatalf("notice %q", got)
 	}
-	if got := h.m.screen().Context.String(); got != "Südwind AG | Tickets" {
+	if got := h.m.screen().Context.String(); got != "Südwind AG › Tickets" {
 		t.Fatalf("context %q", got)
 	}
 }
@@ -117,7 +117,7 @@ func TestTheChooserHasSectionsAndEnterOpensProjectsThenTickets(t *testing.T) {
 		t.Fatalf("tickets %+v focus %d", tv, h.m.focus)
 	}
 	s = h.m.screen()
-	if s.List.Title.String() != "Tickets" || s.Context.String() != "Nordlicht GmbH | Tickets | Website-Relaunch | page 1 of 2" {
+	if s.List.Title.String() != "Tickets" || s.Context.String() != "Nordlicht GmbH › Tickets › Website-Relaunch · page 1 of 2" {
 		t.Fatalf("title %q context %q", s.List.Title.String(), s.Context.String())
 	}
 	// The numbers stand right-aligned as wide as the page's widest (#25),
@@ -149,7 +149,7 @@ func TestTheChooserHasSectionsAndEnterOpensProjectsThenTickets(t *testing.T) {
 		t.Fatalf("one column:\n%s", got)
 	}
 	h.m.focus = view.List
-	if got := ansi.Strip(h.m.View().Content); !strings.Contains(got, "Organisations > Tickets") {
+	if got := ansi.Strip(h.m.View().Content); !strings.Contains(got, "Organisations › Tickets") {
 		t.Fatalf("one column crumbs:\n%s", got)
 	}
 }
@@ -205,7 +205,7 @@ func TestTheSearchSendsOnEnterAndEscDiscards(t *testing.T) {
 	if h.m.mode != Navigate || tv.query != "export" || tv.page != 1 || len(tv.rows) != 1 || tv.rows[0].Number != 2 || tv.selected != tv.rows[0].ID {
 		t.Fatalf("result: mode %d query %q page %d rows %d", h.m.mode, tv.query, tv.page, len(tv.rows))
 	}
-	if got := h.m.screen().Context.String(); got != `Nordlicht GmbH | Tickets | Website-Relaunch | search "export" | page 1 of 1` {
+	if got := h.m.screen().Context.String(); got != `Nordlicht GmbH › Tickets › Website-Relaunch · search "export" · page 1 of 1` {
 		t.Fatalf("context %q", got)
 	}
 	// The search line starts with the current search; Enter with the same
@@ -381,7 +381,12 @@ func TestOpenJoinsAPendingPreviewAndEscGoesBack(t *testing.T) {
 		t.Fatalf("after the results: %+v focus %d", d, h.m.focus)
 	}
 	text := h.m.screen().Object.Text.String()
-	for _, want := range []string{"#1 Login bricht ab", "in_progress · Website-Relaunch · assigned Anna Albers", "Nach dem Absenden bleibt die Seite weiß.", "Comments · newest first · page 1 of 1 · 2 readable comments", "Anna Albers  5 Jan 09:26", "Ich schaue es mir an.", "Ben Berger  5 Jan 09:25", "Tritt nur in Safari auf.", "Attachments · page 1 of 1 · 2 in all", "\ndesign.pdf · ", "\nscreenshot.png · "} {
+	// The facts stand in the meta bar: the ticket pane in focus at 120
+	// columns is wide enough for it (L2).
+	if got := strings.Join(metaText(h.m.screen().Object), "|"); !strings.HasPrefix(got, "Status|in_progress||Project|Website-Relaunch||People|Anna Albers|") {
+		t.Errorf("the bar: %q", got)
+	}
+	for _, want := range []string{"#1 Login bricht ab", "Nach dem Absenden bleibt die Seite weiß.", "Comments · newest first · page 1 of 1 · 2 readable comments", "Anna Albers (you)  5 Jan 09:26", "Ich schaue es mir an.", "Ben Berger  5 Jan 09:25", "Tritt nur in Safari auf.", "Attachments · page 1 of 1 · 2 in all", "\ndesign.pdf · ", "\nscreenshot.png · "} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the pane lacks %q:\n%s", want, text)
 		}
@@ -503,7 +508,7 @@ func TestTicketPagesAndTheReturnToAProject(t *testing.T) {
 	if tv.page != 2 || len(tv.rows) != 5 || tv.rows[0].Number != 26 || tv.selected != tv.rows[0].ID {
 		t.Fatalf("page 2: %+v", tv)
 	}
-	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH | Tickets | Website-Relaunch | page 2 of 2" {
+	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH › Tickets › Website-Relaunch · page 2 of 2" {
 		t.Fatalf("context %q", got)
 	}
 	if reads := h.f.ticketListReads(); reads[len(reads)-1].Page != 2 {
@@ -567,7 +572,7 @@ func TestTicketPagesAndTheReturnToAProject(t *testing.T) {
 	if got := h.m.screen().List.Notice.String(); got != "No tickets." || h.m.allowed()[NextPage] {
 		t.Fatalf("empty: notice %q", got)
 	}
-	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH | Tickets | Intern | page 1 of 1" {
+	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH › Tickets › Intern · page 1 of 1" {
 		t.Fatalf("context %q", got)
 	}
 }
@@ -1440,7 +1445,7 @@ func TestARemovedOrganisationClosesItsTicketList(t *testing.T) {
 	if got := h.m.screen().List.Notice.String(); got != "Not found or no longer accessible." {
 		t.Fatalf("notice %q", got)
 	}
-	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH | Tickets" {
+	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH › Tickets" {
 		t.Fatalf("context %q", got)
 	}
 	if _, ok := a.store.Get(a.projectsKey(orgA)); ok {
@@ -1560,7 +1565,7 @@ func TestAShrunkTicketListIsCorrectedOnce(t *testing.T) {
 	if v.page != 2 || len(v.rows) != 5 || len(h.f.ticketListReads()) != before+2 {
 		t.Fatalf("after the shrink: page %d, %d rows, %d reads", v.page, len(v.rows), len(h.f.ticketListReads())-before)
 	}
-	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH | Tickets | Website-Relaunch | page 2 of 2" {
+	if got := h.m.screen().Context.String(); got != "Nordlicht GmbH › Tickets › Website-Relaunch · page 2 of 2" {
 		t.Fatalf("context %q", got)
 	}
 	// A second shrink during the correction: stop, offer R.

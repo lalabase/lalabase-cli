@@ -17,7 +17,7 @@ func TestTheTicketIsDrawnInItsStyles(t *testing.T) {
 	h := newHarness(t)
 	h.openSix()
 	d := h.m.app.detail
-	tl := ticketText(d, true, "", h.m.app.when)
+	tl := ticketText(d, ticketContext{paged: true, when: h.m.app.when})
 	if len(tl.styles) != len(tl.lines) {
 		t.Fatalf("%d styles for %d lines", len(tl.styles), len(tl.lines))
 	}
@@ -56,7 +56,7 @@ func TestTheTicketIsDrawnInItsStyles(t *testing.T) {
 	}
 	// The selected comment's marker is part of the bold lead.
 	h.press("tab")
-	tl = ticketText(h.m.app.detail, true, "", h.m.app.when)
+	tl = ticketText(h.m.app.detail, ticketContext{paged: true, when: h.m.app.when})
 	i := tl.posts[h.m.app.detail.post]
 	if st := tl.styles[i]; !strings.HasPrefix(tl.lines[i], "> ") || tl.lines[i][:st.Lead] != "> "+personOf(h.m.app.detail.selectedPost().Author) {
 		t.Fatalf("the selected head %q: %+v", tl.lines[i], st)

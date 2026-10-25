@@ -153,7 +153,7 @@ func TestHostilePlaceholderViewBytes(t *testing.T) {
 		m.width, m.height = 120, 24
 	}
 	m.width, m.height, m.focus = 79, 24, view.Object
-	if !strings.Contains(ansi.Strip(m.View().Content), "Organisation > List > Object") {
+	if !strings.Contains(ansi.Strip(m.View().Content), "Organisation › List › Object") {
 		t.Fatal("missing narrow breadcrumb")
 	}
 }
