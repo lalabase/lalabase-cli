@@ -116,13 +116,27 @@ func (l *Launcher) launch(ref uint64, t Ticket) tea.Msg {
 	if l.cfg.MCP == "" || l.cfg.Token == "" {
 		return done(NoFiles, "the profile has no server address or token")
 	}
-	// Claude Code is handed the profile's server in a file of its own,
-	// under a name nothing else has: it reads no server of its own
-	// configuration (--strict-mcp-config), so none can stand in for it.
+	// What can stop the launch is checked before the token is written: a
+	// launch that cannot go on leaves no server file behind.
+	var claude string
+	if l.session == "" {
+		path, err := l.lookPath("claude")
+		if err != nil {
+			return done(NoClaude, "")
+		}
+		claude = path
+	}
 	dir, err := l.makeDir(l.cfg.Files, l.now())
 	if err != nil {
 		return done(NoFiles, err.Error())
 	}
+	line, ok := typedLine(filepath.Join(dir.Path, launchdir.Script))
+	if l.session != "" && !ok {
+		return done(NoFiles, "the launch directory's path cannot be typed into a shell: "+dir.Path)
+	}
+	// Claude Code is handed the profile's server in a file of its own,
+	// under a name nothing else has: it reads no server of its own
+	// configuration (--strict-mcp-config), so none can stand in for it.
 	server := serverPrefix + dir.ID[:8]
 	mcp, err := dir.Write(launchdir.MCPConfig, mcpConfig(server, l.cfg.MCP, l.cfg.Token), 0o600)
 	if err != nil {
@@ -130,11 +144,7 @@ func (l *Launcher) launch(ref uint64, t Ticket) tea.Msg {
 	}
 	args := claudeArgs(t, server, mcp)
 	if l.session == "" {
-		return l.here(folder, args, done)
-	}
-	line, ok := typedLine(filepath.Join(dir.Path, launchdir.Script))
-	if !ok {
-		return done(NoFiles, "this path cannot be typed into a shell: "+dir.Path)
+		return l.here(claude, folder, args, done)
 	}
 	if _, err := dir.Write(launchdir.Script, script(folder, args), 0o700); err != nil {
 		return done(NoFiles, err.Error())
@@ -145,14 +155,10 @@ func (l *Launcher) launch(ref uint64, t Ticket) tea.Msg {
 	return done(classify(ctx, stderr, err), "")
 }
 
-// here runs claude in this terminal: Bubble Tea gives the terminal up,
-// runs it and takes the terminal back when it ends. No shell: the
-// arguments go to the program as they are.
-func (l *Launcher) here(folder string, args []string, done func(Kind, string) Done) tea.Msg {
-	path, err := l.lookPath("claude")
-	if err != nil {
-		return done(NoClaude, "")
-	}
+// here runs claude, found at path, in this terminal: Bubble Tea gives the
+// terminal up, runs it and takes the terminal back when it ends. No shell:
+// the arguments go to the program as they are.
+func (l *Launcher) here(path, folder string, args []string, done func(Kind, string) Done) tea.Msg {
 	// No context: claude lives as long as the person works in it; the
 	// interface waits meanwhile and has nothing to cancel it for.
 	c := exec.Command(path, args...) //nolint:noctx // see above

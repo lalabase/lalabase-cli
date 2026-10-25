@@ -260,14 +260,16 @@ navigation again.
     iTerm, the script `run` (0700). They are kept like the client's config
     (`internal/privatefs`: the whole way checked, the directory the user's
     alone, every file new and private). A new file is removed if writing,
-    syncing or checking it fails. The token is in `m` alone, as in
+    syncing or checking it fails. `m` is written only once the launch can
+    go on: without `claude` on the `PATH`, or with a directory path no
+    shell takes as typed, there is none. The token is in `m` alone, as in
     `config.toml`: never in a process's arguments, the typed line or the
     script. Claude Code reads `m` once, at start. A launch directory older
     than a day goes before the next launch and when the client quits; a
     younger one stays.
   * **What the status line says:** opening, opened beside `#<n>` (or ended,
     without iTerm; both as a hint in the path's place for 5 seconds), or why not: the address, the folder, the
-    launch files that could not be written (and why), `claude` not on the
+    launch files that could not be made (and why), `claude` not on the
     `PATH`, macOS refusing iTerm control
     (error -1743: allow it in System Settings, Privacy & Security,
     Automation), the session not found, no answer within 5 s (a pane may
@@ -535,7 +537,9 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
 * **CI tests Linux and macOS.** The macOS job runs the terminal and affected
   platform packages with the race detector and a ten-minute job limit,
   the inbox fixture and its tool among them. Vet, lint, fuzzing and license
-  checks run on Linux. A real terminal check at 80 and 120 columns,
+  checks run on Linux. Both jobs install the shells a pane may have (bash,
+  zsh, fish): the launch tests run the typed line in each and fail on the
+  CI when one is missing; locally a missing one is skipped. A real terminal check at 80 and 120 columns,
   including resize and terminal restoration, is still required before
   merge; the fixture above is what it runs against.
 

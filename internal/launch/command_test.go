@@ -172,20 +172,34 @@ func TestTheAppleScriptTakesItsValuesAsArgumentsOnly(t *testing.T) {
 	}
 }
 
-// A real shell reads every quoted value back as it was: sh always, zsh and
-// fish where they are installed (the person's login shell may be either).
+// shells are the shells a pane may run the typed line in: sh, and the
+// login shells a person may have (bash, zsh, fish), each from the PATH.
+// One that is missing is skipped here but fails on the CI, which installs
+// them all (review round 2 of #33, F4).
+func shells(t *testing.T) []string {
+	t.Helper()
+	var found []string
+	for _, name := range []string{"sh", "bash", "zsh", "fish"} {
+		path, err := exec.LookPath(name)
+		switch {
+		case err == nil:
+			found = append(found, path)
+		case name == "sh" || os.Getenv("CI") != "":
+			t.Fatalf("no %s: %v", name, err)
+		default:
+			t.Logf("no %s here: its case is skipped", name)
+		}
+	}
+	return found
+}
+
+// A real shell reads every quoted value back as it was, in each of shells.
 func TestAShellReadsTheQuotedValueBack(t *testing.T) {
 	values := []string{
 		"/Users/anna/dev/it's", "/tmp/$(touch pwned)", "/tmp/`touch pwned`", "/tmp/a b;c&&d|e>f",
 		"/tmp/$HOME/${PATH}/!x", "/tmp/''", "/tmp/caf\u00e9", "~/x", "*", "-n", "#x", wantPrompt,
 	}
-	for _, shell := range []string{"/bin/sh", "/bin/zsh", "/opt/homebrew/bin/fish", "/usr/bin/fish"} {
-		if _, err := os.Stat(shell); err != nil {
-			if shell == "/bin/sh" {
-				t.Fatal(err)
-			}
-			continue
-		}
+	for _, shell := range shells(t) {
 		for _, v := range values {
 			cmd := exec.CommandContext(t.Context(), shell, "-c", "printf '%s' "+quote(v))
 			// A broken quote runs "touch pwned": in a folder of the test.
@@ -229,9 +243,8 @@ pwd -P > "$PROBE/pwd"
 for a in "$@"; do printf '%s\n--\n' "$a"; done > "$PROBE/args"
 `
 
-// The script as /bin/sh runs it, started by the typed line in each shell a
-// pane may have (sh always, zsh and fish where installed): claude runs in
-// the folder with every argument as it was.
+// The script as /bin/sh runs it, started by the typed line in each of
+// shells: claude runs in the folder with every argument as it was.
 func TestTheScriptRunsClaudeInTheFolder(t *testing.T) {
 	root := realTemp(t)
 	bin, probe := filepath.Join(root, "bin"), filepath.Join(root, "probe")
@@ -259,13 +272,7 @@ func TestTheScriptRunsClaudeInTheFolder(t *testing.T) {
 	for _, a := range args {
 		want.WriteString(a + "\n--\n")
 	}
-	for _, shell := range []string{"/bin/sh", "/bin/zsh", "/opt/homebrew/bin/fish", "/usr/bin/fish"} {
-		if _, err := os.Stat(shell); err != nil {
-			if shell == "/bin/sh" {
-				t.Fatal(err)
-			}
-			continue
-		}
+	for _, shell := range shells(t) {
 		_ = os.Remove(filepath.Join(probe, "args"))
 		cmd := exec.CommandContext(t.Context(), shell, "-c", line)
 		cmd.Dir = root

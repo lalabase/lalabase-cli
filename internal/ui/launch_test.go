@@ -205,7 +205,7 @@ func TestEveryOutcomeHasItsStatusText(t *testing.T) {
 		{launch.NoFolder, "/home/anna/dev/gone", "Folder not found: /home/anna/dev/gone"},
 		{launch.NotADirectory, "/home/anna/notes.txt", "Not a folder: /home/anna/notes.txt"},
 		{launch.BadFolder, "/tmp/a\nb", "This folder cannot be typed into a shell: /tmp/a b"},
-		{launch.NoFiles, "mkdir /home/anna/.cache/lalabase/cli/default/l: permission denied", "The files for Claude Code could not be written: mkdir /home/anna/.cache/lalabase/cli/default/l: permission denied"},
+		{launch.NoFiles, "mkdir /home/anna/.cache/lalabase/cli/default/l: permission denied", "No files for Claude Code: mkdir /home/anna/.cache/lalabase/cli/default/l: permission denied"},
 		{launch.NoClaude, "", "claude was not found on the PATH"},
 		{launch.NoPermission, "", "macOS does not let this terminal control iTerm: allow it in System Settings > Privacy & Security > Automation"},
 		{launch.SessionGone, "", "iTerm did not find this session; nothing opened"},

@@ -112,7 +112,8 @@ on a Mac before every merge, by running the tests here.
     their file calls named one by one in `fileSystemImports`, the output
     and goroutine rules hold there too, and no other package gets those
     names. Likewise `launchImports` names what `internal/launch`
-    (`os/exec`) may use; a child process starts nowhere else. No dot imports
+    (`os/exec`) may use, the client's own packages included (it reads no
+    file); a child process starts nowhere else. No dot imports
     anywhere. A function the standard library runs on a goroutine of
     its own (an httptrace hook, a dial, a TLS callback) is set only through
     transport's `onWire` wrappers (`foreignCallbackTypes` in the guard; its

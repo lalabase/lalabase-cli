@@ -154,12 +154,16 @@ var fileSystemImports = map[string]map[string][]string{
 // the values it needs), no output stream. Its files are written by
 // internal/launchdir (fileSystemImports). Nothing else gets any of this,
 // and inspectChildProcesses refuses a child process everywhere else in the
-// client.
+// client. Of the client's own packages it imports only those named here:
+// it reads no file, Claude Code's configuration least of all (C7b), so no
+// reader of the client (safefile, claudecfg, profile) is among them.
 var launchImports = map[string]map[string][]string{
 	"internal/launch": {
-		"os/exec":       {"Cmd", "Command", "CommandContext", "LookPath"},
-		"os":            {"FileInfo", "Stat"},
-		"path/filepath": {"Clean", "IsAbs", "Join"},
+		"os/exec":                           {"Cmd", "Command", "CommandContext", "LookPath"},
+		"os":                                {"FileInfo", "Stat"},
+		"path/filepath":                     {"Clean", "IsAbs", "Join"},
+		clientModule + "internal/launchdir": nil,
+		clientModule + "internal/worker":    nil,
 	},
 }
 
@@ -400,8 +404,13 @@ func inspectReachableImports(name string, file *ast.File, aliases map[string]str
 	}
 	for _, imp := range file.Imports {
 		p, _ := strconv.Unquote(imp.Path.Value)
-		if _, ok := allowed(p); !ok && !strings.HasPrefix(p, clientModule) {
+		_, ok := allowed(p)
+		switch {
+		case ok:
+		case !strings.HasPrefix(p, clientModule):
 			findings = append(findings, name+": import "+p+" is not allowed where the interface reaches")
+		case launchImports[dir] != nil:
+			findings = append(findings, name+": import "+p+" is not among the launch's own packages")
 		}
 	}
 	ast.Inspect(file, func(node ast.Node) bool {

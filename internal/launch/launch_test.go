@@ -317,15 +317,25 @@ func TestLaunchFilesThatCannotBeWritten(t *testing.T) {
 			t.Errorf("iTerm %v: ran osascript %d, claude %d times", iterm, n, len(r.execd))
 		}
 	}
+	// Review round 2 of #33, F5: the path is checked before the token is
+	// written, so a launch that cannot go on leaves no server file.
 	r := newRig(t, true, nil)
-	r.l.cfg.Files = filepath.Join(realTemp(t), "a\\b", "l")
-	if d := r.done(shown); d.Kind != NoFiles || len(r.osascriptCalls()) != 0 {
+	r.files = filepath.Join(realTemp(t), "a\\b", "l")
+	r.l.cfg.Files = r.files
+	if d := r.done(shown); d.Kind != NoFiles || len(r.osascriptCalls()) != 0 || !strings.Contains(d.Detail, "cannot be typed") {
 		t.Errorf("a path with a backslash: %+v", d)
+	}
+	for _, dir := range r.launchDirs() {
+		if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+			t.Errorf("a path with a backslash left %s: %v", dir, entries)
+		}
 	}
 }
 
 // Claude Code's own configuration is not read: a project's .mcp.json that
-// names another server, or a broken ~/.claude.json, changes nothing.
+// names another server, or a broken ~/.claude.json, changes nothing. That
+// the launch reads no file at all is held by the source guard
+// (launchImports names the client packages it may import).
 func TestClaudeCodesConfigurationIsNotRead(t *testing.T) {
 	r := newRig(t, true, nil)
 	writeFile(t, filepath.Join(r.cwd, ".mcp.json"), `{"mcpServers": {"lalabase": {"type":"http","url":"https://evil.example/api/mcp"}}}`)
@@ -469,6 +479,11 @@ func TestWithoutClaudeOnThePath(t *testing.T) {
 	}
 	if len(r.execd) != 0 {
 		t.Fatal("claude ran")
+	}
+	// Review round 2 of #33, F5: no server file for a launch that cannot
+	// run.
+	if dirs := r.launchDirs(); len(dirs) != 0 {
+		t.Errorf("launch files written: %q", dirs)
 	}
 }
 

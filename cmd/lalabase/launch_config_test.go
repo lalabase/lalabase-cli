@@ -2,10 +2,15 @@ package main
 
 import (
 	"context"
+	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/launch"
+	"github.com/gboyke/lalabase-cli/internal/launchdir"
 	"github.com/gboyke/lalabase-cli/internal/profile"
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
@@ -57,5 +62,42 @@ func TestTheLaunchReadsTheCommandsEnvironment(t *testing.T) {
 			t.Errorf("%s: multiplexer %q", key, got.Multiplexer)
 		}
 		delete(vars, key)
+	}
+}
+
+// Review round 2 of #33, F2: when the client quits, the launch files older
+// than a day go and younger ones stay. They are made while the interface
+// runs, so the removal must come after it.
+func TestQuittingPrunesOldLaunchFiles(t *testing.T) {
+	env, errOut := interactiveEnv(t, map[string]string{"LALABASE_URL": "http://127.0.0.1:1", "LALABASE_TOKEN": "dummy"})
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.Home = home
+	root := filepath.Join(home, ".cache", "lalabase", "cli", "env", "l")
+	var old, young string
+	env.runUI = func(context.Context, io.Reader, io.Writer, []string, *worker.Supervisor) error {
+		for _, path := range []*string{&old, &young} {
+			d, err := launchdir.Make(root, time.Now())
+			if err != nil {
+				return err
+			}
+			if _, err := d.Write(launchdir.MCPConfig, []byte("{}"), 0o600); err != nil {
+				return err
+			}
+			*path = d.Path
+		}
+		then := time.Now().Add(-launchdir.MaxAge - time.Hour)
+		return os.Chtimes(old, then, then)
+	}
+	if code := runInteractive("", env); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	if _, err := os.Lstat(old); !os.IsNotExist(err) {
+		t.Errorf("the old launch directory stayed: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(young, launchdir.MCPConfig)); err != nil {
+		t.Errorf("the young launch directory went: %v", err)
 	}
 }

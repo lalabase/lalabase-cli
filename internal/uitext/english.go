@@ -358,7 +358,7 @@ var english = map[ID]string{
 	LaunchNoFolder:      "Folder not found: %s",
 	LaunchNotADirectory: "Not a folder: %s",
 	LaunchBadFolder:     "This folder cannot be typed into a shell: %s",
-	LaunchNoFiles:       "The files for Claude Code could not be written: %s",
+	LaunchNoFiles:       "No files for Claude Code: %s",
 	LaunchNoClaude:      "claude was not found on the PATH",
 	LaunchNoPermission:  "macOS does not let this terminal control iTerm: allow it in System Settings > Privacy & Security > Automation",
 	LaunchSessionGone:   "iTerm did not find this session; nothing opened",
