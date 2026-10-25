@@ -3,10 +3,19 @@
 package launchdir
 
 import (
+	"context"
+	"errors"
+	"io"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
+
+	"github.com/gboyke/lalabase-cli/internal/privatefs"
 )
 
 func realTemp(t *testing.T) string {
@@ -75,6 +84,70 @@ func TestALaunchDirectoryAndItsFiles(t *testing.T) {
 	path, err := d.Write("x", nil, 0o777)
 	if err != nil || mode(t, path).Perm() != 0o700 {
 		t.Errorf("mode 0777 asked: %v, %v", mode(t, path), err)
+	}
+}
+
+func TestWriteRemovesPartialFile(t *testing.T) {
+	// The file-size limit and signal handling must not affect other tests.
+	const helperEnv = "LALABASE_LAUNCHDIR_WRITE_FAILURE_HELPER"
+	if os.Getenv(helperEnv) != "1" {
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, executable, "-test.run=^TestWriteRemovesPartialFile$", "-test.count=1")
+		cmd.Env = append(os.Environ(), helperEnv+"=1")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("partial-write subprocess: %v\n%s", err, out)
+		}
+		return
+	}
+
+	d, err := Make(filepath.Join(realTemp(t), "l"), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var limit syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_FSIZE, &limit); err != nil {
+		t.Fatal(err)
+	}
+	limit.Cur = 32
+	signal.Ignore(syscall.SIGXFSZ)
+	if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &limit); err != nil {
+		t.Fatal(err)
+	}
+	path, err := d.Write(MCPConfig, []byte(strings.Repeat("x", 64)), 0o600)
+	if !errors.Is(err, syscall.EFBIG) && !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("write: %q, %v; want a file-size error", path, err)
+	}
+	if path != "" {
+		t.Errorf("failed write returned path %q", path)
+	}
+	if info, err := os.Lstat(filepath.Join(d.Path, MCPConfig)); !os.IsNotExist(err) {
+		t.Fatalf("partial file remains: %v, %v", info, err)
+	}
+}
+
+func TestWriteRemovesRejectedFile(t *testing.T) {
+	d, err := Make(filepath.Join(realTemp(t), "l"), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reject the completed file at the final privatefs check.
+	uid := privatefs.CurrentUID
+	privatefs.CurrentUID = func() int { return uid() + 1 }
+	t.Cleanup(func() { privatefs.CurrentUID = uid })
+	path, err := d.Write(MCPConfig, []byte("credentials"), 0o600)
+	if err == nil || !strings.Contains(err.Error(), "belongs to another user") {
+		t.Fatalf("write: %q, %v; want an owner check failure", path, err)
+	}
+	if path != "" {
+		t.Errorf("rejected write returned path %q", path)
+	}
+	if info, err := os.Lstat(filepath.Join(d.Path, MCPConfig)); !os.IsNotExist(err) {
+		t.Fatalf("rejected file remains: %v, %v", info, err)
 	}
 }
 

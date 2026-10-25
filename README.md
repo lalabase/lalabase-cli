@@ -259,7 +259,8 @@ navigation again.
     `$XDG_CACHE_HOME`, beside the disk cache), holds `m` (0600) and, in
     iTerm, the script `run` (0700). They are kept like the client's config
     (`internal/privatefs`: the whole way checked, the directory the user's
-    alone, every file new and private). The token is in `m` alone, as in
+    alone, every file new and private). A new file is removed if writing,
+    syncing or checking it fails. The token is in `m` alone, as in
     `config.toml`: never in a process's arguments, the typed line or the
     script. Claude Code reads `m` once, at start. A launch directory older
     than a day goes before the next launch and when the client quits; a

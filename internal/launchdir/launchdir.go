@@ -103,12 +103,13 @@ func (d Dir) Write(name string, data []byte, mode fs.FileMode) (path string, err
 	if err != nil {
 		return "", err
 	}
-	defer func() {
+	// Capture the created path: an error return clears the named result.
+	defer func(createdPath string) {
 		if err != nil {
 			_ = f.Close()
-			_ = os.Remove(path)
+			_ = os.Remove(createdPath)
 		}
-	}()
+	}(path)
 	// Set, not left to the umask: the script must be executable.
 	if err := f.Chmod(mode & 0o700); err != nil {
 		return "", err
