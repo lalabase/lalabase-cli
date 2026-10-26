@@ -94,8 +94,10 @@ type facts struct {
 	known   bool
 	session string
 	// subagent: the event comes from a subagent (an agent_id that is not
-	// empty), which runs beside the session in the background.
+	// empty), which runs beside the session; agent is its id when it has
+	// subagentID's form, else "".
 	subagent bool
+	agent    string
 	// restarted: SessionStart after /clear, /resume or /branch, which no
 	// Stop follows; compacted: SessionStart after a compaction, by hand
 	// or in the middle of a turn, which changes no state; restartEnd: a
@@ -123,6 +125,9 @@ func readFacts(r io.Reader) facts {
 	}
 	if serverID.MatchString(in.SessionID) {
 		f.session = in.SessionID
+	}
+	if subagentID.MatchString(in.AgentID) {
+		f.agent = in.AgentID
 	}
 	for _, t := range in.BackgroundTasks {
 		if t.Status == taskRunning {
@@ -213,16 +218,25 @@ func Hook(c HookCall) error {
 	defer unlock()
 	path := filepath.Join(c.Dir, c.Agent+stateSuffix)
 	old, _ := readState(path)
-	if subagentTool(c.Event, f) && (old.State == stateNames[WaitingForApproval] || old.State == stateNames[WaitingForYou]) {
-		// A background subagent's tool answers nothing the session waits
-		// for: the approval or the question stays open.
+	if subagentTool(c.Event, f) && (old.State == stateNames[WaitingForApproval] || old.State == stateNames[WaitingForYou]) &&
+		(f.agent == "" || f.agent != old.Waiter) {
+		// Another subagent's tool answers nothing the state waits for: the
+		// approval or the question stays open. The tool of the subagent
+		// that asked (one in the foreground hands its prompts to the
+		// person) follows the answer.
 		return nil
 	}
-	if does == keep && old.State != "" {
-		// Kept with its time; without one before it, the event's.
-		state, _ = stateNamed(old.State)
+	waiter := ""
+	if c.Event == PermissionRequest {
+		waiter = f.agent
 	}
-	rec := stateRecord{Format: FormatVersion, State: stateNames[state], Changed: c.Now.UTC(), Session: old.Session, PID: old.PID, Start: old.Start}
+	if does == keep && old.State != "" {
+		// Kept with its time and its waiter; without one before it, the
+		// event's.
+		state, _ = stateNamed(old.State)
+		waiter = old.Waiter
+	}
+	rec := stateRecord{Format: FormatVersion, State: stateNames[state], Changed: c.Now.UTC(), Session: old.Session, PID: old.PID, Start: old.Start, Waiter: waiter}
 	if old.State == rec.State && !old.Changed.IsZero() {
 		// The same state goes on: its age counts from when it began.
 		rec.Changed = old.Changed
@@ -241,7 +255,7 @@ func Hook(c HookCall) error {
 	return replace(c.Dir, path, rec)
 }
 
-// subagentTool: a tool event of a background subagent, not of the session.
+// subagentTool: a tool event of a subagent, not of the session.
 func subagentTool(event string, f facts) bool {
 	return f.subagent && (event == PreToolUse || event == PostToolUse)
 }
@@ -289,6 +303,9 @@ func readState(path string) (stateRecord, error) {
 	}
 	if r.Session != "" && !serverID.MatchString(r.Session) {
 		r.Session = ""
+	}
+	if r.Waiter != "" && !subagentID.MatchString(r.Waiter) {
+		r.Waiter = ""
 	}
 	if r.PID < 0 || r.PID > maxPID {
 		r.PID, r.Start = 0, 0

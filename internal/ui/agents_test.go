@@ -246,3 +246,36 @@ func TestALaunchsEndDuringAReadIsReadAgain(t *testing.T) {
 		t.Fatal("reading sleeps with an agent")
 	}
 }
+
+// Review round 4 of #34, F3: a failed read hides its agents but keeps
+// reading, so the agents come back once the directory reads again; only a
+// read that succeeds and finds none lets reading sleep.
+func TestAFailedReadKeepsReading(t *testing.T) {
+	h := newHarness(t)
+	f := h.withWatcher(agentOn(6, agents.Working, h.now))
+	h.start()
+	f.mu.Lock()
+	f.err = errors.New("the directory cannot be read")
+	f.mu.Unlock()
+	h.due()
+	if len(h.m.app.agents.list) != 0 {
+		t.Fatalf("a failed read shows agents: %+v", h.m.app.agents.list)
+	}
+	if h.m.app.agents.until.IsZero() {
+		t.Fatal("reading sleeps after a failed read")
+	}
+	f.mu.Lock()
+	f.err = nil
+	f.mu.Unlock()
+	h.due()
+	if got := h.m.app.agents.list; len(got) != 1 || got[0].State != agents.Working {
+		t.Fatalf("the agent did not come back: %+v", got)
+	}
+	f.mu.Lock()
+	f.agents = nil
+	f.mu.Unlock()
+	h.due()
+	if !h.m.app.agents.until.IsZero() {
+		t.Fatal("reading goes on after a read that found no agent")
+	}
+}

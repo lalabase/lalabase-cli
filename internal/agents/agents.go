@@ -3,9 +3,12 @@
 // of the client's own (Claude's session id changes with /clear), and its
 // state as the session's hooks report it.
 //
-// Where: <cache root>/<profile>/a/, beside the launch directories (l/,
-// internal/launchdir) and apart from them: an agent outlives a launch
+// Where: <cache root>/<profile>/a/<server>/, beside the launch directories
+// (l/, internal/launchdir) and apart from them: an agent outlives a launch
 // directory's day. Neither launchdir.Prune nor the disk cache touches it.
+// <server> (ServerDir) keeps the agents of one server apart from
+// another's: a profile pointed at a staging copy of a database must not
+// show the first server's agents at tickets with the same ids.
 // Per agent:
 //
 //   - <agent id>.launch.json, written once by the launch (created
@@ -49,6 +52,7 @@ package agents
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"os"
@@ -86,6 +90,10 @@ var idForm = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4
 // case.
 var serverID = regexp.MustCompile(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`)
 
+// subagentID is a subagent's agent_id from Claude Code ("a" and 16 hex
+// digits in 2.1.310), taken only in this form: it is compared, never shown.
+var subagentID = regexp.MustCompile(`^[0-9A-Za-z_-]{1,64}$`)
+
 // NewID is a random UUID (version 4): an agent's id, or the session id a
 // launch hands Claude Code.
 func NewID() (string, error) {
@@ -97,6 +105,15 @@ func NewID() (string, error) {
 	b[8] = b[8]&0x3f | 0x80
 	h := hex.EncodeToString(b[:])
 	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32], nil
+}
+
+// ServerDir is the directory of one server's agents in dir, the
+// profile's agents directory: 16 hex digits of the SHA-256 of the
+// server's normalised address (cache.NormalServer), so the address itself
+// is no name on disk.
+func ServerDir(dir, server string) string {
+	sum := sha256.Sum256([]byte(server))
+	return filepath.Join(dir, hex.EncodeToString(sum[:8]))
 }
 
 // ValidID says whether s has the form of an agent's id.

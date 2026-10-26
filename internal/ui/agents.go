@@ -54,8 +54,9 @@ func (a *app) readAgents() tea.Cmd {
 // receiveAgents takes the newest read: its agents (none when it failed:
 // what cannot be read is not shown), the spinner one frame on while one
 // works, and the next read in agentsEvery by the model's clock, while
-// there is an agent or a launch runs. Otherwise reading sleeps until the
-// next launch.
+// there is an agent, a launch runs or the read failed (the agents come
+// back once the directory reads again). Only a read that found none
+// lets reading sleep until the next launch.
 func (a *app) receiveAgents(s agents.Snapshot) tea.Cmd {
 	if !a.agents.reading || s.Ref != a.agents.ref {
 		return nil
@@ -75,7 +76,7 @@ func (a *app) receiveAgents(s agents.Snapshot) tea.Cmd {
 		a.agents.again = false
 		return a.readAgents()
 	}
-	if (len(a.agents.list) == 0 && !a.launch.busy) || a.deps.Events == nil {
+	if (s.Err == nil && len(a.agents.list) == 0 && !a.launch.busy) || a.deps.Events == nil {
 		return nil
 	}
 	now := a.now()

@@ -111,7 +111,7 @@ func TestPTYLaunchRunsClaudeHereAndComesBack(t *testing.T) {
 	server := "lalabase_c7_" + filepath.Base(launches[0])[:8]
 	// C9a: the session id of the agent's record, and the settings file
 	// beside the server file.
-	recorded, err := agents.Read(filepath.Join(home, ".cache", "lalabase", "cli", "default", agents.Dir), nil)
+	recorded, err := agents.Read(testAgentsDir(home, url), nil)
 	if err != nil || len(recorded) != 1 || recorded[0].Ticket != inboxfixture.TicketLogin || recorded[0].Organisation != inboxfixture.OrgA || recorded[0].Pane != "" {
 		t.Fatalf("agents %+v, %v", recorded, err)
 	}

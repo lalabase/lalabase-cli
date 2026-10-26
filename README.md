@@ -306,7 +306,8 @@ navigation again.
     and no token, asks no server, and of its environment reads
     `CLAUDE_PID` alone. Of the event's input, which carries the prompt and
     paths, it takes six checked values and shows none: the session id,
-    whether a tool event carries a subagent's `agent_id`, whether
+    a subagent's `agent_id` (so the tools of the subagent that asked for
+    an approval end the wait, another's do not), whether
     `SessionStart`'s source is `clear`, `resume`, `fork` or `compact`,
     whether `SessionEnd`'s reason is one of the first three, whether a
     permission request
@@ -319,8 +320,11 @@ navigation again.
     an agents directory with a character no shell takes as typed (as for
     the folder above), or a ticket without its organisation, launches
     without hooks, and the status line says why.
-  * **Where the files are.** `~/.cache/lalabase/cli/<profile>/a/` (or under
-    `$XDG_CACHE_HOME`), beside the launch directories and apart from them:
+  * **Where the files are.** `~/.cache/lalabase/cli/<profile>/a/<server>/`
+    (or under `$XDG_CACHE_HOME`; `<server>` is 16 hex digits of the hash
+    of the profile's server address, so a profile pointed at another
+    server, a staging copy with the same ticket ids, shows none of the
+    first server's agents), beside the launch directories and apart from them:
     per agent `<id>.launch.json` (the ticket's address, the pane, written
     once by the launch), `<id>.state.json` (the state, when it began, the
     latest session id, the pid and its start time, replaced whole by the

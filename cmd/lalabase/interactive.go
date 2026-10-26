@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/api"
+	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/diskcache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/launch"
@@ -136,10 +137,17 @@ func launchConfig(env Env, p profile.Profile, mcp string, sup *worker.Supervisor
 // disk cache: <cache root>/<profile>/l. "" when there is none.
 func launchFiles(env Env, p profile.Profile) string { return profileSubdir(env, p, "l") }
 
-// agentsFiles is the directory of the profile's agents (C9a), beside the
-// launch files and apart from them: <cache root>/<profile>/a. "" when there
-// is none.
-func agentsFiles(env Env, p profile.Profile) string { return profileSubdir(env, p, agents.Dir) }
+// agentsFiles is the directory of the profile's agents on its server
+// (C9a), beside the launch files and apart from them:
+// <cache root>/<profile>/a/<server>. "" when there is none.
+func agentsFiles(env Env, p profile.Profile) string {
+	dir := profileSubdir(env, p, agents.Dir)
+	server, ok := cache.NormalServer(p.URL)
+	if dir == "" || !ok {
+		return ""
+	}
+	return agents.ServerDir(dir, server)
+}
 
 func profileSubdir(env Env, p profile.Profile, name string) string {
 	dir, err := diskcache.ProfileDir(diskcache.Root(env.Getenv, env.Home), p.Name)

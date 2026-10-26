@@ -35,8 +35,10 @@ func TestTheLaunchReadsTheCommandsEnvironment(t *testing.T) {
 	got := launchConfig(env, p, mcp, sup)
 	want := launch.Config{
 		Supervisor: sup, Home: "/Users/anna", Cwd: "/Users/anna/dev", MCP: mcp, Token: "lalab_pat_X", Folders: folders,
-		Files:  "/Users/anna/.cache/lalabase/cli/default/l",
-		Agents: "/Users/anna/.cache/lalabase/cli/default/a", Executable: "/opt/lalabase/bin/lalabase",
+		Files: "/Users/anna/.cache/lalabase/cli/default/l",
+		// The agents of the profile on its server: 16 hex digits of the
+		// SHA-256 of "https://lalabase.com".
+		Agents: "/Users/anna/.cache/lalabase/cli/default/a/7e64fbe1cb7bbe56", Executable: "/opt/lalabase/bin/lalabase",
 		TermProgram: "iTerm.app", SessionID: "w0t1p2:FCB46015-2039-451D-82C2-59CE4353910D",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -45,7 +47,7 @@ func TestTheLaunchReadsTheCommandsEnvironment(t *testing.T) {
 	// XDG_CACHE_HOME moves the files with the disk cache; a profile name
 	// that cannot name a directory has none.
 	vars["XDG_CACHE_HOME"] = "/Users/anna/caches"
-	if got := launchConfig(env, p, mcp, sup); got.Files != "/Users/anna/caches/lalabase/cli/default/l" || got.Agents != "/Users/anna/caches/lalabase/cli/default/a" {
+	if got := launchConfig(env, p, mcp, sup); got.Files != "/Users/anna/caches/lalabase/cli/default/l" || got.Agents != "/Users/anna/caches/lalabase/cli/default/a/7e64fbe1cb7bbe56" {
 		t.Errorf("files %q, agents %q", got.Files, got.Agents)
 	}
 	delete(vars, "XDG_CACHE_HOME")

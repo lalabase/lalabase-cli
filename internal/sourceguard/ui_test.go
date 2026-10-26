@@ -150,6 +150,7 @@ var fileSystemImports = map[string]map[string][]string{
 		"io/fs":                 nil,
 		"path/filepath":         {"IsAbs", "Join"},
 		"crypto/rand":           {"Read"},
+		"crypto/sha256":         nil,
 		"encoding/hex":          nil,
 		"golang.org/x/sys/unix": {"SysctlKinfoProcSlice"},
 	},

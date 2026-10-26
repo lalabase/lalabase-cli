@@ -59,6 +59,8 @@ type launchRecord struct {
 
 // stateRecord is <agent id>.state.json. Start is the process's start time
 // in the platform's own unit, compared, never shown; 0 when unknown.
+// Waiter is the subagent whose approval or question the state waits for,
+// "" for the session's own.
 type stateRecord struct {
 	Format  int       `json:"format"`
 	State   string    `json:"state"`
@@ -66,4 +68,5 @@ type stateRecord struct {
 	Session string    `json:"session"`
 	PID     int       `json:"pid"`
 	Start   int64     `json:"start"`
+	Waiter  string    `json:"waiter,omitempty"`
 }

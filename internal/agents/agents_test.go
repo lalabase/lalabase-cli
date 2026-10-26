@@ -728,6 +728,44 @@ func TestASubagentsToolsKeepAnOpenWait(t *testing.T) {
 	}
 }
 
+// Review round 4 of #34, F1: a subagent in the foreground hands its own
+// approvals and questions to the person. Its own tool after the answer
+// works again; another subagent's tool, or one whose agent_id has no form
+// the hook takes, leaves the wait open.
+func TestASubagentsOwnWaitEndsWithItsTool(t *testing.T) {
+	const (
+		ask     = `{"agent_id":"a06151abf02cc81f9","tool_name":"Write"}`
+		mine    = `{"agent_id":"a06151abf02cc81f9","tool_name":"Read"}`
+		other   = `{"agent_id":"a11fbd18b849cf8c5","tool_name":"Read"}`
+		strange = `{"agent_id":"a 1;x","tool_name":"Read"}`
+	)
+	for _, c := range []struct {
+		name          string
+		before, input string
+		event         string
+		want          string
+	}{
+		{"its own post", ask, mine, PostToolUse, "working"},
+		{"its own pre", ask, mine, PreToolUse, "working"},
+		{"its own question, its post", `{"agent_id":"a06151abf02cc81f9","tool_name":"AskUserQuestion"}`, mine, PostToolUse, "working"},
+		{"another subagent's post", ask, other, PostToolUse, "approval"},
+		{"another subagent's pre", ask, other, PreToolUse, "approval"},
+		{"the session's own post", ask, `{"tool_name":"Write"}`, PostToolUse, "working"},
+		{"an id of no form, twice", `{"agent_id":"a 1;x","tool_name":"Write"}`, strange, PostToolUse, "approval"},
+		{"the session's wait, a subagent's post", `{"tool_name":"Write"}`, mine, PostToolUse, "approval"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := agentsDir(t)
+			hook(t, dir, UserPromptSubmit, `{}`, live(4242, 7))
+			hook(t, dir, PermissionRequest, c.before, live(4242, 7))
+			hook(t, dir, c.event, c.input, live(4242, 7))
+			if got := stateOf(t, dir); got.State != c.want {
+				t.Fatalf("%s: %+v, want %s", c.name, got, c.want)
+			}
+		})
+	}
+}
+
 // Review round 3 of #34, F1: a compaction, by hand or by Claude Code in
 // the middle of a turn, changes no state: it takes the new session id and
 // the pid, the state and its time stay.

@@ -29,7 +29,7 @@ func TestPTYAgentsInTheListAndTheHead(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			dir := filepath.Join(home, ".cache", "lalabase", "cli", "default", agents.Dir)
+			dir := testAgentsDir(home, url)
 			if err := agents.Prepare(dir); err != nil {
 				t.Fatal(err)
 			}
