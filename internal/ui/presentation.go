@@ -82,6 +82,7 @@ func (m Model) screen() present.Screen {
 		Chooser: m.chooserColumn(),
 		List:    m.listColumn(),
 		Object:  m.objectColumn(),
+		Agents:  m.agentsColumn(),
 		Help:    m.help(),
 	}
 	s.Identity = m.identity()

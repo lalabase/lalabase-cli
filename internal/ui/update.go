@@ -63,8 +63,11 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case gateway.TicketsResult:
 		return m.receiveTickets(msg)
 	case gateway.TicketResult:
-		if msg.Area == gateway.Expansion {
+		switch msg.Area {
+		case gateway.Expansion:
 			return m.receiveExpansion(msg)
+		case gateway.Titles:
+			return m.receiveTitle(msg)
 		}
 		return m.receiveDetail(msg)
 	case gateway.MarkReadResult:

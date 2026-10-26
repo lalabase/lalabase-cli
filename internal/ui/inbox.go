@@ -418,6 +418,8 @@ func (m Model) retryOrRefresh() (Model, tea.Cmd) {
 	if a.steps[stepCounters].state == ready {
 		cmds = append(cmds, a.issueCounters())
 	}
+	// The titles of the agents under the chooser whose read failed (C9b).
+	cmds = append(cmds, a.retryTitles())
 	return m, tea.Batch(cmds...)
 }
 
@@ -456,5 +458,5 @@ func (m Model) canRefresh() bool {
 	if m.focus != view.Navigation && a.projects != nil {
 		return sectionFree
 	}
-	return a.steps[stepOrganisations].state == ready || (a.steps[stepCounters].state == ready && countersFree)
+	return a.steps[stepOrganisations].state == ready || (a.steps[stepCounters].state == ready && countersFree) || a.titlesFailed()
 }

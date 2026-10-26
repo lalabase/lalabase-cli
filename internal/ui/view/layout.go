@@ -6,6 +6,9 @@ const (
 	Navigation Pane = iota
 	List
 	Object
+	// Agents is the Agents area (C9b): under the organisations in three
+	// columns, in the list's place in two, alone in one.
+	Agents
 )
 
 // Geometry is the frame of one render: the terminal, the columns and the
@@ -29,8 +32,11 @@ func Visible(g Geometry, focus Pane) []Pane {
 	if g.Columns == 1 {
 		return []Pane{focus}
 	}
-	if focus == Navigation {
+	switch focus {
+	case Navigation:
 		return []Pane{Navigation, Object}
+	case Agents:
+		return []Pane{Agents, Object}
 	}
 	return []Pane{List, Object}
 }
@@ -39,7 +45,7 @@ func Visible(g Geometry, focus Pane) []Pane {
 // included.
 func ColumnWidth(g Geometry, which Pane) int {
 	switch {
-	case g.Columns == 3 && which == Navigation:
+	case g.Columns == 3 && (which == Navigation || which == Agents):
 		return g.NavigationWidth
 	case g.Columns > 1 && which == Object:
 		return g.ObjectWidth

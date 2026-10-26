@@ -24,6 +24,9 @@ type Screen struct {
 	Chooser Column
 	List    Column
 	Object  Column
+	// Agents is the Agents area under the organisations (C9b): one row
+	// per agent; no rows while there is none, and then no area.
+	Agents Column
 	// Help are the bindings that act right now, in the order they are shown.
 	Help []KeyHelp
 	// AgentCounts is the summary of the agents at the header's right

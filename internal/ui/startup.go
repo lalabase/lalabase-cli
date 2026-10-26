@@ -96,11 +96,12 @@ func (m Model) receiveStartup(r gateway.StartupResult) (Model, tea.Cmd) {
 	case stepTools:
 		report := features.Detect(a.server, r.Tools)
 		a.report = &report
+		// The titles of the agents' tickets wait for the ticket tool.
 		if !a.inboxOn() {
 			a.steps[stepCounters].state = unsupported
-			return m, nil
+			return m, a.requestTitles()
 		}
-		return m, a.issueCounters()
+		return m, tea.Batch(a.issueCounters(), a.requestTitles())
 	case stepOrganisations:
 		a.directory = r.Organisations
 		if a.highlight != "" && a.organisation(a.highlight) == nil {

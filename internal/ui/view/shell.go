@@ -47,6 +47,10 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 	panes := Visible(g, focus)
 	columns := make([][]string, len(panes))
 	for i, p := range panes {
+		if p == Navigation {
+			columns[i] = navigation(s, ColumnWidth(g, p), g.BodyHeight, focus, method)
+			continue
+		}
 		columns[i] = pane(column(s, p), ColumnWidth(g, p), g.BodyHeight, p == focus, method)
 	}
 	for row := 0; row < g.BodyHeight; row++ {
@@ -120,6 +124,8 @@ const statusSeparator = " | "
 // it.
 func contextLine(s present.Screen, g Geometry, focus Pane) string {
 	switch {
+	case focus == Agents && g.Columns < 3:
+		return s.Agents.Title.String()
 	case g.Columns == 1:
 		step := uitext.Inline(uitext.PathStep).String()
 		context := s.Crumbs[0].String()
@@ -183,8 +189,38 @@ func column(s present.Screen, which Pane) present.Column {
 		return s.List
 	case Object:
 		return s.Object
+	case Agents:
+		return s.Agents
 	}
 	return s.Chooser
+}
+
+// navigation is the navigation pane: the organisations, and under them,
+// while an agent exists, the Agents area in a frame of its own
+// (AgentsHeight), focused when the focus is in it.
+func navigation(s present.Screen, width, height int, focus Pane, method ansi.Method) []string {
+	area := AgentsHeight(s.Agents, height)
+	lines := pane(s.Chooser, width, height-area, focus == Navigation, method)
+	if area == 0 {
+		return lines
+	}
+	return append(lines, pane(s.Agents, width, area, focus == Agents, method)...)
+}
+
+// AgentsHeight is the height of the Agents area under the organisations
+// in a navigation pane of height lines: its frame and its rows, at most
+// half the pane; 0 without rows, or where half the pane holds no frame
+// with a row in it. Beyond that its rows scroll with the cursor.
+func AgentsHeight(c present.Column, height int) int {
+	limit := height / 2
+	if len(c.Rows) == 0 || limit < frameLines+1 {
+		return 0
+	}
+	need := frameLines + len(c.Rows)*rowHeight(c, limit-frameLines)
+	if c.Notice.String() != "" {
+		need++
+	}
+	return min(need, limit)
 }
 
 // Capacity is the number of rows (or lines of text) a column of this

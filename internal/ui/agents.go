@@ -25,7 +25,8 @@ const agentsEvery = 500 * time.Millisecond
 // agentsState is what the model knows of the agents: the newest read's
 // number, whether a read is out and whether another is owed after it, the
 // deadline of the next one (zero while reading sleeps), the agents of the
-// newest read, and the spinner's frame.
+// newest read, the spinner's frame, and the agent the Agents area's
+// cursor is on (C9b).
 type agentsState struct {
 	ref     uint64
 	reading bool
@@ -33,6 +34,7 @@ type agentsState struct {
 	until   time.Time
 	list    []agents.Agent
 	frame   int
+	cursor  string
 }
 
 // readAgents issues a read unless one is out or due already: one chain of
@@ -73,16 +75,18 @@ func (a *app) receiveAgents(s agents.Snapshot) tea.Cmd {
 			break
 		}
 	}
+	// A new agent's title, if the session lacks it, is read once.
+	titles := a.requestTitles()
 	if a.agents.again {
 		a.agents.again = false
-		return a.readAgents()
+		return tea.Batch(titles, a.readAgents())
 	}
 	if (s.Err == nil && len(a.agents.list) == 0 && !a.launch.busy) || a.deps.Events == nil {
-		return nil
+		return titles
 	}
 	now := a.now()
 	a.agents.until = now.Add(agentsEvery)
-	return a.deps.Events.Expiry(a.agents.until, now)
+	return tea.Batch(titles, a.deps.Events.Expiry(a.agents.until, now))
 }
 
 // agentsDue is the deadline of the next read: it reads, if it is still
