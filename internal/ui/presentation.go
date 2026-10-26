@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/features"
 	"github.com/gboyke/lalabase-cli/internal/present"
@@ -209,15 +210,24 @@ func (m Model) chooserColumn() present.Column {
 	c.Rows = []present.Row{}
 	heading := ""
 	first := true
+	// While an agent exists, every row reserves the two cells of an
+	// agent's glyph (C9b), so the sections stay indented under their
+	// heading; an organisation's heading holds its most urgent agent's,
+	// "All organisations" and the sections hold none.
+	marked := len(a.agents.list) > 0
 	for _, e := range a.entries() {
 		if first || e.org != heading {
-			c.Rows = append(c.Rows, present.Row{Primary: present.NewInline(e.name)})
+			row := present.Row{Primary: present.NewInline(e.name), Marked: marked}
+			if ag, ok := a.mostUrgent(func(ag agents.Agent) bool { return e.org != "" && ag.Organisation == e.org }); ok {
+				row.Mark, row.MarkStyle = present.NewInline(a.glyph(ag.State)), agentStyles[ag.State]
+			}
+			c.Rows = append(c.Rows, row)
 			heading, first = e.org, false
 		}
 		if e.org == a.highlight && e.section == a.highlightSection {
 			c.Cursor = len(c.Rows)
 		}
-		row := present.Row{Primary: present.NewInline("  " + uitext.Inline(sectionName(e.section)).String())}
+		row := present.Row{Primary: present.NewInline("  " + uitext.Inline(sectionName(e.section)).String()), Marked: marked}
 		if e.section == sectionInbox {
 			cnt := a.countOf(e.org)
 			row.Trailing = uitext.Inline(uitext.UnknownCount)

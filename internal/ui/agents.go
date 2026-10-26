@@ -98,10 +98,16 @@ func (a *app) agentsDue(until time.Time) tea.Cmd {
 // agentAt is the most urgent agent at a ticket; ok is false when it has
 // none.
 func (a *app) agentAt(ticket string) (agents.Agent, bool) {
+	return a.mostUrgent(func(ag agents.Agent) bool { return ag.Ticket == ticket })
+}
+
+// mostUrgent is the most urgent of the agents that match, of two equally
+// urgent the first read; ok is false when none matches.
+func (a *app) mostUrgent(match func(agents.Agent) bool) (agents.Agent, bool) {
 	var best agents.Agent
 	found := false
 	for _, ag := range a.agents.list {
-		if ag.Ticket != ticket {
+		if !match(ag) {
 			continue
 		}
 		if !found || ag.State.Urgent(best.State) {

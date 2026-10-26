@@ -60,18 +60,48 @@ func sortTicketRequests(f *inboxfixture.Fixture) ticketRequests {
 // pane whenever it shows, so the lines start with it, inside its frame
 // and the space within.
 func cursorUnder(lines []string, heading, section string) bool {
-	lines = append([]string(nil), lines...)
+	rows := make([][]rune, len(lines))
 	for i := range lines {
-		lines[i] = strings.TrimPrefix(lines[i], "\u2502 ")
+		rows[i] = []rune(strings.TrimPrefix(lines[i], "\u2502 "))
 	}
-	for i, line := range lines {
-		if !strings.HasPrefix(line, "  "+heading) {
+	// The headings start where "All organisations" does: two cells in,
+	// four while the chooser reserves an agent's glyph (C9b), which then
+	// stands before a heading. The sections are two cells further in.
+	at := -1
+	for _, r := range rows {
+		if i := strings.Index(string(r), "All organisations"); i >= 0 {
+			at = len([]rune(string(r)[:i]))
+			break
+		}
+	}
+	if at < 0 {
+		return false
+	}
+	from := func(r []rune, n int) string {
+		if len(r) < n {
+			return ""
+		}
+		return string(r[n:])
+	}
+	blank := func(r []rune, a, b int) bool {
+		if len(r) < b {
+			return false
+		}
+		for _, c := range r[a:b] {
+			if c != ' ' {
+				return false
+			}
+		}
+		return true
+	}
+	for i, r := range rows {
+		if !blank(r, 0, 2) || !strings.HasPrefix(from(r, at), heading) {
 			continue
 		}
 		// The section rows of the heading follow it, indented, until the
 		// next heading.
-		for j := i + 1; j < len(lines) && (strings.HasPrefix(lines[j], "    ") || strings.HasPrefix(lines[j], ">   ")); j++ {
-			if strings.HasPrefix(lines[j], ">   "+section) {
+		for j := i + 1; j < len(rows) && len(rows[j]) > at+2 && (rows[j][0] == ' ' || rows[j][0] == '>') && blank(rows[j], 1, at+2) && rows[j][at+2] != ' '; j++ {
+			if rows[j][0] == '>' && strings.HasPrefix(from(rows[j], at+2), section) {
 				return true
 			}
 		}

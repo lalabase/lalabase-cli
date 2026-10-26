@@ -116,3 +116,51 @@ func TestTheHeaderSumsTheAgentsUp(t *testing.T) {
 		}
 	}
 }
+
+// An organisation's heading carries the glyph of its most urgent agent,
+// in the two cells a ticket list reserves, which every row of the chooser
+// keeps while an agent exists (the sections stay indented under their
+// heading); "All organisations" and the rows of the sections carry none.
+// Without an agent nothing is reserved.
+func TestAnOrganisationCarriesItsMostUrgentAgent(t *testing.T) {
+	h := newHarness(t)
+	f := h.withWatcher(
+		agentIn(1, orgA, 1, agents.Working, h.now),
+		agentIn(2, orgA, 2, agents.WaitingForApproval, h.now),
+		agentIn(3, orgB, 3, agents.Ended, h.now),
+	)
+	h.start()
+	headings := map[string]present.Row{}
+	for _, r := range h.m.chooserColumn().Rows {
+		name := strings.TrimSpace(r.Primary.String())
+		switch name {
+		case "Inbox", "Tickets":
+			if !r.Marked || r.Mark.String() != "" {
+				t.Errorf("a section row: %+v", r)
+			}
+		default:
+			headings[name] = r
+		}
+	}
+	all := headings["All organisations"]
+	if !all.Marked || all.Mark.String() != "" {
+		t.Errorf("All organisations: %+v", all)
+	}
+	for _, o := range h.d.orgs {
+		r, ok := headings[o.Name]
+		if !ok {
+			t.Fatalf("no heading of %s in %v", o.Name, headings)
+		}
+		want, style := map[string]string{orgA: "!", orgB: "✓"}[o.ID], map[string]present.Style{orgA: present.AgentApproval, orgB: present.AgentEnded}[o.ID]
+		if !r.Marked || r.Mark.String() != want || r.MarkStyle != style {
+			t.Errorf("%s: %+v, want %q", o.Name, r, want)
+		}
+	}
+	f.set()
+	h.due()
+	for _, r := range h.m.chooserColumn().Rows {
+		if r.Marked {
+			t.Fatalf("a row is marked without an agent: %+v", r)
+		}
+	}
+}
