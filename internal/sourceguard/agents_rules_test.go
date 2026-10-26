@@ -1,8 +1,12 @@
 package sourceguard
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -126,6 +130,85 @@ func TestTheGuardReadsTheRealAgentsPackage(t *testing.T) {
 			if got := inspectUI(files); len(got) == 0 {
 				t.Errorf("%s with %q passed", name, probe)
 			}
+		}
+	}
+}
+
+// hookFile is `lalabase hook`: it runs inside Claude Code's turn.
+const hookFile = "cmd/lalabase/hook.go"
+
+// inspectHook: the hook's file names no output stream and no printing
+// call, reads the environment through Getenv with the literal CLAUDE_PID
+// alone, and imports no package of the client but internal/agents (no
+// profile, no transport, no cache). Behaviour is tested in cmd/lalabase;
+// this keeps a later edit from adding a path the tests do not take.
+func inspectHook(source string) []string {
+	file, err := parser.ParseFile(token.NewFileSet(), hookFile, source, 0)
+	if err != nil {
+		return []string{err.Error()}
+	}
+	var findings []string
+	for _, imp := range file.Imports {
+		p, _ := strconv.Unquote(imp.Path.Value)
+		if strings.HasPrefix(p, clientModule) && p != clientModule+"internal/agents" {
+			findings = append(findings, hookFile+": imports "+p)
+		}
+		if p == "fmt" || p == "log" || strings.HasPrefix(p, "log/") || p == "os" {
+			findings = append(findings, hookFile+": imports "+p)
+		}
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		switch n := node.(type) {
+		case *ast.Ident:
+			if n.Name == "print" || n.Name == "println" {
+				findings = append(findings, hookFile+": builtin output")
+			}
+		case *ast.SelectorExpr:
+			switch name := n.Sel.Name; {
+			case name == "Stdout" || name == "Stderr" || strings.HasPrefix(name, "Print") || strings.HasPrefix(name, "Fprint"):
+				findings = append(findings, hookFile+": output through "+name)
+			case name == "Environ" || name == "LookupEnv":
+				findings = append(findings, hookFile+": the environment through "+name)
+			}
+		case *ast.CallExpr:
+			if sel, ok := n.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Getenv" {
+				var lit *ast.BasicLit
+				if len(n.Args) == 1 {
+					lit, _ = n.Args[0].(*ast.BasicLit)
+				}
+				if lit == nil || lit.Value != `"CLAUDE_PID"` {
+					findings = append(findings, hookFile+": Getenv of anything but CLAUDE_PID")
+				}
+			}
+		}
+		return true
+	})
+	return findings
+}
+
+func TestTheHookWritesNothingAndReadsOnlyCLAUDEPID(t *testing.T) {
+	sources := repositorySources(t)
+	source, ok := sources[hookFile]
+	if !ok {
+		t.Fatalf("%s is not scanned", hookFile)
+	}
+	if got := inspectHook(source); len(got) != 0 {
+		t.Fatal(got)
+	}
+	for _, probe := range []string{
+		"\nfunc probe(env Env) { env.Stdout.Write(nil) }\n",
+		"\nfunc probe(env Env) { _ = env.Stderr }\n",
+		"\nfunc probe(env Env) { _ = env.Getenv(\"CLAUDE_CODE_MESSAGING_TOKEN\") }\n",
+		"\nfunc probe(env Env) { key := \"CLAUDE_PID\"; _ = env.Getenv(key) }\n",
+		"\nfunc probe() { print(1) }\n",
+	} {
+		if got := inspectHook(source + probe); len(got) == 0 {
+			t.Errorf("missed %q", probe)
+		}
+	}
+	for _, imp := range []string{`"fmt"`, `"os"`, `"log"`, `"` + clientModule + `internal/profile"`, `"` + clientModule + `internal/transport"`} {
+		if got := inspectHook(strings.Replace(source, "import (", "import (\n\t_ "+imp, 1)); len(got) == 0 {
+			t.Errorf("missed import %s", imp)
 		}
 	}
 }

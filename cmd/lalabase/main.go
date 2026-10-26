@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime/debug"
 
+	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/worker"
 	"golang.org/x/term"
 )
@@ -29,6 +30,9 @@ Commands:
                        MCP configuration into a profile
   auth status          show the profiles, who their tokens belong to and what
                        the server supports
+  hook --dir DIR --event EVENT AGENT
+                       record an agent's state; run by Claude Code, from the
+                       hooks of a session started with x
   version              print the version
 `
 
@@ -48,6 +52,8 @@ type Env struct {
 	// runUI replaces the interface in tests; it gets the session's
 	// supervisor, so a test can put work under it.
 	runUI func(context.Context, io.Reader, io.Writer, []string, *worker.Supervisor) error
+	// procs replaces the process table for `lalabase hook` in tests.
+	procs agents.Procs
 }
 
 func main() {
@@ -66,6 +72,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func runWith(args []string, env Env) int {
+	// Before anything else, which might print: the hook writes to no
+	// stream and takes no global flag (C9a).
+	if len(args) > 0 && args[0] == "hook" {
+		return runHook(args[1:], env)
+	}
 	// --version and --help look like flags but are commands.
 	if len(args) > 0 {
 		switch args[0] {
