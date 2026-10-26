@@ -84,6 +84,7 @@ func (m Model) screen() present.Screen {
 		Help:    m.help(),
 	}
 	s.Identity = m.identity()
+	s.AgentCounts = a.agentSummary()
 	s.Context = m.context()
 	s.Status, s.StatusStyle = m.status()
 	return s

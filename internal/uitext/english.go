@@ -256,6 +256,12 @@ const (
 	BarProject
 	BarPeople
 	BarUpdated
+	// C9b: the agents across the organisations.
+	Agents
+	AgentsKey
+	AgentsHelp
+	BarAgent
+	AgentMeta
 	count
 )
 
@@ -390,4 +396,9 @@ var english = map[ID]string{
 	You: "(you)",
 	// The labels of a ticket's meta bar.
 	BarStatus: "Status", BarProject: "Project", BarPeople: "People", BarUpdated: "Updated",
+	// C9b: the header's summary and the area's title, the key that opens
+	// the agents, the meta bar's line of a ticket's agent (its word and
+	// the age of its state).
+	Agents: "Agents", AgentsKey: "A", AgentsHelp: "agents",
+	BarAgent: "Agent", AgentMeta: "%s · %s",
 }

@@ -1,6 +1,7 @@
 package view
 
 import (
+	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -29,12 +30,8 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 		}
 		return strings.Join(lines, "\n")
 	}
-	header := uitext.Inline(uitext.App).String() + " | " + uitext.Inline(uitext.DefaultProfile).String()
-	if s.Identity.String() != "" {
-		header += " | " + s.Identity.String()
-	}
 	context := contextLine(s, g, focus)
-	lines := []string{fit(header, g.Width, method)}
+	lines := []string{headerLine(s, g.Width, method)}
 	switch {
 	case s.Status.String() == "":
 		lines = append(lines, fit(context, g.Width, method))
@@ -61,6 +58,59 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 	}
 	return strings.Join(append(lines, helpLines...), "\n")
 }
+
+// headerLine is the first line: the app, the profile and the identity on
+// the left, the agents' summary at the right end (C9b) when there is one.
+// Where the line is too narrow for both, the identity is cut first; then
+// the word "Agents" goes, then the counts one by one from the least
+// urgent; the app and the profile are never cut for the summary.
+func headerLine(s present.Screen, width int, method ansi.Method) string {
+	base := uitext.Inline(uitext.App).String() + " | " + uitext.Inline(uitext.DefaultProfile).String()
+	header, least := base, base
+	if s.Identity.String() != "" {
+		header += " | " + s.Identity.String()
+		least += " | " + uitext.Inline(uitext.Ellipsis).String()
+	}
+	counts := s.AgentCounts
+	word := width >= summaryWordFrom
+	for len(counts) > 0 {
+		summary := agentSummary(counts, word)
+		room := width - method.StringWidth(summary.plain()) - 1
+		if room >= method.StringWidth(least) {
+			left := fit(header, room, method)
+			return left + strings.Repeat(" ", width-method.StringWidth(left)-method.StringWidth(summary.plain())) + summary.render(width, method)
+		}
+		if word {
+			word = false
+			continue
+		}
+		counts = counts[:len(counts)-1]
+	}
+	return fit(header, width, method)
+}
+
+// summaryWordFrom is the width from which the summary starts with its
+// word: below it the glyphs say it alone.
+const summaryWordFrom = 120
+
+// agentSummary is the summary's line: the word, if any, then per state
+// its glyph in its tone and its count, parted by " · ".
+func agentSummary(counts []present.AgentCount, word bool) screenLine {
+	var l screenLine
+	if word {
+		l = append(l, part{text: uitext.Inline(uitext.Agents).String() + " "})
+	}
+	for i, c := range counts {
+		if i > 0 {
+			l = append(l, part{text: summarySeparator})
+		}
+		l = append(l, part{text: c.Glyph.String(), style: c.Style}, part{text: " " + strconv.Itoa(c.Count)})
+	}
+	return l
+}
+
+// summarySeparator parts the summary's counts.
+const summarySeparator = " · "
 
 // statusSeparator stands between the path and a notice beside it.
 const statusSeparator = " | "

@@ -2,9 +2,11 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/present"
 )
@@ -91,5 +93,26 @@ func TestTheSummaryCountsPerState(t *testing.T) {
 	h.m.app.agents.list = nil
 	if got := h.m.app.agentSummary(); len(got) != 0 {
 		t.Fatalf("%+v", got)
+	}
+}
+
+// The header's first line carries the summary at its right end, never
+// wider than the terminal; below 120 columns without the word.
+func TestTheHeaderSumsTheAgentsUp(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher(agentIn(1, orgA, 1, agents.WaitingForYou, h.now), agentIn(2, orgB, 2, agents.Ended, h.now))
+	h.start()
+	for _, c := range []struct {
+		width int
+		want  string
+	}{{120, "Agents ⣿ 1 · ✓ 1"}, {119, " ⣿ 1 · ✓ 1"}, {80, " ⣿ 1 · ✓ 1"}} {
+		h.m.width = c.width
+		first := strings.Split(ansi.Strip(h.m.View().Content), "\n")[0]
+		if !strings.HasSuffix(first, c.want) || (c.width < 120 && strings.Contains(first, "Agents")) {
+			t.Errorf("%d: %q", c.width, first)
+		}
+		if w := ansi.WcWidth.StringWidth(first); w > c.width {
+			t.Errorf("%d: %d cells", c.width, w)
+		}
 	}
 }
