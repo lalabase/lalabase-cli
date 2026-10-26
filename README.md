@@ -305,8 +305,9 @@ navigation again.
     code shows an error after every answer), reads no profile, no config
     and no token, asks no server, and of its environment reads
     `CLAUDE_PID` alone. Of the event's input, which carries the prompt and
-    paths, it takes five checked values and shows none: the session id,
-    whether `SessionStart`'s source is `clear` or `compact`, whether
+    paths, it takes six checked values and shows none: the session id,
+    whether a tool event carries a subagent's `agent_id`, whether
+    `SessionStart`'s source is `clear` or `compact`, whether
     `SessionEnd`'s reason is `clear`, whether a permission request
     is the question tool `AskUserQuestion`, and how many background tasks
     run; an input larger than 1 MiB or broken is not read, the event
@@ -338,6 +339,8 @@ navigation again.
     | starting | `⠂` | cyan, faint | no hook yet (the folder's trust dialog comes first) |
     | ended | `✓` | green, faint | `SessionEnd`, but for `/clear` |
 
+    A background subagent's tool events (they carry its `agent_id`) leave
+    an open approval or question as it is: the session still waits.
     The age of a lost agent counts from the last state its hooks
     recorded: the client cannot know when the process went.
     The glyph and the word say the state; the tone only weighs it, and

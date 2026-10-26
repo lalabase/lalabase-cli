@@ -31,8 +31,9 @@
 // a check, writes nothing.
 //
 // A hook's input is foreign: it carries the person's prompt and paths. Hook
-// takes five values of it, each compared to a fixed text or checked
+// takes six values of it, each compared to a fixed text or checked
 // against a pattern, and nothing of it is shown: the session id (a UUID),
+// whether a tool event carries a subagent's agent_id (not empty),
 // whether SessionStart's source is "clear" or "compact", whether
 // SessionEnd's reason is "clear", whether a PermissionRequest's
 // tool is AskUserQuestion, and how many background tasks run. The event

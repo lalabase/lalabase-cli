@@ -71,6 +71,7 @@ type HookCall struct {
 // left unread by the decoder.
 type input struct {
 	SessionID       string `json:"session_id"`
+	AgentID         string `json:"agent_id"`
 	Source          string `json:"source"`
 	Reason          string `json:"reason"`
 	ToolName        string `json:"tool_name"`
@@ -79,12 +80,15 @@ type input struct {
 	} `json:"background_tasks"`
 }
 
-// facts are the five values taken of the input, each checked; known is
+// facts are the six values taken of the input, each checked; known is
 // false when the input was missing, too large or no JSON object of these
 // fields, and then only the event decides.
 type facts struct {
 	known   bool
 	session string
+	// subagent: the event comes from a subagent (an agent_id that is not
+	// empty), which runs beside the session in the background.
+	subagent bool
 	// idle: SessionStart after /clear or /compact, which no Stop follows.
 	idle    bool
 	clear   bool
@@ -105,7 +109,7 @@ func readFacts(r io.Reader) facts {
 		return facts{}
 	}
 	f := facts{
-		known: true, idle: in.Source == sourceClear || in.Source == sourceCompact,
+		known: true, subagent: in.AgentID != "", idle: in.Source == sourceClear || in.Source == sourceCompact,
 		clear: in.Reason == reasonClear, ask: in.ToolName == toolAskQuestion,
 	}
 	if serverID.MatchString(in.SessionID) {
@@ -182,6 +186,11 @@ func Hook(c HookCall) error {
 	defer unlock()
 	path := filepath.Join(c.Dir, c.Agent+stateSuffix)
 	old, _ := readState(path)
+	if subagentTool(c.Event, f) && (old.State == stateNames[WaitingForApproval] || old.State == stateNames[WaitingForYou]) {
+		// A background subagent's tool answers nothing the session waits
+		// for: the approval or the question stays open.
+		return nil
+	}
 	rec := stateRecord{Format: FormatVersion, State: stateNames[state], Changed: c.Now.UTC(), Session: old.Session, PID: old.PID, Start: old.Start}
 	if old.State == rec.State && !old.Changed.IsZero() {
 		// The same state goes on: its age counts from when it began.
@@ -199,6 +208,11 @@ func Hook(c HookCall) error {
 		}
 	}
 	return replace(c.Dir, path, rec)
+}
+
+// subagentTool: a tool event of a background subagent, not of the session.
+func subagentTool(event string, f facts) bool {
+	return f.subagent && (event == PreToolUse || event == PostToolUse)
 }
 
 func parsePID(s string) (int, bool) {

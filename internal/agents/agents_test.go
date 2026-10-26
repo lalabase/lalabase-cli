@@ -313,13 +313,13 @@ func TestTheTimeIsTheChangeOfTheState(t *testing.T) {
 	}
 }
 
-// Nothing but the five facts and the pid reaches a file: the prompt, the
+// Nothing but the six facts and the pid reaches a file: the prompt, the
 // paths, terminal escapes and a messaging token in the input stay out.
 func TestNothingElseOfTheInputIsKept(t *testing.T) {
 	dir := agentsDir(t)
 	secrets := []string{"PROMPT-SECRET", "/home/someone/private", "\x1b]52;c;cGFzdGU=\x07", "TOKEN-SECRET", "\u202e"}
 	input, err := json.Marshal(map[string]any{
-		"session_id": sessionID, "source": secrets[1], "prompt": secrets[0], "cwd": secrets[1], "transcript_path": secrets[1] + "/t.jsonl",
+		"session_id": sessionID, "agent_id": secrets[0], "source": secrets[1], "prompt": secrets[0], "cwd": secrets[1], "transcript_path": secrets[1] + "/t.jsonl",
 		"tool_name": secrets[2], "tool_input": map[string]string{"command": secrets[2]}, "reason": secrets[4],
 		"background_tasks":            []map[string]string{{"status": "running", "description": secrets[0]}},
 		"CLAUDE_CODE_MESSAGING_TOKEN": secrets[3],
@@ -667,5 +667,43 @@ func TestUrgency(t *testing.T) {
 				t.Errorf("%d before %d: %v", order[i], order[j], order[i].Urgent(order[j]))
 			}
 		}
+	}
+}
+
+// A background subagent's tools come with its agent_id while the main
+// session may wait for the person: an approval or a question still open
+// stays, the subagent's tool events change nothing then. Its tools while
+// the session works keep it working; the main session's own tool after an
+// approval works again.
+func TestASubagentsToolsKeepAnOpenWait(t *testing.T) {
+	const sub = `{"agent_id":"a1b2c3","agent_type":"Explore","tool_name":"Read"}`
+	for _, c := range []struct {
+		name         string
+		before       string
+		event, input string
+		want         string
+	}{
+		{"approval, subagent's post", PermissionRequest, PostToolUse, sub, "approval"},
+		{"approval, subagent's pre", PermissionRequest, PreToolUse, sub, "approval"},
+		{"question, subagent's post", PermissionRequest, PostToolUse, sub, "approval"},
+		{"waiting, subagent's pre", Stop, PreToolUse, sub, "waiting"},
+		{"approval, the session's own post", PermissionRequest, PostToolUse, `{"tool_name":"Write"}`, "working"},
+		{"approval, an empty agent_id", PermissionRequest, PostToolUse, `{"agent_id":""}`, "working"},
+		{"working, subagent's post", UserPromptSubmit, PostToolUse, sub, "working"},
+		{"approval, a new prompt", PermissionRequest, UserPromptSubmit, `{}`, "working"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := agentsDir(t)
+			hook(t, dir, c.before, `{}`, live(4242, 7))
+			before := stateOf(t, dir)
+			hook(t, dir, c.event, c.input, live(4242, 7))
+			got := stateOf(t, dir)
+			if got.State != c.want {
+				t.Fatalf("%s after %s: %+v, want %s", c.event, c.before, got, c.want)
+			}
+			if got.State == before.State && !got.Changed.Equal(before.Changed) {
+				t.Fatalf("the wait's time moved: %v to %v", before.Changed, got.Changed)
+			}
+		})
 	}
 }

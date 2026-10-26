@@ -172,7 +172,7 @@ func TestTheHookIsSilentAndExitsZero(t *testing.T) {
 // The hook reads CLAUDE_PID and nothing else of the environment: not the
 // messaging token beside it, no profile, no token, no cache root (the
 // directory comes from the command line). Nothing of the input or the
-// environment reaches a file but the five facts and the pid.
+// environment reaches a file but the six facts and the pid.
 func TestTheHookReadsOnlyCLAUDEPID(t *testing.T) {
 	dir := hookDir(t)
 	input, err := json.Marshal(map[string]any{
