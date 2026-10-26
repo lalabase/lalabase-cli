@@ -392,6 +392,10 @@ func (m Model) retryOrRefresh() (Model, tea.Cmd) {
 		if a.steps[stepCounters].state == failed {
 			cmds = append(cmds, a.issueCounters())
 		}
+		if m.focus == view.Navigation {
+			// The titles of the agents under the chooser too (C9b).
+			cmds = append(cmds, a.retryTitles())
+		}
 		if m.focus == view.Object && a.origin != nil {
 			cmds = append(cmds, m.refreshSection())
 		} else if m.focus != view.Navigation && a.active != nil {

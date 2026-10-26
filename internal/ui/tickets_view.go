@@ -178,7 +178,9 @@ func (m Model) detailColumn() present.Column {
 	c.Text = present.NewBody(strings.Join(t.lines, "\n"))
 	c.Styles = t.styles
 	if meta {
-		c.Meta = append(metaBar(d.record, a.when), a.agentMeta(d.id)...)
+		// The agent first: the bar does not scroll, and a low pane cuts its
+		// end (review round 1 of #36, F2).
+		c.Meta = append(a.agentMeta(d.id), metaBar(d.record, a.when)...)
 	}
 	c.Offset = d.offset
 	line := -1

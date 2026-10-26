@@ -226,18 +226,19 @@ func (a *app) agentHead(ticket string) (glyph string, style present.Style, text 
 	return a.glyph(ag.State), agentStyles[ag.State], uitext.Fill(uitext.AgentLine, word, age(a.now().Sub(ag.Since))).String(), true
 }
 
-// agentMeta are the meta bar's lines for the ticket's most urgent agent
-// (C9b), after Updated: a faint label, then its glyph in its tone, its
-// word and how long its state has lasted. A value too long for the bar
-// is broken at its spaces, the lines after the first under the word, so
-// neither the state nor its age is cut. None without an agent.
+// agentMeta are the meta bar's first lines for the ticket's most urgent
+// agent (C9b): a faint label, then its glyph in its tone, its word and how
+// long its state has lasted, then an empty line before the facts. A value
+// too long for the bar is broken at its spaces, the lines after the first
+// under the word, so neither the state nor its age is cut. None without
+// an agent.
 func (a *app) agentMeta(ticket string) []present.MetaLine {
 	ag, ok := a.agentAt(ticket)
 	if !ok {
 		return nil
 	}
 	word := uitext.Inline(agentWords[ag.State]).String()
-	out := []present.MetaLine{{}, {Text: uitext.Inline(uitext.BarAgent), Style: present.Faint}}
+	out := []present.MetaLine{{Text: uitext.Inline(uitext.BarAgent), Style: present.Faint}}
 	for i, line := range barLines(word, age(a.now().Sub(ag.Since)), view.MetaRoom-markCells) {
 		if i == 0 {
 			out = append(out, present.MetaLine{Lead: present.NewInline(a.glyph(ag.State)), LeadStyle: agentStyles[ag.State], Text: present.NewInline(line)})
@@ -245,7 +246,7 @@ func (a *app) agentMeta(ticket string) []present.MetaLine {
 		}
 		out = append(out, present.MetaLine{Text: present.NewInline(strings.Repeat(" ", markCells) + line)})
 	}
-	return out
+	return append(out, present.MetaLine{})
 }
 
 // markCells is the room of a glyph and the space after it.

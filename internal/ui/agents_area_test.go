@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/api"
+	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/queue"
@@ -89,7 +90,8 @@ func TestAnAgentsRowAndItsTitle(t *testing.T) {
 	}
 }
 
-// The read of a title is background work, below what the person looks at.
+// The read of a title is idle work, below what the person looks at and
+// below the previews (queue.Idle).
 func TestATitleIsReadInTheBackground(t *testing.T) {
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
@@ -99,7 +101,7 @@ func TestATitleIsReadInTheBackground(t *testing.T) {
 		var next []tea.Cmd
 		for _, w := range h.m.app.waiters {
 			if w.purpose == forTitle && w.ticket.Area == gateway.Titles {
-				if w.ticket.Priority != queue.Background {
+				if w.ticket.Priority != queue.Idle {
 					t.Fatalf("a title read of priority %d", w.ticket.Priority)
 				}
 				titles++
@@ -193,5 +195,46 @@ func TestASeenEndedAgentIsFaint(t *testing.T) {
 	}
 	if r := h.areaRow(8); r.Quiet {
 		t.Errorf("ended, not seen: %+v", r)
+	}
+}
+
+// Review round 1 of #36, F1: a title the disk cache holds cancels its read
+// from the server, which waits as idle work: after a restart the titles
+// cost no request.
+func TestATitleFromTheDiskCancelsItsRead(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher()
+	h.start()
+	a := h.m.app
+	ag := agentIn(1, orgA, 6, agents.Working, h.now)
+	a.agents.list = []agents.Agent{ag}
+	cmd := a.requestTitles()
+	if cmd == nil {
+		t.Fatal("no read")
+	}
+	var w *waiter
+	for _, x := range a.waiters {
+		if x.purpose == forTitle {
+			w = x
+		}
+	}
+	if w == nil {
+		t.Fatal("no waiter of the title")
+	}
+	key := a.detailKey(website, ag.Ticket)
+	a.store.Apply(key, cache.Replace, ticketAnswer(h.d.ticketRecord(website, 6, gateway.DetailOptions(key))).Payload, h.now)
+	if !a.showFromDisk(forTitle, key) {
+		t.Fatal("the disk's entry was not taken")
+	}
+	if !w.canceled {
+		t.Fatal("the server's read of the title goes on")
+	}
+	if got := h.areaRow(6).Primary.String(); got != "#6 Ticket 6" {
+		t.Fatalf("%q", got)
+	}
+	// Its canceled answer fails nothing.
+	h.drive(cmd)
+	if tt := a.titles[ag.Ticket]; !tt.known || tt.failed {
+		t.Fatalf("%+v", tt)
 	}
 }

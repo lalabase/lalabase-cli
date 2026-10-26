@@ -411,7 +411,7 @@ func (a *app) showFromDisk(p purpose, key cache.Key) bool {
 		}
 	case forTitle:
 		if t := a.titles[key.Ticket]; t != nil && !t.known {
-			return a.titleFromCache(t, key)
+			return a.titleFromDisk(t, key)
 		}
 	case forExpansion:
 		if v := a.detail; v != nil && v.expansion != nil && v.expansion.key == key && !v.expansion.holdsServerData() {

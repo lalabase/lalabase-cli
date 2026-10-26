@@ -104,11 +104,12 @@ navigation again.
   so the open ones stand out. Where the ticket pane is wide enough (76
   cells inside its frame, so from 158 columns with the list in focus, or from 120
   with the ticket in focus), the ticket's facts stand in a bar on its
-  right, which does not scroll: Status in its tone, Project, People (the
-  assignees, then the creator), Updated and, for a ticket with an agent
-  (C9b), Agent with the glyph in its tone, the state and its age
+  right, which does not scroll: for a ticket with an agent first (C9b)
+  Agent with the glyph in its tone, the state and its age
   (`⣿ waiting for you`, then `· 4 min` under it where one line is too
-  short), the labels faint, a long name cut with "…"; the head then drops
+  short), so a low pane, which cuts the bar's end, keeps it; then Status
+  in its tone, Project, People (the assignees, then the creator) and
+  Updated, the labels faint, a long name cut with "…"; the head then drops
   its line of facts and its agent's line. In a narrower pane
   they stay in one faint line under the title. Comments by the token's own
   person show the author as "Name (you)", blue and bold; every other author
@@ -393,8 +394,11 @@ navigation again.
     its number and its state are shown: the organisation's name and the
     ticket's title come from the session (the directory, the ticket in the
     pane, the list shown, the cache). A title the session lacks is read
-    once per ticket through the usual way (`get_ticket`, as background
-    work behind what you look at, the disk cache asked beside it);
+    once per ticket through the usual way (`get_ticket`), as idle work:
+    after every preview, and with at most half of the background budget,
+    so a preview never waits for it; the disk cache is asked beside it,
+    and a title found there cancels the server's read while it still
+    waits;
     until it comes, and after a failed read, the row shows `#<number>`
     alone, and `R` (in the chooser or in the agents) reads the failed ones
     again. A ticket of an organisation that is not in the list has no
@@ -759,7 +763,11 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   429 or when nothing was sent. Background work (previews, their reloads,
   their retries) starts at most six times per rolling minute; what is held
   waits for the window to roll on, the person's actions are never counted
-  or held, and a held background read a person joins starts as theirs. A
+  or held, and a held background read a person joins starts as theirs.
+  Idle work (C9b: the titles of the agents' tickets) waits behind every
+  background job and starts only while fewer than three starts are in the
+  window, so the other half of the budget stays the previews'; a preview
+  or a person joining an idle read lifts it. A
   shared request belongs to the program's
   lifetime, not to its first caller: it is canceled when its last caller
   leaves or the program stops its work (on quitting, or after a fatal error).

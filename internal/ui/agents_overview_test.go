@@ -42,8 +42,10 @@ func TestTheAgentsAreOrderedByUrgencyThenAge(t *testing.T) {
 		// Two waiting at the same time: in the order read.
 		agentIn(9, orgA, 9, agents.WaitingForYou, t0.Add(4*time.Minute)),
 	}
-	h.withWatcher(list...)
+	// Set, not read: the order needs no titles.
+	h.withWatcher()
 	h.start()
+	h.m.app.agents.list = list
 	var got []int
 	for _, a := range h.m.app.agentsInOrder() {
 		got = append(got, a.Number)
@@ -63,14 +65,15 @@ func TestTheAgentsAreOrderedByUrgencyThenAge(t *testing.T) {
 // leaves out a state without one.
 func TestTheSummaryCountsPerState(t *testing.T) {
 	h := newHarness(t)
-	h.withWatcher(
+	h.withWatcher()
+	h.start()
+	h.m.app.agents.list = []agents.Agent{
 		agentIn(1, orgA, 1, agents.Ended, h.now),
 		agentIn(2, orgB, 2, agents.Working, h.now),
 		agentIn(3, orgA, 3, agents.WaitingForYou, h.now),
 		agentIn(4, orgA, 4, agents.WaitingForYou, h.now),
 		agentIn(5, orgA, 5, agents.Lost, h.now),
-	)
-	h.start()
+	}
 	got := h.m.app.agentSummary()
 	want := []struct {
 		glyph string
@@ -171,15 +174,17 @@ func TestAnOrganisationCarriesItsMostUrgentAgent(t *testing.T) {
 // the terminal, at any width from 80 to 200 and in every focus.
 func TestNoLineIsWiderThanTheTerminalWithAgents(t *testing.T) {
 	h := newHarness(t)
-	h.withWatcher(
+	h.withWatcher()
+	h.openSix()
+	// Set, not read: their titles come from the list shown.
+	h.m.app.agents.list = []agents.Agent{
 		agentIn(1, orgA, 6, agents.WaitingForApproval, h.now.Add(-50*24*time.Hour)),
 		agentIn(2, orgB, 7, agents.WaitingForYou, h.now),
 		agentIn(3, orgA, 8, agents.Lost, h.now),
 		agentIn(4, orgA, 9, agents.Working, h.now),
 		agentIn(5, orgA, 10, agents.Starting, h.now),
 		agentIn(6, orgA, 11, agents.Ended, h.now),
-	)
-	h.openSix()
+	}
 	for _, focus := range []view.Pane{view.Navigation, view.List, view.Object, view.Agents} {
 		h.m.focus = focus
 		for width := 80; width <= 200; width++ {

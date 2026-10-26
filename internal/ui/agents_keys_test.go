@@ -8,6 +8,8 @@ import (
 
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/api"
+	"github.com/gboyke/lalabase-cli/internal/gateway"
+	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
@@ -232,5 +234,89 @@ func TestRInTheAgentsReadsTheTitles(t *testing.T) {
 	}
 	if h.offers(Refresh) {
 		t.Fatal("R offered with every title known")
+	}
+}
+
+// Review round 1 of #36, F3: a lost agent is seen after enter too.
+func TestEnterSeesALostAgent(t *testing.T) {
+	h := newHarness(t)
+	lost := agentIn(1, orgA, 6, agents.Lost, h.now)
+	f := h.withWatcher(lost)
+	h.start()
+	h.drive(h.press("A"))
+	h.drive(h.press("enter"))
+	if got := f.seen(); len(got) != 1 || got[0] != lost.ID {
+		t.Fatalf("marks %v", got)
+	}
+	// Seen, but not faint: only an ended agent is.
+	if h.areaRow(6).Quiet {
+		t.Fatal("a seen lost agent is faint")
+	}
+}
+
+// Review round 1 of #36, F4: R in the chooser reads the failed titles
+// also while a step of the start failed.
+func TestRWithAFailedStepReadsTheTitlesToo(t *testing.T) {
+	h := newHarness(t)
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
+	})
+	h.f.set(func(q api.NotificationQuery) transport.Answer {
+		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
+	})
+	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+	h.start()
+	if !h.m.app.anyFailed() || !h.m.app.titlesFailed() {
+		t.Fatalf("failed step %v, failed title %v", h.m.app.anyFailed(), h.m.app.titlesFailed())
+	}
+	reads := h.titleReads(6)
+	h.f.setTicket(h.d.defaultTicket)
+	h.m.focus = view.Navigation
+	h.drive(h.press("R"))
+	if h.titleReads(6) <= reads || h.areaRow(6).Primary.String() != "#6 Ticket 6" {
+		t.Fatalf("%d reads, row %q", h.titleReads(6), h.areaRow(6).Primary.String())
+	}
+}
+
+// Review round 1 of #36, F6: the agents' list keeps the focus when the
+// organisation behind it is removed, and closes to a pane that still
+// shows something.
+func TestTheAgentsKeepTheFocusThroughARemoval(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+	h.openSix()
+	h.drive(h.press("A"))
+	h.f.setProjects(func(org string) transport.Answer {
+		return transport.Answer{Class: transport.NotFound, Message: "gone", Status: 404, Sent: true}
+	})
+	h.m.focus = view.Agents
+	h.m.agentsFrom = view.Object
+	h.m.app.projects.loading = true
+	h.drive(h.m.app.issue(gateway.Projects, h.m.app.projects.key, forProjects, queue.User))
+	if h.m.focus != view.Agents {
+		t.Fatalf("a removal took the focus: %d", h.m.focus)
+	}
+	if h.m.app.detail != nil {
+		t.Fatal("the ticket stayed")
+	}
+	h.press("esc")
+	if h.m.focus != view.List {
+		t.Fatalf("back to a pane that shows nothing: %d", h.m.focus)
+	}
+}
+
+// Review round 1 of #36, F7: Enter again on the agent whose ticket is
+// shown reads nothing.
+func TestEnterAgainReadsNothing(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+	h.start()
+	h.drive(h.press("A"))
+	h.drive(h.press("enter"))
+	reads := h.titleReads(6)
+	h.drive(h.press("A"))
+	h.drive(h.press("enter"))
+	if h.titleReads(6) != reads {
+		t.Fatalf("%d reads, %d before", h.titleReads(6), reads)
 	}
 }

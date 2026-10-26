@@ -53,12 +53,12 @@ func TestTheTicketHeadShowsItsAgent(t *testing.T) {
 			if width >= 158 {
 				// C9b: where the meta bar stands, the line is there.
 				meta := h.m.objectColumn().Meta
-				at := len(meta) - 1
-				for at > 0 && meta[at].Lead.String() == "" {
-					at--
-				}
+				at := 1 // after the label, first in the bar
 				var value []string
 				for _, l := range meta[at:] {
+					if l == (present.MetaLine{}) {
+						break
+					}
 					value = append(value, strings.TrimSpace(l.Text.String()))
 				}
 				word := strings.TrimSuffix(strings.TrimPrefix(c.want, glyph+" Agent "), " · for 4 min")

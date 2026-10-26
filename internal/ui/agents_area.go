@@ -98,9 +98,11 @@ func (a *app) agentTitle(ag agents.Agent) (string, bool) {
 
 // requestTitles reads, once each, the titles of the agents' tickets the
 // session does not hold: from the memory cache when it has the ticket,
-// else from the server through the gateway in the background (the disk
-// asked beside, C1e). A title that was asked for, failed or is known is
-// not asked again; R frees the failed ones (retryTitles).
+// else from the server through the gateway as idle work, after every
+// preview and within half the background budget (queue.Idle); the disk is
+// asked beside (C1e), and its entry cancels the server's read while that
+// still waits (titleFromDisk). A title that was asked for, failed or is
+// known is not asked again; R frees the failed ones (retryTitles).
 func (a *app) requestTitles() tea.Cmd {
 	if a.expired || a.scope == nil || !a.ticketOn() {
 		return nil
@@ -116,7 +118,7 @@ func (a *app) requestTitles() tea.Cmd {
 		if a.titleFromCache(t, key) {
 			continue
 		}
-		cmd := a.issue(gateway.Titles, key, forTitle, queue.Background)
+		cmd := a.issue(gateway.Titles, key, forTitle, queue.Idle)
 		if cmd == nil {
 			// Nothing was asked: the next call tries again.
 			delete(a.titles, ag.Ticket)
@@ -127,6 +129,21 @@ func (a *app) requestTitles() tea.Cmd {
 		cmds = append(cmds, cmd)
 	}
 	return tea.Batch(cmds...)
+}
+
+// titleFromDisk takes a title the disk cache brought into memory, and
+// cancels the server's read of it: one still waiting is never sent.
+func (a *app) titleFromDisk(t *title, k cache.Key) bool {
+	if !a.titleFromCache(t, k) {
+		return false
+	}
+	for _, w := range a.waiters {
+		if w.purpose == forTitle && w.ticket.Key == k && !w.canceled {
+			w.canceled = true
+			w.cancel()
+		}
+	}
+	return true
 }
 
 // titleFromCache takes the title from the memory entry of the ticket, if
@@ -254,10 +271,16 @@ func (m Model) openAgents() (Model, tea.Cmd) {
 	return m, m.selectionChanged()
 }
 
-// closeAgents goes back to where A was pressed.
+// closeAgents goes back to where A was pressed; to the list instead of an
+// object pane that shows nothing any more (its ticket was removed
+// meanwhile).
 func (m Model) closeAgents() Model {
-	if m.focus == view.Agents {
-		m.focus = m.agentsFrom
+	if m.focus != view.Agents {
+		return m
+	}
+	m.focus = m.agentsFrom
+	if a := m.app; m.focus == view.Object && a.detail == nil && (a.active == nil || a.active.opened == "") {
+		m.focus = view.List
 	}
 	return m
 }
@@ -297,7 +320,7 @@ func (m Model) openAgent() (Model, tea.Cmd) {
 			}
 			a.projects = &projectsView{org: ag.Organisation, name: name, key: a.projectsKey(ag.Organisation)}
 			cmds = append(cmds, a.loadProjects())
-		} else {
+		} else if a.tickets != nil {
 			a.leaveList()
 		}
 		a.projects.selected = ag.Project

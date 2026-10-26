@@ -657,7 +657,10 @@ func (m Model) receiveProjects(r gateway.ProjectsResult) (Model, tea.Cmd) {
 		a.leaveList()
 		v.rows, v.selected = nil, ""
 		v.removed()
-		m.focus = view.List
+		if m.focus != view.Agents {
+			// The agents' list keeps the focus (C9b).
+			m.focus = view.List
+		}
 	default:
 		v.failed(d, r.Answer)
 	}
