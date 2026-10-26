@@ -147,7 +147,11 @@ var hookBuiltins = map[string]bool{"recover": true, "len": true, "string": true}
 // alone, and imports no package of the client but internal/agents (no
 // profile, no transport, no cache). Behaviour is tested in cmd/lalabase;
 // this keeps a later edit from adding a path the tests do not take.
-func inspectHook(source string) []string {
+//
+// mainFuncs are the functions the other files of package main declare:
+// none of them may be named in the hook's file, called or not (review
+// rounds 2 and 3 of #34, F4): (runWith)(...), a slice or a struct of them.
+func inspectHook(source string, mainFuncs map[string]bool) []string {
 	file, err := parser.ParseFile(token.NewFileSet(), hookFile, source, 0)
 	if err != nil {
 		return []string{err.Error()}
@@ -196,6 +200,9 @@ func inspectHook(source string) []string {
 				findings = append(findings, hookFile+": calls "+ident.Name+" of package main")
 			}
 		}
+		if ident, ok := node.(*ast.Ident); ok && ident != file.Name && mainFuncs[ident.Name] {
+			findings = append(findings, hookFile+": names "+ident.Name+" of package main")
+		}
 		if sel, ok := node.(*ast.SelectorExpr); ok && sel.Sel.Name == "Getenv" && !calledWithPID[sel] {
 			findings = append(findings, hookFile+": Getenv of anything but CLAUDE_PID, or as a value")
 		}
@@ -204,13 +211,39 @@ func inspectHook(source string) []string {
 	return findings
 }
 
+// mainFuncsOf are the functions declared in package main's production
+// files other than the hook's.
+func mainFuncsOf(t *testing.T, sources map[string]string) map[string]bool {
+	t.Helper()
+	funcs := map[string]bool{}
+	for name, source := range sources {
+		if path.Dir(name) != path.Dir(hookFile) || name == hookFile || test(name) {
+			continue
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), name, source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, decl := range file.Decls {
+			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil {
+				funcs[fn.Name.Name] = true
+			}
+		}
+	}
+	if !funcs["runWith"] || !funcs["runAuth"] {
+		t.Fatalf("package main's functions not found: %v", funcs)
+	}
+	return funcs
+}
+
 func TestTheHookWritesNothingAndReadsOnlyCLAUDEPID(t *testing.T) {
 	sources := repositorySources(t)
 	source, ok := sources[hookFile]
 	if !ok {
 		t.Fatalf("%s is not scanned", hookFile)
 	}
-	if got := inspectHook(source); len(got) != 0 {
+	mainFuncs := mainFuncsOf(t, sources)
+	if got := inspectHook(source, mainFuncs); len(got) != 0 {
 		t.Fatal(got)
 	}
 	for _, probe := range []string{
@@ -222,14 +255,18 @@ func TestTheHookWritesNothingAndReadsOnlyCLAUDEPID(t *testing.T) {
 		"\nfunc probe(env Env) { _ = env.Getenv(\"CLAUDE_PID\" + \"X\") }\n",
 		"\nfunc probe(env Env) { _ = runWith([]string{\"version\"}, env) }\n",
 		"\nfunc probe(env Env) { _ = runAuth([]string{\"status\"}, \"\", env) }\n",
+		"\nfunc probe(env Env) { _ = (runWith)([]string{\"version\"}, env) }\n",
+		"\nfunc probe(env Env) { _ = []func([]string, Env) int{runWith}[0](nil, env) }\n",
+		"\nfunc probe(env Env) { _ = struct{ f func([]string, Env) int }{runWith}.f(nil, env) }\n",
+		"\nvar probe = launchConfig\n",
 		"\nfunc probe() { print(1) }\n",
 	} {
-		if got := inspectHook(source + probe); len(got) == 0 {
+		if got := inspectHook(source+probe, mainFuncs); len(got) == 0 {
 			t.Errorf("missed %q", probe)
 		}
 	}
 	for _, imp := range []string{`"fmt"`, `"os"`, `"log"`, `"` + clientModule + `internal/profile"`, `"` + clientModule + `internal/transport"`} {
-		if got := inspectHook(strings.Replace(source, "import (", "import (\n\t_ "+imp, 1)); len(got) == 0 {
+		if got := inspectHook(strings.Replace(source, "import (", "import (\n\t_ "+imp, 1), mainFuncs); len(got) == 0 {
 			t.Errorf("missed import %s", imp)
 		}
 	}

@@ -307,8 +307,9 @@ navigation again.
     `CLAUDE_PID` alone. Of the event's input, which carries the prompt and
     paths, it takes six checked values and shows none: the session id,
     whether a tool event carries a subagent's `agent_id`, whether
-    `SessionStart`'s source is `clear` or `compact`, whether
-    `SessionEnd`'s reason is `clear`, whether a permission request
+    `SessionStart`'s source is `clear`, `resume`, `fork` or `compact`,
+    whether `SessionEnd`'s reason is one of the first three, whether a
+    permission request
     is the question tool `AskUserQuestion`, and how many background tasks
     run; an input larger than 1 MiB or broken is not read, the event
     alone decides.
@@ -333,12 +334,14 @@ navigation again.
     | State | Glyph | Tone | From |
     |---|---|---|---|
     | waiting for approval | `!` | magenta, bold | `PermissionRequest` |
-    | waiting for you | `⣿` | magenta | `Stop`, the question tool's request, or `SessionStart` after `/clear` or `/compact` (no `Stop` follows them) |
+    | waiting for you | `⣿` | magenta | `Stop`, the question tool's request, or `SessionStart` after `/clear`, `/resume` or `/branch` (no `Stop` follows them) |
     | lost | `✕` | red | the pid is gone, or now has another start time |
-    | working | braille spinner | cyan | `SessionStart` (the launch's own), `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop` with a background task running |
+    | working | braille spinner | cyan | `SessionStart` (a start, as `x`'s), `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop` with a background task running |
     | starting | `⠂` | cyan, faint | no hook yet (the folder's trust dialog comes first) |
-    | ended | `✓` | green, faint | `SessionEnd`, but for `/clear` |
+    | ended | `✓` | green, faint | `SessionEnd`, but for `/clear`, `/resume` and `/branch` |
 
+    A compaction (`/compact`, or Claude Code's own when the context is
+    full, also in the middle of a turn) changes no state.
     A background subagent's tool events (they carry its `agent_id`) leave
     an open approval or question as it is: the session still waits.
     The age of a lost agent counts from the last state its hooks

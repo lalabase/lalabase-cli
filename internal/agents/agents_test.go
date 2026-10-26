@@ -215,8 +215,14 @@ func TestEveryEventLeadsToItsState(t *testing.T) {
 		// The owner, after the manual check: after /clear and /compact
 		// Claude Code waits for the person, and no Stop follows.
 		{"start after clear", SessionStart, `{"session_id":"` + cleared + `","source":"clear"}`, "waiting"},
-		{"compact", SessionStart, `{"source":"compact"}`, "waiting"},
-		{"resume", SessionStart, `{"source":"resume"}`, "working"},
+		// A compaction changes no state (review round 3 of #34, F1): with
+		// none before it, the agent works. /resume and /branch wait like
+		// /clear (F2).
+		{"compact without a state", SessionStart, `{"source":"compact"}`, "working"},
+		{"resume", SessionStart, `{"source":"resume"}`, "waiting"},
+		{"branch", SessionStart, `{"source":"fork"}`, "waiting"},
+		{"startup", SessionStart, `{"source":"startup"}`, "working"},
+		{"an unknown source", SessionStart, `{"source":"teleport"}`, "working"},
 		{"start without a source", SessionStart, `{}`, "working"},
 		{"a source in another case", SessionStart, `{"source":"Clear"}`, "working"},
 		{"prompt", UserPromptSubmit, `{"prompt":"hi"}`, "working"},
@@ -230,11 +236,18 @@ func TestEveryEventLeadsToItsState(t *testing.T) {
 		{"stop with a running task", Stop, `{"background_tasks":[{"type":"subagent","status":"running","agent_type":"Explore"}]}`, "working"},
 		{"stop with a finished task", Stop, `{"background_tasks":[{"type":"subagent","status":"completed"}]}`, "waiting"},
 		{"end", SessionEnd, `{"reason":"other"}`, "ended"},
+		{"end of a resume without a state", SessionEnd, `{"reason":"resume"}`, ""},
 		{"exit", SessionEnd, `{"reason":"prompt_input_exit"}`, "ended"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := agentsDir(t)
 			hook(t, dir, c.event, c.input, live(4242, 7))
+			if c.want == "" {
+				if _, err := os.Lstat(filepath.Join(dir, agentID+stateSuffix)); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("a state was written: %v", err)
+				}
+				return
+			}
 			if got := stateOf(t, dir); got.State != c.want || !got.Changed.Equal(t0) || got.PID != 4242 || got.Start != 7 {
 				t.Fatalf("%+v, want %s", got, c.want)
 			}
@@ -266,15 +279,15 @@ func TestClearKeepsTheAgentAndTakesTheNewSession(t *testing.T) {
 // Without its facts (too large, no JSON, no input) only the event
 // decides, and the session id stays.
 func TestAnUnreadableInputLeavesTheEventAlone(t *testing.T) {
-	big := `{"session_id":"` + cleared + `","reason":"clear","tool_name":"AskUserQuestion","background_tasks":[{"status":"running"}],"pad":"` + strings.Repeat("x", MaxInput) + `"}`
+	big := `{"session_id":"` + cleared + `","source":"clear","reason":"clear","tool_name":"AskUserQuestion","background_tasks":[{"status":"running"}],"pad":"` + strings.Repeat("x", MaxInput) + `"}`
 	for name, input := range map[string]string{
 		"too large": big,
-		"broken":    `{"session_id":"` + cleared + `","reason":"clear","tool_name":"AskUserQuestion","background_tasks":[{"status":"running"}]`,
+		"broken":    `{"session_id":"` + cleared + `","source":"clear","reason":"clear","tool_name":"AskUserQuestion","background_tasks":[{"status":"running"}]`,
 		"array":     `[1,2]`,
 		"wrong":     `{"session_id":42,"reason":"clear"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			for event, want := range map[string]string{Stop: "waiting", PermissionRequest: "approval", SessionEnd: "ended"} {
+			for event, want := range map[string]string{Stop: "waiting", PermissionRequest: "approval", SessionEnd: "ended", SessionStart: "working"} {
 				dir := agentsDir(t)
 				hook(t, dir, SessionStart, `{"session_id":"`+sessionID+`"}`, live(4242, 7))
 				hook(t, dir, event, input, live(4242, 7))
@@ -291,6 +304,13 @@ func TestAnUnreadableInputLeavesTheEventAlone(t *testing.T) {
 	}
 	if got := stateOf(t, dir); got.State != "waiting" {
 		t.Fatalf("%+v", got)
+	}
+	dir = agentsDir(t)
+	if err := Hook(HookCall{Dir: dir, Event: SessionStart, Agent: agentID, Now: t0}); err != nil {
+		t.Fatal(err)
+	}
+	if got := stateOf(t, dir); got.State != "working" {
+		t.Fatalf("a start without input: %+v", got)
 	}
 }
 
@@ -705,5 +725,42 @@ func TestASubagentsToolsKeepAnOpenWait(t *testing.T) {
 				t.Fatalf("the wait's time moved: %v to %v", before.Changed, got.Changed)
 			}
 		})
+	}
+}
+
+// Review round 3 of #34, F1: a compaction, by hand or by Claude Code in
+// the middle of a turn, changes no state: it takes the new session id and
+// the pid, the state and its time stay.
+func TestACompactionKeepsTheState(t *testing.T) {
+	for _, before := range []string{Stop, UserPromptSubmit, PermissionRequest} {
+		dir := agentsDir(t)
+		hook(t, dir, before, `{"session_id":"`+sessionID+`"}`, live(4242, 7))
+		was := stateOf(t, dir)
+		c := HookCall{Dir: dir, Event: SessionStart, Agent: agentID, PID: "99", Now: t0.Add(time.Hour), Procs: live(99, 9),
+			Input: strings.NewReader(`{"session_id":"` + cleared + `","source":"compact"}`)}
+		if err := Hook(c); err != nil {
+			t.Fatal(err)
+		}
+		got := stateOf(t, dir)
+		if got.State != was.State || !got.Changed.Equal(was.Changed) || got.Session != cleared || got.PID != 99 || got.Start != 9 {
+			t.Errorf("compact after %s: %+v, was %+v", before, got, was)
+		}
+	}
+}
+
+// Review round 3 of #34, F2: /resume ends the old session with reason
+// resume, which changes nothing, and starts the resumed one waiting.
+func TestAResumeInThePaneWaits(t *testing.T) {
+	dir := agentsDir(t)
+	p := live(4242, 7)
+	hook(t, dir, Stop, `{"session_id":"`+sessionID+`"}`, p)
+	before := stateOf(t, dir)
+	hook(t, dir, SessionEnd, `{"session_id":"`+sessionID+`","reason":"resume"}`, p)
+	if got := stateOf(t, dir); got != before {
+		t.Fatalf("the resume's end changed %+v to %+v", before, got)
+	}
+	hook(t, dir, SessionStart, `{"session_id":"`+cleared+`","source":"resume"}`, p)
+	if got := stateOf(t, dir); got.State != "waiting" || got.Session != cleared {
+		t.Fatalf("%+v", got)
 	}
 }

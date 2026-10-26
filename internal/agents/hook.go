@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"time"
 
@@ -42,12 +43,18 @@ const lockStep = 5 * time.Millisecond
 
 // The values a hook takes of its foreign input, compared to these.
 const (
-	reasonClear     = "clear"
 	toolAskQuestion = "AskUserQuestion"
 	taskRunning     = "running"
-	sourceClear     = "clear"
 	sourceCompact   = "compact"
 )
+
+// restarts are what replaces the session in the same process (/clear,
+// /resume, /branch): a SessionEnd with one of them as its reason changes
+// nothing, a SessionStart with one of them as its source waits for the
+// person, since no Stop follows it.
+var restarts = []string{"clear", "resume", "fork"}
+
+func restart(s string) bool { return slices.Contains(restarts, s) }
 
 // pidForm is CLAUDE_PID: a positive decimal number without a sign or a
 // leading zero.
@@ -89,11 +96,13 @@ type facts struct {
 	// subagent: the event comes from a subagent (an agent_id that is not
 	// empty), which runs beside the session in the background.
 	subagent bool
-	// idle: SessionStart after /clear or /compact, which no Stop follows.
-	idle    bool
-	clear   bool
-	ask     bool
-	running int
+	// restarted: SessionStart after /clear, /resume or /branch, which no
+	// Stop follows; compacted: SessionStart after a compaction, by hand
+	// or in the middle of a turn, which changes no state; restartEnd: a
+	// SessionEnd that one of the restarts follows.
+	restarted, compacted, restartEnd bool
+	ask                              bool
+	running                          int
 }
 
 func readFacts(r io.Reader) facts {
@@ -109,8 +118,8 @@ func readFacts(r io.Reader) facts {
 		return facts{}
 	}
 	f := facts{
-		known: true, subagent: in.AgentID != "", idle: in.Source == sourceClear || in.Source == sourceCompact,
-		clear: in.Reason == reasonClear, ask: in.ToolName == toolAskQuestion,
+		known: true, subagent: in.AgentID != "", ask: in.ToolName == toolAskQuestion,
+		restarted: restart(in.Source), compacted: in.Source == sourceCompact, restartEnd: restart(in.Reason),
 	}
 	if serverID.MatchString(in.SessionID) {
 		f.session = in.SessionID
@@ -123,37 +132,55 @@ func readFacts(r io.Reader) facts {
 	return f
 }
 
-// next is the state an event leads to, and false when it changes nothing
-// (a SessionEnd of /clear, which a SessionStart follows). A SessionStart
-// after /clear or /compact waits for the person: no Stop follows it.
-// Without the input's facts a SessionStart works, a Stop waits for the
-// person, a PermissionRequest for an approval, and a SessionEnd ends.
-func next(event string, f facts) (State, bool) {
+// change is what an event does to the state.
+type change uint8
+
+const (
+	// nothing: the state file stays as it is.
+	nothing change = iota
+	// set: the event's state.
+	set
+	// keep: the state and its time stay; the session id and the pid are
+	// taken.
+	keep
+)
+
+// next is the state an event leads to and what it does. A SessionEnd that
+// /clear, /resume or /branch follows changes nothing; the SessionStart
+// after it waits for the person (no Stop follows). A compaction keeps the
+// state: by hand it follows a turn's end, by Claude Code it comes in the
+// middle of one. Without the input's facts a SessionStart works, a Stop
+// waits for the person, a PermissionRequest for an approval, and a
+// SessionEnd ends.
+func next(event string, f facts) (State, change) {
 	switch event {
 	case SessionStart:
-		if f.idle {
-			return WaitingForYou, true
+		switch {
+		case f.compacted:
+			return Working, keep
+		case f.restarted:
+			return WaitingForYou, set
 		}
-		return Working, true
+		return Working, set
 	case UserPromptSubmit, PreToolUse, PostToolUse:
-		return Working, true
+		return Working, set
 	case PermissionRequest:
 		if f.ask {
-			return WaitingForYou, true
+			return WaitingForYou, set
 		}
-		return WaitingForApproval, true
+		return WaitingForApproval, set
 	case Stop:
 		if f.running > 0 {
-			return Working, true
+			return Working, set
 		}
-		return WaitingForYou, true
+		return WaitingForYou, set
 	case SessionEnd:
-		if f.known && f.clear {
-			return 0, false
+		if f.restartEnd {
+			return 0, nothing
 		}
-		return Ended, true
+		return Ended, set
 	}
-	return 0, false
+	return 0, nothing
 }
 
 // Hook records the state an event leads to. It checks the call (the event
@@ -175,8 +202,8 @@ func Hook(c HookCall) error {
 		return err
 	}
 	f := readFacts(c.Input)
-	state, change := next(c.Event, f)
-	if !change {
+	state, does := next(c.Event, f)
+	if does == nothing {
 		return nil
 	}
 	unlock, err := lock(filepath.Join(c.Dir, c.Agent+lockSuffix))
@@ -190,6 +217,10 @@ func Hook(c HookCall) error {
 		// A background subagent's tool answers nothing the session waits
 		// for: the approval or the question stays open.
 		return nil
+	}
+	if does == keep && old.State != "" {
+		// Kept with its time; without one before it, the event's.
+		state, _ = stateNamed(old.State)
 	}
 	rec := stateRecord{Format: FormatVersion, State: stateNames[state], Changed: c.Now.UTC(), Session: old.Session, PID: old.PID, Start: old.Start}
 	if old.State == rec.State && !old.Changed.IsZero() {

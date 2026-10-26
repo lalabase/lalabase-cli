@@ -34,8 +34,9 @@
 // takes six values of it, each compared to a fixed text or checked
 // against a pattern, and nothing of it is shown: the session id (a UUID),
 // whether a tool event carries a subagent's agent_id (not empty),
-// whether SessionStart's source is "clear" or "compact", whether
-// SessionEnd's reason is "clear", whether a PermissionRequest's
+// whether SessionStart's source is "clear", "resume", "fork" or "compact",
+// whether SessionEnd's reason is one of the first three, whether a
+// PermissionRequest's
 // tool is AskUserQuestion, and how many background tasks run. The event
 // comes from the hook's own command line (the settings file the launch
 // wrote), the pid from CLAUDE_PID, checked as a positive number. The
