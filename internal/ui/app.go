@@ -206,6 +206,10 @@ type app struct {
 	// launch is the launch of Claude Code beside a ticket (C7), outside
 	// reset: its numbering goes on, so a late answer frees nothing.
 	launch launchState
+
+	// agents is what the sessions x started do (C9a), outside reset: they
+	// are the profile's, and an expired session still has them.
+	agents agentsState
 }
 
 func newApp(s Session) *app {

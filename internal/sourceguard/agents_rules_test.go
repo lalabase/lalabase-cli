@@ -5,7 +5,9 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -210,5 +212,96 @@ func TestTheHookWritesNothingAndReadsOnlyCLAUDEPID(t *testing.T) {
 		if got := inspectHook(strings.Replace(source, "import (", "import (\n\t_ "+imp, 1)); len(got) == 0 {
 			t.Errorf("missed import %s", imp)
 		}
+	}
+}
+
+// timerCalls start a clock of their own: a tick, a timer, a sleep. The
+// interface and the agents' reader wake only through the gateway's Events
+// (Expiry, Timer), which run under the supervisor (C9a: the agents are
+// read every 500 ms that way, and the spinner moves with each read).
+var timerCalls = map[string][]string{
+	"time":                    {"Tick", "NewTicker", "NewTimer", "After", "AfterFunc", "Sleep"},
+	"charm.land/bubbletea/v2": {"Tick", "Every"},
+}
+
+// timerFree are the directories that may use none of timerCalls; the
+// hook's lock retries in internal/agents may sleep, nothing else there.
+func timerFree(dir string) (refused []string, ok bool) {
+	switch {
+	case surface(dir):
+		return nil, true
+	case dir == "internal/agents":
+		return []string{"Sleep"}, true
+	}
+	return nil, false
+}
+
+func inspectTimers(name string, file *ast.File) []string {
+	allowed, ok := timerFree(path.Dir(name))
+	if !ok || test(name) {
+		return nil
+	}
+	aliases := map[string]string{}
+	for _, imp := range file.Imports {
+		p, _ := strconv.Unquote(imp.Path.Value)
+		alias := path.Base(p)
+		if p == "charm.land/bubbletea/v2" {
+			alias = "tea"
+		}
+		if imp.Name != nil {
+			alias = imp.Name.Name
+		}
+		aliases[alias] = p
+	}
+	var findings []string
+	ast.Inspect(file, func(node ast.Node) bool {
+		sel, ok := node.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		ident, ok := sel.X.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		if slices.Contains(timerCalls[aliases[ident.Name]], sel.Sel.Name) && !slices.Contains(allowed, sel.Sel.Name) {
+			findings = append(findings, name+": a clock of its own: "+aliases[ident.Name]+"."+sel.Sel.Name)
+		}
+		return true
+	})
+	return findings
+}
+
+func TestTheInterfaceHasNoClockOfItsOwn(t *testing.T) {
+	inspect := func(sources map[string]string) []string {
+		var findings []string
+		for name, source := range sources {
+			file, err := parser.ParseFile(token.NewFileSet(), name, source, 0)
+			if err != nil {
+				findings = append(findings, err.Error())
+				continue
+			}
+			findings = append(findings, inspectTimers(name, file)...)
+		}
+		return findings
+	}
+	if got := inspect(repositorySources(t)); len(got) != 0 {
+		t.Fatal(got)
+	}
+	for name, source := range map[string]string{
+		"internal/ui/x.go":      `package ui; import tea "charm.land/bubbletea/v2"; var _ = tea.Tick`,
+		"internal/ui/y.go":      `package ui; import b "charm.land/bubbletea/v2"; var _ = b.Every`,
+		"internal/ui/z.go":      `package ui; import "time"; var _ = time.NewTicker`,
+		"internal/ui/view/x.go": `package view; import "time"; var _ = time.After`,
+		"internal/ui/s.go":      `package ui; import "time"; func f() { time.Sleep(1) }`,
+		"internal/agents/x.go":  `package agents; import "time"; var _ = time.Tick`,
+		"internal/agents/y.go":  `package agents; import t "time"; var _ = t.NewTimer`,
+		"internal/present/x.go": `package present; import "time"; var _ = time.AfterFunc`,
+	} {
+		if got := inspect(map[string]string{name: source}); len(got) == 0 {
+			t.Errorf("missed %s", name)
+		}
+	}
+	if got := inspect(map[string]string{"internal/agents/x.go": `package agents; import "time"; func f() { time.Sleep(1) }`, "internal/ui/x.go": `package ui; import "time"; var _ = time.Now`}); len(got) != 0 {
+		t.Errorf("refused %v", got)
 	}
 }

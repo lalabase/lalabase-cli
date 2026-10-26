@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/launch"
 	"github.com/gboyke/lalabase-cli/internal/present"
@@ -70,6 +71,11 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.receiveMark(msg)
 	case launch.Done:
 		return m, m.receiveLaunch(msg)
+	case agents.Snapshot:
+		if m.app == nil {
+			return m, nil
+		}
+		return m, m.app.receiveAgents(msg)
 	case gateway.Result:
 		// A read refused before it was sent: its waiter is freed, nothing
 		// is shown of it.
@@ -81,7 +87,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.wake(msg)
 	case gateway.Expired:
 		// The deadline of a pause or of a hint: whichever still shows it
-		// is over.
+		// is over; or of the next read of the agents.
 		if a := m.app; a != nil && msg.Session == a.session {
 			if msg.Until.Equal(a.pause) {
 				a.pause = time.Time{}
@@ -89,6 +95,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			if msg.Until.Equal(a.launch.until) {
 				a.launch.notice, a.launch.until = present.Inline{}, time.Time{}
 			}
+			return m, a.agentsDue(msg.Until)
 		}
 		return m, nil
 	case tea.KeyPressMsg:

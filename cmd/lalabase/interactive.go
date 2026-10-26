@@ -84,6 +84,8 @@ func runInteractive(name string, env Env) int {
 				Disk: &diskcache.Opener{Root: diskcache.Root(env.Getenv, env.Home)},
 				// Claude Code beside the ticket (C7).
 				Launcher: launch.New(launchConfig(env, p, client.MCPAddress(), sup)),
+				// What the sessions x started do (C9a).
+				Agents: agents.NewWatcher(sup, agentsFiles(env, p)),
 			})), sup)
 		}
 	}

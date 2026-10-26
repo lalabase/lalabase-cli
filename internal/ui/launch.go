@@ -74,7 +74,8 @@ func (m Model) launchClaude() (Model, tea.Cmd) {
 	a.launch.busy, a.launch.ticket = true, t.ID
 	a.launch.notice, a.launch.tone = uitext.Fill(uitext.Launching, t.Number), present.NoticeWaiting
 	a.launch.until = time.Time{}
-	return m, a.deps.Launcher.Launch(a.launch.ref, t)
+	// While it runs, the agents are read: its record comes with its end.
+	return m, tea.Batch(a.deps.Launcher.Launch(a.launch.ref, t), a.readAgents())
 }
 
 // receiveLaunch takes the answer of the launch running and frees x; any
@@ -85,6 +86,13 @@ func (m Model) receiveLaunch(d launch.Done) tea.Cmd {
 	if a == nil || !a.launch.busy || d.Ref != a.launch.ref {
 		return nil
 	}
+	return tea.Batch(m.launchDone(d), a.readAgents())
+}
+
+// launchDone is receiveLaunch's notice: its text and tone, and a hint's
+// deadline.
+func (m Model) launchDone(d launch.Done) tea.Cmd {
+	a := m.app
 	a.launch.busy, a.launch.ticket = false, d.Ticket.ID
 	a.launch.notice, a.launch.tone = launchNotice(d), launchTone(d.Kind)
 	if d.Kind == launch.Opened && d.Untracked != "" {
