@@ -311,7 +311,7 @@ func TestTheArgumentsOfATrackedLaunch(t *testing.T) {
 	}
 }
 
-// The settings file: the seven events, each with one command hook of
+// The settings file: the nine events, each with one command hook of
 // timeout 5, and nothing else.
 func TestTheSettingsFile(t *testing.T) {
 	var got struct {
@@ -332,7 +332,7 @@ func TestTheSettingsFile(t *testing.T) {
 	if err := json.Unmarshal(data, &top); err != nil || len(top) != 1 {
 		t.Fatalf("top level %v, %v", top, err)
 	}
-	events := []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "SessionEnd"}
+	events := []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest", "Notification", "Stop", "SessionEnd"}
 	if len(got.Hooks) != len(events) {
 		t.Fatalf("%d events: %s", len(got.Hooks), data)
 	}

@@ -33,14 +33,14 @@
 // directory: the launch does, and a hook that finds none, or one that fails
 // a check, writes nothing.
 //
-// A hook's input is foreign: it carries the person's prompt and paths. Hook
-// takes six values of it, each compared to a fixed text or checked
-// against a pattern, and nothing of it is shown: the session id (a UUID),
-// whether a tool event carries a subagent's agent_id (not empty),
-// whether SessionStart's source is "clear", "resume", "fork" or "compact",
-// whether SessionEnd's reason is one of the first three, whether a
-// PermissionRequest's
-// tool is AskUserQuestion, and how many background tasks run. The event
+// A hook's input is foreign: it carries the person's prompt and paths.
+// Nothing of it is shown. The session and subagent ids are checked; the
+// source, end reason, question tool, permission notification and background
+// task status are compared to fixed texts. Tool names and arguments are
+// hashed with the session and subagent to match requests to completions;
+// call ids are checked and hashed too. No arguments or call ids are stored
+// in plain text. Pending requests and active calls are bounded, with an
+// unidentified wait on overflow. The event
 // comes from the hook's own command line (the settings file the launch
 // wrote), the pid from CLAUDE_PID, checked as a positive number. The
 // environment also holds a messaging token, which is never read.
@@ -76,7 +76,7 @@ const (
 // FormatVersion is the version of both files' JSON.
 const FormatVersion = 1
 
-// maxFile bounds a file of an agent: both are a few hundred bytes.
+// maxFile bounds a file of an agent, including pending requests and calls.
 const maxFile = 4 << 10
 
 // maxWalk bounds the directory entries a read visits.

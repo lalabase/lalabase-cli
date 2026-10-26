@@ -293,7 +293,8 @@ navigation again.
   * **Where the hooks come from.** The launch writes one settings file per
     launch, `s` in its launch directory, and hands it over with
     `--settings`: a hook for each of `SessionStart`, `UserPromptSubmit`,
-    `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop` and
+    `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`,
+    `Notification`, `Stop` and
     `SessionEnd`, each one command without a shell operator,
     `'<lalabase>' hook --dir '<agents dir>' --event <event> <agent id>`,
     with a timeout of 5 s. They run beside the person's own hooks, whose
@@ -305,15 +306,17 @@ navigation again.
     code shows an error after every answer), reads no profile, no config
     and no token, asks no server, and of its environment reads
     `CLAUDE_PID` alone. Of the event's input, which carries the prompt and
-    paths, it takes six checked values and shows none: the session id,
-    a subagent's `agent_id` (so the tools of the subagent that asked for
-    an approval end the wait, another's do not), whether
+    paths, it takes checked values and shows none: the session id,
+    a subagent's `agent_id`, whether
     `SessionStart`'s source is `clear`, `resume`, `fork` or `compact`,
     whether `SessionEnd`'s reason is one of the first three, whether a
     permission request
-    is the question tool `AskUserQuestion`, and how many background tasks
-    run; an input larger than 1 MiB or broken is not read, the event
-    alone decides.
+    is the question tool `AskUserQuestion`, whether a notification is a
+    `permission_prompt`, and how many background tasks run. To match an
+    approval to its tool, it keeps hashes of the tool name and arguments
+    and of the call id, scoped to the session and subagent; no arguments
+    are written to disk. An input larger than 1 MiB or broken contributes
+    no facts; unrelated or unreadable notifications change nothing.
   * **The program must stay where it is.** The hooks name the program by
     its path, links resolved. Moved or removed while a session runs,
     Claude Code shows an error line after every answer. A program path or
@@ -337,17 +340,31 @@ navigation again.
 
     | State | Glyph | Tone | From |
     |---|---|---|---|
-    | waiting for approval | `!` | magenta, bold | `PermissionRequest` |
+    | waiting for approval | `!` | magenta, bold | `PermissionRequest` or `Notification` with `notification_type: "permission_prompt"` |
     | waiting for you | `⣿` | magenta | `Stop`, the question tool's request, or `SessionStart` after `/clear`, `/resume` or `/branch` (no `Stop` follows them) |
     | lost | `✕` | red | the pid is gone, or now has another start time |
-    | working | braille spinner | cyan | `SessionStart` (a start, as `x`'s), `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop` with a background task running |
+    | working | braille spinner | cyan | `SessionStart` (a start, as `x`'s), `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop` with a background task running |
     | starting | `⠂` | cyan, faint | no hook yet (the folder's trust dialog comes first) |
     | ended | `✓` | green, faint | `SessionEnd`, but for `/clear`, `/resume` and `/branch` |
 
     A compaction (`/compact`, or Claude Code's own when the context is
     full, also in the middle of a turn) changes no state.
-    A background subagent's tool events (they carry its `agent_id`) leave
-    an open approval or question as it is: the session still waits.
+    An unrelated parallel tool leaves an open approval or question as it
+    is, including tools in the same session or subagent. `PreToolUse`
+    precedes permission checks and cannot answer a prompt. Only the
+    awaited tool's completion, successful or failed, clears its request; other pending requests
+    remain, with approvals shown before questions.
+    Sandbox network prompts arrive through a permission notification,
+    normally after about six seconds without typing. Notifications name
+    no tool, so their wait stays until the turn ends without background
+    work, a new prompt, a session restart or the session's end. The same
+    conservative rule applies when parallel calls of the same tool cannot
+    be distinguished (other hooks may rewrite their arguments), an old
+    record has no tool identity, or tracking exceeds
+    its bounds. A compaction and a `Stop` with background work still
+    running keep pending requests. These hooks are installed for new
+    launches; restart sessions launched before this update to receive
+    permission notifications.
     The age of a lost agent counts from the last state its hooks
     recorded: the client cannot know when the process went.
     The glyph and the word say the state; the tone only weighs it, and
