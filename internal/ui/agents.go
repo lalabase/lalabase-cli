@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/present"
+	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
 // AgentWatcher reads the agents of the profile (C9a): one command per
@@ -135,4 +136,42 @@ func (a *app) markAgent(row *present.Row, ticket string) {
 	if ag, ok := a.agentAt(ticket); ok {
 		row.Mark, row.MarkStyle = present.NewInline(a.glyph(ag.State)), agentStyles[ag.State]
 	}
+}
+
+// agentWords are the states' words: with the glyph they carry the state,
+// the tone only weighs it.
+var agentWords = map[agents.State]uitext.ID{
+	agents.WaitingForApproval: uitext.AgentApproval,
+	agents.WaitingForYou:      uitext.AgentWaiting,
+	agents.Lost:               uitext.AgentLost,
+	agents.Working:            uitext.AgentWorking,
+	agents.Starting:           uitext.AgentStarting,
+	agents.Ended:              uitext.AgentEnded,
+}
+
+// agentHead is the line of the ticket's head for its most urgent agent:
+// its glyph in its tone, then its word and how long its state has lasted
+// by the model's clock. ok is false when the ticket has no agent.
+func (a *app) agentHead(ticket string) (glyph string, style present.Style, text string, ok bool) {
+	ag, ok := a.agentAt(ticket)
+	if !ok {
+		return "", present.Plain, "", false
+	}
+	word := uitext.Inline(agentWords[ag.State]).String()
+	return a.glyph(ag.State), agentStyles[ag.State], uitext.Fill(uitext.AgentLine, word, age(a.now().Sub(ag.Since))).String(), true
+}
+
+// age is how long a state has lasted, in its largest whole unit; a time
+// ahead of the clock is no time at all.
+func age(d time.Duration) string {
+	d = max(0, d)
+	switch {
+	case d < time.Minute:
+		return uitext.Fill(uitext.AgeSeconds, int(d/time.Second)).String()
+	case d < time.Hour:
+		return uitext.Fill(uitext.AgeMinutes, int(d/time.Minute)).String()
+	case d < 24*time.Hour:
+		return uitext.Fill(uitext.AgeHours, int(d/time.Hour)).String()
+	}
+	return uitext.Fill(uitext.AgeDays, int(d/(24*time.Hour))).String()
 }

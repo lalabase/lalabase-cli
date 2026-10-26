@@ -169,7 +169,9 @@ func (m Model) detailColumn() present.Column {
 	// The facts stand in the bar where the pane has room for it, else in
 	// the head; the width alone decides, as for wrappedLines.
 	meta := view.MetaFits(view.InnerWidth(layoutWith(m.width, m.height, 1, m.focus), view.Object))
-	t := ticketText(d, ticketContext{paged: a.pagedOn(), origin: m.originLine(), when: a.when, me: a.ownID(), meta: meta})
+	tc := ticketContext{paged: a.pagedOn(), origin: m.originLine(), when: a.when, me: a.ownID(), meta: meta}
+	tc.agentGlyph, tc.agentStyle, tc.agent, _ = a.agentHead(d.id)
+	t := ticketText(d, tc)
 	c.Text = present.NewBody(strings.Join(t.lines, "\n"))
 	c.Styles = t.styles
 	if meta {
@@ -291,6 +293,11 @@ type ticketContext struct {
 	when   func(string) string
 	me     string
 	meta   bool
+	// agent is the line of the ticket's most urgent agent (C9a), after
+	// its glyph in its tone; "" for none.
+	agent      string
+	agentGlyph string
+	agentStyle present.Style
 }
 
 // ownID is the user id of the token's own person: empty until /me
@@ -309,7 +316,7 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 	r, paged, origin, when := d.record, c.paged, c.origin, c.when
 	t := ticketLines{posts: map[string]int{}}
 	// The head: the title, then one faint line of its facts, unless they
-	// stand in the meta bar.
+	// stand in the meta bar, then the line of its agent, if it has one.
 	t.addLead(uitext.Fill(uitext.TicketNumber, r.Number).String()+" "+textOr(r.Title, uitext.UntitledTicket), present.Strong, "", present.Strong)
 	if !c.meta {
 		assigned := uitext.Inline(uitext.MetaUnassigned).String()
@@ -323,6 +330,10 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 			uitext.Fill(uitext.MetaCreator, personOf(r.Creator)).String(),
 			uitext.Fill(uitext.MetaUpdated, when(r.UpdatedAt)).String(),
 		}, " · "), present.Faint)
+	}
+	if c.agent != "" {
+		// What the ticket's agent does (C9a), under the facts.
+		t.addLead(c.agentGlyph, c.agentStyle, " "+c.agent, present.Plain)
 	}
 	if origin != "" {
 		t.add(plainLine, uitext.Inline(uitext.LabelNotification).String()+": "+origin)

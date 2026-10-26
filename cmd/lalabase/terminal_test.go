@@ -384,7 +384,10 @@ func TestTerminalChild(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	cwd, _ := os.Getwd()
-	env := Env{Context: ctx, Home: os.Getenv("HOME"), Cwd: cwd, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv, Interactive: isTerminal(os.Stdin), OutputTerminal: isTerminal(os.Stdout)}
+	env := Env{Context: ctx, Home: os.Getenv("HOME"), Cwd: cwd, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv, Interactive: isTerminal(os.Stdin), OutputTerminal: isTerminal(os.Stdout),
+		// The program the hooks of a launch name (C9a): the test binary is
+		// none, so a test names one.
+		Executable: os.Getenv(executableEnv)}
 	if scenario == "hang" {
 		// The inherited pipe stays open while this sleeping descendant lives.
 		// EOF proves group termination without relying on zombie reaping by

@@ -235,6 +235,19 @@ const (
 	LaunchFailed
 	// C9a: a launch whose agent's state cannot be shown.
 	LaunchUntracked
+	// C9a: the agent's line in the ticket's head, its states' words and
+	// the age of a state.
+	AgentLine
+	AgentApproval
+	AgentWaiting
+	AgentLost
+	AgentWorking
+	AgentStarting
+	AgentEnded
+	AgeSeconds
+	AgeMinutes
+	AgeHours
+	AgeDays
 	// L2: the layout after the design review.
 	PathStep
 	PathDetail
@@ -366,7 +379,11 @@ var english = map[ID]string{
 	LaunchSessionGone:   "iTerm did not find this session; nothing opened",
 	LaunchNoAnswer:      "iTerm did not answer within 5 s; a pane may still open. If macOS asks for permission, allow it",
 	LaunchUntracked:     "Claude Code opened beside #%d; its state cannot be shown: %s",
-	LaunchFailed:        "iTerm could not open a pane",
+	AgentLine:           "Agent %s · for %s",
+	AgentApproval:       "waiting for approval", AgentWaiting: "waiting for you", AgentLost: "lost",
+	AgentWorking: "working", AgentStarting: "starting", AgentEnded: "ended",
+	AgeSeconds: "%d s", AgeMinutes: "%d min", AgeHours: "%d h", AgeDays: "%d d",
+	LaunchFailed: "iTerm could not open a pane",
 	// L2: the path in the second line, its places and their details.
 	PathStep: " › ", PathDetail: " · ",
 	// The mark after the name of the token's own person in a comment.
