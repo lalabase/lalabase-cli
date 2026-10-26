@@ -160,8 +160,14 @@ func (l *Launcher) launch(ref uint64, t Ticket) tea.Msg {
 	args := claudeArgs(t, server, mcp, tr)
 	if l.session == "" {
 		// Recorded before claude runs: the interface waits until it ends.
-		l.record(t, agent, tr, "")
-		return l.here(claude, folder, args, done)
+		if why := l.record(t, agent, tr, ""); why != "" {
+			untracked = why
+		}
+		return l.here(claude, folder, args, func(k Kind, detail string) Done {
+			d := done(k, detail)
+			d.Untracked = untracked
+			return d
+		})
 	}
 	if _, err := dir.Write(launchdir.Script, script(folder, args), 0o700); err != nil {
 		return done(NoFiles, err.Error())

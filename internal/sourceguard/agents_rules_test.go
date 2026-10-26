@@ -149,6 +149,19 @@ func inspectHook(source string) []string {
 	if err != nil {
 		return []string{err.Error()}
 	}
+	// Getenv is read only as a call with the literal: as a value it could
+	// be called with anything (review round 1 of #34, F5).
+	calledWithPID := map[*ast.SelectorExpr]bool{}
+	ast.Inspect(file, func(node ast.Node) bool {
+		if call, ok := node.(*ast.CallExpr); ok {
+			if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Getenv" && len(call.Args) == 1 {
+				if lit, ok := call.Args[0].(*ast.BasicLit); ok && lit.Value == `"CLAUDE_PID"` {
+					calledWithPID[sel] = true
+				}
+			}
+		}
+		return true
+	})
 	var findings []string
 	for _, imp := range file.Imports {
 		p, _ := strconv.Unquote(imp.Path.Value)
@@ -172,16 +185,9 @@ func inspectHook(source string) []string {
 			case name == "Environ" || name == "LookupEnv":
 				findings = append(findings, hookFile+": the environment through "+name)
 			}
-		case *ast.CallExpr:
-			if sel, ok := n.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Getenv" {
-				var lit *ast.BasicLit
-				if len(n.Args) == 1 {
-					lit, _ = n.Args[0].(*ast.BasicLit)
-				}
-				if lit == nil || lit.Value != `"CLAUDE_PID"` {
-					findings = append(findings, hookFile+": Getenv of anything but CLAUDE_PID")
-				}
-			}
+		}
+		if sel, ok := node.(*ast.SelectorExpr); ok && sel.Sel.Name == "Getenv" && !calledWithPID[sel] {
+			findings = append(findings, hookFile+": Getenv of anything but CLAUDE_PID, or as a value")
 		}
 		return true
 	})
@@ -202,6 +208,8 @@ func TestTheHookWritesNothingAndReadsOnlyCLAUDEPID(t *testing.T) {
 		"\nfunc probe(env Env) { _ = env.Stderr }\n",
 		"\nfunc probe(env Env) { _ = env.Getenv(\"CLAUDE_CODE_MESSAGING_TOKEN\") }\n",
 		"\nfunc probe(env Env) { key := \"CLAUDE_PID\"; _ = env.Getenv(key) }\n",
+		"\nfunc probe(env Env) { get := env.Getenv; _ = get(\"CLAUDE_CODE_MESSAGING_TOKEN\") }\n",
+		"\nfunc probe(env Env) { _ = env.Getenv(\"CLAUDE_PID\" + \"X\") }\n",
 		"\nfunc probe() { print(1) }\n",
 	} {
 		if got := inspectHook(source + probe); len(got) == 0 {

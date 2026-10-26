@@ -407,11 +407,25 @@ func TestAnUntrackedLaunchSaysWhy(t *testing.T) {
 		_ = cmd
 		return launch.Done{Ref: calls[0].ref, Ticket: calls[0].ticket, Kind: launch.Opened, Untracked: "the program's path cannot be put into a hook: /opt/a\x1b[2Jb"}
 	})
-	if got := h.status(); !strings.Contains(got, "#6") || !strings.Contains(got, "its state cannot be shown") || !strings.Contains(got, "/opt/a") || strings.Contains(got, "\x1b") {
+	if got := h.status(); !strings.Contains(got, "#6") || !strings.Contains(got, "cannot be shown") || !strings.Contains(got, "/opt/a") || strings.Contains(got, "\x1b") {
 		t.Fatalf("status %q", got)
 	}
 	if _, tone := h.m.status(); tone != present.NoticeProblem {
 		t.Fatalf("tone %v", tone)
+	}
+	// Review round 1 of #34, F3: ran here and ended, the same; iTerm's
+	// silence keeps its own notice.
+	for kind, want := range map[launch.Kind]string{launch.Ended: "The state of Claude Code beside #6 cannot be shown: no id", launch.NoAnswer: "iTerm did not answer"} {
+		cmd := h.press("x")
+		calls := f.launched()
+		last := calls[len(calls)-1]
+		h.drive(func() tea.Msg {
+			_ = cmd
+			return launch.Done{Ref: last.ref, Ticket: last.ticket, Kind: kind, Untracked: "no id"}
+		})
+		if got := h.status(); !strings.HasPrefix(got, want) {
+			t.Errorf("%v: status %q, want %q", kind, got, want)
+		}
 	}
 }
 

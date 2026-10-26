@@ -22,20 +22,28 @@ type AgentWatcher interface {
 const agentsEvery = 500 * time.Millisecond
 
 // agentsState is what the model knows of the agents: the newest read's
-// number, whether a read is out, the deadline of the next one (zero while
-// reading sleeps), the agents of the newest read, and the spinner's frame.
+// number, whether a read is out and whether another is owed after it, the
+// deadline of the next one (zero while reading sleeps), the agents of the
+// newest read, and the spinner's frame.
 type agentsState struct {
 	ref     uint64
 	reading bool
+	again   bool
 	until   time.Time
 	list    []agents.Agent
 	frame   int
 }
 
 // readAgents issues a read unless one is out or due already: one chain of
-// reads at a time.
+// reads at a time. A read asked for while one is out is owed: the one out
+// may have seen the directory before what asked for it (a launch's
+// record), so another follows it at once.
 func (a *app) readAgents() tea.Cmd {
-	if a.deps.Agents == nil || a.agents.reading || !a.agents.until.IsZero() {
+	if a.deps.Agents == nil || !a.agents.until.IsZero() {
+		return nil
+	}
+	if a.agents.reading {
+		a.agents.again = true
 		return nil
 	}
 	a.agents.ref++
@@ -62,6 +70,10 @@ func (a *app) receiveAgents(s agents.Snapshot) tea.Cmd {
 			a.agents.frame++
 			break
 		}
+	}
+	if a.agents.again {
+		a.agents.again = false
+		return a.readAgents()
 	}
 	if (len(a.agents.list) == 0 && !a.launch.busy) || a.deps.Events == nil {
 		return nil

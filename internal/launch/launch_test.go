@@ -837,6 +837,11 @@ func TestALaunchWithoutHooks(t *testing.T) {
 				if d, ok := msg.(Done); iterm && (!ok || d.Kind != Opened || !strings.Contains(d.Untracked, c.why)) {
 					t.Fatalf("iTerm: %#v", msg)
 				}
+				// Review round 1 of #34, F3: without iTerm the end says
+				// it too.
+				if ran, ok := msg.(execRan); !iterm && (!ok || !strings.Contains(ran.fn(nil).(Done).Untracked, c.why)) {
+					t.Fatalf("here: %#v", msg)
+				}
 				dir, _ := r.theLaunch()
 				if _, err := os.Lstat(filepath.Join(dir, "s")); !os.IsNotExist(err) {
 					t.Errorf("iTerm %v: a settings file: %v", iterm, err)

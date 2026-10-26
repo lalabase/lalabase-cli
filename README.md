@@ -284,8 +284,8 @@ navigation again.
     `PATH`, macOS refusing iTerm control
     (error -1743: allow it in System Settings, Privacy & Security,
     Automation), the session not found, no answer within 5 s (a pane may
-    still open), or, as a problem, that Claude Code opened but its state
-    cannot be shown, and why (C9a). While a
+    still open), or, as a problem, that Claude Code opened (or ran here)
+    but its state cannot be shown, and why (C9a). While a
     launch runs, a second `x` does nothing.
 * **What the agents do (C9a).** Every `x` makes an agent: an id of the
   client's own (Claude's session id changes with `/clear`, the agent stays)
@@ -337,6 +337,8 @@ navigation again.
     | starting | `⠂` | cyan, faint | no hook yet (the folder's trust dialog comes first) |
     | ended | `✓` | green, faint | `SessionEnd`, but for `/clear` |
 
+    The age of a lost agent counts from the last state its hooks
+    recorded: the client cannot know when the process went.
     The glyph and the word say the state; the tone only weighs it, and
     `NO_COLOR` keeps both. The client reads the files every 500 ms while
     an agent exists or a launch runs, otherwise not at all; the spinner

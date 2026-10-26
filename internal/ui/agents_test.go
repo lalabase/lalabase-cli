@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
+	"github.com/gboyke/lalabase-cli/internal/launch"
 )
 
 // C9a: the model reads the agents' files every 500 ms by its own clock,
@@ -142,15 +143,21 @@ func TestOneReadAtATime(t *testing.T) {
 	f := h.withWatcher(agentOn(6, agents.Working, h.now))
 	a := h.m.app
 	first := a.readAgents()
-	if a.readAgents() != nil {
-		t.Fatal("a second read while one is out")
+	// Asked for twice while one is out: no second read now, one owed.
+	for range 2 {
+		if a.readAgents() != nil {
+			t.Fatal("a second read while one is out")
+		}
 	}
 	h.drive(first)
+	if f.reads() != 2 {
+		t.Fatalf("%d reads, want the first and the one owed", f.reads())
+	}
 	if a.readAgents() != nil {
 		t.Fatal("a second read while one is due")
 	}
-	if f.reads() != 1 {
-		t.Fatalf("%d reads", f.reads())
+	if f.reads() != 2 || a.agents.again {
+		t.Fatalf("%d reads, again %v", f.reads(), a.agents.again)
 	}
 	// An older read's answer changes nothing.
 	h.due()
@@ -209,5 +216,33 @@ func TestTheMostUrgentAgentWins(t *testing.T) {
 	}
 	if _, ok := h.m.app.agentAt(ticketID(website, 8)); ok {
 		t.Fatal("an agent at a ticket without one")
+	}
+}
+
+// Review round 1 of #34, F1: the launch ends while a read is out that saw
+// the directory before the launch's record. The read after it must still
+// come: a read asked for while one is out is owed, and comes when it ends.
+func TestALaunchsEndDuringAReadIsReadAgain(t *testing.T) {
+	h := newHarness(t)
+	f := h.withWatcher()
+	h.withLauncher()
+	h.openSix()
+	h.press("x")
+	a := h.m.app
+	ref := a.agents.ref
+	if !a.agents.reading {
+		t.Fatal("x issued no read")
+	}
+	// The record is written now; the launch's answer comes first.
+	f.set(agentOn(6, agents.Starting, h.now))
+	calls := h.m.app.deps.Launcher.(*fakeLauncher).launched()
+	h.drive(h.feed(launch.Done{Ref: calls[0].ref, Ticket: calls[0].ticket, Kind: launch.Opened})...)
+	// Then the read that began before the record, empty.
+	h.drive(h.feed(agents.Snapshot{Ref: ref})...)
+	if len(a.agents.list) != 1 {
+		t.Fatalf("the launch's agent was never read: %+v", a.agents)
+	}
+	if a.agents.until.IsZero() {
+		t.Fatal("reading sleeps with an agent")
 	}
 }

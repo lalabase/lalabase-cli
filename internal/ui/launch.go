@@ -95,9 +95,10 @@ func (m Model) launchDone(d launch.Done) tea.Cmd {
 	a := m.app
 	a.launch.busy, a.launch.ticket = false, d.Ticket.ID
 	a.launch.notice, a.launch.tone = launchNotice(d), launchTone(d.Kind)
-	if d.Kind == launch.Opened && d.Untracked != "" {
-		// Opened, but its state will not be shown: a problem to see, not
-		// a hint that goes.
+	if (d.Kind == launch.Opened || d.Kind == launch.Ended) && d.Untracked != "" {
+		// Opened (or ran here), but its state is not shown: a problem to
+		// see, not a hint that goes. iTerm's silence (NoAnswer) says more
+		// and keeps its own notice.
 		a.launch.notice, a.launch.tone = uitext.Fill(uitext.LaunchUntracked, d.Ticket.Number, d.Untracked), present.NoticeProblem
 	}
 	// The launch cleared the deadline when it started (launchClaude): a

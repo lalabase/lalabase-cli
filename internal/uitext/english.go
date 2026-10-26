@@ -378,7 +378,7 @@ var english = map[ID]string{
 	LaunchNoPermission:  "macOS does not let this terminal control iTerm: allow it in System Settings > Privacy & Security > Automation",
 	LaunchSessionGone:   "iTerm did not find this session; nothing opened",
 	LaunchNoAnswer:      "iTerm did not answer within 5 s; a pane may still open. If macOS asks for permission, allow it",
-	LaunchUntracked:     "Claude Code opened beside #%d; its state cannot be shown: %s",
+	LaunchUntracked:     "The state of Claude Code beside #%d cannot be shown: %s",
 	AgentLine:           "Agent %s · for %s",
 	AgentApproval:       "waiting for approval", AgentWaiting: "waiting for you", AgentLost: "lost",
 	AgentWorking: "working", AgentStarting: "starting", AgentEnded: "ended",
