@@ -19,7 +19,9 @@ either order and its attachments page by page, the description or one
 comment read whole on request. One `r` marks a notification as read, from
 the inbox or from the ticket opened out of it. The other writes come with
 C2. One `x` in a ticket opens Claude Code beside it (C7): in a new iTerm
-pane, or without iTerm in this terminal until it ends.
+pane, or without iTerm in this terminal until it ends. Since C9a the
+client learns from the session's hooks what each of these agents does, and
+shows it with a glyph in the ticket list and a line in the ticket's head.
 
 ## Setting up
 
@@ -29,6 +31,9 @@ lalabase auth import            # take a server and token from Claude Code into 
 lalabase auth import --agent    # a read-only token for Claude Code into the profile "agent"
 lalabase auth status            # who the tokens belong to and what the server supports
 ```
+
+`lalabase hook` is not for a person: the hooks of a session `x` started run
+it (see "What the agents do").
 
 With no command, both stdin and stdout must be terminals and the first set
 locale in `LC_ALL`, `LC_CTYPE`, `LANG` must explicitly name UTF-8. Pipes fail
@@ -65,7 +70,12 @@ navigation again.
   the second line of an entry is faint; an inbox without unread
   notifications is faint, an unread count bold. Ticket numbers stand
   right-aligned as wide as the page's widest, so the titles and the lines
-  under them start in one column. Free text wraps at 80
+  under them start in one column. Every ticket list keeps two cells
+  between the marker and the number for an agent's glyph (C9a), empty
+  without one: the glyph is not faint in a done ticket's row, and in the
+  cursor bar it takes the bar's colour, since its shape says the state.
+  A ticket with an agent has one more line in its head, after the title
+  and its facts: the glyph in its tone, then `Agent <state> · for <age>`. Free text wraps at 80
   columns at most, however wide the pane. Times are shown in the
   computer's time zone, to the minute, as "28 Aug 15:45", with the year
   when it is not the current one ("3 Nov 2025 09:12").
@@ -227,7 +237,7 @@ navigation again.
     script, its path typed single-quoted (C7b). The script, run by `/bin/sh`
     whatever the person's shell is, does
     `cd '<folder>' || exit` and
-    `exec claude --mcp-config '<dir>/m' --strict-mcp-config -n 'lalabase #<n>' '<prompt>'`,
+    `exec claude --mcp-config '<dir>/m' --strict-mcp-config --session-id '<uuid>' --settings '<dir>/s' -n 'lalabase #<n>' '<prompt>'`,
     every value single-quoted; `claude` comes from the `PATH` the pane's
     shell exports (an alias or a shell function of that name is not used).
     Every press opens a new split. Elsewhere the interface gives the
@@ -256,15 +266,16 @@ navigation again.
     person's allow rules name their own server, not this one.
   * **The launch files.** One directory per press,
     `~/.cache/lalabase/cli/<profile>/l/<16 hex>/` (or under
-    `$XDG_CACHE_HOME`, beside the disk cache), holds `m` (0600) and, in
-    iTerm, the script `run` (0700). They are kept like the client's config
+    `$XDG_CACHE_HOME`, beside the disk cache), holds `m` (0600), the
+    settings with the agent's hooks `s` (0600, C9a) and, in iTerm, the
+    script `run` (0700). They are kept like the client's config
     (`internal/privatefs`: the whole way checked, the directory the user's
     alone, every file new and private). A new file is removed if writing,
     syncing or checking it fails. `m` is written only once the launch can
     go on: without `claude` on the `PATH`, or with a directory path no
     shell takes as typed, there is none. The token is in `m` alone, as in
     `config.toml`: never in a process's arguments, the typed line or the
-    script. Claude Code reads `m` once, at start. A launch directory older
+    script. Claude Code reads `m` and `s` once, at start. A launch directory older
     than a day goes before the next launch and when the client quits; a
     younger one stays.
   * **What the status line says:** opening, opened beside `#<n>` (or ended,
@@ -273,8 +284,68 @@ navigation again.
     `PATH`, macOS refusing iTerm control
     (error -1743: allow it in System Settings, Privacy & Security,
     Automation), the session not found, no answer within 5 s (a pane may
-    still open). While a
+    still open), or, as a problem, that Claude Code opened but its state
+    cannot be shown, and why (C9a). While a
     launch runs, a second `x` does nothing.
+* **What the agents do (C9a).** Every `x` makes an agent: an id of the
+  client's own (Claude's session id changes with `/clear`, the agent stays)
+  and a session id, which `claude` gets as `--session-id`.
+  * **Where the hooks come from.** The launch writes one settings file per
+    launch, `s` in its launch directory, and hands it over with
+    `--settings`: a hook for each of `SessionStart`, `UserPromptSubmit`,
+    `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop` and
+    `SessionEnd`, each one command without a shell operator,
+    `'<lalabase>' hook --dir '<agents dir>' --event <event> <agent id>`,
+    with a timeout of 5 s. They run beside the person's own hooks, whose
+    configuration is not touched. Claude Code's `/hooks` does not list
+    them; `/compact` shows a hook's command line, which holds no secret.
+  * **What the hook does.** `lalabase hook` records the agent's state and
+    nothing else: it writes to neither stdout nor stderr and always exits
+    0 (output would reach the model, exit 2 would block a tool, any other
+    code shows an error after every answer), reads no profile, no config
+    and no token, asks no server, and of its environment reads
+    `CLAUDE_PID` alone. Of the event's input, which carries the prompt and
+    paths, it takes four checked values and shows none: the session id,
+    whether `SessionEnd`'s reason is `clear`, whether a permission request
+    is the question tool `AskUserQuestion`, and how many background tasks
+    run; an input larger than 1 MiB or broken is not read, the event
+    alone decides.
+  * **The program must stay where it is.** The hooks name the program by
+    its path, links resolved. Moved or removed while a session runs,
+    Claude Code shows an error line after every answer. A program path or
+    an agents directory with a character no shell takes as typed (as for
+    the folder above), or a ticket without its organisation, launches
+    without hooks, and the status line says why.
+  * **Where the files are.** `~/.cache/lalabase/cli/<profile>/a/` (or under
+    `$XDG_CACHE_HOME`), beside the launch directories and apart from them:
+    per agent `<id>.launch.json` (the ticket's address, the pane, written
+    once by the launch), `<id>.state.json` (the state, when it began, the
+    latest session id, the pid and its start time, replaced whole by the
+    hook under the lock `<id>.lock`). They are kept like the config
+    (`internal/privatefs`); the hook never makes the directory. An agent
+    stays until it is removed (a later slice); the launch directory's day
+    and the disk cache do not touch them.
+  * **The states**, in order of urgency (of several agents at a ticket the
+    most urgent shows):
+
+    | State | Glyph | Tone | From |
+    |---|---|---|---|
+    | waiting for approval | `!` | magenta, bold | `PermissionRequest` |
+    | waiting for you | `⣿` | magenta | `Stop`, or the question tool's request |
+    | lost | `✕` | red | the pid is gone, or now has another start time |
+    | working | braille spinner | cyan | `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop` with a background task running |
+    | starting | `⠂` | cyan, faint | no hook yet (the folder's trust dialog comes first) |
+    | ended | `✓` | green, faint | `SessionEnd`, but for `/clear` |
+
+    The glyph and the word say the state; the tone only weighs it, and
+    `NO_COLOR` keeps both. The client reads the files every 500 ms while
+    an agent exists or a launch runs, otherwise not at all; the spinner
+    moves one frame with every read.
+  * **Two gaps.** Claude Code sends no event when a permission prompt is
+    denied, nor on `Esc` during a tool: the first leaves "waiting for
+    approval", the second "working", until the next prompt or the
+    session's end. Both follow an action of the person in that pane, and
+    the state's age shows how old it is.
 * **A comment that is gone.** When the server answers a comment read whole
   with "not found" (it was deleted or made private), its cached text goes
   and is hidden at once, the ticket stays and says "Comment unavailable",
@@ -560,6 +631,11 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   `x/sys/unix` (any name with `Syscall` in it) but the one the access list
   reader makes in `internal/privatefs`. A syntax guard: a `go:linkname` to
   such a function is not seen.
+* **No clock of its own** in the interface and in `internal/agents` (C9a):
+  no tick, no timer, no sleep (but the hook's short retries for its lock);
+  the agents are read every 500 ms through the gateway's Events, under the
+  supervisor. The process table is read without cgo: `sysctl` through
+  `x/sys/unix` on macOS, `/proc/<pid>/stat` on Linux.
 * **The server contract** is a copy of `spec/fixtures/mcp_contract.json` of the
   core repository, with its origin in `internal/contract/testdata/SOURCE.json`.
   Refresh it when the client adopts a newer server:
