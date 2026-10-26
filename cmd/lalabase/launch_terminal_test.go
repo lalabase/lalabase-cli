@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/inboxfixture"
 )
 
@@ -62,7 +63,8 @@ func TestPTYLaunchRunsClaudeHereAndComesBack(t *testing.T) {
 	c := startTerminalWith(t, "inbox-normal", 120, terminalOptions{
 		url: url, marker: "Token can write: yes", limit: inboxLimit, home: home,
 		// PWD as a shell leaves it for the client: the start folder.
-		env: []string{"PATH=" + bin + ":/usr/bin:/bin", "CLAUDE_PROBE=" + probe, "CLAUDE_STUB=" + filepath.Join(probe, "stub.sh"), "PWD=" + home},
+		env: []string{"PATH=" + bin + ":/usr/bin:/bin", "CLAUDE_PROBE=" + probe, "CLAUDE_STUB=" + filepath.Join(probe, "stub.sh"), "PWD=" + home,
+			executableEnv + "=" + hookProgram},
 		// The project's folder from the profile, under ~/: not the folder
 		// the client was started in (home).
 		folders: map[string]string{website: "~/dev/website"},
@@ -107,7 +109,14 @@ func TestPTYLaunchRunsClaudeHereAndComesBack(t *testing.T) {
 		t.Fatalf("launch directories %q, %v", launches, err)
 	}
 	server := "lalabase_c7_" + filepath.Base(launches[0])[:8]
+	// C9a: the session id of the agent's record, and the settings file
+	// beside the server file.
+	recorded, err := agents.Read(testAgentsDir(home, url), nil)
+	if err != nil || len(recorded) != 1 || recorded[0].Ticket != inboxfixture.TicketLogin || recorded[0].Organisation != inboxfixture.OrgA || recorded[0].Pane != "" {
+		t.Fatalf("agents %+v, %v", recorded, err)
+	}
 	want := "--mcp-config\n--\n" + filepath.Join(launches[0], "m") + "\n--\n--strict-mcp-config\n--\n" +
+		"--session-id\n--\n" + recorded[0].Session + "\n--\n--settings\n--\n" + filepath.Join(launches[0], "s") + "\n--\n" +
 		"-n\n--\nlalabase #1\n--\n" +
 		"Arbeite mit mir am Lalabase-Ticket #1. " +
 		"Lies es selbst mit dem Werkzeug get_ticket des MCP-Servers " + server + " (mcp__" + server + "__get_ticket) " +
@@ -121,7 +130,17 @@ func TestPTYLaunchRunsClaudeHereAndComesBack(t *testing.T) {
 	if got := read(t, filepath.Join(probe, "mcp")); got != wantMCP {
 		t.Errorf("server file\n got %s\nwant %s", got, wantMCP)
 	}
+	if got := read(t, filepath.Join(launches[0], "s")); !strings.Contains(got, `"command":"'`+hookProgram+`' hook --dir '`) {
+		t.Errorf("settings file %s", got)
+	}
 }
+
+// executableEnv names the program a terminal test's child hands its
+// launches' hooks (C9a); hookProgram is the one these tests name.
+const (
+	executableEnv = "C9A_EXECUTABLE"
+	hookProgram   = "/opt/lalabase/bin/lalabase"
+)
 
 // x where the project's folder is missing, on an 80-column terminal: the
 // notice does not fit beside the context line and stands whole on a line

@@ -6,8 +6,9 @@ program does; this file says how to change it without repeating mistakes the
 reviews of C0 already found. Status: 2026-10-12, main at C2a (#16: the
 ground for the writes of C2, with its review findings in #21) plus the
 status colours (#18), the cursor bar (#19) and the scrollbar on free text
-(#23); C7 (Claude Code beside the ticket: `x`, `internal/launch`, project
-folders per profile) is this branch.
+(#23), C7 (Claude Code beside the ticket: `x`, `internal/launch`, project
+folders per profile) and C7b (#33); C9a (the agents' state: hooks,
+`lalabase hook`, `internal/agents`) is this branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
@@ -48,6 +49,7 @@ on a Mac before every merge, by running the tests here.
 | `internal/claudecfg` | Lalabase entries in Claude Code's configuration, for `auth import` alone (the launch reads none of it since C7b) |
 | `internal/launch` | Claude Code beside the ticket (C7, C7b): the folder, the server file's bytes, the arguments, the launch script, the typed line, the AppleScript; the only package that starts a child process |
 | `internal/launchdir` | the launch files (C7b): one private directory per press beside the disk cache, its files created exclusively, old ones pruned |
+| `internal/agents` | the agents x started (C9a): their directory beside the launch files, the launch record, the state `lalabase hook` writes, the reading every 500 ms, lost processes |
 | `internal/clean` | making foreign text safe for a terminal |
 | `internal/contract` | copy of the core's MCP contract; imported by tests only |
 | `internal/sourceguard` | tests over the repository's own files |
@@ -77,7 +79,7 @@ on a Mac before every merge, by running the tests here.
    Every received 429 pauses, whatever became of its body. A job is retried
    at most once.
 6. **One threat model per area, no exceptions.** For the client's own files
-   (the config, its lock file, the disk cache, the launch files): another local user without
+   (the config, its lock file, the disk cache, the launch files, the agents' files): another local user without
    root, held in `internal/privatefs` for all of them (README "The config's
    way"). Round 4 of C0c added exceptions (sticky directories, links, root)
    and each one opened the next hole; round 5 replaced them with the one
@@ -107,11 +109,13 @@ on a Mac before every merge, by running the tests here.
     Where the interface and its work reach, production code imports only
     from the guard's allowlist (`reachableImports`); a new import there is a
     decision about writing and goroutines, not a fix for a red guard. The
-    four packages that keep the client's files (`internal/diskcache`,
-    `internal/privatefs`, `internal/safefile`, `internal/launchdir`) have
-    their file calls named one by one in `fileSystemImports`, the output
-    and goroutine rules hold there too, and no other package gets those
-    names. Likewise `launchImports` names what `internal/launch`
+    five packages that keep the client's files (`internal/diskcache`,
+    `internal/privatefs`, `internal/safefile`, `internal/launchdir`,
+    `internal/agents`) have their file calls named one by one in
+    `fileSystemImports`, the output and goroutine rules hold there too,
+    and no other package gets those names. Neither the interface nor
+    `internal/agents` has a clock of its own (a tick, a timer, a sleep but
+    the hook's lock retries): they wake through the gateway's Events. Likewise `launchImports` names what `internal/launch`
     (`os/exec`) may use, the client's own packages included (it reads no
     file); a child process starts nowhere else. No dot imports
     anywhere. A function the standard library runs on a goroutine of

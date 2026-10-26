@@ -48,7 +48,7 @@ func outputRoot(dir string) bool {
 
 func infrastructure(p string) bool {
 	for _, name := range []string{"internal/api", "internal/transport", "internal/cache", "internal/queue", "internal/gateway",
-		"internal/diskcache", "internal/privatefs", "internal/safefile", "internal/launchdir"} {
+		"internal/diskcache", "internal/privatefs", "internal/safefile", "internal/launchdir", "internal/agents"} {
 		if p == clientModule+name || strings.HasPrefix(p, clientModule+name+"/") {
 			return true
 		}
@@ -96,10 +96,10 @@ var reachableImports = map[string][]string{
 // fileSystemImports are what the packages that keep the client's files for
 // it may import beyond reachableImports (C1e): the disk cache, the threat
 // model of private files, the reader of files the client does not control,
-// and the launch files (C7b). Each import is named with the names it may use, so a
-// package that can also write to the terminal, end the process or read the
-// environment (os) gives only the file calls; nil allows every name of a
-// pure package. Nothing here allows an output stream, a goroutine or the
+// the launch files (C7b) and the agents' files (C9a). Each import is named
+// with the names it may use, so a package that can also write to the
+// terminal, end the process or read the environment (os) gives only the
+// file calls; nil allows every name of a pure package. Nothing here allows an output stream, a goroutine or the
 // environment: those rules hold in these packages too, and no other
 // reachable package gets any of this. A new name here is a decision, not a
 // fix for a red guard.
@@ -140,6 +140,20 @@ var fileSystemImports = map[string]map[string][]string{
 		"crypto/rand":   {"Read"},
 		"encoding/hex":  nil,
 	},
+	// The agents' files (C9a): the directory made once by the launch, a
+	// launch record created exclusively, a state replaced through a
+	// temporary file and a rename, and the directory read. The process
+	// table of macOS is asked through sysctl by name (not a raw system
+	// call); Linux's is a file read through internal/safefile.
+	"internal/agents": {
+		"os":                    {"MkdirAll", "Lstat", "Open", "OpenFile", "O_WRONLY", "O_CREATE", "O_EXCL", "CreateTemp", "Rename", "Remove"},
+		"io/fs":                 nil,
+		"path/filepath":         {"IsAbs", "Join"},
+		"crypto/rand":           {"Read"},
+		"crypto/sha256":         nil,
+		"encoding/hex":          nil,
+		"golang.org/x/sys/unix": {"SysctlKinfoProcSlice"},
+	},
 }
 
 // launchImports are what the launch of Claude Code beside a ticket (C7)
@@ -152,7 +166,8 @@ var fileSystemImports = map[string]map[string][]string{
 // with the child, and the launch runs under the supervisor. It may stat a
 // folder, and nothing else of os: no environment (the command hands it
 // the values it needs), no output stream. Its files are written by
-// internal/launchdir (fileSystemImports). Nothing else gets any of this,
+// internal/launchdir (fileSystemImports), the agent's record by
+// internal/agents (C9a). Nothing else gets any of this,
 // and inspectChildProcesses refuses a child process everywhere else in the
 // client. Of the client's own packages it imports only those named here:
 // it reads no file, Claude Code's configuration least of all (C7b), so no
@@ -164,6 +179,9 @@ var launchImports = map[string]map[string][]string{
 		"path/filepath":                     {"Clean", "IsAbs", "Join"},
 		clientModule + "internal/launchdir": nil,
 		clientModule + "internal/worker":    nil,
+		// The agent's hooks and its record (C9a), by name: the launch
+		// writes them and reads nothing of the agents.
+		clientModule + "internal/agents": {"Events", "Launch", "NewID", "Prepare", "WriteLaunch"},
 	},
 }
 

@@ -212,7 +212,7 @@ func TestPruneRemovesOldLaunchDirectoriesAlone(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, name := range append([]string{MCPConfig, Script}, extra...) {
+		for _, name := range append([]string{MCPConfig, Script, Settings}, extra...) {
 			if _, err := d.Write(name, []byte("x"), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -292,4 +292,34 @@ func entries(t *testing.T, dir string) []string {
 		out = append(out, e.Name())
 	}
 	return out
+}
+
+// C9a: the agents' directory beside the launch root is not Prune's: it
+// stays whatever its age, and so does everything in it.
+func TestPruneLeavesTheAgentsDirectory(t *testing.T) {
+	profile := realTemp(t)
+	root := filepath.Join(profile, "l")
+	agents := filepath.Join(profile, "a")
+	if err := os.Mkdir(agents, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(agents, "0f8fad5b-d9cb-469f-a165-70867728950e.state.json")
+	if err := os.WriteFile(state, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := now.Add(-30 * 24 * time.Hour)
+	for _, path := range []string{state, agents} {
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := Make(root, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := Prune(root, now.Add(48*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(state); err != nil {
+		t.Fatalf("the agents' state went: %v", err)
+	}
 }

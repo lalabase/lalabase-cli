@@ -39,6 +39,7 @@ func TestTheLaunchPackagesImportByName(t *testing.T) {
 	for name, source := range map[string]string{
 		"internal/launch/x.go":    `package launch; import ("os"; "os/exec"; "path/filepath"); var _ = exec.Command; var _ = exec.CommandContext; var _ = exec.LookPath; var _ *exec.Cmd; var _ = os.Stat; var _ os.FileInfo; var _ = filepath.Join; var _ = filepath.IsAbs; var _ = filepath.Clean`,
 		"internal/launch/y.go":    `package launch; import ("` + clientModule + `internal/launchdir"; "` + clientModule + `internal/worker"); var _ = launchdir.Make; var _ = worker.Run`,
+		"internal/launch/z.go":    `package launch; import "` + clientModule + `internal/agents"; var _ = agents.WriteLaunch; var _ = agents.Prepare; var _ = agents.NewID; var _ = agents.Events; var _ agents.Launch`,
 		"internal/launchdir/x.go": `package launchdir; import ("os"; "io/fs"; "path/filepath"; "crypto/rand"; "encoding/hex"); var _ = os.Mkdir; var _ = os.MkdirAll; var _ = os.Open; var _ = os.OpenFile; var _ = os.O_WRONLY | os.O_CREATE | os.O_EXCL; var _ = os.Remove; var _ fs.DirEntry; var _ = filepath.Join; var _ = filepath.IsAbs; var _ = rand.Read; var _ = hex.EncodeToString`,
 	} {
 		if got := inspectUI(withLaunch(map[string]string{name: source})); len(got) != 0 {
@@ -68,10 +69,13 @@ func TestTheLaunchPackagesImportByName(t *testing.T) {
 		"launch#term":         `package launch; import "golang.org/x/term"; var _ = term.MakeRaw`,
 		// Review round 2 of #33, F1: the launch reads no file, also not
 		// through the client's own readers.
-		"launch#safefile":     `package launch; import "` + clientModule + `internal/safefile"; var _ = safefile.ReadRegular`,
-		"launch#claudecfg":    `package launch; import "` + clientModule + `internal/claudecfg"; var _ = claudecfg.Find`,
-		"launch#profile":      `package launch; import p "` + clientModule + `internal/profile"; var _ = p.Load`,
-		"launch#diskcache":    `package launch; import _ "` + clientModule + `internal/diskcache"`,
+		"launch#safefile":  `package launch; import "` + clientModule + `internal/safefile"; var _ = safefile.ReadRegular`,
+		"launch#claudecfg": `package launch; import "` + clientModule + `internal/claudecfg"; var _ = claudecfg.Find`,
+		"launch#profile":   `package launch; import p "` + clientModule + `internal/profile"; var _ = p.Load`,
+		"launch#diskcache": `package launch; import _ "` + clientModule + `internal/diskcache"`,
+		// C9a: of the agents the launch writes, it reads nothing.
+		"launch#agentsread":   `package launch; import "` + clientModule + `internal/agents"; var _ = agents.Read`,
+		"launch#agentshook":   `package launch; import "` + clientModule + `internal/agents"; var _ = agents.Hook`,
 		"launchdir#exec":      `package launchdir; import "os/exec"; var _ = exec.Command`,
 		"launchdir#stdout":    `package launchdir; import "os"; var out = os.Stdout`,
 		"launchdir#getenv":    `package launchdir; import "os"; var env = os.Getenv`,

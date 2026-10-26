@@ -18,7 +18,8 @@ import (
 // Review round 3 of #22: the launch gets every value it reads from the
 // command's Env and the profile, the variables of iTerm and of a
 // multiplexer among them. Since C7b it gets the MCP address and the token,
-// and the directory of its files beside the disk cache.
+// and the directory of its files beside the disk cache; since C9a the
+// agents' directory beside those and the program's own path.
 func TestTheLaunchReadsTheCommandsEnvironment(t *testing.T) {
 	sup := worker.New(context.Background())
 	defer sup.Stop(0)
@@ -28,13 +29,16 @@ func TestTheLaunchReadsTheCommandsEnvironment(t *testing.T) {
 		// Claude Code's own variable: not read since C7b.
 		"CLAUDE_CONFIG_DIR": "/Users/anna/.claude-work",
 	}
-	env := Env{Home: "/Users/anna", Cwd: "/Users/anna/dev", Getenv: func(k string) string { return vars[k] }}
+	env := Env{Home: "/Users/anna", Cwd: "/Users/anna/dev", Executable: "/opt/lalabase/bin/lalabase", Getenv: func(k string) string { return vars[k] }}
 	p := profile.Profile{Name: "default", URL: "https://lalabase.com", Token: "lalab_pat_X", Folders: folders}
 	const mcp = "https://lalabase.com/api/mcp"
 	got := launchConfig(env, p, mcp, sup)
 	want := launch.Config{
 		Supervisor: sup, Home: "/Users/anna", Cwd: "/Users/anna/dev", MCP: mcp, Token: "lalab_pat_X", Folders: folders,
-		Files:       "/Users/anna/.cache/lalabase/cli/default/l",
+		Files: "/Users/anna/.cache/lalabase/cli/default/l",
+		// The agents of the profile on its server: 16 hex digits of the
+		// SHA-256 of "https://lalabase.com".
+		Agents: "/Users/anna/.cache/lalabase/cli/default/a/7e64fbe1cb7bbe56", Executable: "/opt/lalabase/bin/lalabase",
 		TermProgram: "iTerm.app", SessionID: "w0t1p2:FCB46015-2039-451D-82C2-59CE4353910D",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -43,12 +47,12 @@ func TestTheLaunchReadsTheCommandsEnvironment(t *testing.T) {
 	// XDG_CACHE_HOME moves the files with the disk cache; a profile name
 	// that cannot name a directory has none.
 	vars["XDG_CACHE_HOME"] = "/Users/anna/caches"
-	if got := launchConfig(env, p, mcp, sup); got.Files != "/Users/anna/caches/lalabase/cli/default/l" {
-		t.Errorf("files %q", got.Files)
+	if got := launchConfig(env, p, mcp, sup); got.Files != "/Users/anna/caches/lalabase/cli/default/l" || got.Agents != "/Users/anna/caches/lalabase/cli/default/a/7e64fbe1cb7bbe56" {
+		t.Errorf("files %q, agents %q", got.Files, got.Agents)
 	}
 	delete(vars, "XDG_CACHE_HOME")
-	if got := launchConfig(env, profile.Profile{Name: "../x"}, mcp, sup); got.Files != "" {
-		t.Errorf("files %q for a bad profile name", got.Files)
+	if got := launchConfig(env, profile.Profile{Name: "../x"}, mcp, sup); got.Files != "" || got.Agents != "" {
+		t.Errorf("files %q, agents %q for a bad profile name", got.Files, got.Agents)
 	}
 	// Review round 6, F6: another terminal is passed on as it is.
 	vars["TERM_PROGRAM"] = "Apple_Terminal"

@@ -9,7 +9,9 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/api"
+	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/diskcache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/launch"
@@ -83,6 +85,8 @@ func runInteractive(name string, env Env) int {
 				Disk: &diskcache.Opener{Root: diskcache.Root(env.Getenv, env.Home)},
 				// Claude Code beside the ticket (C7).
 				Launcher: launch.New(launchConfig(env, p, client.MCPAddress(), sup)),
+				// What the sessions x started do (C9a).
+				Agents: agents.NewWatcher(sup, agentsFiles(env, p)),
 			})), sup)
 		}
 	}
@@ -122,7 +126,8 @@ func launchConfig(env Env, p profile.Profile, mcp string, sup *worker.Supervisor
 	}
 	return launch.Config{
 		Supervisor: sup, Home: env.Home, Cwd: env.Cwd, MCP: mcp, Token: p.Token, Folders: p.Folders,
-		Files:       launchFiles(env, p),
+		Files:  launchFiles(env, p),
+		Agents: agentsFiles(env, p), Executable: env.Executable,
 		TermProgram: env.Getenv("TERM_PROGRAM"), SessionID: env.Getenv("ITERM_SESSION_ID"),
 		Multiplexer: multiplexer,
 	}
@@ -130,10 +135,24 @@ func launchConfig(env Env, p profile.Profile, mcp string, sup *worker.Supervisor
 
 // launchFiles is the directory of the profile's launch files, beside its
 // disk cache: <cache root>/<profile>/l. "" when there is none.
-func launchFiles(env Env, p profile.Profile) string {
+func launchFiles(env Env, p profile.Profile) string { return profileSubdir(env, p, "l") }
+
+// agentsFiles is the directory of the profile's agents on its server
+// (C9a), beside the launch files and apart from them:
+// <cache root>/<profile>/a/<server>. "" when there is none.
+func agentsFiles(env Env, p profile.Profile) string {
+	dir := profileSubdir(env, p, agents.Dir)
+	server, ok := cache.NormalServer(p.URL)
+	if dir == "" || !ok {
+		return ""
+	}
+	return agents.ServerDir(dir, server)
+}
+
+func profileSubdir(env Env, p profile.Profile, name string) string {
 	dir, err := diskcache.ProfileDir(diskcache.Root(env.Getenv, env.Home), p.Name)
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, "l")
+	return filepath.Join(dir, name)
 }

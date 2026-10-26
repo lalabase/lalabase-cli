@@ -11,11 +11,12 @@ import (
 )
 
 const (
+	orgID     = "00000000-0000-4000-8000-000000000021"
 	projectID = "00000000-0000-4000-8000-000000000031"
 	ticketID  = "00000000-0000-4000-8000-000000000041"
 )
 
-var shown = Ticket{Project: projectID, ID: ticketID, Number: 42}
+var shown = Ticket{Org: orgID, Project: projectID, ID: ticketID, Number: 42}
 
 // The prompt is fixed text plus the checked values, on one line: a newline
 // would end the line `write text` types into the pane.
@@ -30,7 +31,7 @@ func TestThePromptIsFixedTextAndTheAddress(t *testing.T) {
 		t.Fatalf("prompt\n got %q\nwant %q", got, wantPrompt)
 	}
 	want := []string{"--mcp-config", "/c/l/0123/m", "--strict-mcp-config", "-n", "lalabase #42", wantPrompt}
-	if got := claudeArgs(shown, "lalabase", "/c/l/0123/m"); !slices.Equal(got, want) {
+	if got := claudeArgs(shown, "lalabase", "/c/l/0123/m", tracking{}); !slices.Equal(got, want) {
 		t.Fatalf("arguments %q", got)
 	}
 }
@@ -54,7 +55,7 @@ func TestTheServerFile(t *testing.T) {
 }
 
 func TestTheScriptQuotesEveryValue(t *testing.T) {
-	args := claudeArgs(shown, "lalabase", "/c/l/0123/m")
+	args := claudeArgs(shown, "lalabase", "/c/l/0123/m", tracking{})
 	var quotedArgs []string
 	for _, a := range args {
 		quotedArgs = append(quotedArgs, "'"+strings.ReplaceAll(a, "'", `'\''`)+"'")
@@ -156,6 +157,7 @@ func TestTheAppleScriptTakesItsValuesAsArgumentsOnly(t *testing.T) {
 		"if (unique id of s) is sid then",
 		"split vertically with default profile",
 		"write text cmdline",
+		"return unique id of n",
 		"number 4201",
 	} {
 		if !strings.Contains(appleScript, must) {
@@ -258,7 +260,7 @@ func TestTheScriptRunsClaudeInTheFolder(t *testing.T) {
 	if err := os.Chmod(filepath.Join(bin, "claude"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	args := claudeArgs(shown, "lalabase_c7_0123abcd", filepath.Join(root, "l", "m"))
+	args := claudeArgs(shown, "lalabase_c7_0123abcd", filepath.Join(root, "l", "m"), tracking{session: agentSession, settings: filepath.Join(root, "l", "s")})
 	path := filepath.Join(root, "launch dir", "run")
 	writeFile(t, path, string(script(folder, args)))
 	if err := os.Chmod(path, 0o700); err != nil {
@@ -291,5 +293,109 @@ func TestTheScriptRunsClaudeInTheFolder(t *testing.T) {
 				t.Fatalf("%s: the folder's name ran", shell)
 			}
 		}
+	}
+}
+
+// The session id and the settings file stand before the name, each as a
+// value of its own; without tracking neither is there.
+func TestTheArgumentsOfATrackedLaunch(t *testing.T) {
+	got := claudeArgs(shown, "lalabase", "/c/l/0123/m", tracking{session: agentSession, settings: "/c/l/0123/s"})
+	want := []string{"--mcp-config", "/c/l/0123/m", "--strict-mcp-config", "--session-id", agentSession, "--settings", "/c/l/0123/s", "-n", "lalabase #42", wantPrompt}
+	if !slices.Equal(got, want) {
+		t.Fatalf("arguments\n got %q\nwant %q", got, want)
+	}
+	for _, a := range claudeArgs(shown, "lalabase", "/c/l/0123/m", tracking{}) {
+		if a == "--session-id" || a == "--settings" {
+			t.Fatalf("an untracked launch has %s", a)
+		}
+	}
+}
+
+// The settings file: the seven events, each with one command hook of
+// timeout 5, and nothing else.
+func TestTheSettingsFile(t *testing.T) {
+	var got struct {
+		Hooks map[string][]struct {
+			Matcher *string `json:"matcher"`
+			Hooks   []struct {
+				Type    string `json:"type"`
+				Command string `json:"command"`
+				Timeout int    `json:"timeout"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	data := settings("/opt/lalabase/bin/lalabase", "/c/default/a", agentID)
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(data, &top); err != nil || len(top) != 1 {
+		t.Fatalf("top level %v, %v", top, err)
+	}
+	events := []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "SessionEnd"}
+	if len(got.Hooks) != len(events) {
+		t.Fatalf("%d events: %s", len(got.Hooks), data)
+	}
+	for _, e := range events {
+		groups := got.Hooks[e]
+		if len(groups) != 1 || groups[0].Matcher != nil || len(groups[0].Hooks) != 1 {
+			t.Fatalf("%s: %s", e, data)
+		}
+		h := groups[0].Hooks[0]
+		want := "'/opt/lalabase/bin/lalabase' hook --dir '/c/default/a' --event " + e + " " + agentID
+		if h.Type != "command" || h.Timeout != 5 || h.Command != want {
+			t.Errorf("%s: %+v, want %q", e, h, want)
+		}
+	}
+}
+
+// stubLalabase records its arguments: it stands in for the client's
+// program in a hook's command line.
+const stubLalabase = `#!/bin/sh
+for a in "$@"; do printf '%s\n--\n' "$a"; done > "$PROBE/hook"
+`
+
+// Each hook's command line, as the shell Claude Code hands it to runs it:
+// one command, the program at its path with exactly these arguments,
+// whatever the two paths hold.
+func TestAHookIsOneCommand(t *testing.T) {
+	root := realTemp(t)
+	bin := filepath.Join(root, "it's $(touch pwned) bin")
+	probe := filepath.Join(root, "probe")
+	agentsDir := filepath.Join(root, "cache; touch pwned", "a b", "a")
+	for _, dir := range []string{bin, probe} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exe := filepath.Join(bin, "lalabase")
+	writeFile(t, exe, stubLalabase)
+	if err := os.Chmod(exe, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(settings(exe, agentsDir, agentID), &got); err != nil {
+		t.Fatal(err)
+	}
+	for event, groups := range got.Hooks {
+		cmd := exec.CommandContext(t.Context(), "/bin/sh", "-c", groups[0].Hooks[0].Command)
+		cmd.Dir = root
+		cmd.Env = []string{"PATH=/usr/bin:/bin", "PROBE=" + probe}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%s: %v\n%s", event, err, out)
+		}
+		want := strings.Join([]string{"hook", "--dir", agentsDir, "--event", event, agentID}, "\n--\n") + "\n--\n"
+		if got := readFile(t, filepath.Join(probe, "hook")); got != want {
+			t.Errorf("%s: arguments\n got %q\nwant %q", event, got, want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "pwned")); err == nil {
+		t.Fatal("a path ran as a command")
 	}
 }

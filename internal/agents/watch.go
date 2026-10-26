@@ -1,0 +1,46 @@
+package agents
+
+import (
+	tea "charm.land/bubbletea/v2"
+	"github.com/gboyke/lalabase-cli/internal/worker"
+)
+
+// Watcher reads the agents of one profile for the interface, under the
+// session's supervisor.
+type Watcher struct {
+	sup   *worker.Supervisor
+	dir   string
+	procs Procs
+}
+
+// NewWatcher reads dir ("" for none: no agents) with the system's
+// processes.
+func NewWatcher(sup *worker.Supervisor, dir string) *Watcher {
+	return &Watcher{sup: sup, dir: dir, procs: System}
+}
+
+// Snapshot is the message of one read: the agents, or why there are none.
+type Snapshot struct {
+	Ref    uint64
+	Agents []Agent
+	Err    error
+}
+
+// Read is the command of one read. It runs under the supervisor on the
+// command's own goroutine: a panic is the session's fatal error. It ends
+// without a message when the session ended first.
+func (w *Watcher) Read(ref uint64) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := worker.Run(w.sup, "agents: read", func() tea.Msg {
+			agents, err := Read(w.dir, w.procs)
+			return Snapshot{Ref: ref, Agents: agents, Err: err}
+		})
+		if !ok {
+			if w.sup.Err() != nil {
+				return worker.Fatal{}
+			}
+			return nil
+		}
+		return msg
+	}
+}

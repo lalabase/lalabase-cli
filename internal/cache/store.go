@@ -26,14 +26,17 @@ type Namespace struct{ profile, server, tokenID string }
 // Confirmed returns the namespace of a successful /me: tokenID is the
 // answer's api.Me.Token.ID, never something the profile says about itself.
 func Confirmed(profile, server, tokenID string) (Namespace, bool) {
-	normal, ok := normalServer(server)
+	normal, ok := NormalServer(server)
 	if profile == "" || !ok || tokenID == "" {
 		return Namespace{}, false
 	}
 	return Namespace{profile: profile, server: normal, tokenID: tokenID}, true
 }
 
-func normalServer(raw string) (string, bool) {
+// NormalServer is a server's address as the cache files it: scheme and
+// host in lower case, the path without a trailing slash. ok is false for
+// an address that names no server (no host, a user, a query, a fragment).
+func NormalServer(raw string) (string, bool) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return "", false

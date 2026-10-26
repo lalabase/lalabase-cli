@@ -58,7 +58,7 @@ func (h *harness) status() string { return h.m.screen().Status.String() }
 // the ticket the pane shows, as the launch must hand it over.
 func (h *harness) shownTicket() launch.Ticket {
 	d := h.m.app.detail
-	return launch.Ticket{Project: d.project, ID: d.id, Number: d.record.Number}
+	return launch.Ticket{Org: orgA, Project: d.project, ID: d.id, Number: d.record.Number}
 }
 
 func TestXOpensClaudeCodeBesideTheTicketShown(t *testing.T) {
@@ -72,7 +72,7 @@ func TestXOpensClaudeCodeBesideTheTicketShown(t *testing.T) {
 		t.Fatalf("the help does not name x: %q", helpText(h.m))
 	}
 	cmd := h.press("x")
-	want := launch.Ticket{Project: website, ID: ticketID(website, 6), Number: 6}
+	want := launch.Ticket{Org: orgA, Project: website, ID: ticketID(website, 6), Number: 6}
 	if calls := f.launched(); len(calls) != 1 || calls[0].ticket != want || calls[0].ticket != h.shownTicket() {
 		t.Fatalf("launched %+v, want %+v", calls, want)
 	}
@@ -392,5 +392,60 @@ func TestANoticeOnItsOwnLineKeepsTheFrame(t *testing.T) {
 		if own == 0 {
 			t.Fatalf("#%d: the notice never had a line of its own", number)
 		}
+	}
+}
+
+// C9a: a launch that opened but could not hand over its hooks, or record
+// its agent, says so as a problem, with why; its text is cleaned.
+func TestAnUntrackedLaunchSaysWhy(t *testing.T) {
+	h := newHarness(t)
+	f := h.withLauncher()
+	h.openSix()
+	cmd := h.press("x")
+	calls := f.launched()
+	h.drive(func() tea.Msg {
+		_ = cmd
+		return launch.Done{Ref: calls[0].ref, Ticket: calls[0].ticket, Kind: launch.Opened, Untracked: "the program's path cannot be put into a hook: /opt/a\x1b[2Jb"}
+	})
+	if got := h.status(); !strings.Contains(got, "#6") || !strings.Contains(got, "cannot be shown") || !strings.Contains(got, "/opt/a") || strings.Contains(got, "\x1b") {
+		t.Fatalf("status %q", got)
+	}
+	if _, tone := h.m.status(); tone != present.NoticeProblem {
+		t.Fatalf("tone %v", tone)
+	}
+	// Review round 1 of #34, F3: ran here and ended, the same; iTerm's
+	// silence keeps its own notice.
+	for kind, want := range map[launch.Kind]string{launch.Ended: "The state of Claude Code beside #6 cannot be shown: no id", launch.NoAnswer: "iTerm did not answer"} {
+		cmd := h.press("x")
+		calls := f.launched()
+		last := calls[len(calls)-1]
+		h.drive(func() tea.Msg {
+			_ = cmd
+			return launch.Done{Ref: last.ref, Ticket: last.ticket, Kind: kind, Untracked: "no id"}
+		})
+		if got := h.status(); !strings.HasPrefix(got, want) {
+			t.Errorf("%v: status %q, want %q", kind, got, want)
+		}
+	}
+}
+
+// The organisation handed over is the notification's when the ticket was
+// opened from one, else the list's; none when neither shows this ticket.
+func TestTheOrganisationOfTheTicketShown(t *testing.T) {
+	h := newHarness(t)
+	h.openSix()
+	a := h.m.app
+	if got := a.detailOrg(); got != orgA {
+		t.Fatalf("from the list: %q", got)
+	}
+	const other = "00000000-0000-4000-8000-000000000002"
+	a.origin = &origin{org: other, project: website, ticket: a.detail.id}
+	if got := a.detailOrg(); got != other {
+		t.Fatalf("from a notification: %q", got)
+	}
+	a.origin = &origin{org: other, project: website, ticket: "another"}
+	a.tickets.project = "another"
+	if got := a.detailOrg(); got != "" {
+		t.Fatalf("neither: %q", got)
 	}
 }

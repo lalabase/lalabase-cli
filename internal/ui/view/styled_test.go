@@ -149,13 +149,14 @@ func TestAStatusIsDrawnInTheTerminalsOwnColours(t *testing.T) {
 	}
 }
 
-// L2 allows magenta in the terminal's bytes for an agent that waits (C9);
-// until then no style of the view draws it.
-func TestNoStyleDrawsMagenta(t *testing.T) {
-	for s := present.Plain; s <= present.Own; s++ {
+// L2 allowed magenta in the terminal's bytes for an agent that waits; since
+// C9a exactly the two waits draw it, for an approval and for the person.
+func TestOnlyTheTwoWaitsDrawMagenta(t *testing.T) {
+	for s := present.Plain; s <= present.AgentEnded; s++ {
+		magenta := s == present.AgentApproval || s == present.AgentWaiting
 		for _, out := range []string{styled("x", s), quieted("x", s)} {
-			if strings.Contains(out, "35m") || strings.Contains(out, ";35;") || strings.Contains(out, "[35;") {
-				t.Errorf("style %d draws magenta: %q", s, out)
+			if got := strings.Contains(out, "35m") || strings.Contains(out, ";35;") || strings.Contains(out, "[35;"); got != magenta {
+				t.Errorf("style %d draws magenta: %v, want %v (%q)", s, got, magenta, out)
 			}
 		}
 	}

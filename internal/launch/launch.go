@@ -12,6 +12,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/launchdir"
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
@@ -22,9 +23,9 @@ const deadline = 5 * time.Second
 // osascriptPath is macOS's own: not looked up on the PATH.
 const osascriptPath = "/usr/bin/osascript"
 
-// maxStderr is how much of osascript's error output is kept: enough for
-// the error number at its end.
-const maxStderr = 4 << 10
+// maxOutput is how much of osascript's output and error output is kept:
+// enough for the new pane's id and for the error number at its end.
+const maxOutput = 4 << 10
 
 // Config is what a launcher needs. The command builds it from its Env and
 // the profile; the interface never reads the environment itself.
@@ -42,6 +43,12 @@ type Config struct {
 	// (<cache root>/<profile>/l, internal/launchdir); "" when the client
 	// has no cache directory.
 	Files string
+	// Agents is the directory the agents' files live in
+	// (<cache root>/<profile>/a, internal/agents), Executable the client's
+	// own program, links resolved: the hooks a launch hands Claude Code
+	// run it to record the agent's state there (C9a). "" for either: the
+	// launch goes on without hooks.
+	Agents, Executable string
 	// TermProgram and SessionID are TERM_PROGRAM and ITERM_SESSION_ID as
 	// the environment has them; their form is checked here.
 	TermProgram, SessionID string
@@ -60,12 +67,15 @@ type Launcher struct {
 	session  string
 	deadline time.Duration
 	// The outside world, replaced in tests.
-	osascript   func(ctx context.Context, script string, args []string) (stderr string, err error)
+	osascript   func(ctx context.Context, script string, args []string) (stdout, stderr string, err error)
 	lookPath    func(string) (string, error)
 	execProcess func(*exec.Cmd, tea.ExecCallback) tea.Cmd
 	stat        func(string) (os.FileInfo, error)
 	makeDir     func(root string, now time.Time) (launchdir.Dir, error)
 	now         func() time.Time
+	prepare     func(dir string) error
+	newID       func() (string, error)
+	writeLaunch func(dir string, l agents.Launch) error
 }
 
 // New returns a launcher. iTerm is used on macOS when TERM_PROGRAM says
@@ -77,6 +87,7 @@ func New(cfg Config) *Launcher {
 		cfg: cfg, deadline: deadline,
 		osascript: runOSAScript, lookPath: exec.LookPath, execProcess: tea.ExecProcess,
 		stat: os.Stat, makeDir: launchdir.Make, now: time.Now,
+		prepare: agents.Prepare, newID: agents.NewID, writeLaunch: agents.WriteLaunch,
 	}
 	if iTermPossible && cfg.TermProgram == "iTerm.app" && cfg.Multiplexer == "" {
 		l.session = iTermSession(cfg.SessionID)
@@ -142,17 +153,113 @@ func (l *Launcher) launch(ref uint64, t Ticket) tea.Msg {
 	if err != nil {
 		return done(NoFiles, err.Error())
 	}
-	args := claudeArgs(t, server, mcp)
+	tr, agent, untracked, err := l.track(t, dir)
+	if err != nil {
+		return done(NoFiles, err.Error())
+	}
+	args := claudeArgs(t, server, mcp, tr)
 	if l.session == "" {
-		return l.here(claude, folder, args, done)
+		// Recorded before claude runs: the interface waits until it ends.
+		if why := l.record(t, agent, tr, ""); why != "" {
+			untracked = why
+		}
+		return l.here(claude, folder, args, func(k Kind, detail string) Done {
+			d := done(k, detail)
+			d.Untracked = untracked
+			return d
+		})
 	}
 	if _, err := dir.Write(launchdir.Script, script(folder, args), 0o700); err != nil {
 		return done(NoFiles, err.Error())
 	}
 	ctx, cancel := context.WithTimeout(l.cfg.Supervisor.Context(), l.deadline)
 	defer cancel()
-	stderr, err := l.osascript(ctx, appleScript, osascriptArgs(l.session, line))
-	return done(classify(ctx, stderr, err), "")
+	stdout, stderr, err := l.osascript(ctx, appleScript, osascriptArgs(l.session, line))
+	d := done(classify(ctx, stderr, err), "")
+	// The agent is recorded once a pane opened, or may still open; a
+	// launch iTerm refused has none.
+	if d.Kind == Opened || d.Kind == NoAnswer {
+		pane := ""
+		if d.Kind == Opened {
+			pane = paneID(stdout)
+		}
+		if why := l.record(t, agent, tr, pane); why != "" {
+			untracked = why
+		}
+		d.Untracked = untracked
+	}
+	return d
+}
+
+// track prepares the hooks of a new agent (C9a): its id and the session
+// id, the agents directory made and checked, and the settings file in the
+// launch directory. A launch it cannot track goes on without hooks, as
+// before C9a, and why says what stopped it; err is a failure to write the
+// launch directory, which stops the launch.
+func (l *Launcher) track(t Ticket, dir launchdir.Dir) (tr tracking, agent, why string, err error) {
+	exe, agentsDir := l.cfg.Executable, l.cfg.Agents
+	switch {
+	case exe == "" || agentsDir == "":
+		return tracking{}, "", "the program or the cache directory is unknown", nil
+	case !filepath.IsAbs(exe) || !passable(exe):
+		return tracking{}, "", "the program's path cannot be put into a hook: " + exe, nil
+	case !filepath.IsAbs(agentsDir) || !passable(agentsDir):
+		return tracking{}, "", "the agents' directory cannot be put into a hook: " + agentsDir, nil
+	case !uuid.MatchString(t.Org):
+		return tracking{}, "", "the ticket's organisation is unknown", nil
+	}
+	agent, session, why := l.newAgent()
+	if why != "" {
+		return tracking{}, "", why, nil
+	}
+	path, err := dir.Write(launchdir.Settings, settings(exe, agentsDir, agent), 0o600)
+	if err != nil {
+		return tracking{}, "", "", err
+	}
+	return tracking{session: session, settings: path}, agent, "", nil
+}
+
+// newAgent makes the agents directory ready and draws the agent's id and
+// the session's; why says what failed.
+func (l *Launcher) newAgent() (agent, session, why string) {
+	if err := l.prepare(l.cfg.Agents); err != nil {
+		return "", "", err.Error()
+	}
+	agent, err := l.newID()
+	if err != nil {
+		return "", "", err.Error()
+	}
+	session, err = l.newID()
+	if err != nil {
+		return "", "", err.Error()
+	}
+	return agent, session, ""
+}
+
+// record writes the launch record of an agent whose hooks were handed
+// over, and says why it could not; nothing for a launch without hooks.
+func (l *Launcher) record(t Ticket, agent string, tr tracking, pane string) (why string) {
+	if agent == "" {
+		return ""
+	}
+	err := l.writeLaunch(l.cfg.Agents, agents.Launch{
+		Agent: agent, Organisation: t.Org, Project: t.Project, Ticket: t.ID, Number: t.Number,
+		Session: tr.session, Pane: pane, At: l.now(),
+	})
+	if err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// paneID is the new pane's unique id as the AppleScript returned it, ""
+// when the output has another form.
+func paneID(stdout string) string {
+	id := strings.TrimSpace(stdout)
+	if !uuid.MatchString(id) {
+		return ""
+	}
+	return id
 }
 
 // here runs claude, found at path, in this terminal: Bubble Tea gives the
@@ -252,29 +359,30 @@ func classify(ctx context.Context, stderr string, err error) Kind {
 
 // runOSAScript runs the script with osascript, the script on stdin, the
 // values as arguments.
-func runOSAScript(ctx context.Context, script string, args []string) (string, error) {
+func runOSAScript(ctx context.Context, script string, args []string) (string, string, error) {
 	return runChild(ctx, osascriptPath, script, args)
 }
 
 // runChild runs path with args, script on stdin, and keeps the start of its
-// error output. os/exec copies stdin and stderr on goroutines of its own;
-// they end with the child, and WaitDelay bounds the wait for them after
-// the deadline killed it (a grandchild may hold the output open).
-func runChild(ctx context.Context, path, script string, args []string) (string, error) {
+// output and of its error output. os/exec copies stdin, stdout and stderr
+// on goroutines of its own; they end with the child, and WaitDelay bounds
+// the wait for them after the deadline killed it (a grandchild may hold
+// the output open).
+func runChild(ctx context.Context, path, script string, args []string) (stdout, stderr string, err error) {
 	c := exec.CommandContext(ctx, path, args...)
 	c.Stdin = strings.NewReader(script)
-	var stderr capped
-	c.Stderr = &stderr
+	var out, errOut capped
+	c.Stdout, c.Stderr = &out, &errOut
 	c.WaitDelay = time.Second
-	err := c.Run()
-	return string(stderr.b), err
+	err = c.Run()
+	return string(out.b), string(errOut.b), err
 }
 
-// capped keeps the first maxStderr bytes written to it.
+// capped keeps the first maxOutput bytes written to it.
 type capped struct{ b []byte }
 
 func (c *capped) Write(p []byte) (int, error) {
-	if room := maxStderr - len(c.b); room > 0 {
+	if room := maxOutput - len(c.b); room > 0 {
 		c.b = append(c.b, p[:min(room, len(p))]...)
 	}
 	return len(p), nil

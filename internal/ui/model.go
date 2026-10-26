@@ -52,6 +52,8 @@ type Session struct {
 	// Launcher starts Claude Code beside the ticket shown (C7); nil
 	// offers no x.
 	Launcher Launcher
+	// Agents reads what the sessions x started do (C9a); nil shows none.
+	Agents AgentWatcher
 }
 
 // WithSession gives the model a session to run.
@@ -107,7 +109,9 @@ func (m Model) Init() tea.Cmd {
 		cmds = append(cmds, watchFatal(m.supervisor.Failed(), m.supervisor.Context().Done()))
 	}
 	if m.app != nil {
-		cmds = append(cmds, m.app.wait(), m.app.startStep(stepMe))
+		// The agents are the profile's, not the server's: read at once,
+		// whatever /me answers.
+		cmds = append(cmds, m.app.wait(), m.app.startStep(stepMe), m.app.readAgents())
 	}
 	return tea.Batch(cmds...)
 }
