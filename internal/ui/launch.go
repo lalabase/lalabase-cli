@@ -110,32 +110,29 @@ func (a *app) launchShown() bool {
 // and Ended take the ticket's number, the ones in withDetail the outcome's
 // detail, the others nothing.
 var launchTexts = map[launch.Kind]uitext.ID{
-	launch.Opened:           uitext.LaunchOpened,
-	launch.Ended:            uitext.LaunchEnded,
-	launch.EndedWithError:   uitext.LaunchEndedError,
-	launch.NotHandedOver:    uitext.LaunchNotHandedOver,
-	launch.NoFolder:         uitext.LaunchNoFolder,
-	launch.NotADirectory:    uitext.LaunchNotADirectory,
-	launch.BadFolder:        uitext.LaunchBadFolder,
-	launch.ConfigUnreadable: uitext.LaunchConfigUnreadable,
-	launch.NoServer:         uitext.LaunchNoServer,
-	launch.Conflict:         uitext.LaunchConflict,
-	launch.BadName:          uitext.LaunchBadName,
-	launch.NoClaude:         uitext.LaunchNoClaude,
-	launch.NoPermission:     uitext.LaunchNoPermission,
-	launch.SessionGone:      uitext.LaunchSessionGone,
-	launch.NoAnswer:         uitext.LaunchNoAnswer,
-	launch.ITermFailed:      uitext.LaunchFailed,
+	launch.Opened:         uitext.LaunchOpened,
+	launch.Ended:          uitext.LaunchEnded,
+	launch.EndedWithError: uitext.LaunchEndedError,
+	launch.NotHandedOver:  uitext.LaunchNotHandedOver,
+	launch.NoFolder:       uitext.LaunchNoFolder,
+	launch.NotADirectory:  uitext.LaunchNotADirectory,
+	launch.BadFolder:      uitext.LaunchBadFolder,
+	launch.NoFiles:        uitext.LaunchNoFiles,
+	launch.NoClaude:       uitext.LaunchNoClaude,
+	launch.NoPermission:   uitext.LaunchNoPermission,
+	launch.SessionGone:    uitext.LaunchSessionGone,
+	launch.NoAnswer:       uitext.LaunchNoAnswer,
+	launch.ITermFailed:    uitext.LaunchFailed,
 }
 
 var withDetail = map[launch.Kind]bool{
 	launch.EndedWithError: true, launch.NoFolder: true, launch.NotADirectory: true, launch.BadFolder: true,
-	launch.ConfigUnreadable: true, launch.NoServer: true, launch.Conflict: true, launch.BadName: true,
+	launch.NoFiles: true,
 }
 
 // launchNotice is the status text of an outcome; nothing for a launch the
 // session's end canceled. The detail passes the cleaning of Fill: it may
-// name a server from a project's .mcp.json.
+// name a path of the person's config.
 func launchNotice(d launch.Done) present.Inline {
 	id, ok := launchTexts[d.Kind]
 	switch {

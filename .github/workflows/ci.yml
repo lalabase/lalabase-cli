@@ -32,6 +32,10 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: the shells a pane may have
+        # The launch tests run the typed line in sh, bash, zsh and fish and
+        # fail on the CI when one is missing.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh fish
       - name: go vet
         run: go vet ./...
       - name: go test
@@ -52,12 +56,15 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: the shells a pane may have
+        # bash and zsh come with macOS; the launch tests need fish too.
+        run: brew install fish
       - name: test the terminal alone
         # The PTY cases wait a few seconds for the renderer's reaction; run
         # them without the other packages' load on the same cores.
         run: go test -race -count=1 -timeout 10m ./cmd/lalabase/
       - name: test platform boundaries
-        run: go test -race -count=1 -timeout 10m ./internal/ui/... ./internal/worker/ ./internal/gateway/ ./internal/queue/ ./internal/present/ ./internal/uitext/ ./internal/terminal/ ./internal/sourceguard/ ./internal/profile/ ./internal/privatefs/ ./internal/safefile/ ./internal/diskcache/ ./internal/api/ ./internal/features/ ./internal/cache/ ./internal/inboxfixture/ ./tools/inbox-fixture/ ./internal/launch/ ./internal/claudecfg/
+        run: go test -race -count=1 -timeout 10m ./internal/ui/... ./internal/worker/ ./internal/gateway/ ./internal/queue/ ./internal/present/ ./internal/uitext/ ./internal/terminal/ ./internal/sourceguard/ ./internal/profile/ ./internal/privatefs/ ./internal/safefile/ ./internal/diskcache/ ./internal/launchdir/ ./internal/api/ ./internal/features/ ./internal/cache/ ./internal/inboxfixture/ ./tools/inbox-fixture/ ./internal/launch/ ./internal/claudecfg/
 
   lint:
     runs-on: ubuntu-latest

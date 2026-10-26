@@ -205,10 +205,7 @@ func TestEveryOutcomeHasItsStatusText(t *testing.T) {
 		{launch.NoFolder, "/home/anna/dev/gone", "Folder not found: /home/anna/dev/gone"},
 		{launch.NotADirectory, "/home/anna/notes.txt", "Not a folder: /home/anna/notes.txt"},
 		{launch.BadFolder, "/tmp/a\nb", "This folder cannot be typed into a shell: /tmp/a b"},
-		{launch.ConfigUnreadable, "/home/anna/.claude.json: unexpected end", "Claude Code's configuration could not be read: /home/anna/.claude.json: unexpected end"},
-		{launch.NoServer, "https://lalabase.com; Claude Code has: https://staging.example", "No MCP server of Claude Code's for https://lalabase.com; Claude Code has: https://staging.example"},
-		{launch.Conflict, "lalabase; https://evil.example", "An MCP server name of Claude Code's points at two servers: lalabase; https://evil.example"},
-		{launch.BadName, "lala base", "This MCP server name cannot go into the prompt, rename it in Claude Code: lala base"},
+		{launch.NoFiles, "mkdir /home/anna/.cache/lalabase/cli/default/l: permission denied", "No files for Claude Code: mkdir /home/anna/.cache/lalabase/cli/default/l: permission denied"},
 		{launch.NoClaude, "", "claude was not found on the PATH"},
 		{launch.NoPermission, "", "macOS does not let this terminal control iTerm: allow it in System Settings > Privacy & Security > Automation"},
 		{launch.SessionGone, "", "iTerm did not find this session; nothing opened"},
@@ -236,14 +233,14 @@ func TestEveryOutcomeHasItsStatusText(t *testing.T) {
 	}
 }
 
-// Foreign text in a detail (a name from a project's .mcp.json) is cleaned
+// A detail (a path of the person's config, an error naming one) is cleaned
 // before it reaches the status line.
 func TestAForeignDetailIsCleaned(t *testing.T) {
 	h := newHarness(t)
 	h.withLauncher()
 	h.openSix()
 	h.press("x")
-	h.feed(launch.Done{Ref: h.m.app.launch.ref, Ticket: h.shownTicket(), Kind: launch.Conflict, Detail: "lala\x1b]52;c;cHduZWQ=\x07base\u202e; https://evil.example"})
+	h.feed(launch.Done{Ref: h.m.app.launch.ref, Ticket: h.shownTicket(), Kind: launch.NoFiles, Detail: "/tmp/lala\x1b]52;c;cHduZWQ=\x07base\u202e: permission denied"})
 	if got := h.status(); strings.ContainsAny(got, "\x1b\x07\u202e") {
 		t.Fatalf("status %q", got)
 	}
@@ -312,16 +309,16 @@ func TestXSecondAnswerToALaunchChangesNothing(t *testing.T) {
 // line. Either way the screen is as high as the terminal and the help is
 // whole. Narrower terminals, where it wraps, are in notice_test.go.
 func TestTheNoticeIsShownWholeAtEveryWidth(t *testing.T) {
-	const notice = "No MCP server of Claude Code's for https://lalabase.com"
+	const notice = "Folder not found: /home/anna/dev/website/relaunch-2026x"
 	for _, width := range []int{len(notice), len(notice) + 1, 79, 80, 81, 100, 119, 120, 121, 160, 200} {
 		h := newHarness(t)
 		f := h.withLauncher()
-		f.kind = launch.NoServer
+		f.kind = launch.NoFolder
 		h.openSix()
 		h.m.width, h.m.height = width, 24
 		before := h.m.geometry()
 		msg := h.press("x")().(launch.Done)
-		msg.Detail = "https://lalabase.com"
+		msg.Detail = "/home/anna/dev/website/relaunch-2026x"
 		h.feed(msg)
 		lines := strings.Split(ansi.Strip(h.m.View().Content), "\n")
 		if len(lines) != 24 {
@@ -351,12 +348,12 @@ func TestANoticeOnItsOwnLineKeepsTheFrame(t *testing.T) {
 	for _, number := range []int{6, 7} {
 		h := newHarness(t)
 		f := h.withLauncher()
-		f.kind = launch.NoServer
+		f.kind = launch.NoFolder
 		h.openTickets(website)
 		h.m.app.tickets.selected = ticketID(website, number)
 		h.drive(h.press("enter"))
 		msg := h.press("x")().(launch.Done)
-		msg.Detail = "https://lalabase.com; Claude Code has: https://staging.example"
+		msg.Detail = "/home/anna/dev/website/relaunch-2026/relaunch-2026/relaunch-20"
 		h.feed(msg)
 		own := 0
 		// The widths around each change of columns; every width is a minute

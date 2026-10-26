@@ -1,6 +1,7 @@
 // Package claudecfg finds the Lalabase servers registered in Claude Code's MCP
-// configuration: for `lalabase auth import` (Find), and for the launch of
-// Claude Code beside a ticket (Visible, C7). It only reads: nothing here runs
+// configuration, for `lalabase auth import` (Find). The launch of Claude
+// Code beside a ticket reads none of it since C7b: it hands Claude Code the
+// profile's server instead (internal/launch). It only reads: nothing here runs
 // a configured program, expands a variable or guesses at a value. An entry
 // that cannot be imported as it stands is listed with the reason.
 //
@@ -19,7 +20,6 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -179,14 +179,14 @@ func Find(home, cwd string) (entries []Entry, errs []error) {
 	if err := readJSON(userFile, maxUserFile, &claude); err != nil {
 		errs = append(errs, err)
 	}
-	entries = append(entries, collect("user", userFile, claude.MCPServers, isLalabase)...)
+	entries = append(entries, collect("user", userFile, claude.MCPServers)...)
 	paths := make([]string, 0, len(claude.Projects))
 	for p := range claude.Projects {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
 	for _, p := range paths {
-		entries = append(entries, collect("local", p, claude.Projects[p].MCPServers, isLalabase)...)
+		entries = append(entries, collect("local", p, claude.Projects[p].MCPServers)...)
 	}
 
 	projectFile := filepath.Join(cwd, ".mcp.json")
@@ -200,7 +200,7 @@ func Find(home, cwd string) (entries []Entry, errs []error) {
 	if real, err := filepath.EvalSymlinks(cwd); !ok && err == nil {
 		approval = claude.Projects[real]
 	}
-	for _, e := range collect("project", projectFile, project.MCPServers, isLalabase) {
+	for _, e := range collect("project", projectFile, project.MCPServers) {
 		state := "none"
 		switch {
 		case slices.Contains(approval.DisabledMcpjsonServers, e.Name):
@@ -293,210 +293,10 @@ func hex4(data []byte, at int) (rune, bool) {
 	return r, true
 }
 
-// Visible lists every server Claude Code may use when it starts in folder,
-// whatever its name and whether or not it is a Lalabase server, in the
-// order user, local, project:
-//
-//   - user: every server of every global file Claude Code may read
-//     (globalFiles: under home and configDir, the legacy file too);
-//   - local: the servers of those files filed under a project key that
-//     equals one of the folder's ProjectKeys without regard to case (a file
-//     system without case takes either spelling);
-//   - project: every .mcp.json in the folder and each directory above it,
-//     on the path as given and on the path with its links resolved (Claude
-//     Code walks the physical one), nearest first.
-//
-// It lists more than Claude Code may use, never less: the launch asks of a
-// name that every server so called points at one place, and a server listed
-// in vain can only stop a launch, never send one elsewhere. A file that
-// cannot be read is reported in errs: what it holds is unknown. configDir
-// is CLAUDE_CONFIG_DIR, or "" when it is not set.
-func Visible(home, configDir, folder string) (entries []Entry, errs []error) {
-	keys := ProjectKeys(folder)
-	for _, file := range globalFiles(home, configDir) {
-		var claude userConfig
-		if err := readJSON(file, maxUserFile, &claude); err != nil {
-			errs = append(errs, err)
-		}
-		entries = append(entries, collect("user", file, claude.MCPServers, anyServer)...)
-		paths := make([]string, 0, len(claude.Projects))
-		for p := range claude.Projects {
-			if slices.ContainsFunc(keys, func(k string) bool { return strings.EqualFold(k, p) }) {
-				paths = append(paths, p)
-			}
-		}
-		sort.Strings(paths)
-		for _, p := range paths {
-			entries = append(entries, collect("local", p, claude.Projects[p].MCPServers, anyServer)...)
-		}
-	}
-	var seen []string
-	starts := []string{filepath.Clean(folder)}
-	if real, err := filepath.EvalSymlinks(folder); err == nil {
-		starts = append(starts, real)
-	}
-	for _, start := range starts {
-		for dir := start; ; {
-			file := filepath.Join(dir, ".mcp.json")
-			if !slices.Contains(seen, file) {
-				seen = append(seen, file)
-				var project projectConfig
-				if err := readJSON(file, maxProjectFile, &project); err != nil {
-					errs = append(errs, err)
-				}
-				entries = append(entries, collect("project", file, project.MCPServers, anyServer)...)
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
-		}
-	}
-	return entries, errs
-}
-
-// globalFiles are the files Claude Code may read its global configuration
-// from (read in Claude Code 2.1.296): .claude.json under CLAUDE_CONFIG_DIR
-// or else the home, with a suffix for another login (-custom-oauth,
-// -local-oauth, -staging-oauth), and the legacy .config.json under
-// CLAUDE_CONFIG_DIR or ~/.claude. All of them are read: which one Claude
-// Code takes depends on its environment in the new pane.
-func globalFiles(home, configDir string) []string {
-	var out []string
-	for _, dir := range []string{home, configDir} {
-		if dir == "" {
-			continue
-		}
-		for _, suffix := range []string{"", "-custom-oauth", "-local-oauth", "-staging-oauth"} {
-			out = append(out, filepath.Join(dir, ".claude"+suffix+".json"))
-		}
-	}
-	for _, dir := range []string{filepath.Join(home, ".claude"), configDir} {
-		if dir != "" {
-			out = append(out, filepath.Join(dir, ".config.json"))
-		}
-	}
-	slices.Sort(out)
-	return slices.Compact(out)
-}
-
-// ProjectKeys are the paths Claude Code may file a folder's local servers
-// under. Claude Code keys a project by the root of the main checkout when
-// the folder lies in a git repository (a worktree's too), else by the folder
-// itself. Every candidate is returned: the folder as given and resolved,
-// every directory above either with a .git up to the first one that is a
-// directory or a regular file, and for a worktree the main checkout's root.
-// Reading more keys than Claude Code uses can only stop a launch.
-func ProjectKeys(folder string) []string {
-	folder = filepath.Clean(folder)
-	keys := []string{folder}
-	add := func(p string) {
-		if !slices.Contains(keys, p) {
-			keys = append(keys, p)
-		}
-	}
-	real, err := filepath.EvalSymlinks(folder)
-	if err != nil {
-		return keys
-	}
-	add(real)
-	// Both paths are walked: the physical one Claude Code resolves, and
-	// the one as given, in case it keys by that (review round 6 of C7).
-	walkToRoot(real, add)
-	walkToRoot(folder, add)
-	return keys
-}
-
-// walkToRoot adds every directory from dir upwards that has a .git, and for
-// a .git that is not a directory the main checkouts it names, up to the
-// first .git that is a directory or a regular file.
-func walkToRoot(dir string, add func(string)) {
-	for {
-		// Any .git may mark a root: a directory, a worktree's file, a link
-		// (review round 2 of C7).
-		info, err := os.Lstat(filepath.Join(dir, ".git"))
-		if err == nil {
-			add(dir)
-			if !info.IsDir() {
-				for _, main := range mainCheckouts(dir) {
-					add(main)
-				}
-			}
-			// Claude Code stops at a directory or a file, and at a link
-			// to one only when it accepts the link's target by checks of
-			// its own; past anything else (a broken link, a FIFO) it goes
-			// on upwards. So the walk goes on past every .git but a
-			// directory or a regular file (review round 5 of C7).
-			if info.IsDir() || info.Mode().IsRegular() {
-				return
-			}
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return
-		}
-		dir = parent
-	}
-}
-
-// mainCheckouts follows a worktree's .git file ("gitdir: <dir>") to the
-// common directory its git directory names ("commondir") and returns the
-// checkout that common directory belongs to, or for a bare repository the
-// repository itself, as Claude Code keys it. A relative common directory is
-// read against the git directory as written and against its real path (git
-// takes the real one; review round 6 of C7), so there may be two. A .git
-// file without a common directory (a submodule) has no main checkout.
-func mainCheckouts(root string) []string {
-	gitdir, ok := pointer(filepath.Join(root, ".git"), "gitdir: ", root)
-	if !ok {
-		return nil
-	}
-	bases := []string{gitdir}
-	if real, err := filepath.EvalSymlinks(gitdir); err == nil && real != gitdir {
-		bases = append(bases, real)
-	}
-	var mains []string
-	for _, base := range bases {
-		common, ok := pointer(filepath.Join(base, "commondir"), "", base)
-		if !ok {
-			continue
-		}
-		if filepath.Base(common) == ".git" {
-			common = filepath.Dir(common)
-		}
-		main, err := filepath.EvalSymlinks(common)
-		if err != nil || slices.Contains(mains, main) {
-			continue
-		}
-		mains = append(mains, main)
-	}
-	return mains
-}
-
-// pointer reads a one-line git pointer file: the path after prefix,
-// relative to base unless absolute.
-func pointer(file, prefix, base string) (string, bool) {
-	data, _, err := safefile.ReadRegular(file, 4096)
-	if err != nil {
-		return "", false
-	}
-	line, ok := strings.CutPrefix(strings.TrimRight(string(data), "\r\n"), prefix)
-	if !ok || line == "" || strings.ContainsAny(line, "\r\n") {
-		return "", false
-	}
-	if !filepath.IsAbs(line) {
-		line = filepath.Join(base, line)
-	}
-	return filepath.Clean(line), true
-}
-
-func anyServer(string, server) bool { return true }
-
-func collect(scope, where string, servers map[string]server, take func(string, server) bool) []Entry {
+func collect(scope, where string, servers map[string]server) []Entry {
 	names := make([]string, 0, len(servers))
 	for name, s := range servers {
-		if take(name, s) {
+		if isLalabase(name, s) {
 			names = append(names, name)
 		}
 	}

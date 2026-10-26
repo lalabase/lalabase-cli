@@ -48,7 +48,7 @@ func outputRoot(dir string) bool {
 
 func infrastructure(p string) bool {
 	for _, name := range []string{"internal/api", "internal/transport", "internal/cache", "internal/queue", "internal/gateway",
-		"internal/diskcache", "internal/privatefs", "internal/safefile"} {
+		"internal/diskcache", "internal/privatefs", "internal/safefile", "internal/launchdir"} {
 		if p == clientModule+name || strings.HasPrefix(p, clientModule+name+"/") {
 			return true
 		}
@@ -93,10 +93,10 @@ var reachableImports = map[string][]string{
 	"charm.land/bubbletea/v2": nil, "charm.land/lipgloss/v2": nil, "github.com/charmbracelet/x/ansi": nil,
 }
 
-// fileSystemImports are what the three packages that keep the client's
-// files for it may import beyond reachableImports (C1e): the disk cache,
-// the threat model of private files, and the reader of files the client
-// does not control. Each import is named with the names it may use, so a
+// fileSystemImports are what the packages that keep the client's files for
+// it may import beyond reachableImports (C1e): the disk cache, the threat
+// model of private files, the reader of files the client does not control,
+// and the launch files (C7b). Each import is named with the names it may use, so a
 // package that can also write to the terminal, end the process or read the
 // environment (os) gives only the file calls; nil allows every name of a
 // pure package. Nothing here allows an output stream, a goroutine or the
@@ -131,6 +131,15 @@ var fileSystemImports = map[string]map[string][]string{
 		"crypto/sha256": nil,
 		"encoding/hex":  nil,
 	},
+	// A new directory per launch and its files, each created exclusively,
+	// and the removal of old ones by name; the directory's name is random.
+	"internal/launchdir": {
+		"os":            {"Mkdir", "MkdirAll", "Open", "OpenFile", "O_WRONLY", "O_CREATE", "O_EXCL", "Remove"},
+		"io/fs":         nil,
+		"path/filepath": {"IsAbs", "Join"},
+		"crypto/rand":   {"Read"},
+		"encoding/hex":  nil,
+	},
 }
 
 // launchImports are what the launch of Claude Code beside a ticket (C7)
@@ -142,22 +151,19 @@ var fileSystemImports = map[string]map[string][]string{
 // copies a child's input and output on goroutines of its own, which end
 // with the child, and the launch runs under the supervisor. It may stat a
 // folder, and nothing else of os: no environment (the command hands it
-// the values it needs), no output stream. internal/claudecfg reads Claude
-// Code's configuration for it, through internal/safefile, and may look at
-// paths the way Claude Code does (a .git entry, a link resolved). Nothing
-// else gets any of this, and inspectChildProcesses refuses a child process
-// everywhere else in the client.
+// the values it needs), no output stream. Its files are written by
+// internal/launchdir (fileSystemImports). Nothing else gets any of this,
+// and inspectChildProcesses refuses a child process everywhere else in the
+// client. Of the client's own packages it imports only those named here:
+// it reads no file, Claude Code's configuration least of all (C7b), so no
+// reader of the client (safefile, claudecfg, profile) is among them.
 var launchImports = map[string]map[string][]string{
 	"internal/launch": {
-		"os/exec":       {"Cmd", "Command", "CommandContext", "LookPath"},
-		"os":            {"FileInfo", "Stat"},
-		"path/filepath": {"Clean", "IsAbs", "Join"},
-	},
-	"internal/claudecfg": {
-		"os":            {"Lstat"},
-		"io/fs":         {"ErrNotExist"},
-		"path/filepath": {"Base", "Clean", "Dir", "EvalSymlinks", "IsAbs", "Join"},
-		"sort":          {"Strings"},
+		"os/exec":                           {"Cmd", "Command", "CommandContext", "LookPath"},
+		"os":                                {"FileInfo", "Stat"},
+		"path/filepath":                     {"Clean", "IsAbs", "Join"},
+		clientModule + "internal/launchdir": nil,
+		clientModule + "internal/worker":    nil,
 	},
 }
 
@@ -398,8 +404,13 @@ func inspectReachableImports(name string, file *ast.File, aliases map[string]str
 	}
 	for _, imp := range file.Imports {
 		p, _ := strconv.Unquote(imp.Path.Value)
-		if _, ok := allowed(p); !ok && !strings.HasPrefix(p, clientModule) {
+		_, ok := allowed(p)
+		switch {
+		case ok:
+		case !strings.HasPrefix(p, clientModule):
 			findings = append(findings, name+": import "+p+" is not allowed where the interface reaches")
+		case launchImports[dir] != nil:
+			findings = append(findings, name+": import "+p+" is not among the launch's own packages")
 		}
 	}
 	ast.Inspect(file, func(node ast.Node) bool {

@@ -9,8 +9,8 @@ import (
 
 // C7: Claude Code beside the ticket. internal/launch is the client's one
 // package that starts a child process, and it imports what launchImports
-// names, by name; internal/claudecfg, which it reads Claude Code's
-// configuration through, gets the file names it needs, by name. The output,
+// names, by name; internal/launchdir, which writes its files (C7b), gets
+// the file names it needs, by name (fileSystemImports). The output,
 // environment and goroutine rules hold in both, as everywhere the interface
 // reaches, and no other package gets any of it.
 
@@ -19,9 +19,9 @@ const reachLaunch = `package ui; import _ "` + clientModule + `internal/launch"`
 
 var launchDeps = map[string]string{
 	"internal/ui/launch.go":           reachLaunch,
-	"internal/launch/launch.go":       `package launch; import _ "` + clientModule + `internal/claudecfg"`,
-	"internal/claudecfg/claudecfg.go": `package claudecfg; import _ "` + clientModule + `internal/safefile"`,
-	"internal/safefile/safefile.go":   `package safefile`,
+	"internal/launch/launch.go":       `package launch; import _ "` + clientModule + `internal/launchdir"`,
+	"internal/launchdir/launchdir.go": `package launchdir; import _ "` + clientModule + `internal/privatefs"`,
+	"internal/privatefs/privatefs.go": `package privatefs`,
 }
 
 func withLaunch(extra map[string]string) map[string]string {
@@ -38,7 +38,8 @@ func withLaunch(extra map[string]string) map[string]string {
 func TestTheLaunchPackagesImportByName(t *testing.T) {
 	for name, source := range map[string]string{
 		"internal/launch/x.go":    `package launch; import ("os"; "os/exec"; "path/filepath"); var _ = exec.Command; var _ = exec.CommandContext; var _ = exec.LookPath; var _ *exec.Cmd; var _ = os.Stat; var _ os.FileInfo; var _ = filepath.Join; var _ = filepath.IsAbs; var _ = filepath.Clean`,
-		"internal/claudecfg/x.go": `package claudecfg; import ("os"; "io/fs"; "path/filepath"; "sort"); var _ = os.Lstat; var _ = fs.ErrNotExist; var _ = filepath.Join; var _ = filepath.EvalSymlinks; var _ = filepath.Dir; var _ = filepath.Clean; var _ = filepath.IsAbs; var _ = filepath.Base; var _ = sort.Strings`,
+		"internal/launch/y.go":    `package launch; import ("` + clientModule + `internal/launchdir"; "` + clientModule + `internal/worker"); var _ = launchdir.Make; var _ = worker.Run`,
+		"internal/launchdir/x.go": `package launchdir; import ("os"; "io/fs"; "path/filepath"; "crypto/rand"; "encoding/hex"); var _ = os.Mkdir; var _ = os.MkdirAll; var _ = os.Open; var _ = os.OpenFile; var _ = os.O_WRONLY | os.O_CREATE | os.O_EXCL; var _ = os.Remove; var _ fs.DirEntry; var _ = filepath.Join; var _ = filepath.IsAbs; var _ = rand.Read; var _ = hex.EncodeToString`,
 	} {
 		if got := inspectUI(withLaunch(map[string]string{name: source})); len(got) != 0 {
 			t.Errorf("%s rejected: %v", name, got)
@@ -65,14 +66,22 @@ func TestTheLaunchPackagesImportByName(t *testing.T) {
 		"launch#unix":         `package launch; import "golang.org/x/sys/unix"; var _ = unix.Exec`,
 		"launch#execname":     `package launch; import "os/exec"; var _ = exec.ErrNotFound`,
 		"launch#term":         `package launch; import "golang.org/x/term"; var _ = term.MakeRaw`,
-		"claudecfg#exec":      `package claudecfg; import "os/exec"; var _ = exec.Command`,
-		"claudecfg#stdout":    `package claudecfg; import "os"; var out = os.Stdout`,
-		"claudecfg#getenv":    `package claudecfg; import "os"; var env = os.Getenv`,
-		"claudecfg#remove":    `package claudecfg; import "os"; var rm = os.Remove`,
-		"claudecfg#readfile":  `package claudecfg; import "os"; var read = os.ReadFile`,
-		"claudecfg#stat":      `package claudecfg; import "os"; var _ = os.Stat`,
-		"claudecfg#walk":      `package claudecfg; import "path/filepath"; var _ = filepath.WalkDir`,
-		"claudecfg#go":        `package claudecfg; func run(f func()) { go f() }`,
+		// Review round 2 of #33, F1: the launch reads no file, also not
+		// through the client's own readers.
+		"launch#safefile":     `package launch; import "` + clientModule + `internal/safefile"; var _ = safefile.ReadRegular`,
+		"launch#claudecfg":    `package launch; import "` + clientModule + `internal/claudecfg"; var _ = claudecfg.Find`,
+		"launch#profile":      `package launch; import p "` + clientModule + `internal/profile"; var _ = p.Load`,
+		"launch#diskcache":    `package launch; import _ "` + clientModule + `internal/diskcache"`,
+		"launchdir#exec":      `package launchdir; import "os/exec"; var _ = exec.Command`,
+		"launchdir#stdout":    `package launchdir; import "os"; var out = os.Stdout`,
+		"launchdir#getenv":    `package launchdir; import "os"; var env = os.Getenv`,
+		"launchdir#removeall": `package launchdir; import "os"; var rm = os.RemoveAll`,
+		"launchdir#writefile": `package launchdir; import "os"; var write = os.WriteFile`,
+		"launchdir#chmod":     `package launchdir; import "os"; var _ = os.Chmod`,
+		"launchdir#symlink":   `package launchdir; import "os"; var _ = os.Symlink`,
+		"launchdir#walk":      `package launchdir; import "path/filepath"; var _ = filepath.WalkDir`,
+		"launchdir#rand":      `package launchdir; import "crypto/rand"; var _ = rand.Reader`,
+		"launchdir#go":        `package launchdir; func run(f func()) { go f() }`,
 	} {
 		pkg, _, _ := strings.Cut(name, "#")
 		if got := inspectUI(withLaunch(map[string]string{"internal/" + pkg + "/probe.go": source})); len(got) == 0 {
@@ -89,12 +98,13 @@ func TestTheLaunchAllowanceReachesNoOtherPackage(t *testing.T) {
 		"internal/ui/view/x.go":   `package view; import "os"; var _ = os.Stat`,
 		"internal/gateway/x.go":   `package gateway; import "os/exec"; var _ = exec.LookPath`,
 		"internal/diskcache/x.go": `package diskcache; import "os/exec"; var _ = exec.Command`,
-		"internal/safefile/x.go":  `package safefile; import "path/filepath"; var _ = filepath.EvalSymlinks`,
-		"internal/privatefs/x.go": `package privatefs; import "sort"; var _ = sort.Strings`,
+		"internal/safefile/x.go":  `package safefile; import "os"; var _ = os.Mkdir`,
+		"internal/privatefs/x.go": `package privatefs; import "crypto/rand"; var _ = rand.Read`,
+		"internal/diskcache/y.go": `package diskcache; import "os"; var _ = os.Mkdir`,
 	} {
 		files := withLaunch(map[string]string{name: source})
-		files["internal/ui/model.go"] = `package ui; import ( _ "` + clientModule + `internal/gateway"; _ "` + clientModule + `internal/diskcache"; _ "` + clientModule + `internal/privatefs" )`
-		files["internal/gateway/gateway.go"], files["internal/diskcache/diskcache.go"], files["internal/privatefs/privatefs.go"] = `package gateway`, `package diskcache`, `package privatefs`
+		files["internal/ui/model.go"] = `package ui; import ( _ "` + clientModule + `internal/gateway"; _ "` + clientModule + `internal/diskcache"; _ "` + clientModule + `internal/privatefs"; _ "` + clientModule + `internal/safefile" )`
+		files["internal/gateway/gateway.go"], files["internal/diskcache/diskcache.go"], files["internal/privatefs/privatefs.go"], files["internal/safefile/safefile.go"] = `package gateway`, `package diskcache`, `package privatefs`, `package safefile`
 		if got := inspectUI(files); len(got) == 0 {
 			t.Errorf("missed %s", name)
 		}
@@ -155,7 +165,7 @@ func TestOnlyTheLaunchPackageStartsAChildProcess(t *testing.T) {
 func TestTheGuardReadsTheRealLaunchPackage(t *testing.T) {
 	root := repoRoot(t)
 	sources := repositorySources(t)
-	for _, name := range []string{"internal/launch/launch.go", "internal/claudecfg/claudecfg.go"} {
+	for _, name := range []string{"internal/launch/launch.go", "internal/launchdir/launchdir.go"} {
 		if _, ok := sources[name]; !ok {
 			t.Fatalf("%s is not scanned", name)
 		}
