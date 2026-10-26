@@ -305,8 +305,9 @@ navigation again.
     code shows an error after every answer), reads no profile, no config
     and no token, asks no server, and of its environment reads
     `CLAUDE_PID` alone. Of the event's input, which carries the prompt and
-    paths, it takes four checked values and shows none: the session id,
-    whether `SessionEnd`'s reason is `clear`, whether a permission request
+    paths, it takes five checked values and shows none: the session id,
+    whether `SessionStart`'s source is `clear` or `compact`, whether
+    `SessionEnd`'s reason is `clear`, whether a permission request
     is the question tool `AskUserQuestion`, and how many background tasks
     run; an input larger than 1 MiB or broken is not read, the event
     alone decides.
@@ -331,9 +332,9 @@ navigation again.
     | State | Glyph | Tone | From |
     |---|---|---|---|
     | waiting for approval | `!` | magenta, bold | `PermissionRequest` |
-    | waiting for you | `⣿` | magenta | `Stop`, or the question tool's request |
+    | waiting for you | `⣿` | magenta | `Stop`, the question tool's request, or `SessionStart` after `/clear` or `/compact` (no `Stop` follows them) |
     | lost | `✕` | red | the pid is gone, or now has another start time |
-    | working | braille spinner | cyan | `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop` with a background task running |
+    | working | braille spinner | cyan | `SessionStart` (the launch's own), `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop` with a background task running |
     | starting | `⠂` | cyan, faint | no hook yet (the folder's trust dialog comes first) |
     | ended | `✓` | green, faint | `SessionEnd`, but for `/clear` |
 

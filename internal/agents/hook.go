@@ -45,6 +45,8 @@ const (
 	reasonClear     = "clear"
 	toolAskQuestion = "AskUserQuestion"
 	taskRunning     = "running"
+	sourceClear     = "clear"
+	sourceCompact   = "compact"
 )
 
 // pidForm is CLAUDE_PID: a positive decimal number without a sign or a
@@ -69,6 +71,7 @@ type HookCall struct {
 // left unread by the decoder.
 type input struct {
 	SessionID       string `json:"session_id"`
+	Source          string `json:"source"`
 	Reason          string `json:"reason"`
 	ToolName        string `json:"tool_name"`
 	BackgroundTasks []struct {
@@ -76,12 +79,14 @@ type input struct {
 	} `json:"background_tasks"`
 }
 
-// facts are the four values taken of the input, each checked; known is
+// facts are the five values taken of the input, each checked; known is
 // false when the input was missing, too large or no JSON object of these
 // fields, and then only the event decides.
 type facts struct {
 	known   bool
 	session string
+	// idle: SessionStart after /clear or /compact, which no Stop follows.
+	idle    bool
 	clear   bool
 	ask     bool
 	running int
@@ -99,7 +104,10 @@ func readFacts(r io.Reader) facts {
 	if err := json.Unmarshal(data, &in); err != nil {
 		return facts{}
 	}
-	f := facts{known: true, clear: in.Reason == reasonClear, ask: in.ToolName == toolAskQuestion}
+	f := facts{
+		known: true, idle: in.Source == sourceClear || in.Source == sourceCompact,
+		clear: in.Reason == reasonClear, ask: in.ToolName == toolAskQuestion,
+	}
 	if serverID.MatchString(in.SessionID) {
 		f.session = in.SessionID
 	}
@@ -112,12 +120,18 @@ func readFacts(r io.Reader) facts {
 }
 
 // next is the state an event leads to, and false when it changes nothing
-// (a SessionEnd of /clear, which a SessionStart follows). Without the
-// input's facts a Stop waits for the person, a PermissionRequest for an
-// approval, and a SessionEnd ends.
+// (a SessionEnd of /clear, which a SessionStart follows). A SessionStart
+// after /clear or /compact waits for the person: no Stop follows it.
+// Without the input's facts a SessionStart works, a Stop waits for the
+// person, a PermissionRequest for an approval, and a SessionEnd ends.
 func next(event string, f facts) (State, bool) {
 	switch event {
-	case SessionStart, UserPromptSubmit, PreToolUse, PostToolUse:
+	case SessionStart:
+		if f.idle {
+			return WaitingForYou, true
+		}
+		return Working, true
+	case UserPromptSubmit, PreToolUse, PostToolUse:
 		return Working, true
 	case PermissionRequest:
 		if f.ask {

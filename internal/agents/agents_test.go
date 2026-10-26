@@ -212,8 +212,13 @@ func TestEveryEventLeadsToItsState(t *testing.T) {
 		want               string
 	}{
 		{"start", SessionStart, `{"session_id":"` + sessionID + `","source":"startup"}`, "working"},
-		{"start after clear", SessionStart, `{"session_id":"` + cleared + `","source":"clear"}`, "working"},
-		{"compact", SessionStart, `{"source":"compact"}`, "working"},
+		// The owner, after the manual check: after /clear and /compact
+		// Claude Code waits for the person, and no Stop follows.
+		{"start after clear", SessionStart, `{"session_id":"` + cleared + `","source":"clear"}`, "waiting"},
+		{"compact", SessionStart, `{"source":"compact"}`, "waiting"},
+		{"resume", SessionStart, `{"source":"resume"}`, "working"},
+		{"start without a source", SessionStart, `{}`, "working"},
+		{"a source in another case", SessionStart, `{"source":"Clear"}`, "working"},
 		{"prompt", UserPromptSubmit, `{"prompt":"hi"}`, "working"},
 		{"pre", PreToolUse, `{"tool_name":"Bash"}`, "working"},
 		{"post", PostToolUse, `{"tool_name":"Write"}`, "working"},
@@ -253,7 +258,7 @@ func TestClearKeepsTheAgentAndTakesTheNewSession(t *testing.T) {
 		t.Fatalf("clear changed %+v to %+v", before, got)
 	}
 	hook(t, dir, SessionStart, `{"session_id":"`+cleared+`","source":"clear"}`, p)
-	if got := stateOf(t, dir); got.State != "working" || got.Session != cleared {
+	if got := stateOf(t, dir); got.State != "waiting" || got.Session != cleared {
 		t.Fatalf("%+v", got)
 	}
 }
@@ -308,13 +313,13 @@ func TestTheTimeIsTheChangeOfTheState(t *testing.T) {
 	}
 }
 
-// Nothing but the four facts and the pid reaches a file: the prompt, the
+// Nothing but the five facts and the pid reaches a file: the prompt, the
 // paths, terminal escapes and a messaging token in the input stay out.
 func TestNothingElseOfTheInputIsKept(t *testing.T) {
 	dir := agentsDir(t)
 	secrets := []string{"PROMPT-SECRET", "/home/someone/private", "\x1b]52;c;cGFzdGU=\x07", "TOKEN-SECRET", "\u202e"}
 	input, err := json.Marshal(map[string]any{
-		"session_id": sessionID, "prompt": secrets[0], "cwd": secrets[1], "transcript_path": secrets[1] + "/t.jsonl",
+		"session_id": sessionID, "source": secrets[1], "prompt": secrets[0], "cwd": secrets[1], "transcript_path": secrets[1] + "/t.jsonl",
 		"tool_name": secrets[2], "tool_input": map[string]string{"command": secrets[2]}, "reason": secrets[4],
 		"background_tasks":            []map[string]string{{"status": "running", "description": secrets[0]}},
 		"CLAUDE_CODE_MESSAGING_TOKEN": secrets[3],
