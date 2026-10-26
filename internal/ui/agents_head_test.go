@@ -10,7 +10,9 @@ import (
 )
 
 // C9a: the ticket's head has a line for its most urgent agent: the glyph
-// in its tone, then "Agent <word> · for <age>", by the model's clock.
+// in its tone, then "Agent <word> · for <age>", by the model's clock;
+// where the meta bar stands, the line is in the bar (C9b). The tests of
+// the head run at 80 columns, below the bar.
 
 // headLine is the agent's line of the pane and its style; "" for none.
 func (h *harness) headLine() (string, present.LineStyle) {
@@ -47,10 +49,27 @@ func TestTheTicketHeadShowsItsAgent(t *testing.T) {
 			h.m.app.agents.list = []agents.Agent{agentOn(6, c.state, h.now.Add(-4*time.Minute-30*time.Second))}
 			h.m.app.agents.frame = 2
 			line, style := h.headLine()
+			glyph, _, _ := strings.Cut(c.want, " ")
+			if width >= 158 {
+				// C9b: where the meta bar stands, the line is there.
+				meta := h.m.objectColumn().Meta
+				at := len(meta) - 1
+				for at > 0 && meta[at].Lead.String() == "" {
+					at--
+				}
+				var value []string
+				for _, l := range meta[at:] {
+					value = append(value, strings.TrimSpace(l.Text.String()))
+				}
+				word := strings.TrimSuffix(strings.TrimPrefix(c.want, glyph+" Agent "), " · for 4 min")
+				if line != "" || meta[at].Lead.String() != glyph || meta[at].LeadStyle != c.style || strings.Join(value, " ") != word+" · 4 min" {
+					t.Errorf("width %d: head %q, bar %+v", width, line, meta[at:])
+				}
+				continue
+			}
 			if line != c.want {
 				t.Errorf("width %d: %q, want %q", width, line, c.want)
 			}
-			glyph, _, _ := strings.Cut(c.want, " ")
 			if style.Lead != len(glyph) || style.LeadStyle != c.style || style.RestStyle != present.Plain {
 				t.Errorf("width %d, %q: style %+v", width, c.want, style)
 			}
@@ -61,6 +80,7 @@ func TestTheTicketHeadShowsItsAgent(t *testing.T) {
 func TestATicketWithoutAnAgentHasNoLine(t *testing.T) {
 	h := newHarness(t)
 	h.openSix()
+	h.m.width = 80
 	h.m.app.agents.list = []agents.Agent{agentOn(7, agents.WaitingForYou, h.now)}
 	if line, _ := h.headLine(); line != "" {
 		t.Fatalf("%q", line)
@@ -71,6 +91,7 @@ func TestATicketWithoutAnAgentHasNoLine(t *testing.T) {
 func TestTheHeadShowsTheMostUrgent(t *testing.T) {
 	h := newHarness(t)
 	h.openSix()
+	h.m.width = 80
 	approval := agentOn(6, agents.WaitingForApproval, h.now)
 	approval.ID = "1f8fad5b-d9cb-469f-a165-70867728950e"
 	h.m.app.agents.list = []agents.Agent{agentOn(6, agents.Working, h.now), approval}
@@ -98,6 +119,7 @@ func TestTheAgeOfAState(t *testing.T) {
 	}
 	h := newHarness(t)
 	h.openSix()
+	h.m.width = 80
 	h.m.app.agents.list = []agents.Agent{agentOn(6, agents.WaitingForYou, h.now)}
 	h.now = h.now.Add(2 * time.Hour)
 	if line, _ := h.headLine(); line != "⣿ Agent waiting for you · for 2 h" {

@@ -170,12 +170,15 @@ func (m Model) detailColumn() present.Column {
 	// the head; the width alone decides, as for wrappedLines.
 	meta := view.MetaFits(view.InnerWidth(layoutWith(m.width, m.height, 1, m.focus), view.Object))
 	tc := ticketContext{paged: a.pagedOn(), origin: m.originLine(), when: a.when, me: a.ownID(), meta: meta}
-	tc.agentGlyph, tc.agentStyle, tc.agent, _ = a.agentHead(d.id)
+	if !meta {
+		// The agent's line stands in the head, or in the bar (C9b).
+		tc.agentGlyph, tc.agentStyle, tc.agent, _ = a.agentHead(d.id)
+	}
 	t := ticketText(d, tc)
 	c.Text = present.NewBody(strings.Join(t.lines, "\n"))
 	c.Styles = t.styles
 	if meta {
-		c.Meta = metaBar(d.record, a.when)
+		c.Meta = append(metaBar(d.record, a.when), a.agentMeta(d.id)...)
 	}
 	c.Offset = d.offset
 	line := -1

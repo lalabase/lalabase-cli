@@ -72,12 +72,12 @@ func TestPTYAgentsOverview(t *testing.T) {
 			if width < 120 && !c.screenShows(width, "╭─ Agents") {
 				t.Fatal("two columns: the agents are not in the list's place")
 			}
-			c.act(t, keyEnter, width, "Nordlicht GmbH › Tickets", "#6 Ticket 6", "Agent waiting for you")
+			c.act(t, keyEnter, width, "Nordlicht GmbH › Tickets", "#6 Ticket 6", "waiting for you")
 			// Esc first, alone: an A right behind it would be read as Alt-A.
 			c.act(t, keyEsc, width, "Projects", "enter open tickets")
 			c.act(t, "A", width, "> ⣿ #6 Ticket 6")
 			c.act(t, keyDown, width, "> ✓ #7 Ticket 7")
-			c.act(t, keyEnter, width, "#7 Ticket 7", "Agent ended")
+			c.act(t, keyEnter, width, "#7 Ticket 7", "ended · ")
 			if err := c.send("q"); err != nil {
 				t.Fatal(err)
 			}

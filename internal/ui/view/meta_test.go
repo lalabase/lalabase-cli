@@ -154,3 +154,27 @@ func TestTheMetaBarsRuleIsFaintAndAFullBarIsWhole(t *testing.T) {
 		t.Fatalf("a full bar is marked as cut: %q", last)
 	}
 }
+
+// C9b: a line of the bar may lead with a glyph in a style of its own (an
+// agent's state); the line is cut with an ellipsis like the others, the
+// glyph kept.
+func TestAMetaLineLeadsWithItsGlyph(t *testing.T) {
+	c := metaColumn()
+	c.Meta = append(c.Meta,
+		present.MetaLine{Text: present.NewInline("Agent"), Style: present.Faint},
+		present.MetaLine{Lead: present.NewInline("⣿"), LeadStyle: present.AgentWaiting, Text: present.NewInline("waiting for you · 59 min")},
+	)
+	width := 76 + frameCells
+	lines := pane(c, width, 12, true, ansi.WcWidth)
+	line := lines[1+len(c.Meta)-1]
+	plain := ansi.Strip(line)
+	if !strings.Contains(plain, "⣿ waiting for you · …") {
+		t.Fatalf("%q", plain)
+	}
+	if got := inTone(line, 35); got != "⣿" {
+		t.Fatalf("in magenta: %q", got)
+	}
+	if w := ansi.WcWidth.StringWidth(line); w != width {
+		t.Fatalf("%d cells", w)
+	}
+}

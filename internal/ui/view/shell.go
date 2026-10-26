@@ -633,6 +633,10 @@ const (
 	minMetaText = 52
 )
 
+// MetaRoom is the width of a line of the meta bar: the bar less its rule
+// and the spaces either side of it.
+const MetaRoom = metaCells - 3
+
 // MetaFits: a pane of this inner width has room for the meta bar beside
 // its text. The model asks it before it builds the bar, so the facts stand
 // either in the bar or in the ticket's head, never in both or neither.
@@ -651,7 +655,7 @@ func textArea(c present.Column, width int) int {
 // text's width; the bar starts at the top whatever the text's offset, and
 // a bar longer than the body is cut, its last line marked.
 func besideMeta(text []string, meta []present.MetaLine, width, body int, method ansi.Method) []string {
-	room := metaCells - 3
+	room := MetaRoom
 	rule := " " + lipgloss.NewStyle().Faint(true).Render(metaRule) + " "
 	lines := make([]string, body)
 	for i := range lines {
@@ -663,11 +667,23 @@ func besideMeta(text []string, meta []present.MetaLine, width, body int, method 
 		if i >= len(meta) {
 			continue
 		}
-		value, style := fit(meta[i].Text.String(), room, method), meta[i].Style
-		if i == body-1 && len(meta) > body {
-			value, style = fit(meta[i].Text.String()+uitext.Inline(uitext.Ellipsis).String(), room, method), present.Faint
+		text, lead := meta[i].Text.String(), meta[i].Lead.String()
+		if lead != "" && method.StringWidth(lead) != 1 {
+			lead = ""
 		}
-		lines[i] += styled(value, style)
+		if i == body-1 && len(meta) > body {
+			if lead != "" {
+				text = lead + " " + text
+			}
+			lines[i] += styled(fit(text+uitext.Inline(uitext.Ellipsis).String(), room, method), present.Faint)
+			continue
+		}
+		if lead != "" {
+			// The glyph in its tone, then the text, cut to what is left.
+			lines[i] += styled(lead, meta[i].LeadStyle) + " " + styled(fit(text, room-2, method), meta[i].Style)
+			continue
+		}
+		lines[i] += styled(fit(text, room, method), meta[i].Style)
 	}
 	return lines
 }

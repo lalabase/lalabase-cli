@@ -2,11 +2,13 @@ package ui
 
 import (
 	"slices"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/present"
+	"github.com/gboyke/lalabase-cli/internal/ui/view"
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
@@ -222,6 +224,52 @@ func (a *app) agentHead(ticket string) (glyph string, style present.Style, text 
 	}
 	word := uitext.Inline(agentWords[ag.State]).String()
 	return a.glyph(ag.State), agentStyles[ag.State], uitext.Fill(uitext.AgentLine, word, age(a.now().Sub(ag.Since))).String(), true
+}
+
+// agentMeta are the meta bar's lines for the ticket's most urgent agent
+// (C9b), after Updated: a faint label, then its glyph in its tone, its
+// word and how long its state has lasted. A value too long for the bar
+// is broken at its spaces, the lines after the first under the word, so
+// neither the state nor its age is cut. None without an agent.
+func (a *app) agentMeta(ticket string) []present.MetaLine {
+	ag, ok := a.agentAt(ticket)
+	if !ok {
+		return nil
+	}
+	word := uitext.Inline(agentWords[ag.State]).String()
+	out := []present.MetaLine{{}, {Text: uitext.Inline(uitext.BarAgent), Style: present.Faint}}
+	for i, line := range barLines(word, age(a.now().Sub(ag.Since)), view.MetaRoom-markCells) {
+		if i == 0 {
+			out = append(out, present.MetaLine{Lead: present.NewInline(a.glyph(ag.State)), LeadStyle: agentStyles[ag.State], Text: present.NewInline(line)})
+			continue
+		}
+		out = append(out, present.MetaLine{Text: present.NewInline(strings.Repeat(" ", markCells) + line)})
+	}
+	return out
+}
+
+// markCells is the room of a glyph and the space after it.
+const markCells = 2
+
+// barLines breaks the agent's word and age at their spaces into lines of
+// at most width cells (the client's own ASCII text); the "· " before the
+// age stays with it. A word wider than the line stands alone and is cut
+// by the view.
+func barLines(word, age string, width int) []string {
+	words := append(strings.Fields(word), uitext.Fill(uitext.AgentMeta, age).String())
+	var out []string
+	line := ""
+	for _, w := range words {
+		if line != "" && len(line)+1+len(w) > width {
+			out = append(out, line)
+			line = ""
+		}
+		if line != "" {
+			line += " "
+		}
+		line += w
+	}
+	return append(out, line)
 }
 
 // age is how long a state has lasted, in its largest whole unit; a time

@@ -397,8 +397,8 @@ var english = map[ID]string{
 	// The labels of a ticket's meta bar.
 	BarStatus: "Status", BarProject: "Project", BarPeople: "People", BarUpdated: "Updated",
 	// C9b: the header's summary and the area's title, the key that opens
-	// the agents, the meta bar's line of a ticket's agent (its word and
-	// the age of its state).
+	// the agents, the meta bar's label of a ticket's agent and the age of
+	// its state after its word there.
 	Agents: "Agents", AgentsKey: "A", AgentsHelp: "agents",
-	BarAgent: "Agent", AgentMeta: "%s · %s",
+	BarAgent: "Agent", AgentMeta: "· %s",
 }

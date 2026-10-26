@@ -69,9 +69,13 @@ type Column struct {
 }
 
 // MetaLine is one line of the meta bar: a label or a value, in its style.
+// Lead, when set, stands before the text in a style of its own: the glyph
+// of an agent's state (C9b), one cell.
 type MetaLine struct {
-	Text  Inline
-	Style Style
+	Text      Inline
+	Style     Style
+	Lead      Inline
+	LeadStyle Style
 }
 
 // Row is one entry of a list: a first line with an optional value at its
