@@ -139,6 +139,9 @@ func TestTheGuardReadsTheRealAgentsPackage(t *testing.T) {
 // hookFile is `lalabase hook`: it runs inside Claude Code's turn.
 const hookFile = "cmd/lalabase/hook.go"
 
+// hookBuiltins are the unqualified calls the hook's file may make.
+var hookBuiltins = map[string]bool{"recover": true, "len": true, "string": true}
+
 // inspectHook: the hook's file names no output stream and no printing
 // call, reads the environment through Getenv with the literal CLAUDE_PID
 // alone, and imports no package of the client but internal/agents (no
@@ -186,6 +189,13 @@ func inspectHook(source string) []string {
 				findings = append(findings, hookFile+": the environment through "+name)
 			}
 		}
+		// No function of package main but recover: any of them may print
+		// or read the profile (review round 2 of #34, F4).
+		if call, ok := node.(*ast.CallExpr); ok {
+			if ident, ok := call.Fun.(*ast.Ident); ok && !hookBuiltins[ident.Name] {
+				findings = append(findings, hookFile+": calls "+ident.Name+" of package main")
+			}
+		}
 		if sel, ok := node.(*ast.SelectorExpr); ok && sel.Sel.Name == "Getenv" && !calledWithPID[sel] {
 			findings = append(findings, hookFile+": Getenv of anything but CLAUDE_PID, or as a value")
 		}
@@ -210,6 +220,8 @@ func TestTheHookWritesNothingAndReadsOnlyCLAUDEPID(t *testing.T) {
 		"\nfunc probe(env Env) { key := \"CLAUDE_PID\"; _ = env.Getenv(key) }\n",
 		"\nfunc probe(env Env) { get := env.Getenv; _ = get(\"CLAUDE_CODE_MESSAGING_TOKEN\") }\n",
 		"\nfunc probe(env Env) { _ = env.Getenv(\"CLAUDE_PID\" + \"X\") }\n",
+		"\nfunc probe(env Env) { _ = runWith([]string{\"version\"}, env) }\n",
+		"\nfunc probe(env Env) { _ = runAuth([]string{\"status\"}, \"\", env) }\n",
 		"\nfunc probe() { print(1) }\n",
 	} {
 		if got := inspectHook(source + probe); len(got) == 0 {

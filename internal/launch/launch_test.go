@@ -885,4 +885,15 @@ func TestARecordThatCannotBeWritten(t *testing.T) {
 	if d := r.done(shown); d.Kind != Opened || d.Untracked != "disk full" {
 		t.Fatalf("done %+v", d)
 	}
+	// Review round 2 of #34, F1: without iTerm claude runs anyway, and its
+	// end says why the state was not shown.
+	r = newRig(t, false, nil)
+	r.l.writeLaunch = func(string, agents.Launch) error { return errors.New("disk full") }
+	ran, ok := r.launch(shown).(execRan)
+	if !ok {
+		t.Fatal("claude did not run")
+	}
+	if d := ran.fn(nil).(Done); d.Kind != Ended || d.Untracked != "disk full" {
+		t.Fatalf("done %+v", d)
+	}
 }

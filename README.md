@@ -284,8 +284,8 @@ navigation again.
     `PATH`, macOS refusing iTerm control
     (error -1743: allow it in System Settings, Privacy & Security,
     Automation), the session not found, no answer within 5 s (a pane may
-    still open), or, as a problem, that Claude Code opened (or ran here)
-    but its state cannot be shown, and why (C9a). While a
+    still open), or, as a problem, that Claude Code opened (or ran here and
+    ended without an error) but its state cannot be shown, and why (C9a). While a
     launch runs, a second `x` does nothing.
 * **What the agents do (C9a).** Every `x` makes an agent: an id of the
   client's own (Claude's session id changes with `/clear`, the agent stays)
