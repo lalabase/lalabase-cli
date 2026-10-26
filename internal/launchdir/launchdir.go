@@ -1,7 +1,8 @@
 // Package launchdir keeps the files of one launch of Claude Code beside a
 // ticket (C7b): one directory per press, <cache root>/<profile>/l/<16 hex>/,
 // and in it the MCP configuration that hands Claude Code the profile's
-// server (MCPConfig) and the script the new iTerm pane runs (Script).
+// server (MCPConfig), the script the new iTerm pane runs (Script) and the
+// settings with the hooks that record the agent's state (Settings, C9a).
 //
 // Threat model: internal/privatefs's, the one of the config (another local
 // user without root). The token in MCPConfig is the one config.toml holds
@@ -13,8 +14,8 @@
 // before), given its mode, synced and checked as a private file. The path
 // is handed over only once the file is whole, so no rename is needed.
 //
-// Lifetime: Claude Code reads its MCP configuration once, at start
-// (checked with Claude Code 2.1.310, the plan's C7b section). A launch
+// Lifetime: Claude Code reads its MCP configuration and its settings once,
+// at start (checked with Claude Code 2.1.310). A launch
 // directory stays MaxAge after its last change and is then removed by
 // Prune, which runs before every launch and when the client quits; a
 // younger one is never touched, its pane may still be starting. Prune
@@ -45,10 +46,13 @@ const (
 	MCPConfig = "m"
 	// Script is what the iTerm pane runs: cd and exec claude.
 	Script = "run"
+	// Settings is the file of claude's --settings: the hooks that record
+	// the agent's state (C9a). Claude Code reads it once, at start.
+	Settings = "s"
 )
 
 // files are every name Prune removes from a launch directory.
-var files = []string{MCPConfig, Script}
+var files = []string{MCPConfig, Script, Settings}
 
 // MaxAge is how long a launch directory stays after its last change.
 const MaxAge = 24 * time.Hour

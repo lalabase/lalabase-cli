@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/launchdir"
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
@@ -21,6 +22,12 @@ const (
 	profileMCP   = "https://lalabase.com/api/mcp"
 	profileToken = "lalab_pat_TESTTOKENTESTTOKEN"
 	sessionUUID  = "FCB46015-2039-451D-82C2-59CE4353910D"
+	// The new pane's unique id as osascript prints it, and the two ids
+	// the rig's launches get (C9a).
+	paneUUID     = "18C12925-0000-4000-8000-000000000001"
+	agentID      = "0f8fad5b-d9cb-469f-a165-70867728950e"
+	agentSession = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+	executable   = "/opt/lalabase/bin/lalabase"
 	// testLimit bounds every wait of these tests.
 	testLimit = 10 * time.Second
 )
@@ -38,11 +45,13 @@ type rig struct {
 	home   string
 	cwd    string
 	files  string
+	agents string
 	sup    *worker.Supervisor
 	l      *Launcher
 	mu     sync.Mutex
 	calls  []osascriptCall
 	answer func(ctx context.Context) (string, error)
+	stdout string
 	execd  []*exec.Cmd
 }
 
@@ -69,21 +78,37 @@ func newRig(t *testing.T, iterm bool, folders map[string]string) *rig {
 	t.Helper()
 	r := &rig{t: t, home: realTemp(t), cwd: realTemp(t)}
 	r.files = filepath.Join(r.home, ".cache", "lalabase", "cli", "default", "l")
+	r.agents = filepath.Join(r.home, ".cache", "lalabase", "cli", "default", "a")
 	r.sup = worker.New(context.Background())
 	t.Cleanup(func() { r.sup.Stop(testLimit) })
-	cfg := Config{Supervisor: r.sup, Home: r.home, Cwd: r.cwd, MCP: profileMCP, Token: profileToken, Folders: folders, Files: r.files}
+	cfg := Config{Supervisor: r.sup, Home: r.home, Cwd: r.cwd, MCP: profileMCP, Token: profileToken, Folders: folders, Files: r.files,
+		Agents: r.agents, Executable: executable}
 	r.l = New(cfg)
 	r.l.session = ""
 	if iterm {
 		r.l.session = sessionUUID
 	}
 	r.answer = func(context.Context) (string, error) { return "", nil }
-	r.l.osascript = func(ctx context.Context, script string, args []string) (string, error) {
+	r.stdout = paneUUID + "\n"
+	r.l.osascript = func(ctx context.Context, script string, args []string) (string, string, error) {
 		r.mu.Lock()
 		r.calls = append(r.calls, osascriptCall{script, args})
-		answer := r.answer
+		answer, stdout := r.answer, r.stdout
 		r.mu.Unlock()
-		return answer(ctx)
+		stderr, err := answer(ctx)
+		if err != nil {
+			stdout = ""
+		}
+		return stdout, stderr, err
+	}
+	// The agent's id first, then the session's, on every launch.
+	ids := 0
+	r.l.newID = func() (string, error) {
+		ids++
+		if ids%2 == 1 {
+			return agentID, nil
+		}
+		return agentSession, nil
 	}
 	r.l.lookPath = func(string) (string, error) { return "/opt/bin/claude", nil }
 	r.l.execProcess = func(c *exec.Cmd, fn tea.ExecCallback) tea.Cmd {
@@ -200,11 +225,11 @@ func TestITermSplitsTheSessionAndTypesTheScriptsPath(t *testing.T) {
 	}
 	wantScript := "#!/bin/sh\n# Claude Code beside a Lalabase ticket: one launch, written by lalabase.\n" +
 		"cd '" + r.cwd + "' || exit\n" +
-		"exec claude '--mcp-config' '" + filepath.Join(dir, "m") + "' '--strict-mcp-config' '-n' 'lalabase #42' '" + promptFor(server) + "'\n"
+		"exec claude '--mcp-config' '" + filepath.Join(dir, "m") + "' '--strict-mcp-config' '--session-id' '" + agentSession + "' '--settings' '" + filepath.Join(dir, "s") + "' '-n' 'lalabase #42' '" + promptFor(server) + "'\n"
 	if got := readFile(t, filepath.Join(dir, "run")); got != wantScript {
 		t.Errorf("script\n got %q\nwant %q", got, wantScript)
 	}
-	for name, perm := range map[string]os.FileMode{"m": 0o600, "run": 0o700} {
+	for name, perm := range map[string]os.FileMode{"m": 0o600, "run": 0o700, "s": 0o600} {
 		if info, err := os.Lstat(filepath.Join(dir, name)); err != nil || info.Mode() != perm {
 			t.Errorf("%s: mode %v, %v", name, info.Mode(), err)
 		}
@@ -229,6 +254,8 @@ func TestTheTokenIsInTheServerFileAlone(t *testing.T) {
 		if iterm {
 			seen = append(seen, readFile(t, filepath.Join(dir, "run")))
 		}
+		seen = append(seen, readFile(t, filepath.Join(dir, "s")))
+		seen = append(seen, readFile(t, filepath.Join(r.agents, agentID+".launch.json")))
 		if len(seen) == 0 {
 			t.Fatalf("iTerm %v: nothing ran", iterm)
 		}
@@ -447,7 +474,8 @@ func TestWithoutITermClaudeRunsHereWithTheSameArguments(t *testing.T) {
 	}
 	c := r.execd[0]
 	dir, server := r.theLaunch()
-	want := []string{"/opt/bin/claude", "--mcp-config", filepath.Join(dir, "m"), "--strict-mcp-config", "-n", "lalabase #42", promptFor(server)}
+	want := []string{"/opt/bin/claude", "--mcp-config", filepath.Join(dir, "m"), "--strict-mcp-config",
+		"--session-id", agentSession, "--settings", filepath.Join(dir, "s"), "-n", "lalabase #42", promptFor(server)}
 	if c.Path != "/opt/bin/claude" || len(c.Args) != len(want) || c.Dir != r.cwd {
 		t.Fatalf("command %q %q in %q", c.Path, c.Args, c.Dir)
 	}
@@ -596,7 +624,7 @@ func TestAKilledChildDoesNotHoldTheLaunch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, err := runChild(ctx, "/bin/sh", "sleep 20 >&2 &\nsleep 20\n", []string{"-s"})
+	_, _, err := runChild(ctx, "/bin/sh", "sleep 20 >&2 &\nsleep 20\n", []string{"-s"})
 	if err == nil {
 		t.Fatal("no error after the deadline")
 	}
@@ -614,7 +642,7 @@ func TestTheErrorOutputIsCapped(t *testing.T) {
 			t.Fatalf("write %d, %v", n, err)
 		}
 	}
-	if len(c.b) != maxStderr {
+	if len(c.b) != maxOutput {
 		t.Fatalf("kept %d bytes", len(c.b))
 	}
 }
@@ -672,5 +700,184 @@ func TestALaunchPrunesOldLaunchFiles(t *testing.T) {
 	r.done(shown)
 	if dirs := r.launchDirs(); len(dirs) != 2 || (dirs[0] != young && dirs[1] != young) {
 		t.Fatalf("after the prune %q, want %s and a new one", dirs, young)
+	}
+}
+
+// agentsOf reads the rig's agents directory as the interface does.
+func (r *rig) agentsOf() []agents.Agent {
+	r.t.Helper()
+	got, err := agents.Read(r.agents, nil)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	return got
+}
+
+// C9a: a launch iTerm opened records the agent with the pane's id the
+// AppleScript returned, after the pane opened; the settings file is the
+// launch directory's.
+func TestAnOpenedLaunchRecordsTheAgent(t *testing.T) {
+	r := newRig(t, true, nil)
+	if d := r.done(shown); d.Kind != Opened || d.Untracked != "" {
+		t.Fatalf("done %+v", d)
+	}
+	got := r.agentsOf()
+	want := agents.Agent{ID: agentID, Organisation: orgID, Project: projectID, Ticket: ticketID, Number: 42, Pane: paneUUID, Session: agentSession, State: agents.Starting}
+	if len(got) != 1 || got[0].Since.IsZero() {
+		t.Fatalf("agents %+v", got)
+	}
+	got[0].Since = time.Time{}
+	if got[0] != want {
+		t.Fatalf("agent\n got %+v\nwant %+v", got[0], want)
+	}
+	dir, _ := r.theLaunch()
+	if s := readFile(t, filepath.Join(dir, "s")); string(settings(executable, r.agents, agentID)) != s {
+		t.Errorf("settings %s", s)
+	}
+	if info, err := os.Lstat(r.agents); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("agents directory %v %v", info.Mode(), err)
+	}
+}
+
+// What the AppleScript printed is taken as the pane's id only in that
+// form; a launch that got no answer in time is recorded without one (the
+// pane may still open); a launch iTerm refused records nothing.
+func TestThePaneAndWhichLaunchesAreRecorded(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		stdout string
+		answer func(ctx context.Context) (string, error)
+		kind   Kind
+		pane   string
+		agent  bool
+	}{
+		{"pane", paneUUID + "\n", nil, Opened, paneUUID, true},
+		{"lower case", strings.ToLower(paneUUID), nil, Opened, strings.ToLower(paneUUID), true},
+		{"no id", "", nil, Opened, "", true},
+		{"another form", "session " + paneUUID + "\n", nil, Opened, "", true},
+		{"an escape", "\x1b]52;c;x\x07", nil, Opened, "", true},
+		{"no answer", "", func(ctx context.Context) (string, error) { <-ctx.Done(); return "", ctx.Err() }, NoAnswer, "", true},
+		{"refused", "", func(context.Context) (string, error) {
+			return "execution error: Not authorized (-1743)\n", errors.New("exit status 1")
+		}, NoPermission, "", false},
+		{"no session", "", func(context.Context) (string, error) {
+			return "execution error: session not found (4201)\n", errors.New("exit status 1")
+		}, SessionGone, "", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := newRig(t, true, nil)
+			r.l.deadline = 50 * time.Millisecond
+			r.stdout = c.stdout
+			if c.answer != nil {
+				r.answer = c.answer
+			}
+			if d := r.done(shown); d.Kind != c.kind || d.Untracked != "" {
+				t.Fatalf("done %+v", d)
+			}
+			got := r.agentsOf()
+			if !c.agent {
+				if len(got) != 0 {
+					t.Fatalf("a refused launch recorded %+v", got)
+				}
+				return
+			}
+			if len(got) != 1 || got[0].Pane != c.pane {
+				t.Fatalf("agents %+v, want pane %q", got, c.pane)
+			}
+		})
+	}
+}
+
+// Without iTerm the agent is recorded before claude runs here: the
+// interface waits until it ends.
+func TestHereTheAgentIsRecordedBeforeClaudeRuns(t *testing.T) {
+	r := newRig(t, false, nil)
+	recorded := false
+	r.l.execProcess = func(c *exec.Cmd, fn tea.ExecCallback) tea.Cmd {
+		recorded = len(r.agentsOf()) == 1
+		r.execd = append(r.execd, c)
+		return func() tea.Msg { return execRan{fn: fn} }
+	}
+	r.launch(shown)
+	if !recorded {
+		t.Fatal("claude ran before the agent was recorded")
+	}
+	if got := r.agentsOf(); got[0].Pane != "" {
+		t.Fatalf("a pane without iTerm: %+v", got[0])
+	}
+}
+
+// A launch whose hooks cannot be handed over goes on without them, as
+// before C9a, and says why: no settings file, no session id, no record.
+func TestALaunchWithoutHooks(t *testing.T) {
+	for name, c := range map[string]struct {
+		change func(r *rig)
+		why    string
+	}{
+		"no program":          {func(r *rig) { r.l.cfg.Executable = "" }, "unknown"},
+		"no agents dir":       {func(r *rig) { r.l.cfg.Agents = "" }, "unknown"},
+		"relative program":    {func(r *rig) { r.l.cfg.Executable = "bin/lalabase" }, "program's path"},
+		"program newline":     {func(r *rig) { r.l.cfg.Executable = "/opt/la\nlabase" }, "program's path"},
+		"program backslash":   {func(r *rig) { r.l.cfg.Executable = `/opt/la\labase` }, "program's path"},
+		"agents dir escape":   {func(r *rig) { r.l.cfg.Agents = filepath.Join(r.home, "a\x1b[2Jb") }, "agents' directory"},
+		"agents dir relative": {func(r *rig) { r.l.cfg.Agents = "cache/a" }, "agents' directory"},
+		"no organisation":     {func(*rig) {}, "organisation"},
+		"agents dir open":     {func(r *rig) { r.l.cfg.Agents = openDir(r.t, r.home) }, "others may"},
+		"no id":               {func(r *rig) { r.l.newID = func() (string, error) { return "", errors.New("no randomness") } }, "no randomness"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, iterm := range []bool{true, false} {
+				r := newRig(t, iterm, nil)
+				c.change(r)
+				ticket := shown
+				if name == "no organisation" {
+					ticket.Org = ""
+				}
+				msg := r.launch(ticket)
+				if d, ok := msg.(Done); iterm && (!ok || d.Kind != Opened || !strings.Contains(d.Untracked, c.why)) {
+					t.Fatalf("iTerm: %#v", msg)
+				}
+				dir, _ := r.theLaunch()
+				if _, err := os.Lstat(filepath.Join(dir, "s")); !os.IsNotExist(err) {
+					t.Errorf("iTerm %v: a settings file: %v", iterm, err)
+				}
+				var args []string
+				if iterm {
+					args = []string{readFile(t, filepath.Join(dir, "run"))}
+				} else {
+					args = r.execd[0].Args
+				}
+				for _, a := range args {
+					if strings.Contains(a, "--session-id") || strings.Contains(a, "--settings") {
+						t.Errorf("iTerm %v: %q", iterm, a)
+					}
+				}
+				if got, _ := agents.Read(r.agents, nil); len(got) != 0 {
+					t.Errorf("iTerm %v: recorded %+v", iterm, got)
+				}
+			}
+		})
+	}
+}
+
+// openDir is a directory others may change, under root.
+func openDir(t *testing.T, root string) string {
+	t.Helper()
+	dir := filepath.Join(root, "open")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o777); err != nil { //nolint:gosec // the case under test
+		t.Fatal(err)
+	}
+	return filepath.Join(dir, "a")
+}
+
+// A record that cannot be written leaves the pane open and says why.
+func TestARecordThatCannotBeWritten(t *testing.T) {
+	r := newRig(t, true, nil)
+	r.l.writeLaunch = func(string, agents.Launch) error { return errors.New("disk full") }
+	if d := r.done(shown); d.Kind != Opened || d.Untracked != "disk full" {
+		t.Fatalf("done %+v", d)
 	}
 }

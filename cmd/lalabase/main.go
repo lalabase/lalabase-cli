@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 
 	"github.com/gboyke/lalabase-cli/internal/agents"
@@ -46,6 +47,9 @@ type Env struct {
 	Getenv  func(string) string
 	Home    string
 	Cwd     string
+	// Executable is this program's path, links resolved: the command the
+	// hooks of a launch run (C9a); "" when unknown.
+	Executable string
 	// Interactive: stdin is a terminal, so a question can be asked.
 	Interactive    bool
 	OutputTerminal bool
@@ -61,7 +65,7 @@ func main() {
 	cwd, _ := os.Getwd()
 	env := Env{
 		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv,
-		Home: home, Cwd: cwd, Interactive: isTerminal(os.Stdin), OutputTerminal: isTerminal(os.Stdout),
+		Home: home, Cwd: cwd, Executable: executable(), Interactive: isTerminal(os.Stdin), OutputTerminal: isTerminal(os.Stdout),
 	}
 	os.Exit(runWith(os.Args[1:], env))
 }
@@ -123,6 +127,20 @@ func buildVersion() string {
 		return info.Main.Version
 	}
 	return "dev"
+}
+
+// executable is this program's path with its links resolved, so a hook
+// keeps working when a link to it (a package manager's) is replaced; ""
+// when unknown.
+func executable() string {
+	path, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return ""
 }
 
 // isTerminal asks the terminal driver: a character device alone (/dev/null,

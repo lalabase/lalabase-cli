@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/diskcache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
@@ -122,7 +123,8 @@ func launchConfig(env Env, p profile.Profile, mcp string, sup *worker.Supervisor
 	}
 	return launch.Config{
 		Supervisor: sup, Home: env.Home, Cwd: env.Cwd, MCP: mcp, Token: p.Token, Folders: p.Folders,
-		Files:       launchFiles(env, p),
+		Files:  launchFiles(env, p),
+		Agents: agentsFiles(env, p), Executable: env.Executable,
 		TermProgram: env.Getenv("TERM_PROGRAM"), SessionID: env.Getenv("ITERM_SESSION_ID"),
 		Multiplexer: multiplexer,
 	}
@@ -130,10 +132,17 @@ func launchConfig(env Env, p profile.Profile, mcp string, sup *worker.Supervisor
 
 // launchFiles is the directory of the profile's launch files, beside its
 // disk cache: <cache root>/<profile>/l. "" when there is none.
-func launchFiles(env Env, p profile.Profile) string {
+func launchFiles(env Env, p profile.Profile) string { return profileSubdir(env, p, "l") }
+
+// agentsFiles is the directory of the profile's agents (C9a), beside the
+// launch files and apart from them: <cache root>/<profile>/a. "" when there
+// is none.
+func agentsFiles(env Env, p profile.Profile) string { return profileSubdir(env, p, agents.Dir) }
+
+func profileSubdir(env Env, p profile.Profile, name string) string {
 	dir, err := diskcache.ProfileDir(diskcache.Root(env.Getenv, env.Home), p.Name)
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, "l")
+	return filepath.Join(dir, name)
 }

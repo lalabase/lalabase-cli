@@ -33,12 +33,12 @@ var Events = []string{SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, P
 // MaxInput bounds a hook's input: a larger one is not read at all.
 const MaxInput = 1 << 20
 
-// lockFor is how long a hook tries for its agent's lock; lockStep how long
-// it waits between tries. A hook has 5 s in all and must end well before.
-const (
-	lockFor  = 300 * time.Millisecond
-	lockStep = 5 * time.Millisecond
-)
+// lockFor is how long a hook tries for its agent's lock (a test that is
+// about the lock, not the time, makes it longer); lockStep how long it
+// waits between tries. A hook has 5 s in all and must end well before.
+var lockFor = 300 * time.Millisecond
+
+const lockStep = 5 * time.Millisecond
 
 // The values a hook takes of its foreign input, compared to these.
 const (

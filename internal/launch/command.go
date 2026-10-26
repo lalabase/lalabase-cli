@@ -8,6 +8,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/gboyke/lalabase-cli/internal/agents"
 )
 
 // uuid is the form of the ids handed over: the server's ids are random
@@ -78,15 +80,61 @@ func mcpConfig(server, address, token string) []byte {
 	return data
 }
 
+// tracking is what lets the client know a launched session's state (C9a):
+// the session id it starts with and the settings file with its hooks; the
+// zero value for a launch without.
+type tracking struct {
+	session, settings string
+}
+
 // claudeArgs are claude's arguments: the server file, no other server
 // (Claude Code's own configuration and claude.ai's connectors stay out),
-// the session's name and the prompt. The token is in the file, never here:
-// a process's arguments are visible to every local user.
-func claudeArgs(t Ticket, server, mcpFile string) []string {
-	return []string{
-		"--mcp-config", mcpFile, "--strict-mcp-config",
-		"-n", "lalabase #" + strconv.Itoa(t.Number), prompt(t, server),
+// the session id and the hooks' settings file when the launch tracks the
+// agent, the session's name and the prompt. The token is in the file,
+// never here: a process's arguments are visible to every local user. The
+// hooks are a file for the same reason, never inline JSON.
+func claudeArgs(t Ticket, server, mcpFile string, tr tracking) []string {
+	args := []string{"--mcp-config", mcpFile, "--strict-mcp-config"}
+	if tr.settings != "" {
+		args = append(args, "--session-id", tr.session, "--settings", tr.settings)
 	}
+	return append(args, "-n", "lalabase #"+strconv.Itoa(t.Number), prompt(t, server))
+}
+
+// hookTimeout is the seconds Claude Code gives a hook: the hook ends well
+// under one, and a hung one must not hold a turn for the default minute.
+const hookTimeout = 5
+
+// hookEntry is one command hook in Claude Code's settings format (checked
+// with Claude Code 2.1.310).
+type hookEntry struct {
+	Type    string `json:"type"`
+	Command string `json:"command"`
+	Timeout int    `json:"timeout"`
+}
+
+type hookGroup struct {
+	Hooks []hookEntry `json:"hooks"`
+}
+
+// settings is the file of claude's --settings: one hook per event of
+// agents.Events, each one command without a shell operator, the client's
+// own program by its absolute path with the agents directory, the event
+// and the agent's id. The event comes from here, so the hook needs no
+// field of its foreign input to know it; the directory too, so the hook
+// never works it out from the pane's environment. Both paths passed
+// passable, so each is one word for the shell Claude Code runs a hook in.
+func settings(executable, agentsDir, agent string) []byte {
+	hooks := map[string][]hookGroup{}
+	for _, event := range agents.Events {
+		command := quote(executable) + " hook --dir " + quote(agentsDir) + " --event " + event + " " + agent
+		hooks[event] = []hookGroup{{Hooks: []hookEntry{{Type: "command", Command: command, Timeout: hookTimeout}}}}
+	}
+	data, err := json.Marshal(map[string]map[string][]hookGroup{"hooks": hooks})
+	if err != nil {
+		panic(err) // strings, numbers and maps of them always encode
+	}
+	return data
 }
 
 // script is the launch script the new pane runs: into the folder, then
@@ -144,9 +192,11 @@ func passable(s string) bool {
 // appleScript splits the client's own iTerm session, found by its unique
 // id in every window and tab (not "the current window": the person may
 // have clicked elsewhere), vertically with the default profile, and types
-// the command line (the launch script's path) into the new pane. It is a constant: the two values
-// arrive as arguments of the run handler (osascript - <sid> <line>) and are
-// never part of the script's text. Error 4201: no such session.
+// the command line (the launch script's path) into the new pane. It
+// returns the new pane's unique id (C9a), which osascript prints. It is a
+// constant: the two values arrive as arguments of the run handler
+// (osascript - <sid> <line>) and are never part of the script's text.
+// Error 4201: no such session.
 const appleScript = `on run argv
 	if (count of argv) is not 2 then error "two arguments expected" number 4202
 	set sid to item 1 of argv
@@ -160,7 +210,7 @@ const appleScript = `on run argv
 							set n to (split vertically with default profile)
 						end tell
 						tell n to write text cmdline
-						return
+						return unique id of n
 					end if
 				end repeat
 			end repeat

@@ -165,7 +165,8 @@ var fileSystemImports = map[string]map[string][]string{
 // with the child, and the launch runs under the supervisor. It may stat a
 // folder, and nothing else of os: no environment (the command hands it
 // the values it needs), no output stream. Its files are written by
-// internal/launchdir (fileSystemImports). Nothing else gets any of this,
+// internal/launchdir (fileSystemImports), the agent's record by
+// internal/agents (C9a). Nothing else gets any of this,
 // and inspectChildProcesses refuses a child process everywhere else in the
 // client. Of the client's own packages it imports only those named here:
 // it reads no file, Claude Code's configuration least of all (C7b), so no
@@ -177,6 +178,9 @@ var launchImports = map[string]map[string][]string{
 		"path/filepath":                     {"Clean", "IsAbs", "Join"},
 		clientModule + "internal/launchdir": nil,
 		clientModule + "internal/worker":    nil,
+		// The agent's hooks and its record (C9a), by name: the launch
+		// writes them and reads nothing of the agents.
+		clientModule + "internal/agents": {"Events", "Launch", "NewID", "Prepare", "WriteLaunch"},
 	},
 }
 

@@ -47,4 +47,9 @@ type Done struct {
 	Ticket Ticket
 	Kind   Kind
 	Detail string
+	// Untracked says why Claude Code runs without the client knowing its
+	// state (C9a): no hooks could be handed over, or the agent could not be
+	// recorded; "" when it is known. It may name a path: cleaned where it
+	// is shown.
+	Untracked string
 }

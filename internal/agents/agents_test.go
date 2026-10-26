@@ -462,6 +462,11 @@ func TestOnlyAValidPIDIsRecorded(t *testing.T) {
 // under the lock, so neither loses what the other wrote (the pid of one,
 // the session of the other).
 func TestOverlappingHooksLoseNothing(t *testing.T) {
+	// A slow disk under a loaded test run must not make a hook give up:
+	// this is about the lock, the wait's bound is the next test's.
+	saved := lockFor
+	lockFor = 10 * time.Second
+	t.Cleanup(func() { lockFor = saved })
 	for round := range 8 {
 		dir := agentsDir(t)
 		p := live(4242, 7)

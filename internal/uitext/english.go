@@ -233,6 +233,8 @@ const (
 	LaunchSessionGone
 	LaunchNoAnswer
 	LaunchFailed
+	// C9a: a launch whose agent's state cannot be shown.
+	LaunchUntracked
 	// L2: the layout after the design review.
 	PathStep
 	PathDetail
@@ -363,6 +365,7 @@ var english = map[ID]string{
 	LaunchNoPermission:  "macOS does not let this terminal control iTerm: allow it in System Settings > Privacy & Security > Automation",
 	LaunchSessionGone:   "iTerm did not find this session; nothing opened",
 	LaunchNoAnswer:      "iTerm did not answer within 5 s; a pane may still open. If macOS asks for permission, allow it",
+	LaunchUntracked:     "Claude Code opened beside #%d; its state cannot be shown: %s",
 	LaunchFailed:        "iTerm could not open a pane",
 	// L2: the path in the second line, its places and their details.
 	PathStep: " › ", PathDetail: " · ",

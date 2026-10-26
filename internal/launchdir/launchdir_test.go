@@ -212,7 +212,7 @@ func TestPruneRemovesOldLaunchDirectoriesAlone(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, name := range append([]string{MCPConfig, Script}, extra...) {
+		for _, name := range append([]string{MCPConfig, Script, Settings}, extra...) {
 			if _, err := d.Write(name, []byte("x"), 0o600); err != nil {
 				t.Fatal(err)
 			}

@@ -45,7 +45,21 @@ func (m Model) launchTarget() (launch.Ticket, bool) {
 	if d == nil || !d.known || d.record.ID != d.id || d.record.Number <= 0 {
 		return launch.Ticket{}, false
 	}
-	return launch.Ticket{Project: d.project, ID: d.id, Number: d.record.Number}, true
+	return launch.Ticket{Org: a.detailOrg(), Project: d.project, ID: d.id, Number: d.record.Number}, true
+}
+
+// detailOrg is the organisation of the ticket in the pane: the one of the
+// notification it was opened from, or of the list it was opened in; ""
+// when neither is known (the agent's record keeps it, C9a).
+func (a *app) detailOrg() string {
+	d := a.detail
+	switch {
+	case a.origin != nil && a.origin.ticket == d.id:
+		return a.origin.org
+	case a.tickets != nil && a.tickets.project == d.project:
+		return a.tickets.org
+	}
+	return ""
 }
 
 // launchClaude is x: one launch for the ticket shown, numbered; until its
@@ -73,6 +87,11 @@ func (m Model) receiveLaunch(d launch.Done) tea.Cmd {
 	}
 	a.launch.busy, a.launch.ticket = false, d.Ticket.ID
 	a.launch.notice, a.launch.tone = launchNotice(d), launchTone(d.Kind)
+	if d.Kind == launch.Opened && d.Untracked != "" {
+		// Opened, but its state will not be shown: a problem to see, not
+		// a hint that goes.
+		a.launch.notice, a.launch.tone = uitext.Fill(uitext.LaunchUntracked, d.Ticket.Number, d.Untracked), present.NoticeProblem
+	}
 	// The launch cleared the deadline when it started (launchClaude): a
 	// problem or a canceled launch has none.
 	if a.launch.tone != present.Plain || a.launch.notice.String() == "" {
