@@ -117,7 +117,13 @@ func TestTheHookIsSilentAndExitsZero(t *testing.T) {
 			}
 		}},
 		{name: "invalid agent id", args: func(dir string) []string { return []string{"--dir", dir, "--event", "Stop", "../" + hookAgent} }},
-		{name: "unknown event", args: func(dir string) []string { return []string{"--dir", dir, "--event", "Notification", hookAgent} }},
+		{name: "network permission notification", input: `{"notification_type":"permission_prompt"}`, wantOK: "approval", args: func(dir string) []string {
+			return []string{"--dir", dir, "--event", "Notification", hookAgent}
+		}},
+		{name: "unrelated notification", input: `{"notification_type":"idle_prompt"}`, args: func(dir string) []string {
+			return []string{"--dir", dir, "--event", "Notification", hookAgent}
+		}},
+		{name: "unknown event", args: func(dir string) []string { return []string{"--dir", dir, "--event", "UnknownEvent", hookAgent} }},
 		{name: "unknown flag", args: func(dir string) []string { return []string{"--dir", dir, "--event", "Stop", "--x", hookAgent} }},
 		{name: "two agents", args: func(dir string) []string { return []string{"--dir", dir, "--event", "Stop", hookAgent, hookAgent} }},
 		{name: "no arguments", args: func(string) []string { return nil }},

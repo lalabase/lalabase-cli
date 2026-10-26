@@ -59,14 +59,35 @@ type launchRecord struct {
 
 // stateRecord is <agent id>.state.json. Start is the process's start time
 // in the platform's own unit, compared, never shown; 0 when unknown.
-// Waiter is the subagent whose approval or question the state waits for,
-// "" for the session's own.
+// Waiter is read for records from before pending tools were tracked.
 type stateRecord struct {
-	Format  int       `json:"format"`
-	State   string    `json:"state"`
-	Changed time.Time `json:"changed"`
-	Session string    `json:"session"`
-	PID     int       `json:"pid"`
-	Start   int64     `json:"start"`
-	Waiter  string    `json:"waiter,omitempty"`
+	Format    int           `json:"format"`
+	State     string        `json:"state"`
+	Changed   time.Time     `json:"changed"`
+	Session   string        `json:"session"`
+	PID       int           `json:"pid"`
+	Start     int64         `json:"start"`
+	Waiter    string        `json:"waiter,omitempty"`
+	Pending   []pendingWait `json:"pending,omitempty"`
+	Tools     []toolCall    `json:"tools,omitempty"`
+	Untracked bool          `json:"untracked,omitempty"`
+}
+
+// pendingWait identifies a request by its scoped call-id hash (ByID) or
+// by a hash of its session, subagent, tool name and input. No command,
+// path or question is kept. An empty
+// Tool cannot be matched: notifications carry no tool, and older or
+// unreadable requests may have none either. They wait for a turn boundary.
+type pendingWait struct {
+	Tool     string `json:"tool,omitempty"`
+	ByID     bool   `json:"by_id,omitempty"`
+	Question bool   `json:"question,omitempty"`
+}
+
+// toolCall ties a PreToolUse's scoped call id to its tool/input hash so
+// a PermissionRequest (which has no id) can find a unique active call.
+type toolCall struct {
+	ID   string `json:"id"`
+	Tool string `json:"tool"`
+	Name string `json:"name"`
 }

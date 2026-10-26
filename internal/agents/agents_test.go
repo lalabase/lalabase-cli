@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -267,7 +268,7 @@ func TestClearKeepsTheAgentAndTakesTheNewSession(t *testing.T) {
 		t.Fatalf("%+v", before)
 	}
 	hook(t, dir, SessionEnd, `{"session_id":"`+sessionID+`","reason":"clear"}`, p)
-	if got := stateOf(t, dir); got != before {
+	if got := stateOf(t, dir); !reflect.DeepEqual(got, before) {
 		t.Fatalf("clear changed %+v to %+v", before, got)
 	}
 	hook(t, dir, SessionStart, `{"session_id":"`+cleared+`","source":"clear"}`, p)
@@ -370,7 +371,7 @@ func TestARefusedCallWritesNothing(t *testing.T) {
 		"agent":        {Dir: dir, Event: Stop, Agent: "not-an-id"},
 		"agent upper":  {Dir: dir, Event: Stop, Agent: strings.ToUpper(agentID)},
 		"agent path":   {Dir: dir, Event: Stop, Agent: "../" + agentID},
-		"event":        {Dir: dir, Event: "Notification", Agent: agentID},
+		"event":        {Dir: dir, Event: "UnknownEvent", Agent: agentID},
 		"subagent":     {Dir: dir, Event: "SubagentStop", Agent: agentID},
 		"no event":     {Dir: dir, Agent: agentID},
 		"relative dir": {Dir: "a", Event: Stop, Agent: agentID},
@@ -694,7 +695,7 @@ func TestUrgency(t *testing.T) {
 // session may wait for the person: an approval or a question still open
 // stays, the subagent's tool events change nothing then. Its tools while
 // the session works keep it working; the main session's own tool after an
-// approval works again.
+// approval must match the awaited tool to work again.
 func TestASubagentsToolsKeepAnOpenWait(t *testing.T) {
 	const sub = `{"agent_id":"a1b2c3","agent_type":"Explore","tool_name":"Read"}`
 	for _, c := range []struct {
@@ -707,8 +708,8 @@ func TestASubagentsToolsKeepAnOpenWait(t *testing.T) {
 		{"approval, subagent's pre", PermissionRequest, PreToolUse, sub, "approval"},
 		{"question, subagent's post", PermissionRequest, PostToolUse, sub, "approval"},
 		{"waiting, subagent's pre", Stop, PreToolUse, sub, "waiting"},
-		{"approval, the session's own post", PermissionRequest, PostToolUse, `{"tool_name":"Write"}`, "working"},
-		{"approval, an empty agent_id", PermissionRequest, PostToolUse, `{"agent_id":""}`, "working"},
+		{"unidentified approval, the session's own post", PermissionRequest, PostToolUse, `{"tool_name":"Write"}`, "approval"},
+		{"unidentified approval, an empty agent_id", PermissionRequest, PostToolUse, `{"agent_id":""}`, "approval"},
 		{"working, subagent's post", UserPromptSubmit, PostToolUse, sub, "working"},
 		{"approval, a new prompt", PermissionRequest, UserPromptSubmit, `{}`, "working"},
 	} {
@@ -729,13 +730,12 @@ func TestASubagentsToolsKeepAnOpenWait(t *testing.T) {
 }
 
 // Review round 4 of #34, F1: a subagent in the foreground hands its own
-// approvals and questions to the person. Its own tool after the answer
-// works again; another subagent's tool, or one whose agent_id has no form
-// the hook takes, leaves the wait open.
+// approvals and questions to the person. Only the awaited tool's
+// completion answers it; unrelated tools leave the wait open.
 func TestASubagentsOwnWaitEndsWithItsTool(t *testing.T) {
 	const (
-		ask     = `{"agent_id":"a06151abf02cc81f9","tool_name":"Write"}`
-		mine    = `{"agent_id":"a06151abf02cc81f9","tool_name":"Read"}`
+		ask     = `{"agent_id":"a06151abf02cc81f9","tool_name":"Write","tool_input":{"file_path":"/tmp/file"}}`
+		mine    = `{"agent_id":"a06151abf02cc81f9","tool_name":"Write","tool_input":{"file_path":"/tmp/file"}}`
 		other   = `{"agent_id":"a11fbd18b849cf8c5","tool_name":"Read"}`
 		strange = `{"agent_id":"a 1;x","tool_name":"Read"}`
 	)
@@ -746,11 +746,11 @@ func TestASubagentsOwnWaitEndsWithItsTool(t *testing.T) {
 		want          string
 	}{
 		{"its own post", ask, mine, PostToolUse, "working"},
-		{"its own pre", ask, mine, PreToolUse, "working"},
-		{"its own question, its post", `{"agent_id":"a06151abf02cc81f9","tool_name":"AskUserQuestion"}`, mine, PostToolUse, "working"},
+		{"its own pre", ask, mine, PreToolUse, "approval"},
+		{"its own question, an unrelated post", `{"agent_id":"a06151abf02cc81f9","tool_name":"AskUserQuestion"}`, mine, PostToolUse, "waiting"},
 		{"another subagent's post", ask, other, PostToolUse, "approval"},
 		{"another subagent's pre", ask, other, PreToolUse, "approval"},
-		{"the session's own post", ask, `{"tool_name":"Write"}`, PostToolUse, "working"},
+		{"the session's own post", ask, `{"tool_name":"Write"}`, PostToolUse, "approval"},
 		{"an id of no form, twice", `{"agent_id":"a 1;x","tool_name":"Write"}`, strange, PostToolUse, "approval"},
 		{"the session's wait, a subagent's post", `{"tool_name":"Write"}`, mine, PostToolUse, "approval"},
 	} {
@@ -794,7 +794,7 @@ func TestAResumeInThePaneWaits(t *testing.T) {
 	hook(t, dir, Stop, `{"session_id":"`+sessionID+`"}`, p)
 	before := stateOf(t, dir)
 	hook(t, dir, SessionEnd, `{"session_id":"`+sessionID+`","reason":"resume"}`, p)
-	if got := stateOf(t, dir); got != before {
+	if got := stateOf(t, dir); !reflect.DeepEqual(got, before) {
 		t.Fatalf("the resume's end changed %+v to %+v", before, got)
 	}
 	hook(t, dir, SessionStart, `{"session_id":"`+cleared+`","source":"resume"}`, p)
