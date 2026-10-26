@@ -204,7 +204,28 @@ func navigation(s present.Screen, width, height int, focus Pane, method ansi.Met
 	if area == 0 {
 		return lines
 	}
-	return append(lines, pane(s.Agents, width, area, focus == Agents, method)...)
+	return append(lines, paneOf(s.Agents, width, area, focus == Agents, agentsRowLines(s.Agents, height), method)...)
+}
+
+// agentsRowLines is the height of the area's rows in a navigation pane of
+// height lines: two with a second line, one without, as in any list; the
+// half of the pane the area may take decides whether it is too short for
+// two (compactBelow), never the few lines a short list of agents needs.
+func agentsRowLines(c present.Column, height int) int {
+	return rowHeight(c, height/2-frameLines)
+}
+
+// AgentsCapacity is the number of agents the area shows at once in a
+// navigation pane of height lines; 0 without an area.
+func AgentsCapacity(c present.Column, height int) int {
+	body := AgentsHeight(c, height) - frameLines
+	if c.Notice.String() != "" {
+		body--
+	}
+	if body <= 0 {
+		return 0
+	}
+	return max(1, body/agentsRowLines(c, height))
 }
 
 // AgentsHeight is the height of the Agents area under the organisations
@@ -216,7 +237,7 @@ func AgentsHeight(c present.Column, height int) int {
 	if len(c.Rows) == 0 || limit < frameLines+1 {
 		return 0
 	}
-	need := frameLines + len(c.Rows)*rowHeight(c, limit-frameLines)
+	need := frameLines + len(c.Rows)*agentsRowLines(c, height)
 	if c.Notice.String() != "" {
 		need++
 	}
@@ -277,11 +298,16 @@ func rowHeight(c present.Column, body int) int {
 // bold, the others' faint, so the eye finds where the keys act. A pane too
 // small for a frame is its text alone.
 func pane(c present.Column, width, height int, focused bool, method ansi.Method) []string {
+	return paneOf(c, width, height, focused, 0, method)
+}
+
+// paneOf is pane with rows of lines lines each (0: by the body, rowHeight).
+func paneOf(c present.Column, width, height int, focused bool, lines int, method ansi.Method) []string {
 	if height <= 0 {
 		return nil
 	}
 	if width <= frameCells || height <= frameLines {
-		return content(c, width, height, focused, method)
+		return contentOf(c, width, height, focused, lines, method)
 	}
 	border := lipgloss.NewStyle().Faint(true)
 	title := lipgloss.NewStyle()
@@ -290,13 +316,13 @@ func pane(c present.Column, width, height int, focused bool, method ansi.Method)
 		title = title.Bold(true)
 	}
 	run := width - 2 // the border between the corners
-	lines := make([]string, 0, height)
-	lines = append(lines, frameTop(c.Title.String(), run, border, title, method))
+	out := make([]string, 0, height)
+	out = append(out, frameTop(c.Title.String(), run, border, title, method))
 	left, right := border.Render(frameSide)+" ", " "+border.Render(frameSide)
-	for _, line := range content(c, width-frameCells, height-frameLines, focused, method) {
-		lines = append(lines, left+line+right)
+	for _, line := range contentOf(c, width-frameCells, height-frameLines, focused, lines, method) {
+		out = append(out, left+line+right)
 	}
-	return append(lines, border.Render(frameBottomLeft+strings.Repeat(rule, run)+frameBottomRight))
+	return append(out, border.Render(frameBottomLeft+strings.Repeat(rule, run)+frameBottomRight))
 }
 
 // frameTop is the top border, run cells between its corners, with the
@@ -315,6 +341,11 @@ func frameTop(text string, run int, border, title lipgloss.Style, method ansi.Me
 // content is what stands inside a pane's frame, width by height, every
 // line padded to the width: the notice, then the rows or the text.
 func content(c present.Column, width, height int, focused bool, method ansi.Method) []string {
+	return contentOf(c, width, height, focused, 0, method)
+}
+
+// contentOf is content with rows of rowLines lines each (0: by the body).
+func contentOf(c present.Column, width, height int, focused bool, rowLines int, method ansi.Method) []string {
 	if height <= 0 {
 		return nil
 	}
@@ -328,7 +359,10 @@ func content(c present.Column, width, height int, focused bool, method ansi.Meth
 	var drawn []string
 	switch text := textArea(c, width); {
 	case c.Rows != nil:
-		drawn = rows(c, width, body, focused, method)
+		if rowLines == 0 {
+			rowLines = rowHeight(c, body)
+		}
+		drawn = rows(c, width, body, rowLines, focused, method)
 	case text < width:
 		drawn = besideMeta(scrollable(c, text, body, method), c.Meta, text, body, method)
 	default:
@@ -344,11 +378,10 @@ func content(c present.Column, width, height int, focused bool, method ansi.Meth
 // rows renders the visible rows, the cursor kept in sight: the offset moves
 // only when the cursor would be outside. The cursor row is a bar: reversed
 // in the focused pane, on a grey ground elsewhere.
-func rows(c present.Column, width, body int, focused bool, method ansi.Method) []string {
+func rows(c present.Column, width, body, h int, focused bool, method ansi.Method) []string {
 	if body <= 0 || width <= 0 {
 		return nil
 	}
-	h := rowHeight(c, body)
 	capacity := max(1, body/h)
 	offset := max(0, min(c.Offset, max(0, len(c.Rows)-capacity)))
 	if c.Cursor >= 0 && c.Cursor < len(c.Rows) {

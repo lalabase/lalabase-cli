@@ -40,8 +40,9 @@ func (m Model) agentsColumn() present.Column {
 	}
 	chosen := a.chosenOrg()
 	c.Rows = make([]present.Row, 0, len(list))
+	current, _ := a.agentUnderCursor()
 	for i, ag := range list {
-		if m.focus == view.Agents && ag.ID == a.agents.cursor {
+		if m.focus == view.Agents && ag.ID == current.ID {
 			c.Cursor = i
 		}
 		text := uitext.Fill(uitext.TicketNumber, ag.Number).String()
@@ -61,8 +62,9 @@ func (m Model) agentsColumn() present.Column {
 	return c
 }
 
-// seen: the person opened the agent once, recorded on disk (C9b).
-func (a *app) seen(ag agents.Agent) bool { return ag.Seen }
+// seen: the person opened the agent once, in this run or, recorded on
+// disk, in an earlier one (C9b).
+func (a *app) seen(ag agents.Agent) bool { return ag.Seen || a.agents.seen[ag.ID] }
 
 // chosenOrg is the organisation the person is in: the one of the open
 // inbox ("" for all) or tickets, else the one the chooser's cursor is on.
@@ -181,4 +183,147 @@ func (a *app) retryTitles() tea.Cmd {
 		}
 	}
 	return a.requestTitles()
+}
+
+// agentUnderCursor is the agent the area's cursor is on: the one it was
+// put on, or the first in order when that one is gone; ok is false
+// without an agent.
+func (a *app) agentUnderCursor() (agents.Agent, bool) {
+	list := a.agentsInOrder()
+	for _, ag := range list {
+		if ag.ID == a.agents.cursor {
+			return ag, true
+		}
+	}
+	if len(list) == 0 {
+		return agents.Agent{}, false
+	}
+	return list[0], true
+}
+
+// moveAgent moves the area's cursor by rows; nothing is loaded by it.
+func (a *app) moveAgent(delta int) {
+	list := a.agentsInOrder()
+	current, ok := a.agentUnderCursor()
+	if !ok {
+		return
+	}
+	at := 0
+	for i, ag := range list {
+		if ag.ID == current.ID {
+			at = i
+		}
+	}
+	a.agents.cursor = list[max(0, min(len(list)-1, at+delta))].ID
+}
+
+// agentsBindings are the keys of the agents' list: the cursor, Enter on
+// an agent whose ticket can open, R while a title's read failed, Esc
+// back (and A, which the help does not name twice).
+func (m Model) agentsBindings() []binding {
+	a := m.app
+	var out []binding
+	if len(a.agents.list) > 1 {
+		out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp})
+	}
+	if ag, ok := a.agentUnderCursor(); ok && a.canOpenAgent(ag) {
+		out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenTicketHelp})
+	}
+	if a.titlesFailed() {
+		out = append(out, binding{Refresh, uitext.RefreshKey, uitext.RetryHelp})
+	}
+	return append(out, binding{Back, uitext.EscapeKey, uitext.BackHelp})
+}
+
+// canOpenAgent: the agent's ticket can open in its organisation's tickets.
+func (a *app) canOpenAgent(ag agents.Agent) bool {
+	return a.canOpen(ag.Organisation, sectionTickets) && a.ticketOn()
+}
+
+// openAgents is A: the agents' list, its cursor where it was (the first
+// agent when that one is gone); in three columns the area under the
+// organisations, in two in the list's place, in one alone.
+func (m Model) openAgents() (Model, tea.Cmd) {
+	a := m.app
+	ag, ok := a.agentUnderCursor()
+	if !ok {
+		return m, nil
+	}
+	a.agents.cursor = ag.ID
+	m.agentsFrom, m.focus = m.focus, view.Agents
+	return m, m.selectionChanged()
+}
+
+// closeAgents goes back to where A was pressed.
+func (m Model) closeAgents() Model {
+	if m.focus == view.Agents {
+		m.focus = m.agentsFrom
+	}
+	return m
+}
+
+// agentTicket: the pane shows a ticket an agent opened (openAgent): the
+// projects of its organisation are in the list's place, no ticket list.
+func (a *app) agentTicket() bool {
+	return a.detail != nil && a.projects != nil && a.tickets == nil && a.origin == nil
+}
+
+// openAgent is Enter on an agent: its ticket opens in the pane, in its
+// organisation, the way a ticket of a notification does (ensureDetail):
+// the tickets of its organisation with its project selected, or the
+// ticket list of its project when that is the one shown and holds it.
+// An agent that ended or is lost is seen after it: drawn faint once
+// ended, recorded for the next run.
+func (m Model) openAgent() (Model, tea.Cmd) {
+	a := m.app
+	ag, ok := a.agentUnderCursor()
+	if !ok || !a.canOpenAgent(ag) {
+		return m, nil
+	}
+	var cmds []tea.Cmd
+	a.highlight, a.highlightSection = ag.Organisation, sectionTickets
+	if v := a.tickets; v != nil && v.org == ag.Organisation && v.project == ag.Project && v.index(ag.Ticket) >= 0 {
+		v.selected = ag.Ticket
+		var cmd tea.Cmd
+		m, cmd = m.openTicket()
+		cmds = append(cmds, cmd)
+	} else {
+		if p := a.projects; p == nil || p.org != ag.Organisation {
+			a.leaveInbox()
+			a.leaveTickets()
+			name := ""
+			if o := a.organisation(ag.Organisation); o != nil {
+				name = o.Name
+			}
+			a.projects = &projectsView{org: ag.Organisation, name: name, key: a.projectsKey(ag.Organisation)}
+			cmds = append(cmds, a.loadProjects())
+		} else {
+			a.leaveList()
+		}
+		a.projects.selected = ag.Project
+		d := a.ensureDetail(ag.Project, ag.Ticket)
+		d.offset, d.follow, d.area, d.post = 0, anchorNone, areaDescription, ""
+		m.focus = view.Object
+		if !d.holds() || d.loading {
+			d.loading = true
+			cmds = append(cmds, a.issue(gateway.Detail, d.key, forDetail, queue.User))
+		}
+	}
+	if ag.State == agents.Ended || ag.State == agents.Lost {
+		cmds = append(cmds, a.markSeen(ag))
+	}
+	return m, tea.Batch(cmds...)
+}
+
+// markSeen records an agent as seen: at once for this run, on disk for
+// the next (the watcher's own command, under the supervisor).
+func (a *app) markSeen(ag agents.Agent) tea.Cmd {
+	if a.agents.seen == nil {
+		a.agents.seen = map[string]bool{}
+	}
+	a.agents.seen[ag.ID] = true
+	if a.deps.Agents == nil {
+		return nil
+	}
+	return a.deps.Agents.See(ag.ID, a.now())
 }

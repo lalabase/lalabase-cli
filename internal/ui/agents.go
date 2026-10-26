@@ -15,6 +15,9 @@ import (
 // gives the session one (agents.NewWatcher); tests give a fake.
 type AgentWatcher interface {
 	Read(ref uint64) tea.Cmd
+	// See records an agent the person opened as seen (C9b); its message
+	// is an agents.Marked.
+	See(id string, at time.Time) tea.Cmd
 }
 
 // agentsEvery is how often the agents' files are read while there is one,
@@ -35,6 +38,9 @@ type agentsState struct {
 	list    []agents.Agent
 	frame   int
 	cursor  string
+	// seen are the agents the person opened in this run (C9b): faint at
+	// once, before their file is read back.
+	seen map[string]bool
 }
 
 // readAgents issues a read unless one is out or due already: one chain of

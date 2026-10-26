@@ -378,6 +378,10 @@ func (m Model) retryOrRefresh() (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.focus == view.Agents {
+		// The agents' list: the titles whose read failed (C9b).
+		return m, a.retryTitles()
+	}
 	if a.anyFailed() {
 		var cmds []tea.Cmd
 		for i := stepInitialize; i < stepCounters; i++ {

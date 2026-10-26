@@ -18,8 +18,11 @@ import (
 type Model struct {
 	width, height int
 	focus         view.Pane
-	mode          Mode
-	widthMethod   ansi.Method
+	// agentsFrom is the pane the focus was on when A opened the agents
+	// (C9b): esc and a second A go back to it.
+	agentsFrom  view.Pane
+	mode        Mode
+	widthMethod ansi.Method
 	// shell is the placeholder content (organisation, list, object), shown
 	// without a session; it becomes a screen at render time.
 	shell      [3]string

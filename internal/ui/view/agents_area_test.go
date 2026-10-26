@@ -155,3 +155,37 @@ func TestTheAgentsInTwoColumnsAndOne(t *testing.T) {
 		}
 	}
 }
+
+// Rows with a second line keep it in a short area: whether rows take two
+// lines is decided by the half of the column the area may take, not by
+// the few lines two agents need (a list's compact mode would drop the
+// organisation and leave the lines it was measured for empty).
+func TestTheAreasRowsKeepTheirSecondLine(t *testing.T) {
+	g := geometryOf(100, 24) // body 21, half 10
+	s := areaScreen(agentRows(2, true), -1)
+	if got := AgentsHeight(s.Agents, g.BodyHeight); got != 6 {
+		t.Fatalf("area of %d lines", got)
+	}
+	out := Render(s, g, Navigation, ansi.WcWidth)
+	nav := bodyColumn(out, 0, ColumnWidth(g, Navigation), 2, g.BodyHeight)
+	area := nav[len(nav)-6:]
+	want := []string{"╭─ Agents", "│   ⣿ #1 Task 1", "│     Other Org", "│   ⣿ #2 Task 2", "│     Other Org", "╰"}
+	for i, w := range want {
+		if !strings.HasPrefix(area[i], w) {
+			t.Fatalf("line %d: %q, want %q\n%s", i, area[i], w, strings.Join(area, "\n"))
+		}
+	}
+	if got := AgentsCapacity(s.Agents, g.BodyHeight); got != 2 {
+		t.Fatalf("capacity %d", got)
+	}
+	// Ten agents: half the column, four rows of two lines in sight.
+	ten := areaScreen(agentRows(10, true), 9).Agents
+	if got, capacity := AgentsHeight(ten, g.BodyHeight), AgentsCapacity(ten, g.BodyHeight); got != 10 || capacity != 4 {
+		t.Fatalf("height %d, capacity %d", got, capacity)
+	}
+	// A short terminal: compact rows, as in any list.
+	short := geometryOf(100, 14) // body 11, half 5
+	if got, capacity := AgentsHeight(ten, short.BodyHeight), AgentsCapacity(ten, short.BodyHeight); got != 5 || capacity != 3 {
+		t.Fatalf("short: height %d, capacity %d", got, capacity)
+	}
+}
