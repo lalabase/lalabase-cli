@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/present"
+	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
 
 // C9b: the agents of the profile across the organisations, in one order
@@ -161,6 +162,33 @@ func TestAnOrganisationCarriesItsMostUrgentAgent(t *testing.T) {
 	for _, r := range h.m.chooserColumn().Rows {
 		if r.Marked {
 			t.Fatalf("a row is marked without an agent: %+v", r)
+		}
+	}
+}
+
+// With agents in every place they show (the header, the organisations,
+// the area, the list, the meta bar), no line of the screen is wider than
+// the terminal, at any width from 80 to 200 and in every focus.
+func TestNoLineIsWiderThanTheTerminalWithAgents(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher(
+		agentIn(1, orgA, 6, agents.WaitingForApproval, h.now.Add(-50*24*time.Hour)),
+		agentIn(2, orgB, 7, agents.WaitingForYou, h.now),
+		agentIn(3, orgA, 8, agents.Lost, h.now),
+		agentIn(4, orgA, 9, agents.Working, h.now),
+		agentIn(5, orgA, 10, agents.Starting, h.now),
+		agentIn(6, orgA, 11, agents.Ended, h.now),
+	)
+	h.openSix()
+	for _, focus := range []view.Pane{view.Navigation, view.List, view.Object, view.Agents} {
+		h.m.focus = focus
+		for width := 80; width <= 200; width++ {
+			h.m.width = width
+			for i, line := range strings.Split(h.m.View().Content, "\n") {
+				if w := ansi.WcWidth.StringWidth(line); w > width {
+					t.Fatalf("focus %d, width %d, line %d: %d cells: %q", focus, width, i, w, ansi.Strip(line))
+				}
+			}
 		}
 	}
 }
