@@ -20,7 +20,10 @@
 //     renamed), so a reader sees the old state or the new one;
 //   - <agent id>.lock, the hook's lock: hooks of one agent may overlap (a
 //     Stop and the tools of a background agent), and a read, change and
-//     write back would otherwise lose one of them.
+//     write back would otherwise lose one of them;
+//   - <agent id>.seen, written once by the client (C9b, MarkSeen, created
+//     exclusively) after the person opened the agent: it is seen. The
+//     hook never reads or writes it.
 //
 // Each file has one writer. The title of a ticket is never in them: it
 // comes from the cache.
@@ -70,13 +73,14 @@ const (
 	launchSuffix = ".launch.json"
 	stateSuffix  = ".state.json"
 	lockSuffix   = ".lock"
+	seenSuffix   = ".seen"
 	tempPrefix   = ".tmp-"
 )
 
-// FormatVersion is the version of both files' JSON.
+// FormatVersion is the version of the files' JSON.
 const FormatVersion = 1
 
-// maxFile bounds a file of an agent: both are a few hundred bytes.
+// maxFile bounds a file of an agent: each is a few hundred bytes.
 const maxFile = 4 << 10
 
 // maxWalk bounds the directory entries a read visits.

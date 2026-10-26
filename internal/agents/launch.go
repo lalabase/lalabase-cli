@@ -33,7 +33,7 @@ func (l Launch) valid() bool {
 // WriteLaunch records a new agent in dir, which must exist (Prepare). The
 // file is created exclusively, synced and checked; one that cannot be
 // written whole is removed.
-func WriteLaunch(dir string, l Launch) (err error) {
+func WriteLaunch(dir string, l Launch) error {
 	if !l.valid() {
 		return errors.New("the agent's address did not pass its check")
 	}
@@ -47,7 +47,14 @@ func WriteLaunch(dir string, l Launch) (err error) {
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(dir, l.Agent+launchSuffix)
+	return createOwn(filepath.Join(dir, l.Agent+launchSuffix), data)
+}
+
+// createOwn writes a new file of the client's own in the agents
+// directory: created exclusively (an existing file, or a link in its
+// place, is an error and stays as it is), synced and checked as a private
+// file; one that cannot be written whole is removed.
+func createOwn(path string, data []byte) (err error) {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // a new file in the agents directory, checked by privatefs
 	if err != nil {
 		return err
