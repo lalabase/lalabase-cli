@@ -362,3 +362,49 @@ func TestRIsOfferedForAFailedTitleBesideAFailedStep(t *testing.T) {
 		t.Fatal("R is not offered, though it would read the failed title")
 	}
 }
+
+// Review round 3 of #36: a failed title the session learned since (the
+// ticket opened in the pane) offers no R that would read nothing.
+func TestRIsNotOfferedForATitleKnownSince(t *testing.T) {
+	h := newHarness(t)
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
+	})
+	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+	h.start()
+	if !h.m.app.titlesFailed() {
+		t.Fatal("no failed title")
+	}
+	h.f.setTicket(h.d.defaultTicket)
+	h.drive(h.press("A"))
+	h.drive(h.press("enter"))
+	if got := h.areaRow(6).Primary.String(); got != "#6 Ticket 6" {
+		t.Fatalf("%q", got)
+	}
+	h.drive(h.press("A"))
+	if h.offers(Refresh) {
+		t.Fatal("R offered for a title the session holds")
+	}
+}
+
+// Review round 3 of #36: beside a failed step, R is offered for a failed
+// title in the chooser only, where it reads it.
+func TestROffersTheTitlesInTheChooserOnly(t *testing.T) {
+	h := newHarness(t)
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
+	})
+	h.f.set(func(q api.NotificationQuery) transport.Answer {
+		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
+	})
+	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+	h.start()
+	a := h.m.app
+	a.issue(gateway.Inbox, a.inboxKey("", 1), forCounters, queue.User)
+	for _, focus := range []view.Pane{view.List, view.Object} {
+		h.m.focus = focus
+		if h.offers(Refresh) {
+			t.Fatalf("focus %d: R offered, though it reads no title there", focus)
+		}
+	}
+}

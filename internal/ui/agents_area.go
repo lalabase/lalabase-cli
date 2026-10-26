@@ -181,11 +181,15 @@ func (m Model) receiveTitle(r gateway.TicketResult) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// titlesFailed: a title's read failed, and R would read it again.
+// titlesFailed: the title of an agent's ticket is missing because its
+// read failed, so R would read it again; one the session learned since (the
+// ticket in the pane, the list shown) or whose agent is gone counts not.
 func (a *app) titlesFailed() bool {
-	for _, t := range a.titles {
-		if t.failed {
-			return true
+	for _, ag := range a.agents.list {
+		if t := a.titles[ag.Ticket]; t != nil && t.failed {
+			if _, ok := a.agentTitle(ag); !ok {
+				return true
+			}
 		}
 	}
 	return false
