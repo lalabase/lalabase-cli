@@ -326,18 +326,29 @@ func row(r present.Row, width, trailingWidth int, cursor bool, bar barKind, twoL
 	if cursor {
 		marker = "> "
 	}
+	// The agent's column: its glyph and a space, or two spaces (C9a).
+	glyph, mark, indent := "", "", "  "
+	if r.Marked {
+		glyph = r.Mark.String()
+		if method.StringWidth(glyph) > 1 {
+			glyph = ""
+		}
+		mark = glyph + strings.Repeat(" ", markCells-method.StringWidth(glyph))
+		indent += strings.Repeat(" ", markCells)
+	}
 	trailing := r.Trailing.String()
 	if trailing == "" {
 		// An entry without a value (a heading) takes the whole width.
 		trailingWidth = 0
 	}
-	room := width - method.StringWidth(marker)
+	lead := method.StringWidth(marker + mark)
+	room := width - lead
 	if trailingWidth > 0 {
 		room -= trailingWidth + 1
 	}
 	if room < minAligned {
 		// No room for a column of values: the value follows the text.
-		room = width - method.StringWidth(marker)
+		room = width - lead
 		if trailing != "" {
 			room -= method.StringWidth(trailing) + 1
 		}
@@ -349,9 +360,9 @@ func row(r present.Row, width, trailingWidth int, cursor bool, bar barKind, twoL
 		value = strings.Repeat(" ", max(0, trailingWidth-method.StringWidth(trailing))) + trailing
 		primary += strings.Repeat(" ", max(0, room-method.StringWidth(primary))) + " "
 	}
-	if method.StringWidth(marker+primary+value) > width {
-		primary, value = fit(marker+primary+value, width, method), ""
-		marker = ""
+	if method.StringWidth(marker+mark+primary+value) > width {
+		primary, value = fit(marker+mark+primary+value, width, method), ""
+		marker, glyph, mark = "", "", ""
 	}
 	weight := present.Plain
 	switch {
@@ -365,21 +376,30 @@ func row(r present.Row, width, trailingWidth int, cursor bool, bar barKind, twoL
 		valueWeight = r.TrailingStyle
 	}
 	if bar != noBar {
-		lines := []string{barLine(marker+primary+value, width, r.Active, bar, method)}
+		// The glyph takes the bar's colour: its shape says the state.
+		lines := []string{barLine(marker+mark+primary+value, width, r.Active, bar, method)}
 		if twoLines {
-			lines = append(lines, barLine("  "+fit(r.Secondary.String(), max(0, width-2), method), width, false, bar, method))
+			lines = append(lines, barLine(indent+fit(r.Secondary.String(), max(0, width-len(indent)), method), width, false, bar, method))
 		}
 		return lines
 	}
-	first := styled(marker+primary, weight) + styled(value, valueWeight)
+	text := styled(marker+primary, weight)
+	if mark != "" {
+		// Not faint with a quiet row: an agent's state stays seen.
+		text = styled(marker, weight) + styled(glyph, r.MarkStyle) + mark[len(glyph):] + styled(primary, weight)
+	}
+	first := text + styled(value, valueWeight)
 	if r.Quiet && r.TrailingStyle != present.Plain {
-		first = styled(marker+primary, weight) + quieted(value, r.TrailingStyle)
+		first = text + quieted(value, r.TrailingStyle)
 	}
 	if !twoLines {
 		return []string{first}
 	}
-	return []string{first, "  " + styled(fit(r.Secondary.String(), max(0, width-2), method), present.Faint)}
+	return []string{first, indent + styled(fit(r.Secondary.String(), max(0, width-len(indent)), method), present.Faint)}
 }
+
+// markCells is the width of an agent's column: the glyph and a space.
+const markCells = 2
 
 // barLine draws a line of a bar: padded to the width, every cell of it
 // reversed or on the grey ground, bold when strong.

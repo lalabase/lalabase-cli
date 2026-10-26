@@ -39,8 +39,9 @@ func (m Model) projectsColumn() present.Column {
 // the end, the assignees and the time of the last change below. The
 // numbers stand right-aligned in a column as wide as the page's widest, so
 // the titles and the lines below them start in one column; a done ticket
-// is quiet, so the open ones stand out. While the search line is open it
-// takes the notice.
+// is quiet, so the open ones stand out. Before the number, the glyph of
+// the most urgent agent at the ticket (C9a). While the search line is open
+// it takes the notice.
 func (m Model) ticketsColumn() present.Column {
 	v := m.app.tickets
 	c := present.Column{Title: uitext.Inline(uitext.Tickets), Cursor: -1}
@@ -68,13 +69,15 @@ func (m Model) ticketsColumn() present.Column {
 			c.Cursor = i
 		}
 		tone := statusStyle(r.StatusFunctions, present.Plain)
-		c.Rows = append(c.Rows, present.Row{
+		row := present.Row{
 			Primary:       present.NewInline(fmt.Sprintf("%*s %s", width, numbers[i], textOr(r.Title, uitext.UntitledTicket))),
 			Trailing:      present.NewInline(bounded(statusOf(r.Status), maxStatus)),
 			TrailingStyle: tone,
 			Secondary:     present.NewInline(strings.Repeat(" ", width+1) + assigneesOf(r.Assignees) + " · " + m.app.when(r.UpdatedAt)),
 			Quiet:         tone == present.StatusDone,
-		})
+		}
+		m.app.markAgent(&row, r.ID)
+		c.Rows = append(c.Rows, row)
 	}
 	c.Offset = v.offset
 	return c

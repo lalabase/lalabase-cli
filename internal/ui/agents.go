@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/agents"
+	"github.com/gboyke/lalabase-cli/internal/present"
 )
 
 // AgentWatcher reads the agents of the profile (C9a): one command per
@@ -93,4 +94,45 @@ func (a *app) agentAt(ticket string) (agents.Agent, bool) {
 		}
 	}
 	return best, found
+}
+
+// spinner is the working glyph, one frame per read: braille, one cell
+// each.
+var spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// agentGlyphs are the glyphs of the other states, one cell each: the shape
+// says the state where no colour is drawn (NO_COLOR, the cursor bar).
+var agentGlyphs = map[agents.State]string{
+	agents.WaitingForApproval: "!",
+	agents.WaitingForYou:      "⣿",
+	agents.Lost:               "✕",
+	agents.Starting:           "⠂",
+	agents.Ended:              "✓",
+}
+
+// agentStyles are the states' tones.
+var agentStyles = map[agents.State]present.Style{
+	agents.WaitingForApproval: present.AgentApproval,
+	agents.WaitingForYou:      present.AgentWaiting,
+	agents.Lost:               present.AgentLost,
+	agents.Working:            present.AgentWorking,
+	agents.Starting:           present.AgentStarting,
+	agents.Ended:              present.AgentEnded,
+}
+
+// glyph is a state's glyph; working's is the spinner's frame.
+func (a *app) glyph(s agents.State) string {
+	if s == agents.Working {
+		return spinner[a.agents.frame%len(spinner)]
+	}
+	return agentGlyphs[s]
+}
+
+// markAgent puts the glyph of the most urgent agent at the ticket into the
+// row's column, which every ticket list reserves.
+func (a *app) markAgent(row *present.Row, ticket string) {
+	row.Marked = true
+	if ag, ok := a.agentAt(ticket); ok {
+		row.Mark, row.MarkStyle = present.NewInline(a.glyph(ag.State)), agentStyles[ag.State]
+	}
 }

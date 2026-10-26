@@ -73,6 +73,14 @@ type Row struct {
 	// row: bold when it asks for attention (unread notifications), a
 	// status in the tone of its meaning.
 	TrailingStyle Style
+	// Marked reserves a column of two cells between the marker and the
+	// text for an agent's glyph (C9a, every ticket list), empty without
+	// one; Mark is the glyph, one cell, drawn in MarkStyle, never faint
+	// with a quiet row. The glyph's shape carries the state, the style
+	// only weighs it.
+	Marked    bool
+	Mark      Inline
+	MarkStyle Style
 }
 
 // Style is how part of a line is drawn. Text stays readable on a terminal
@@ -101,6 +109,16 @@ const (
 	// (L2): everyone else is Strong. A text mark beside the name says the
 	// same without colour.
 	Own
+	// The tones of an agent's state (C9a), in its order of urgency:
+	// waiting for an approval, waiting for the person, lost, working,
+	// starting, ended. The two waits alone are magenta. A glyph and a
+	// word say the state; the tone only makes it seen.
+	AgentApproval
+	AgentWaiting
+	AgentLost
+	AgentWorking
+	AgentStarting
+	AgentEnded
 )
 
 // LineStyle is how one line of a column's text is drawn: its first Lead
