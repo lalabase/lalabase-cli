@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -108,6 +109,39 @@ func (a *app) agentAt(ticket string) (agents.Agent, bool) {
 		}
 	}
 	return best, found
+}
+
+// agentsInOrder are the agents in the order of the area (C9b): the most
+// urgent first, of one state the oldest change first, else as read.
+func (a *app) agentsInOrder() []agents.Agent {
+	out := slices.Clone(a.agents.list)
+	slices.SortStableFunc(out, func(x, y agents.Agent) int {
+		if x.State != y.State {
+			return int(x.State) - int(y.State)
+		}
+		return x.Since.Compare(y.Since)
+	})
+	return out
+}
+
+// agentSummary is the header's summary (C9b): per state, the most urgent
+// first, its glyph in its tone and its number of agents; a state without
+// one is left out.
+func (a *app) agentSummary() []present.AgentCount {
+	var counts [agents.Ended + 1]int
+	for _, ag := range a.agents.list {
+		if ag.State <= agents.Ended {
+			counts[ag.State]++
+		}
+	}
+	var out []present.AgentCount
+	for s, n := range counts {
+		if n > 0 {
+			state := agents.State(s)
+			out = append(out, present.AgentCount{Glyph: present.NewInline(a.glyph(state)), Style: agentStyles[state], Count: n})
+		}
+	}
+	return out
 }
 
 // spinner is the working glyph, one frame per read: braille, one cell

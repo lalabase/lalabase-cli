@@ -26,6 +26,19 @@ type Screen struct {
 	Object  Column
 	// Help are the bindings that act right now, in the order they are shown.
 	Help []KeyHelp
+	// AgentCounts is the summary of the agents at the header's right
+	// (C9b): one entry per state that has an agent, the most urgent
+	// first; nil without an agent.
+	AgentCounts []AgentCount
+}
+
+// AgentCount is one state of the agents' summary: its glyph in its tone
+// and how many agents are in it. The glyph's shape says the state, the
+// tone only weighs it.
+type AgentCount struct {
+	Glyph Inline
+	Style Style
+	Count int
 }
 
 // Column is one of the three panes.
