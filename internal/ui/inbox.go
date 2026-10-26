@@ -455,7 +455,8 @@ func (m Model) canRefresh() bool {
 				return true
 			}
 		}
-		return (a.steps[stepCounters].state == failed && countersFree) || linkedFree || activeFree || sectionFree
+		titles := m.focus == view.Navigation && a.titlesFailed()
+		return (a.steps[stepCounters].state == failed && countersFree) || linkedFree || activeFree || sectionFree || titles
 	}
 	if m.focus == view.Object && a.origin != nil {
 		return linkedFree

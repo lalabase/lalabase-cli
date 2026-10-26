@@ -320,3 +320,45 @@ func TestEnterAgainReadsNothing(t *testing.T) {
 		t.Fatalf("%d reads, %d before", h.titleReads(6), reads)
 	}
 }
+
+// Review round 2 of #36: closing the agents goes back to the details of a
+// notification, which show without a ticket.
+func TestClosingTheAgentsKeepsTheDetailsOfANotification(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+	h.start()
+	h.drive(h.choose(orgA))
+	h.drive(h.press("enter"))
+	if h.m.focus != view.Object || h.m.app.active.opened == "" || h.m.app.detail != nil {
+		t.Fatalf("no details open: focus %d", h.m.focus)
+	}
+	h.drive(h.press("A"))
+	h.press("esc")
+	if h.m.focus != view.Object {
+		t.Fatalf("focus %d, want the details", h.m.focus)
+	}
+}
+
+// Review round 2 of #36: R is offered in the chooser for a failed title
+// while a failed step's read is still out, as R would read the title.
+func TestRIsOfferedForAFailedTitleBesideAFailedStep(t *testing.T) {
+	h := newHarness(t)
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
+	})
+	h.f.set(func(q api.NotificationQuery) transport.Answer {
+		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
+	})
+	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+	h.start()
+	a := h.m.app
+	h.m.focus = view.Navigation
+	// The counters' read is out again (not driven): R would not read them.
+	a.issue(gateway.Inbox, a.inboxKey("", 1), forCounters, queue.User)
+	if !a.anyFailed() || !a.titlesFailed() || !a.pending(a.inboxKey("", 1)) {
+		t.Fatal("not the state of the case")
+	}
+	if !h.offers(Refresh) {
+		t.Fatal("R is not offered, though it would read the failed title")
+	}
+}

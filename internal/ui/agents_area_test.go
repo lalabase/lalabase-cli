@@ -222,6 +222,15 @@ func TestATitleFromTheDiskCancelsItsRead(t *testing.T) {
 		t.Fatal("no waiter of the title")
 	}
 	key := a.detailKey(website, ag.Ticket)
+	// A read of the same ticket for the pane (review round 2 of #36): the
+	// title's entry from the disk leaves it alone.
+	detailCmd := a.issue(gateway.Detail, key, forDetail, queue.User)
+	var other *waiter
+	for _, x := range a.waiters {
+		if x.purpose == forDetail && x.ticket.Key == key {
+			other = x
+		}
+	}
 	a.store.Apply(key, cache.Replace, ticketAnswer(h.d.ticketRecord(website, 6, gateway.DetailOptions(key))).Payload, h.now)
 	if !a.showFromDisk(forTitle, key) {
 		t.Fatal("the disk's entry was not taken")
@@ -229,6 +238,10 @@ func TestATitleFromTheDiskCancelsItsRead(t *testing.T) {
 	if !w.canceled {
 		t.Fatal("the server's read of the title goes on")
 	}
+	if other == nil || other.canceled {
+		t.Fatal("the pane's read of the same ticket was canceled")
+	}
+	h.drive(detailCmd)
 	if got := h.areaRow(6).Primary.String(); got != "#6 Ticket 6" {
 		t.Fatalf("%q", got)
 	}

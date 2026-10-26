@@ -4,12 +4,15 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/gboyke/lalabase-cli/internal/transport"
 )
 
 // C9b: idle work (the titles of the agents' tickets) is background work
 // below the background: it starts only while no background job waits, and
-// only while at most half the window's budget is spent, so a preview never
-// waits behind it for the window to roll.
+// only while fewer than IdleShare starts are in the window, so the
+// previews keep at least the budget's other half; one running holds the
+// background place while it runs.
 
 // Of an idle and a background job waiting, the background one starts.
 func TestBackgroundGoesBeforeIdle(t *testing.T) {
@@ -102,4 +105,39 @@ func (q *Queue) prioOf(key string) Priority {
 		return f.prio
 	}
 	return -1
+}
+
+// Review round 2 of #36: the retry of idle work is idle work too: a
+// background job queued while the retry waits starts before it.
+func TestAnIdleRetryStaysIdle(t *testing.T) {
+	c := newClock()
+	q := New(WithClock(c), WithRetryDelay(time.Second))
+	title := newGate()
+	r := do(q, context.Background(), Job{Priority: Idle, Kind: Read, Key: "ticket-6", Run: title.run})
+	waitStarted(t, title)
+	title.release <- transportTemporary()
+	waitTimers(t, c, 1)
+	busy := newGate()
+	do(q, context.Background(), Job{Priority: Background, Run: busy.run})
+	waitStarted(t, busy)
+	c.Advance(time.Second)
+	waitWaiting(t, q, 1) // the retry
+	preview := newGate()
+	do(q, context.Background(), Job{Priority: Background, Run: preview.run})
+	waitWaiting(t, q, 2)
+	busy.release <- ok()
+	waitStarted(t, preview)
+	notStarted(t, title)
+	preview.release <- ok()
+	// Three starts in the window (the title, busy, the preview): the retry,
+	// idle, waits for it to roll on.
+	notStarted(t, title)
+	c.Advance(BudgetWindow)
+	waitStarted(t, title)
+	title.release <- ok()
+	answer(t, r)
+}
+
+func transportTemporary() transport.Answer {
+	return transport.Answer{Class: transport.Temporary, Status: 503, Sent: true}
 }

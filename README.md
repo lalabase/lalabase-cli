@@ -395,8 +395,10 @@ navigation again.
     ticket's title come from the session (the directory, the ticket in the
     pane, the list shown, the cache). A title the session lacks is read
     once per ticket through the usual way (`get_ticket`), as idle work:
-    after every preview, and with at most half of the background budget,
-    so a preview never waits for it; the disk cache is asked beside it,
+    after every waiting preview, and with at most half of the background
+    budget, so the previews keep at least the other half (a title read
+    that runs holds the background place while it runs); the disk cache
+    is asked beside it,
     and a title found there cancels the server's read while it still
     waits;
     until it comes, and after a failed read, the row shows `#<number>`
@@ -766,7 +768,8 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   or held, and a held background read a person joins starts as theirs.
   Idle work (C9b: the titles of the agents' tickets) waits behind every
   background job and starts only while fewer than three starts are in the
-  window, so the other half of the budget stays the previews'; a preview
+  window, so at least the other half of the budget stays the previews'
+  (one that runs holds the background place meanwhile); a preview
   or a person joining an idle read lifts it. A
   shared request belongs to the program's
   lifetime, not to its first caller: it is canceled when its last caller
