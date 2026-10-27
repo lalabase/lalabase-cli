@@ -518,13 +518,20 @@ func (m Model) openTicket() (Model, tea.Cmd) {
 	m.focus = view.Object
 	d := a.ensureDetail(v.project, v.selected)
 	d.offset, d.follow = 0, anchorNone
+	return m, a.readUnlessFresh(d)
+}
+
+// readUnlessFresh is the read of an opened ticket: as the person's, unless
+// the pane holds it fresh and nothing loads; a pending preview is joined
+// under the same key, without one this is a read of its own. Every way to
+// open a ticket takes it (the list, an agent, a notification's link), so a
+// ticket whose read or refresh failed is read again.
+func (a *app) readUnlessFresh(d *detailView) tea.Cmd {
 	if d.holds() && !d.loading {
-		return m, nil
+		return nil
 	}
-	// A pending preview is joined under the same key; without one this is
-	// a read of its own.
 	d.loading = true
-	return m, a.issue(gateway.Detail, d.key, forDetail, queue.User)
+	return a.issue(gateway.Detail, d.key, forDetail, queue.User)
 }
 
 // ensureDetail makes the pane show the ticket: the one already there, or
@@ -686,7 +693,7 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 	case cache.Replace:
 		v.rows, v.total, v.perPage = r.Page.Data, r.Page.Meta.Total, r.Page.Meta.PerPage
 		for _, row := range r.Page.Data {
-			a.learnTitle(row.ID, row.Title)
+			a.learnTitle(row.ID, row.Title, uint64(r.Flight))
 		}
 		v.fresh(a.now())
 		v.reselect()
@@ -756,7 +763,7 @@ func (m Model) receiveDetail(r gateway.TicketResult) (Model, tea.Cmd) {
 	if d == cache.Replace {
 		// An accepted read renews an agent's title, whatever the pane
 		// shows by now (C9b); a removal takes it (receive).
-		a.learnTitle(r.Record.ID, r.Record.Title)
+		a.learnTitle(r.Record.ID, r.Record.Title, uint64(r.Flight))
 	}
 	v := a.detail
 	if v == nil {

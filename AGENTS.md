@@ -9,7 +9,8 @@ status colours (#18), the cursor bar (#19) and the scrollbar on free text
 (#23), C7 (Claude Code beside the ticket: `x`, `internal/launch`, project
 folders per profile) and C7b (#33); C9a (the agents' state: hooks,
 `lalabase hook`, `internal/agents`, #34); C9b (the agents across the
-organisations: the Agents area, `A`, the seen mark) is this branch.
+organisations: the Agents area, `A`, the seen mark, #36); the order of
+C9b's titles (the newest accepted answer decides) is this branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
