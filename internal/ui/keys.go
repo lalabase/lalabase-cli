@@ -159,19 +159,15 @@ func (m Model) small() bool {
 }
 
 // focusedCapacity is the number of rows (or lines) the focused column
-// shows at once in g: the Agents area, in three columns, has the part of
-// the navigation it takes, the chooser the rest (C9b).
+// shows at once in g (view.FocusedCapacity, which splits the navigation
+// pane as it is drawn). The chooser and the agents are built only where
+// that split needs them; the shell has no agents.
 func (m Model) focusedCapacity(g view.Geometry) int {
-	c := m.focusedColumn()
-	switch {
-	case m.focus == view.Agents && g.Columns == 3:
-		return view.AgentsCapacity(m.chooserColumn(), c, g.BodyHeight)
-	case m.focus == view.Navigation && m.app != nil:
-		// The navigation shares its pane with the Agents area, in every
-		// layout it shows in.
-		return view.ChooserCapacity(c, m.agentsColumn(), g.BodyHeight)
+	var chooser, agents present.Column
+	if m.app != nil && (m.focus == view.Navigation || m.focus == view.Agents) {
+		chooser, agents = m.chooserColumn(), m.agentsColumn()
 	}
-	return view.Capacity(c, g)
+	return view.FocusedCapacity(m.focusedColumn(), chooser, agents, g, m.focus)
 }
 
 // focusedColumn is the column the focus is on, of the session or of the
