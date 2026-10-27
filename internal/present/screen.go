@@ -94,7 +94,8 @@ type Row struct {
 	// status in the tone of its meaning.
 	TrailingStyle Style
 	// Marked reserves a column of two cells between the marker and the
-	// text for an agent's glyph (C9a, every ticket list), empty without
+	// text for an agent's glyph (C9a: the ticket lists; C9b: the agents
+	// area and, while an agent exists, every chooser row), empty without
 	// one; Mark is the glyph, one cell, drawn in MarkStyle, never faint
 	// with a quiet row. The glyph's shape carries the state, the style
 	// only weighs it.

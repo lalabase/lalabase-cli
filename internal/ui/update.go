@@ -81,7 +81,11 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		cmd := m.app.receiveAgents(msg)
 		if m.focus == view.Agents && len(m.app.agents.list) == 0 {
 			// The last agent is gone: its list closes, and the pane behind
-			// it gets its preview, as after esc.
+			// it gets its preview, as after esc. A read that failed leaves
+			// no agent either (receiveAgents): what the directory holds
+			// cannot be trusted then (internal/agents), and a list that
+			// shows nothing has nothing to keep open. The next read that
+			// succeeds brings the area back; A opens the list again.
 			m = m.closeAgents()
 			cmd = tea.Batch(cmd, m.selectionChanged())
 		}

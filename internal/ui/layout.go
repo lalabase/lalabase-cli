@@ -65,8 +65,9 @@ func (m Model) withNotice(g view.Geometry) view.Geometry {
 	if status.String() == "" {
 		return g
 	}
-	// Of the agents the path line takes the title alone (focused in fewer
-	// than three columns): their column is not built for it.
+	// The path line names the focused column; of the agents' column it
+	// needs the title alone (agents focused in fewer than three columns),
+	// so its rows are not built here, where every geometry asks.
 	agents := present.Column{Title: uitext.Inline(uitext.Agents)}
 	s := present.Screen{Context: m.context(), Crumbs: m.crumbs(), Chooser: m.chooserColumn(), Agents: agents, Status: status, StatusStyle: tone}
 	for lines := view.NoticeLines(s, g, m.focus, m.widthMethod); lines > 0; lines-- {
