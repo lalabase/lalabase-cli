@@ -98,7 +98,7 @@ func (m *Model) receive(received gateway.Received) (cache.Decision, bool) {
 	}
 	if d == cache.Remove {
 		// Every accepted removal of a ticket takes its agent's title (C9b).
-		a.titlesRemoved(key)
+		a.titlesRemoved(key, seq)
 	}
 	if d == cache.KeepStale {
 		a.diskReadsGoStale(key)

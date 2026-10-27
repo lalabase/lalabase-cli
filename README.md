@@ -420,7 +420,12 @@ navigation again.
     waits;
     until it comes, and after a failed read, the row shows `#<number>`
     alone, and `R` (in the chooser or in the agents) reads the failed ones
-    again. A ticket of an organisation that is not in the list has no
+    again. Once the session has read a ticket for an agent, the newest
+    answer it accepted decides: a title, or the ticket's removal (not
+    found, no access; also of its project's list), which shows `#<number>`
+    again. Answers are ordered by when their request was sent, so an
+    older answer arriving late changes nothing, and that newest answer
+    outranks what the ticket pane or a list shown still holds. A ticket of an organisation that is not in the list has no
     second line. The area and the summary follow the reading every 500
     ms; they read no files of their own.
   * **Opening an agent.** `Enter` on an agent opens its ticket in its

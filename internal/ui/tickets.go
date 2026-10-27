@@ -686,7 +686,7 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 	case cache.Replace:
 		v.rows, v.total, v.perPage = r.Page.Data, r.Page.Meta.Total, r.Page.Meta.PerPage
 		for _, row := range r.Page.Data {
-			a.learnTitle(row.ID, row.Title)
+			a.learnTitle(row.ID, row.Title, uint64(r.Flight))
 		}
 		v.fresh(a.now())
 		v.reselect()
@@ -756,7 +756,7 @@ func (m Model) receiveDetail(r gateway.TicketResult) (Model, tea.Cmd) {
 	if d == cache.Replace {
 		// An accepted read renews an agent's title, whatever the pane
 		// shows by now (C9b); a removal takes it (receive).
-		a.learnTitle(r.Record.ID, r.Record.Title)
+		a.learnTitle(r.Record.ID, r.Record.Title, uint64(r.Flight))
 	}
 	v := a.detail
 	if v == nil {

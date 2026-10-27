@@ -48,7 +48,9 @@ func TestANewerTitleWinsOverAReadStillOut(t *testing.T) {
 	if cmd == nil || a.titles[ag.Ticket] == nil || !a.titles[ag.Ticket].asked {
 		t.Fatal("no title read out")
 	}
-	a.learnTitle(ag.Ticket, "Ticket six, renamed") // an accepted list read
+	// An accepted list read, sent after the title read (whose flight is
+	// numbered only when the held command runs: any flight below this one).
+	a.learnTitle(ag.Ticket, "Ticket six, renamed", 1<<62)
 	h.drive(cmd)
 	if got := h.areaRow(6).Primary.String(); got != "#6 Ticket six, renamed" {
 		t.Fatalf("%q", got)
