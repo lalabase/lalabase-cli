@@ -96,6 +96,10 @@ func (m *Model) receive(received gateway.Received) (cache.Decision, bool) {
 	if d == cache.Replace || d == cache.Remove {
 		a.filed[key] = max(a.filed[key], seq)
 	}
+	if d == cache.Remove {
+		// Every accepted removal of a ticket takes its agent's title (C9b).
+		a.titlesRemoved(key)
+	}
 	if d == cache.KeepStale {
 		a.diskReadsGoStale(key)
 	}

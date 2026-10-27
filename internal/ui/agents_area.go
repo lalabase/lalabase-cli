@@ -19,11 +19,13 @@ import (
 // session holds (the ticket in the pane, the list shown, the cache), and
 // a title it lacks is read once through the gateway, as background work.
 
-// title is the read of one agent's ticket for its title: out, failed
-// (kept until R), or known.
+// title is what the session knows of one agent's ticket for its title:
+// whether a read of it is out, failed (kept until R) or known, whether the
+// server removed the ticket (no title then, whatever older data holds,
+// until a newer read succeeds), and whether the disk cache was asked.
 type title struct {
-	asked, failed, known bool
-	text                 string
+	asked, failed, known, removed, disk bool
+	text                                string
 }
 
 // agentsColumn is the Agents area: per agent, in the order of urgency,
@@ -82,6 +84,10 @@ func (a *app) chosenOrg() string {
 // holds: the ticket in the pane, a row of the list shown, a read of it
 // for its title. ok is false while none of them has it.
 func (a *app) agentTitle(ag agents.Agent) (string, bool) {
+	if t := a.titles[ag.Ticket]; t != nil && t.removed {
+		// A removal outweighs older data, a list's rows among them.
+		return "", false
+	}
 	if d := a.detail; d != nil && d.known && d.record.ID == ag.Ticket {
 		return d.record.Title, true
 	}
@@ -99,9 +105,11 @@ func (a *app) agentTitle(ag agents.Agent) (string, bool) {
 // requestTitles reads, once each, the titles of the agents' tickets the
 // session does not hold: from the memory cache when it has the ticket,
 // else from the server through the gateway as idle work, after every
-// preview and within half the background budget (queue.Idle); the disk is
-// asked beside (C1e), and its entry cancels the server's read while that
-// still waits (titleFromDisk). A title that was asked for, failed or is
+// preview and within half the background budget (queue.Idle). The disk
+// cache is asked beside (C1e), in batches that never push out a read
+// waiting for it (diskRoom); a title it holds cancels the server's read
+// while that still waits (titleFromDisk). The next batch follows with the
+// next reading of the agents. A title that was asked for, failed or is
 // known is not asked again; R frees the failed ones (retryTitles).
 func (a *app) requestTitles() tea.Cmd {
 	if a.expired || a.scope == nil || !a.ticketOn() {
@@ -109,24 +117,33 @@ func (a *app) requestTitles() tea.Cmd {
 	}
 	var cmds []tea.Cmd
 	for _, ag := range a.agents.list {
-		if _, ok := a.agentTitle(ag); ok || a.titles[ag.Ticket] != nil {
+		if _, ok := a.agentTitle(ag); ok {
 			continue
 		}
-		t := &title{}
-		a.titles[ag.Ticket] = t
 		key := a.detailKey(ag.Project, ag.Ticket)
-		if a.titleFromCache(t, key) {
-			continue
+		t := a.titles[ag.Ticket]
+		if t == nil {
+			t = &title{}
+			a.titles[ag.Ticket] = t
+			if a.titleFromCache(t, key) {
+				continue
+			}
 		}
-		cmd := a.issue(gateway.Titles, key, forTitle, queue.Idle)
-		if cmd == nil {
-			// Nothing was asked: the next call tries again.
-			delete(a.titles, ag.Ticket)
-			continue
+		if !t.asked && !t.failed {
+			if cmd := a.issue(gateway.Titles, key, forTitle, queue.Idle); cmd != nil {
+				t.asked = true
+				cmds = append(cmds, cmd)
+			}
 		}
-		a.diskRead(gateway.Titles, key, forTitle)
-		t.asked = true
-		cmds = append(cmds, cmd)
+		if t.asked && !t.disk && !t.removed {
+			switch room := a.diskRoom(); {
+			case room < 0:
+				t.disk = true // no disk cache in this session
+			case room > 0:
+				a.diskRead(gateway.Titles, key, forTitle)
+				t.disk = true
+			}
+		}
 	}
 	return tea.Batch(cmds...)
 }
@@ -157,16 +174,19 @@ func (a *app) titleFromCache(t *title, k cache.Key) bool {
 	if !ans.OK() || gateway.CheckDetail(k, record) != nil {
 		return false
 	}
-	t.known, t.failed, t.text = true, false, record.Title
+	t.known, t.failed, t.removed, t.text = true, false, false, record.Title
 	return true
 }
 
 // receiveTitle takes the answer to a title's read: filed through the
-// scope like any read, the title from the cache then; a read that brought
-// none has failed and is not repeated before R.
+// scope like any read (a removal there takes the title, receive); an
+// accepted one gives its title from the answer, whether the cache keeps it
+// or not (a ticket too large for it). A read that brought none has failed
+// and is not repeated before R. A title the session learned meanwhile
+// stays: the late answer fills only one not known.
 func (m Model) receiveTitle(r gateway.TicketResult) (Model, tea.Cmd) {
 	a := m.app
-	m.receive(r)
+	d, ok := m.receive(r)
 	if a == nil {
 		return m, nil
 	}
@@ -175,7 +195,11 @@ func (m Model) receiveTitle(r gateway.TicketResult) (Model, tea.Cmd) {
 		return m, nil
 	}
 	t.asked = false
-	if !t.known && !a.titleFromCache(t, r.Key) {
+	switch {
+	case t.known:
+	case ok && d == cache.Replace:
+		t.known, t.failed, t.removed, t.text = true, false, false, r.Record.Title
+	case !a.titleFromCache(t, r.Key):
 		t.failed = true
 	}
 	return m, nil
@@ -183,22 +207,42 @@ func (m Model) receiveTitle(r gateway.TicketResult) (Model, tea.Cmd) {
 
 // learnTitle renews the remembered title of a ticket from an accepted read
 // of it (the list, the ticket): a title read earlier gives way to the
-// newer one, and a failed read is settled by it. A title read still out
-// keeps it: its late answer fills only a title not known (receiveTitle).
-// Tickets without a remembered title need nothing: the area takes theirs
-// from the session.
+// newer one, a failed read and a removal are settled by it. A title read
+// still out keeps it: its late answer fills only a title not known
+// (receiveTitle). Tickets without a remembered title need nothing: the
+// area takes theirs from the session.
 func (a *app) learnTitle(ticket, text string) {
 	if t := a.titles[ticket]; t != nil {
-		t.known, t.failed, t.text = true, false, text
+		t.known, t.failed, t.removed, t.text = true, false, false, text
 	}
 }
 
-// forgetTitle drops the remembered title of a ticket the server removed
-// (not found, no access): the row says #n again, and R may read it.
+// forgetTitle follows an accepted removal of a ticket (not found, no
+// access) from any read of it: its agent's row says #n again, older data
+// (a list shown) brings no title back, and R may read it. The disk holds
+// none of it any more.
 func (a *app) forgetTitle(ticket string) {
-	if t := a.titles[ticket]; t != nil {
-		t.known, t.text = false, ""
-		t.failed = !t.asked
+	t := a.titles[ticket]
+	if t == nil {
+		t = &title{}
+		a.titles[ticket] = t
+	}
+	t.known, t.text, t.removed, t.disk = false, "", true, true
+	t.failed = !t.asked
+}
+
+// titlesRemoved follows an accepted removal: of one ticket, or of a
+// project's tickets with their list.
+func (a *app) titlesRemoved(k cache.Key) {
+	switch k.Operation {
+	case api.TicketSpec.Tool:
+		a.forgetTitle(k.Ticket)
+	case api.TicketsSpec.Tool:
+		for _, ag := range a.agents.list {
+			if ag.Project == k.Project {
+				a.forgetTitle(ag.Ticket)
+			}
+		}
 	}
 }
 
@@ -216,13 +260,11 @@ func (a *app) titlesFailed() bool {
 	return false
 }
 
-// retryTitles is R for the titles: the failed reads are forgotten and
-// asked again.
+// retryTitles is R for the titles: the failed reads are asked again; a
+// removal stays until a read succeeds.
 func (a *app) retryTitles() tea.Cmd {
-	for id, t := range a.titles {
-		if t.failed {
-			delete(a.titles, id)
-		}
+	for _, t := range a.titles {
+		t.failed = false
 	}
 	return a.requestTitles()
 }

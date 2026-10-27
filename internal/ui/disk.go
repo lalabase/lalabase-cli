@@ -182,6 +182,26 @@ func (a *app) diskRead(area gateway.Area, key cache.Key, p purpose) {
 	}
 }
 
+// diskRoom is how many more reads may wait for the disk without one of
+// them being pushed out (maxDiskReads): -1 when this session has no disk
+// cache and will not get one, 0 while it is not open yet or full.
+func (a *app) diskRoom() int {
+	d := a.disk
+	switch {
+	case d == nil || d.off || d.opener == nil:
+		return -1
+	case !d.usable():
+		return 0
+	}
+	waiting := 0
+	for _, r := range d.reads {
+		if !r.sent && !r.canceled {
+			waiting++
+		}
+	}
+	return max(0, maxDiskReads-waiting)
+}
+
 // cancelDiskRead drops a read whose answer is no longer wanted; one not
 // sent yet is settled at the next flush, one out is dropped on arrival.
 func (a *app) cancelDiskRead(w gateway.Waiter) {
@@ -410,7 +430,7 @@ func (a *app) showFromDisk(p purpose, key cache.Key) bool {
 			}
 		}
 	case forTitle:
-		if t := a.titles[key.Ticket]; t != nil && !t.known {
+		if t := a.titles[key.Ticket]; t != nil && !t.known && !t.removed {
 			return a.titleFromDisk(t, key)
 		}
 	case forExpansion:

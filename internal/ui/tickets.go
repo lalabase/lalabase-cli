@@ -673,14 +673,7 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	if d == cache.Remove {
-		// The project is gone: its agents' remembered titles with it (C9b).
-		for _, ag := range a.agents.list {
-			if ag.Project == r.Key.Project {
-				a.forgetTitle(ag.Ticket)
-			}
-		}
-	}
+
 	v := a.tickets
 	if v == nil {
 		return m, nil
@@ -760,13 +753,10 @@ func (m Model) receiveDetail(r gateway.TicketResult) (Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	switch d {
-	case cache.Replace:
+	if d == cache.Replace {
 		// An accepted read renews an agent's title, whatever the pane
-		// shows by now (C9b); a removal takes it.
+		// shows by now (C9b); a removal takes it (receive).
 		a.learnTitle(r.Record.ID, r.Record.Title)
-	case cache.Remove:
-		a.forgetTitle(r.Key.Ticket)
 	}
 	v := a.detail
 	if v == nil {
