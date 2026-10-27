@@ -94,9 +94,10 @@ func (m Model) agentsColumn() present.Column {
 		if t, ok := a.agentTitle(ag); ok {
 			text += " " + textOr(t, uitext.UntitledTicket)
 		}
+		l := a.look(ag.State)
 		row := present.Row{
 			Primary: present.NewInline(text), Marked: true,
-			Mark: present.NewInline(a.glyph(ag.State)), MarkStyle: agentStyles[ag.State],
+			Mark: present.NewInline(l.glyph), MarkStyle: l.style,
 			Quiet: ag.State == agents.Ended && a.seen(ag),
 		}
 		if o := a.organisation(ag.Organisation); o != nil && ag.Organisation != chosen {
