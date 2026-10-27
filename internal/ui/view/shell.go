@@ -254,8 +254,9 @@ func AgentsHeight(chooser, c present.Column, height int) int {
 // FocusedCapacity is the number of rows (or lines) the focused pane shows
 // at once in g, split as the screen is drawn: wherever the navigation pane
 // shows, the chooser and the Agents area share it (navigation); every
-// other pane has the body alone. focused is the focused pane's column;
-// chooser and agents are read only when the focus is in the navigation.
+// other pane has the body alone. focused is the focused pane's column; of
+// the other two, chooser is read only with the agents focused and agents
+// only with the chooser focused.
 func FocusedCapacity(focused, chooser, agents present.Column, g Geometry, focus Pane) int {
 	if slices.Contains(Visible(g, focus), Navigation) {
 		switch focus {

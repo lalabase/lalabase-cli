@@ -247,9 +247,10 @@ func (m Model) openProjects(org string) (Model, tea.Cmd) {
 }
 
 // enterProjects leaves what is open in the list's place (an inbox, another
-// organisation's tickets) and opens the projects of org there, the project
-// selected that was when they were left, and loads them. The chooser and
-// an agent (openAgent) open them this one way.
+// organisation's tickets), opens the projects of org there and loads
+// them. The selected project is the one selected when the person last
+// left them; openAgent selects the agent's project afterwards. The chooser
+// and an agent open the projects this one way.
 func (a *app) enterProjects(org string) tea.Cmd {
 	a.leaveInbox()
 	a.leaveTickets()

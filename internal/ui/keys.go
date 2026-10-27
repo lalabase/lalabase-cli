@@ -160,12 +160,18 @@ func (m Model) small() bool {
 
 // focusedCapacity is the number of rows (or lines) the focused column
 // shows at once in g (view.FocusedCapacity, which splits the navigation
-// pane as it is drawn). The chooser and the agents are built only where
-// that split needs them; the shell has no agents.
+// pane as it is drawn). Beside the focused column it hands over the one
+// that may share the pane with it: the agents for the chooser, the
+// chooser for the agents. The shell has no agents.
 func (m Model) focusedCapacity(g view.Geometry) int {
 	var chooser, agents present.Column
-	if m.app != nil && (m.focus == view.Navigation || m.focus == view.Agents) {
-		chooser, agents = m.chooserColumn(), m.agentsColumn()
+	if m.app != nil {
+		switch m.focus {
+		case view.Navigation:
+			agents = m.agentsColumn()
+		case view.Agents:
+			chooser = m.chooserColumn()
+		}
 	}
 	return view.FocusedCapacity(m.focusedColumn(), chooser, agents, g, m.focus)
 }

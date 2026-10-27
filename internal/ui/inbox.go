@@ -375,9 +375,11 @@ type refreshRead struct {
 	run  func() tea.Cmd
 }
 
-// refreshPlan is what R reads now, the one place that decides it: R does
-// all of it (retryOrRefresh), and is offered while one of them is free
-// (canRefresh), so the offer cannot drift from the action.
+// refreshPlan is what R reads now, the one place that decides it: R runs
+// every read of it (retryOrRefresh) and is offered while one of them is
+// free (canRefresh). Which reads R makes is so decided once for both;
+// each read's free stands beside its run, so the two that must agree are
+// on one line.
 //
 // Before /me, /me again. In the agents' list, the titles whose read
 // failed (C9b). Failed steps first, each alone (the tools after initialize
@@ -430,7 +432,9 @@ func (m Model) refreshPlan() []refreshRead {
 		return append(plan, shown...)
 	}
 	if len(shown) > 0 {
-		// Healthy, R reads what is in view, the first of it.
+		// Healthy, R reads one thing in view, the first of shown as it
+		// is built above: the ticket of a notification, else the active
+		// page, else the section.
 		return shown[:1]
 	}
 	var plan []refreshRead
