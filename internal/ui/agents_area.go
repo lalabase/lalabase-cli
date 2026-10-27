@@ -391,7 +391,7 @@ func (m Model) agentsBindings() []binding {
 	if ag, ok := a.agentUnderCursor(); ok && a.canOpenAgent(ag) {
 		out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenTicketHelp})
 	}
-	if a.titlesFailed() {
+	if m.canRefresh() {
 		out = append(out, binding{Refresh, uitext.RefreshKey, uitext.RetryHelp})
 	}
 	return append(out, binding{Back, uitext.EscapeKey, uitext.BackHelp})
