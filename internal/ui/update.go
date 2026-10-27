@@ -80,8 +80,10 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		cmd := m.app.receiveAgents(msg)
 		if m.focus == view.Agents && len(m.app.agents.list) == 0 {
-			// The last agent is gone: its list closes.
+			// The last agent is gone: its list closes, and the pane behind
+			// it gets its preview, as after esc.
 			m = m.closeAgents()
+			cmd = tea.Batch(cmd, m.selectionChanged())
 		}
 		return m, cmd
 	case gateway.Result:

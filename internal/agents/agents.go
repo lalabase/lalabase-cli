@@ -25,11 +25,13 @@
 //     exclusively) after the person opened the agent: it is seen. The
 //     hook never reads or writes it.
 //
-// Each file has one writer. The title of a ticket is never in them: it
-// comes from the cache.
+// Each file has one writer. The title of a ticket is never in them: the
+// interface takes it from the session (the cache, or a read of the
+// ticket).
 //
 // Threat model: internal/privatefs's, the one of the config (another local
-// user without root must not forge a state, a launch or a hook). The
+// user without root must not forge a state, a launch, a seen mark or a
+// hook). The
 // directory is the user's alone (0700, privatefs.CheckDirs on the whole
 // way), the files are 0600 and read as private files (privatefs.OwnFile)
 // through internal/safefile, at most maxFile bytes. The hook never makes the

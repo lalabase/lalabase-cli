@@ -135,7 +135,9 @@ func (a *app) requestTitles() tea.Cmd {
 				cmds = append(cmds, cmd)
 			}
 		}
-		if t.asked && !t.disk && !t.removed {
+		if !t.disk && !t.removed {
+			// Whatever became of the server's read (out, failed): the
+			// disk may hold the title.
 			switch room := a.diskRoom(); {
 			case room < 0:
 				t.disk = true // no disk cache in this session
@@ -199,7 +201,9 @@ func (m Model) receiveTitle(r gateway.TicketResult) (Model, tea.Cmd) {
 	case t.known:
 	case ok && d == cache.Replace:
 		t.known, t.failed, t.removed, t.text = true, false, false, r.Record.Title
-	case !a.titleFromCache(t, r.Key):
+	case t.removed || !a.titleFromCache(t, r.Key):
+		// After a removal only a read accepted since may bring the title
+		// back, nothing the cache held from before it.
 		t.failed = true
 	}
 	return m, nil
@@ -241,6 +245,10 @@ func (a *app) titlesRemoved(k cache.Key) {
 		for _, ag := range a.agents.list {
 			if ag.Project == k.Project {
 				a.forgetTitle(ag.Ticket)
+				// Every read of the ticket begun before the removal is
+				// refused from now on, a title read among them, as the
+				// scope does for a ticket's own removal.
+				a.scope.Invalidate(a.detailKey(ag.Project, ag.Ticket))
 			}
 		}
 	}
