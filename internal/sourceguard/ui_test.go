@@ -180,8 +180,9 @@ var launchImports = map[string]map[string][]string{
 		clientModule + "internal/launchdir": nil,
 		clientModule + "internal/worker":    nil,
 		// The agent's hooks and its record (C9a), by name: the launch
-		// writes them and reads nothing of the agents.
-		clientModule + "internal/agents": {"Events", "Launch", "NewID", "Prepare", "WriteLaunch"},
+		// writes them, checks the ticket in the form the record takes
+		// (ForeignID, TicketNumber) and reads nothing of the agents.
+		clientModule + "internal/agents": {"Events", "ForeignID", "Launch", "NewID", "Prepare", "TicketNumber", "WriteLaunch"},
 	},
 }
 

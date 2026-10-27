@@ -12,17 +12,12 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/agents"
 )
 
-// uuid is the form of the ids handed over: the server's ids are random
-// UUIDs, and nothing else passes into the prompt.
-var uuid = regexp.MustCompile(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`)
-
-// maxNumber bounds a ticket's number: a positive 32-bit integer.
-const maxNumber = 1<<31 - 1
-
-// checkTicket: both ids are UUIDs and the number is positive. The values
-// come from the server; only in this form do they reach the prompt.
+// checkTicket: both ids are UUIDs and the number is a ticket's. The
+// values come from the server; only in this form do they reach the
+// prompt, in the same form the launch record takes (agents.ForeignID,
+// agents.TicketNumber).
 func checkTicket(t Ticket) bool {
-	return uuid.MatchString(t.Project) && uuid.MatchString(t.ID) && t.Number > 0 && t.Number <= maxNumber
+	return agents.ForeignID(t.Project) && agents.ForeignID(t.ID) && agents.TicketNumber(t.Number)
 }
 
 // sessionID is ITERM_SESSION_ID: the window, tab and pane, then the

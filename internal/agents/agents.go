@@ -92,9 +92,18 @@ const maxWalk = 4096
 // in lower case.
 var idForm = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-// serverID is an id from the server or from Claude Code: a UUID in either
-// case.
+// serverID is an id the client did not make: the server's, Claude Code's
+// session id, iTerm's pane id. A UUID in either case.
 var serverID = regexp.MustCompile(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`)
+
+// ForeignID says whether s has serverID's form. Only such an id goes into
+// an agent's files or into a launch (the prompt, the launch record), so
+// the launch checks with this, not with a copy of the form.
+func ForeignID(s string) bool { return serverID.MatchString(s) }
+
+// TicketNumber says whether n can be a ticket's number, the one bound the
+// launch and the launch record share.
+func TicketNumber(n int) bool { return n > 0 && n <= maxNumber }
 
 // subagentID is a subagent's agent_id from Claude Code ("a" and 16 hex
 // digits in 2.1.310), taken only in this form: it is compared, never shown.
