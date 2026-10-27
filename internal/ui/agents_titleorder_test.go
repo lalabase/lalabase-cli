@@ -207,3 +207,53 @@ func TestAFailedTitleShownByACachedListOffersNoR(t *testing.T) {
 		t.Fatal("R offered for a title the list shows")
 	}
 }
+
+// Review of a8b2e0c: Enter on the agent whose ticket is open in the list
+// keeps the place, but still reads a ticket that is not fresh (its first
+// read or a refresh failed), as opening it from the list does.
+func TestTheSameAgentFromTheListRetriesAFailedRead(t *testing.T) {
+	down := func(project, id string, o api.TicketOptions) transport.Answer {
+		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
+	}
+	for _, c := range []struct {
+		name  string
+		setup func(h *harness)
+	}{
+		{"a refresh failed", func(h *harness) {
+			h.openSix()
+			h.m.width, h.m.height = 60, 12
+			h.drive(h.press("pgdown"))
+			h.f.setTicket(down)
+			h.drive(h.press("R"))
+		}},
+		{"the first read failed", func(h *harness) {
+			h.openTickets(website)
+			h.f.setTicket(down)
+			h.m.app.tickets.selected = ticketID(website, 6)
+			h.m.focus = view.List
+			h.drive(h.press("enter"))
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+			c.setup(h)
+			d := h.m.app.detail
+			if d == nil || d.holds() {
+				t.Fatalf("not the case: the pane holds a fresh ticket: %+v", d)
+			}
+			offset := d.offset
+			h.f.setTicket(h.d.defaultTicket)
+			reads := len(h.f.detailReads())
+			h.drive(h.press("A"))
+			h.drive(h.press("enter"))
+			d = h.m.app.detail
+			if len(h.f.detailReads()) == reads || d == nil || !d.holds() {
+				t.Fatalf("no read of the ticket that is not fresh: %d reads, %+v", len(h.f.detailReads())-reads, d)
+			}
+			if d.offset != offset {
+				t.Fatalf("the place is lost: %d, was %d", d.offset, offset)
+			}
+		})
+	}
+}

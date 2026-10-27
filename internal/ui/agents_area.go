@@ -413,8 +413,10 @@ func (m Model) openAgent() (Model, tea.Cmd) {
 	if v := a.tickets; v != nil && v.org == ag.Organisation && v.project == ag.Project && v.index(ag.Ticket) >= 0 {
 		v.selected = ag.Ticket
 		if d := a.detail; d != nil && d.id == ag.Ticket && v.opened == ag.Ticket {
-			// Already open: it keeps its place and selection.
+			// Already open: it keeps its place and selection, and is
+			// read again as on any open when it is not fresh.
 			m.focus = view.Object
+			cmds = append(cmds, a.readUnlessFresh(d))
 		} else {
 			var cmd tea.Cmd
 			m, cmd = m.openTicket()
@@ -443,10 +445,7 @@ func (m Model) openAgent() (Model, tea.Cmd) {
 			a.settle(d)
 		}
 		m.focus = view.Object
-		if !d.holds() || d.loading {
-			d.loading = true
-			cmds = append(cmds, a.issue(gateway.Detail, d.key, forDetail, queue.User))
-		}
+		cmds = append(cmds, a.readUnlessFresh(d))
 	}
 	if ag.State == agents.Ended || ag.State == agents.Lost {
 		cmds = append(cmds, a.markSeen(ag))
