@@ -684,6 +684,9 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 	switch d {
 	case cache.Replace:
 		v.rows, v.total, v.perPage = r.Page.Data, r.Page.Meta.Total, r.Page.Meta.PerPage
+		for _, row := range r.Page.Data {
+			a.learnTitle(row.ID, row.Title)
+		}
 		v.fresh(a.now())
 		v.reselect()
 		if m.focus == view.Object && v.opened == "" && a.detail == nil {
@@ -748,6 +751,11 @@ func (m Model) receiveDetail(r gateway.TicketResult) (Model, tea.Cmd) {
 	d, ok := m.receive(r)
 	if !ok {
 		return m, nil
+	}
+	if d == cache.Replace {
+		// An accepted read renews an agent's title, whatever the pane
+		// shows by now (C9b).
+		a.learnTitle(r.Record.ID, r.Record.Title)
 	}
 	v := a.detail
 	if v == nil {

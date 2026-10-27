@@ -181,6 +181,16 @@ func (m Model) receiveTitle(r gateway.TicketResult) (Model, tea.Cmd) {
 	return m, nil
 }
 
+// learnTitle renews the remembered title of a ticket from an accepted read
+// of it (the list, the ticket): a title read earlier gives way to the
+// newer one, and a failed read is settled by it. Tickets without a
+// remembered title need nothing: the area takes theirs from the session.
+func (a *app) learnTitle(ticket, text string) {
+	if t := a.titles[ticket]; t != nil && !t.asked {
+		t.known, t.failed, t.text = true, false, text
+	}
+}
+
 // titlesFailed: the title of an agent's ticket is missing because its
 // read failed, so R would read it again; one the session learned since (the
 // ticket in the pane, the list shown) or whose agent is gone counts not.
@@ -275,6 +285,14 @@ func (m Model) openAgents() (Model, tea.Cmd) {
 	return m, m.selectionChanged()
 }
 
+// agentsFit: the agents' list would show at least one agent in the
+// current terminal, so A does not lead into a screen too small to use.
+func (m Model) agentsFit() bool {
+	next := m
+	next.agentsFrom, next.focus = m.focus, view.Agents
+	return !next.small()
+}
+
 // closeAgents goes back to where A was pressed; to the list instead of an
 // object pane that shows nothing any more (its ticket was removed
 // meanwhile).
@@ -328,8 +346,14 @@ func (m Model) openAgent() (Model, tea.Cmd) {
 			a.leaveList()
 		}
 		a.projects.selected = ag.Project
+		shown := a.detail != nil && a.detail.id == ag.Ticket
 		d := a.ensureDetail(ag.Project, ag.Ticket)
-		d.offset, d.follow, d.area, d.post = 0, anchorNone, areaDescription, ""
+		if !shown {
+			// A ticket new in the pane starts at its head; one already
+			// shown keeps its place and its selected comment.
+			d.offset, d.follow, d.area, d.post = 0, anchorNone, areaDescription, ""
+			a.settle(d)
+		}
 		m.focus = view.Object
 		if !d.holds() || d.loading {
 			d.loading = true

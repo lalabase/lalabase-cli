@@ -249,7 +249,8 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		return m.launchClaude()
 	case OpenAgents:
 		if m.focus == view.Agents {
-			return m.closeAgents(), m.selectionChanged()
+			m = m.closeAgents()
+			return m, m.selectionChanged()
 		}
 		return m.openAgents()
 	}
@@ -400,7 +401,8 @@ func (m Model) back() (Model, tea.Cmd) {
 	a := m.app
 	switch m.focus {
 	case view.Agents:
-		return m.closeAgents(), m.selectionChanged()
+		m = m.closeAgents()
+		return m, m.selectionChanged()
 	case view.Navigation:
 		if a.shown() {
 			m.focus = view.List

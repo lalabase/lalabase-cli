@@ -208,6 +208,10 @@ func (m Model) bindings(small bool) []binding {
 	}
 	out := []binding{{Quit, uitext.QuitKey, uitext.QuitHelp}, {Interrupt, uitext.InterruptKey, uitext.InterruptHelp}}
 	if small {
+		if m.focus == view.Agents {
+			// A resize left the agents no room: the way back stays (C9b).
+			out = append(out, binding{Back, uitext.EscapeKey, uitext.BackHelp})
+		}
 		return out
 	}
 	a := m.app
@@ -240,7 +244,7 @@ func (m Model) bindings(small bool) []binding {
 	case view.Object:
 		out = append(out, m.objectBindings()...)
 	}
-	if len(a.agents.list) > 0 {
+	if len(a.agents.list) > 0 && m.agentsFit() {
 		out = append(out, binding{OpenAgents, uitext.AgentsKey, uitext.AgentsHelp})
 	}
 	if m.canRefresh() {
