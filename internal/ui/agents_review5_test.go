@@ -34,9 +34,10 @@ func TestARemovedTicketForgetsItsTitle(t *testing.T) {
 	}
 }
 
-// A renamed title from an accepted list or ticket read wins over an
-// older title read still out: its late answer does not bring the old
-// name back.
+// A title from an accepted list read wins over an older title read still
+// out: its late answer does not bring the old name back. The title read is
+// sent first (its answer held), the list after it, so the flights are the
+// real ones.
 func TestANewerTitleWinsOverAReadStillOut(t *testing.T) {
 	h := newHarness(t)
 	h.withWatcher()
@@ -44,16 +45,21 @@ func TestANewerTitleWinsOverAReadStillOut(t *testing.T) {
 	a := h.m.app
 	ag := agentIn(1, orgA, 6, agents.Working, h.now)
 	a.agents.list = []agents.Agent{ag}
-	cmd := a.requestTitles() // the old title, answered late
-	if cmd == nil || a.titles[ag.Ticket] == nil || !a.titles[ag.Ticket].asked {
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		r := h.d.ticketRecord(project, 6, o)
+		r.Title = "Old name"
+		return ticketAnswer(r)
+	})
+	late := messages(t, a.requestTitles()) // sent now, answered below
+	if len(late) == 0 || a.titles[ag.Ticket] == nil || !a.titles[ag.Ticket].asked {
 		t.Fatal("no title read out")
 	}
-	// An accepted list read, sent after the title read (whose flight is
-	// numbered only when the held command runs: any flight below this one).
-	a.learnTitle(ag.Ticket, "Ticket six, renamed", 1<<62)
-	h.drive(cmd)
-	if got := h.areaRow(6).Primary.String(); got != "#6 Ticket six, renamed" {
-		t.Fatalf("%q", got)
+	h.f.setTicket(h.d.defaultTicket)
+	h.drive(h.chooseTickets(orgA))
+	h.drive(h.openProject(website)) // sent after the title read
+	h.drive(h.feed(late...)...)
+	if got := h.areaRow(6).Primary.String(); got != "#6 Ticket 6" {
+		t.Fatalf("an older title read won: %q", got)
 	}
 }
 

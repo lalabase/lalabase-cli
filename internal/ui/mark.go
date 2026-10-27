@@ -9,7 +9,6 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/present"
-	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 	"github.com/gboyke/lalabase-cli/internal/uitext"
@@ -399,11 +398,7 @@ func (m Model) openLinkedTicket() (Model, tea.Cmd) {
 	d := a.ensureDetail(n.Ticket.ProjectID, n.Ticket.ID)
 	d.offset, d.follow, d.area, d.post = 0, anchorNone, areaDescription, ""
 	m.focus = view.Object
-	if d.holds() && !d.loading {
-		return m, nil
-	}
-	d.loading = true
-	return m, a.issue(gateway.Detail, d.key, forDetail, queue.User)
+	return m, a.readUnlessFresh(d)
 }
 
 // closeLinkedTicket takes the ticket out of the pane and restores where

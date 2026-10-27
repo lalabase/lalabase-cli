@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
+	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
 // navigationWidth is the width of the navigation in three columns.
@@ -64,7 +65,10 @@ func (m Model) withNotice(g view.Geometry) view.Geometry {
 	if status.String() == "" {
 		return g
 	}
-	s := present.Screen{Context: m.context(), Crumbs: m.crumbs(), Chooser: m.chooserColumn(), Agents: m.agentsColumn(), Status: status, StatusStyle: tone}
+	// Of the agents the path line takes the title alone (focused in fewer
+	// than three columns): their column is not built for it.
+	agents := present.Column{Title: uitext.Inline(uitext.Agents)}
+	s := present.Screen{Context: m.context(), Crumbs: m.crumbs(), Chooser: m.chooserColumn(), Agents: agents, Status: status, StatusStyle: tone}
 	for lines := view.NoticeLines(s, g, m.focus, m.widthMethod); lines > 0; lines-- {
 		n := g
 		n.NoticeHeight, n.BodyHeight = lines, g.BodyHeight-lines

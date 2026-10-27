@@ -524,8 +524,8 @@ func (m Model) openTicket() (Model, tea.Cmd) {
 // readUnlessFresh is the read of an opened ticket: as the person's, unless
 // the pane holds it fresh and nothing loads; a pending preview is joined
 // under the same key, without one this is a read of its own. Every way to
-// open a ticket takes it (the list, an agent), so a ticket whose read or
-// refresh failed is read again.
+// open a ticket takes it (the list, an agent, a notification's link), so a
+// ticket whose read or refresh failed is read again.
 func (a *app) readUnlessFresh(d *detailView) tea.Cmd {
 	if d.holds() && !d.loading {
 		return nil

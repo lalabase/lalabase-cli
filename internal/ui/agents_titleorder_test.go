@@ -13,6 +13,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
+	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
@@ -86,9 +87,15 @@ func TestTheSameAgentFromTheListKeepsTheScroll(t *testing.T) {
 		t.Fatal("PgDown did not scroll")
 	}
 	h.drive(h.press("A"))
+	if h.m.focus != view.Agents {
+		t.Fatal("agents not focused")
+	}
 	h.drive(h.press("enter"))
 	if h.m.app.detail.offset != before {
 		t.Fatalf("same ticket list path lost scroll: got %d, want %d", h.m.app.detail.offset, before)
+	}
+	if h.m.focus != view.Object {
+		t.Fatalf("focus %v, want the ticket", h.m.focus)
 	}
 }
 
@@ -255,5 +262,111 @@ func TestTheSameAgentFromTheListRetriesAFailedRead(t *testing.T) {
 				t.Fatalf("the place is lost: %d, was %d", d.offset, offset)
 			}
 		})
+	}
+}
+
+// Review of #37 on e37282a: mutants of this PR's code that no test killed.
+
+// A ticket only previewed in the list (the pane shows it, the list has not
+// opened it): Enter on its agent opens it, as Enter on its row does.
+func TestAnAgentOpensItsPreviewedTicket(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+	h.openTickets(website)
+	v := h.m.app.tickets
+	v.selected = ticketID(website, 6)
+	h.m.focus = view.List
+	h.m.app.ensureDetail(website, ticketID(website, 6))
+	if v.opened != "" || h.m.app.detail == nil {
+		t.Fatal("not a preview")
+	}
+	h.drive(h.press("A"))
+	h.drive(h.press("enter"))
+	if v.opened != ticketID(website, 6) {
+		t.Fatalf("not opened: %q", v.opened)
+	}
+}
+
+// A removal of the ticket sent before a list read that still shows it,
+// answered after the list: the older removal does not take the title.
+func TestAnOlderRemovalCannotUndoANewerList(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+	h.openSix()
+	if h.m.app.titles[ticketID(website, 6)] == nil {
+		t.Fatal("no title remembered")
+	}
+	h.f.setTicket(notFound)
+	stale := messages(t, h.press("R")) // the ticket's read, sent first
+	if len(stale) == 0 {
+		t.Fatal("no ticket read")
+	}
+	h.f.setTicket(h.d.defaultTicket)
+	h.m.focus = view.List
+	h.drive(h.press("R")) // the list, sent after, answered first
+	if got := h.areaRow(6).Primary.String(); got != "#6 Ticket 6" {
+		t.Fatalf("before the late removal: %q", got)
+	}
+	h.drive(h.feed(stale...)...)
+	if got := h.areaRow(6).Primary.String(); got != "#6 Ticket 6" {
+		t.Fatalf("an older removal won over a newer list: %q", got)
+	}
+}
+
+// A title read sent after a list read and answered after it wins: the list
+// answers first with the old name, the title read with the new one.
+func TestANewerTitleReadWinsOverAnOlderList(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher()
+	h.start()
+	a := h.m.app
+	a.agents.list = []agents.Agent{agentIn(1, orgA, 6, agents.Working, h.now)}
+	held := a.requestTitles() // its flight is numbered when it runs, below
+	if held == nil {
+		t.Fatal("no title read")
+	}
+	h.drive(h.chooseTickets(orgA))
+	h.drive(h.openProject(website))
+	if got := h.areaRow(6).Primary.String(); got != "#6 Ticket 6" {
+		t.Fatalf("the list's title: %q", got)
+	}
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		r := h.d.ticketRecord(project, 6, o)
+		r.Title = "Ticket six, renamed"
+		return ticketAnswer(r)
+	})
+	h.drive(held) // sent after the list
+	if got := h.areaRow(6).Primary.String(); got != "#6 Ticket six, renamed" {
+		t.Fatalf("a newer title read lost to an older list: %q", got)
+	}
+}
+
+// The notice is measured with the agents' title alone: whatever their
+// column holds, it takes as many lines as on the screen drawn with it.
+func TestTheNoticeIsMeasuredWithTheAgentsTitle(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher(agentIn(1, orgA, 6, agents.WaitingForApproval, h.now), agentIn(2, orgB, 7, agents.Working, h.now))
+	h.start()
+	h.m.app.pause = h.now.Add(time.Minute)
+	measured := 0
+	for _, focus := range []view.Pane{view.Navigation, view.List, view.Object, view.Agents} {
+		for width := 24; width <= 140; width += 4 {
+			h.m.focus, h.m.width, h.m.height = focus, width, 24
+			status, tone := h.m.status()
+			if status.String() == "" {
+				t.Fatal("no notice")
+			}
+			g := h.m.geometry()
+			g.NoticeHeight, g.BodyHeight = 0, g.BodyHeight+g.NoticeHeight
+			full := present.Screen{Context: h.m.context(), Crumbs: h.m.crumbs(), Chooser: h.m.chooserColumn(), Agents: h.m.agentsColumn(), Status: status, StatusStyle: tone}
+			want := view.NoticeLines(full, g, focus, h.m.widthMethod)
+			if got := h.m.withNotice(g).NoticeHeight; want > 0 && got == 0 {
+				t.Fatalf("focus %d, width %d: the screen needs %d notice lines, the measure gives none", focus, width, want)
+			}
+			measured += want
+		}
+	}
+	if measured == 0 {
+		t.Fatal("no geometry needed a notice line: nothing was measured")
 	}
 }

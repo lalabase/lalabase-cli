@@ -16,8 +16,9 @@ import (
 // The Agents area (C9b): every agent of the profile, across the
 // organisations, under the chooser. Of an agent's files only its number
 // and its state are shown; the title of its ticket comes from what the
-// session holds (the ticket in the pane, the list shown, the cache), and
-// a title it lacks is read once through the gateway, as background work.
+// session holds (the newest accepted read of it, the ticket in the pane,
+// the list shown, the cache), and a title it lacks is read once through
+// the gateway, as background work.
 
 // title is what the session knows of one agent's ticket for its title:
 // whether a read of it is out, failed (kept until R) or known, whether the
@@ -89,8 +90,9 @@ func (a *app) chosenOrg() string {
 }
 
 // agentTitle is the title of the agent's ticket from what the session
-// holds: the ticket in the pane, a row of the list shown, a read of it
-// for its title. ok is false while none of them has it.
+// holds: the newest accepted fact remembered of it (title), else the
+// ticket in the pane, else a row of the list shown. ok is false while
+// none of them has it, and after a removal.
 func (a *app) agentTitle(ag agents.Agent) (string, bool) {
 	if t := a.titles[ag.Ticket]; t != nil {
 		// The newest accepted fact outranks the views' data (title).
