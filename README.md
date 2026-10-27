@@ -425,9 +425,10 @@ navigation again.
     found, no access; also of its project's list), which shows `#<number>`
     again. Answers are ordered by when their request was sent, so an
     older answer arriving late changes nothing, and that newest answer
-    outranks what the ticket pane or a list shown still holds. A ticket of an organisation that is not in the list has no
-    second line. The area and the summary follow the reading every 500
-    ms; they read no files of their own.
+    outranks what the ticket pane or a list shown still holds. A ticket
+    of an organisation that is not in the list has no second line. The
+    area and the summary follow the reading every 500 ms; they read no
+    files of their own.
   * **Opening an agent.** `Enter` on an agent opens its ticket in its
     organisation's tickets (the projects of that organisation, its project
     selected, the ticket in the pane; or the list of its project, when
