@@ -86,8 +86,9 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			// cannot be trusted then (internal/agents), and a list that
 			// shows nothing has nothing to keep open. The next read that
 			// succeeds brings the area back; A opens the list again.
-			m = m.closeAgents()
-			cmd = tea.Batch(cmd, m.selectionChanged())
+			var back tea.Cmd
+			m, back = m.closeAgents()
+			cmd = tea.Batch(cmd, back)
 		}
 		return m, cmd
 	case gateway.Result:
@@ -255,8 +256,7 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		return m.launchClaude()
 	case OpenAgents:
 		if m.focus == view.Agents {
-			m = m.closeAgents()
-			return m, m.selectionChanged()
+			return m.closeAgents()
 		}
 		return m.openAgents()
 	}
@@ -407,8 +407,7 @@ func (m Model) back() (Model, tea.Cmd) {
 	a := m.app
 	switch m.focus {
 	case view.Agents:
-		m = m.closeAgents()
-		return m, m.selectionChanged()
+		return m.closeAgents()
 	case view.Navigation:
 		if a.shown() {
 			m.focus = view.List
