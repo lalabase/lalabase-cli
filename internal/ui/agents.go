@@ -1,11 +1,14 @@
 package ui
 
 import (
+	"slices"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/present"
+	"github.com/gboyke/lalabase-cli/internal/ui/view"
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
@@ -14,6 +17,9 @@ import (
 // gives the session one (agents.NewWatcher); tests give a fake.
 type AgentWatcher interface {
 	Read(ref uint64) tea.Cmd
+	// See records an agent the person opened as seen (C9b); its message
+	// is an agents.Marked.
+	See(id string, at time.Time) tea.Cmd
 }
 
 // agentsEvery is how often the agents' files are read while there is one,
@@ -24,7 +30,8 @@ const agentsEvery = 500 * time.Millisecond
 // agentsState is what the model knows of the agents: the newest read's
 // number, whether a read is out and whether another is owed after it, the
 // deadline of the next one (zero while reading sleeps), the agents of the
-// newest read, and the spinner's frame.
+// newest read, the spinner's frame, and the agent the Agents area's
+// cursor is on (C9b).
 type agentsState struct {
 	ref     uint64
 	reading bool
@@ -32,6 +39,10 @@ type agentsState struct {
 	until   time.Time
 	list    []agents.Agent
 	frame   int
+	cursor  string
+	// seen are the agents the person opened in this run (C9b): faint at
+	// once, before their file is read back.
+	seen map[string]bool
 }
 
 // readAgents issues a read unless one is out or due already: one chain of
@@ -72,16 +83,18 @@ func (a *app) receiveAgents(s agents.Snapshot) tea.Cmd {
 			break
 		}
 	}
+	// A new agent's title, if the session lacks it, is read once.
+	titles := a.requestTitles()
 	if a.agents.again {
 		a.agents.again = false
-		return a.readAgents()
+		return tea.Batch(titles, a.readAgents())
 	}
 	if (s.Err == nil && len(a.agents.list) == 0 && !a.launch.busy) || a.deps.Events == nil {
-		return nil
+		return titles
 	}
 	now := a.now()
 	a.agents.until = now.Add(agentsEvery)
-	return a.deps.Events.Expiry(a.agents.until, now)
+	return tea.Batch(titles, a.deps.Events.Expiry(a.agents.until, now))
 }
 
 // agentsDue is the deadline of the next read: it reads, if it is still
@@ -97,10 +110,16 @@ func (a *app) agentsDue(until time.Time) tea.Cmd {
 // agentAt is the most urgent agent at a ticket; ok is false when it has
 // none.
 func (a *app) agentAt(ticket string) (agents.Agent, bool) {
+	return a.mostUrgent(func(ag agents.Agent) bool { return ag.Ticket == ticket })
+}
+
+// mostUrgent is the most urgent of the agents that match, of two equally
+// urgent the first read; ok is false when none matches.
+func (a *app) mostUrgent(match func(agents.Agent) bool) (agents.Agent, bool) {
 	var best agents.Agent
 	found := false
 	for _, ag := range a.agents.list {
-		if ag.Ticket != ticket {
+		if !match(ag) {
 			continue
 		}
 		if !found || ag.State.Urgent(best.State) {
@@ -108,6 +127,39 @@ func (a *app) agentAt(ticket string) (agents.Agent, bool) {
 		}
 	}
 	return best, found
+}
+
+// agentsInOrder are the agents in the order of the area (C9b): the most
+// urgent first, of one state the oldest change first, else as read.
+func (a *app) agentsInOrder() []agents.Agent {
+	out := slices.Clone(a.agents.list)
+	slices.SortStableFunc(out, func(x, y agents.Agent) int {
+		if x.State != y.State {
+			return int(x.State) - int(y.State)
+		}
+		return x.Since.Compare(y.Since)
+	})
+	return out
+}
+
+// agentSummary is the header's summary (C9b): per state, the most urgent
+// first, its glyph in its tone and its number of agents; a state without
+// one is left out.
+func (a *app) agentSummary() []present.AgentCount {
+	var counts [agents.Ended + 1]int
+	for _, ag := range a.agents.list {
+		if ag.State <= agents.Ended {
+			counts[ag.State]++
+		}
+	}
+	var out []present.AgentCount
+	for s, n := range counts {
+		if n > 0 {
+			state := agents.State(s)
+			out = append(out, present.AgentCount{Glyph: present.NewInline(a.glyph(state)), Style: agentStyles[state], Count: n})
+		}
+	}
+	return out
 }
 
 // spinner is the working glyph, one frame per read: braille, one cell
@@ -172,6 +224,53 @@ func (a *app) agentHead(ticket string) (glyph string, style present.Style, text 
 	}
 	word := uitext.Inline(agentWords[ag.State]).String()
 	return a.glyph(ag.State), agentStyles[ag.State], uitext.Fill(uitext.AgentLine, word, age(a.now().Sub(ag.Since))).String(), true
+}
+
+// agentMeta are the meta bar's first lines for the ticket's most urgent
+// agent (C9b): a faint label, then its glyph in its tone, its word and how
+// long its state has lasted, then an empty line before the facts. A value
+// too long for the bar is broken at its spaces, the lines after the first
+// under the word, so neither the state nor its age is cut. None without
+// an agent.
+func (a *app) agentMeta(ticket string) []present.MetaLine {
+	ag, ok := a.agentAt(ticket)
+	if !ok {
+		return nil
+	}
+	word := uitext.Inline(agentWords[ag.State]).String()
+	out := []present.MetaLine{{Text: uitext.Inline(uitext.BarAgent), Style: present.Faint}}
+	for i, line := range barLines(word, age(a.now().Sub(ag.Since)), view.MetaRoom-markCells) {
+		if i == 0 {
+			out = append(out, present.MetaLine{Lead: present.NewInline(a.glyph(ag.State)), LeadStyle: agentStyles[ag.State], Text: present.NewInline(line)})
+			continue
+		}
+		out = append(out, present.MetaLine{Text: present.NewInline(strings.Repeat(" ", markCells) + line)})
+	}
+	return append(out, present.MetaLine{})
+}
+
+// markCells is the room of a glyph and the space after it.
+const markCells = 2
+
+// barLines breaks the agent's word and age at their spaces into lines of
+// at most width cells (the client's own ASCII text); the "· " before the
+// age stays with it. A word wider than the line stands alone and is cut
+// by the view.
+func barLines(word, age string, width int) []string {
+	words := append(strings.Fields(word), uitext.Fill(uitext.AgentMeta, age).String())
+	var out []string
+	line := ""
+	for _, w := range words {
+		if line != "" && len(line)+1+len(w) > width {
+			out = append(out, line)
+			line = ""
+		}
+		if line != "" {
+			line += " "
+		}
+		line += w
+	}
+	return append(out, line)
 }
 
 // age is how long a state has lasted, in its largest whole unit; a time

@@ -1,6 +1,8 @@
 package agents
 
 import (
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
@@ -34,6 +36,30 @@ func (w *Watcher) Read(ref uint64) tea.Cmd {
 		msg, ok := worker.Run(w.sup, "agents: read", func() tea.Msg {
 			agents, err := Read(w.dir, w.procs)
 			return Snapshot{Ref: ref, Agents: agents, Err: err}
+		})
+		if !ok {
+			if w.sup.Err() != nil {
+				return worker.Fatal{}
+			}
+			return nil
+		}
+		return msg
+	}
+}
+
+// Marked is the message of one MarkSeen: the agent, and why it is not
+// recorded (nil when it is).
+type Marked struct {
+	ID  string
+	Err error
+}
+
+// See is the command that records the agent id as seen (MarkSeen), under
+// the supervisor like Read; at is the model's time of the open.
+func (w *Watcher) See(id string, at time.Time) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := worker.Run(w.sup, "agents: seen", func() tea.Msg {
+			return Marked{ID: id, Err: MarkSeen(w.dir, id, at)}
 		})
 		if !ok {
 			if w.sup.Err() != nil {

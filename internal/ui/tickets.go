@@ -657,7 +657,10 @@ func (m Model) receiveProjects(r gateway.ProjectsResult) (Model, tea.Cmd) {
 		a.leaveList()
 		v.rows, v.selected = nil, ""
 		v.removed()
-		m.focus = view.List
+		if m.focus != view.Agents {
+			// The agents' list keeps the focus (C9b).
+			m.focus = view.List
+		}
 	default:
 		v.failed(d, r.Answer)
 	}
@@ -670,6 +673,7 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+
 	v := a.tickets
 	if v == nil {
 		return m, nil
@@ -681,6 +685,9 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 	switch d {
 	case cache.Replace:
 		v.rows, v.total, v.perPage = r.Page.Data, r.Page.Meta.Total, r.Page.Meta.PerPage
+		for _, row := range r.Page.Data {
+			a.learnTitle(row.ID, row.Title)
+		}
 		v.fresh(a.now())
 		v.reselect()
 		if m.focus == view.Object && v.opened == "" && a.detail == nil {
@@ -745,6 +752,11 @@ func (m Model) receiveDetail(r gateway.TicketResult) (Model, tea.Cmd) {
 	d, ok := m.receive(r)
 	if !ok {
 		return m, nil
+	}
+	if d == cache.Replace {
+		// An accepted read renews an agent's title, whatever the pane
+		// shows by now (C9b); a removal takes it (receive).
+		a.learnTitle(r.Record.ID, r.Record.Title)
 	}
 	v := a.detail
 	if v == nil {

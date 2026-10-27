@@ -24,8 +24,24 @@ type Screen struct {
 	Chooser Column
 	List    Column
 	Object  Column
+	// Agents is the Agents area under the organisations (C9b): one row
+	// per agent; no rows while there is none, and then no area.
+	Agents Column
 	// Help are the bindings that act right now, in the order they are shown.
 	Help []KeyHelp
+	// AgentCounts is the summary of the agents at the header's right
+	// (C9b): one entry per state that has an agent, the most urgent
+	// first; nil without an agent.
+	AgentCounts []AgentCount
+}
+
+// AgentCount is one state of the agents' summary: its glyph in its tone
+// and how many agents are in it. The glyph's shape says the state, the
+// tone only weighs it.
+type AgentCount struct {
+	Glyph Inline
+	Style Style
+	Count int
 }
 
 // Column is one of the three panes.
@@ -53,9 +69,13 @@ type Column struct {
 }
 
 // MetaLine is one line of the meta bar: a label or a value, in its style.
+// Lead, when set, stands before the text in a style of its own: the glyph
+// of an agent's state (C9b), one cell.
 type MetaLine struct {
-	Text  Inline
-	Style Style
+	Text      Inline
+	Style     Style
+	Lead      Inline
+	LeadStyle Style
 }
 
 // Row is one entry of a list: a first line with an optional value at its

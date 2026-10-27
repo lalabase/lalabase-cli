@@ -20,18 +20,22 @@
 //     renamed), so a reader sees the old state or the new one;
 //   - <agent id>.lock, the hook's lock: hooks of one agent may overlap (a
 //     Stop and the tools of a background agent), and a read, change and
-//     write back would otherwise lose one of them.
+//     write back would otherwise lose one of them;
+//   - <agent id>.seen, written once by the client (C9b, MarkSeen, created
+//     exclusively) after the person opened the agent: it is seen. The
+//     hook never reads or writes it.
 //
-// Each file has one writer. The title of a ticket is never in them: it
-// comes from the cache.
+// Each file has one writer. The title of a ticket is never in them: the
+// interface takes it from the session (the cache, or a read of the
+// ticket).
 //
 // Threat model: internal/privatefs's, the one of the config (another local
-// user without root must not forge a state, a launch or a hook). The
-// directory is the user's alone (0700, privatefs.CheckDirs on the whole
-// way), the files are 0600 and read as private files (privatefs.OwnFile)
-// through internal/safefile, at most maxFile bytes. The hook never makes the
-// directory: the launch does, and a hook that finds none, or one that fails
-// a check, writes nothing.
+// user without root must not forge a state, a launch, a seen mark or a
+// hook). The directory is the user's alone (0700, privatefs.CheckDirs on
+// the whole way), the files are 0600 and read as private files
+// (privatefs.OwnFile) through internal/safefile, at most maxFile bytes.
+// The hook never makes the directory: the launch does, and a hook that
+// finds none, or one that fails a check, writes nothing.
 //
 // A hook's input is foreign: it carries the person's prompt and paths.
 // Nothing of it is shown. The session and subagent ids are checked; the
@@ -70,13 +74,15 @@ const (
 	launchSuffix = ".launch.json"
 	stateSuffix  = ".state.json"
 	lockSuffix   = ".lock"
+	seenSuffix   = ".seen"
 	tempPrefix   = ".tmp-"
 )
 
-// FormatVersion is the version of both files' JSON.
+// FormatVersion is the version of the files' JSON.
 const FormatVersion = 1
 
-// maxFile bounds a file of an agent, including pending requests and calls.
+// maxFile bounds a file of an agent: a few hundred bytes each, the state
+// more with its pending requests and calls.
 const maxFile = 4 << 10
 
 // maxWalk bounds the directory entries a read visits.

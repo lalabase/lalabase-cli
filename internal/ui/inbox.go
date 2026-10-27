@@ -96,6 +96,10 @@ func (m *Model) receive(received gateway.Received) (cache.Decision, bool) {
 	if d == cache.Replace || d == cache.Remove {
 		a.filed[key] = max(a.filed[key], seq)
 	}
+	if d == cache.Remove {
+		// Every accepted removal of a ticket takes its agent's title (C9b).
+		a.titlesRemoved(key)
+	}
 	if d == cache.KeepStale {
 		a.diskReadsGoStale(key)
 	}
@@ -378,6 +382,10 @@ func (m Model) retryOrRefresh() (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.focus == view.Agents {
+		// The agents' list: the titles whose read failed (C9b).
+		return m, a.retryTitles()
+	}
 	if a.anyFailed() {
 		var cmds []tea.Cmd
 		for i := stepInitialize; i < stepCounters; i++ {
@@ -387,6 +395,10 @@ func (m Model) retryOrRefresh() (Model, tea.Cmd) {
 		}
 		if a.steps[stepCounters].state == failed {
 			cmds = append(cmds, a.issueCounters())
+		}
+		if m.focus == view.Navigation {
+			// The titles of the agents under the chooser too (C9b).
+			cmds = append(cmds, a.retryTitles())
 		}
 		if m.focus == view.Object && a.origin != nil {
 			cmds = append(cmds, m.refreshSection())
@@ -418,6 +430,8 @@ func (m Model) retryOrRefresh() (Model, tea.Cmd) {
 	if a.steps[stepCounters].state == ready {
 		cmds = append(cmds, a.issueCounters())
 	}
+	// The titles of the agents under the chooser whose read failed (C9b).
+	cmds = append(cmds, a.retryTitles())
 	return m, tea.Batch(cmds...)
 }
 
@@ -445,7 +459,8 @@ func (m Model) canRefresh() bool {
 				return true
 			}
 		}
-		return (a.steps[stepCounters].state == failed && countersFree) || linkedFree || activeFree || sectionFree
+		titles := m.focus == view.Navigation && a.titlesFailed()
+		return (a.steps[stepCounters].state == failed && countersFree) || linkedFree || activeFree || sectionFree || titles
 	}
 	if m.focus == view.Object && a.origin != nil {
 		return linkedFree
@@ -456,5 +471,5 @@ func (m Model) canRefresh() bool {
 	if m.focus != view.Navigation && a.projects != nil {
 		return sectionFree
 	}
-	return a.steps[stepOrganisations].state == ready || (a.steps[stepCounters].state == ready && countersFree)
+	return a.steps[stepOrganisations].state == ready || (a.steps[stepCounters].state == ready && countersFree) || a.titlesFailed()
 }

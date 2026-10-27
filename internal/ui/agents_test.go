@@ -21,6 +21,21 @@ type fakeWatcher struct {
 	refs   []uint64
 	agents []agents.Agent
 	err    error
+	// marks are the agents See recorded as seen (C9b).
+	marks []string
+}
+
+func (f *fakeWatcher) See(id string, _ time.Time) tea.Cmd {
+	f.mu.Lock()
+	f.marks = append(f.marks, id)
+	f.mu.Unlock()
+	return func() tea.Msg { return agents.Marked{ID: id} }
+}
+
+func (f *fakeWatcher) seen() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.marks...)
 }
 
 func (f *fakeWatcher) Read(ref uint64) tea.Cmd {

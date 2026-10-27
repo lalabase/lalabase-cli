@@ -17,6 +17,11 @@
 //     retries at most six per minute). What is held waits for the window to
 //     roll on; the person's actions are never counted or held, and a
 //     background read a person joins starts as theirs;
+//   - idle work (C9b: the titles of the agents' tickets) is background work
+//     below the background: it starts only while no background job waits
+//     and fewer than IdleShare starts are in the window, so it never spends
+//     the budget's other half, which stays the previews'. A read a preview
+//     or a person joins starts as theirs;
 //   - the queue's own goroutines (a shared read, the wake-up after a pause)
 //     run under one lifetime (WithLifetime, internal/worker). It ends them;
 //     a panic in them is recovered there and becomes its fatal error, and
@@ -44,6 +49,9 @@ const (
 	User Priority = iota
 	// Background: a refresh or a preview.
 	Background
+	// Idle: work nobody looks at yet (C9b), after every background job and
+	// within IdleShare of the budget.
+	Idle
 )
 
 // Kind decides what may be shared and retried.
@@ -112,6 +120,8 @@ const (
 	// BudgetWindow, a retry being a start of its own.
 	BackgroundBudget = 6
 	BudgetWindow     = time.Minute
+	// IdleShare is the part of the budget idle work may spend in a window.
+	IdleShare = BackgroundBudget / 2
 )
 
 // Queue schedules jobs.
@@ -160,17 +170,18 @@ type ticket struct {
 
 // flight is a read shared by its callers. Its priority follows the callers
 // still waiting: a person joining lifts it, the last person leaving lets it
-// fall back to background work.
+// fall back to background work, and the last background caller to idle.
 type flight struct {
 	id     atomic.Uint64 // its number, given at each send; 0 before the first
 	ctx    context.Context
 	cancel context.CancelFunc
 	refs   int
-	users  int // callers of priority User among refs
-	prio   Priority
-	ticket *ticket // the place it waits for, while it waits
-	done   chan struct{}
-	ans    transport.Answer
+	// callers counts refs by their priority; the flight has the highest.
+	callers [Idle + 1]int
+	prio    Priority
+	ticket  *ticket // the place it waits for, while it waits
+	done    chan struct{}
+	ans     transport.Answer
 }
 
 // setPrio changes a waiting flight's priority and lets the queue act on it.
@@ -256,18 +267,14 @@ func (q *Queue) join(job Job) (f *flight, fresh bool, tell time.Time, mustTell b
 	f, ok := q.shared[job.Key]
 	if ok {
 		f.refs++
-		if job.Priority == User {
-			f.users++
-			tell, mustTell = q.setPrio(f, User)
-		}
+		f.callers[job.Priority]++
+		tell, mustTell = q.setPrio(f, f.highest())
 		return f, false, tell, mustTell
 	}
 	// The request belongs to the queue's lifetime, never to its first caller.
 	runCtx, cancel := context.WithCancel(q.life.Context())
 	f = &flight{ctx: runCtx, cancel: cancel, refs: 1, prio: job.Priority, done: make(chan struct{})}
-	if job.Priority == User {
-		f.users = 1
-	}
+	f.callers[job.Priority] = 1
 	q.shared[job.Key] = f
 	return f, true, time.Time{}, false
 }
@@ -277,11 +284,9 @@ func (q *Queue) leave(job Job, f *flight) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	f.refs--
-	if job.Priority == User {
-		f.users--
-		if f.users == 0 {
-			q.setPrio(f, Background)
-		}
+	f.callers[job.Priority]--
+	if f.refs > 0 {
+		q.setPrio(f, f.highest())
 	}
 	if f.refs == 0 {
 		// Nobody waits any more: cancel it, and let a new caller start
@@ -291,6 +296,16 @@ func (q *Queue) leave(job Job, f *flight) {
 			delete(q.shared, job.Key)
 		}
 	}
+}
+
+// highest is the priority of the flight's most urgent caller still there.
+func (f *flight) highest() Priority {
+	for p := User; p < Idle; p++ {
+		if f.callers[p] > 0 {
+			return p
+		}
+	}
+	return Idle
 }
 
 // land ends a shared read with its answer. A late read never removes the
@@ -612,7 +627,7 @@ func (q *Queue) dispatch() {
 		}
 		q.remove(t)
 		q.running++
-		if t.prio == Background {
+		if t.prio != User {
 			t.background = true
 			q.bgRunning++
 			t.started = now
@@ -625,7 +640,8 @@ func (q *Queue) dispatch() {
 
 // next is the wait to grant next, or nil: the first of the person's, else the
 // first background wait if a background place is free and the budget has
-// a start left; without one, the wait goes on until the window rolls.
+// a start left, else the first idle wait while the window holds fewer than
+// IdleShare starts; without one, the wait goes on until the window rolls.
 func (q *Queue) next(now time.Time) *ticket {
 	for _, t := range q.waiting {
 		if t.prio == User {
@@ -638,6 +654,15 @@ func (q *Queue) next(now time.Time) *ticket {
 	for _, t := range q.waiting {
 		if t.prio == Background {
 			if !q.budgetFree(now) {
+				q.waitForBudget(now)
+				return nil
+			}
+			return t
+		}
+	}
+	for _, t := range q.waiting {
+		if t.prio == Idle {
+			if q.budgetFree(now); len(q.starts) >= IdleShare {
 				q.waitForBudget(now)
 				return nil
 			}

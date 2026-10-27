@@ -46,6 +46,8 @@ const (
 	MarkRead
 	// C7: Claude Code beside the ticket.
 	Launch
+	// C9b: the agents, and back from them.
+	OpenAgents
 )
 
 type keyAction struct {
@@ -122,6 +124,8 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: MarkRead}
 	case "x":
 		return keyAction{Kind: Launch}
+	case "A":
+		return keyAction{Kind: OpenAgents}
 	}
 	return keyAction{}
 }
@@ -151,7 +155,23 @@ func (m Model) small() bool {
 		return true
 	}
 	g := layoutWith(m.width, m.height, len(view.HelpLines(toHelp(m.bindings(false)), m.width, m.widthMethod)), m.focus)
-	return view.Capacity(m.focusedColumn(), g) < 1
+	return m.focusedCapacity(g) < 1
+}
+
+// focusedCapacity is the number of rows (or lines) the focused column
+// shows at once in g: the Agents area, in three columns, has the part of
+// the navigation it takes, the chooser the rest (C9b).
+func (m Model) focusedCapacity(g view.Geometry) int {
+	c := m.focusedColumn()
+	switch {
+	case m.focus == view.Agents && g.Columns == 3:
+		return view.AgentsCapacity(m.chooserColumn(), c, g.BodyHeight)
+	case m.focus == view.Navigation && m.app != nil:
+		// The navigation shares its pane with the Agents area, in every
+		// layout it shows in.
+		return view.ChooserCapacity(c, m.agentsColumn(), g.BodyHeight)
+	}
+	return view.Capacity(c, g)
 }
 
 // focusedColumn is the column the focus is on, of the session or of the
@@ -166,6 +186,8 @@ func (m Model) focusedColumn() present.Column {
 		return m.listColumn()
 	case view.Object:
 		return m.objectColumn()
+	case view.Agents:
+		return m.agentsColumn()
 	}
 	return m.chooserColumn()
 }
@@ -191,6 +213,10 @@ func (m Model) bindings(small bool) []binding {
 	}
 	out := []binding{{Quit, uitext.QuitKey, uitext.QuitHelp}, {Interrupt, uitext.InterruptKey, uitext.InterruptHelp}}
 	if small {
+		if m.focus == view.Agents {
+			// A resize left the agents no room: the way back stays (C9b).
+			out = append(out, binding{Back, uitext.EscapeKey, uitext.BackHelp})
+		}
 		return out
 	}
 	a := m.app
@@ -210,6 +236,11 @@ func (m Model) bindings(small bool) []binding {
 		}
 		return out
 	}
+	if m.focus == view.Agents {
+		// The agents' list (C9b): its own keys; esc and a second A go
+		// back to where it was opened.
+		return append(out, m.agentsBindings()...)
+	}
 	switch m.focus {
 	case view.Navigation:
 		out = append(out, m.chooserBindings()...)
@@ -217,6 +248,9 @@ func (m Model) bindings(small bool) []binding {
 		out = append(out, m.listBindings()...)
 	case view.Object:
 		out = append(out, m.objectBindings()...)
+	}
+	if len(a.agents.list) > 0 && m.agentsFit() {
+		out = append(out, binding{OpenAgents, uitext.AgentsKey, uitext.AgentsHelp})
 	}
 	if m.canRefresh() {
 		help := uitext.RefreshHelp
@@ -356,6 +390,14 @@ func (m Model) objectBindings() []binding {
 			help = uitext.BackHelp
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, help})
+	case a.agentTicket():
+		// The ticket an agent opened (C9b): its keys, Esc to the projects.
+		out = append(out, m.ticketBindings()...)
+		help := uitext.ListHelp
+		if a.detail.expansion != nil {
+			help = uitext.CollapseHelp
+		}
+		out = append(out, binding{Back, uitext.EscapeKey, help})
 	default:
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.ListHelp})
 	}
@@ -437,6 +479,10 @@ func (m Model) allowed() map[Action]bool {
 	}
 	if m.mode == TextEntry && !m.small() {
 		set[InsertText] = true
+	}
+	if set[Back] && m.focus == view.Agents {
+		// A second A closes the agents as esc does; the help names esc.
+		set[OpenAgents] = true
 	}
 	return set
 }

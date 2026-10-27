@@ -1,6 +1,7 @@
 package view
 
 import (
+	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -29,12 +30,8 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 		}
 		return strings.Join(lines, "\n")
 	}
-	header := uitext.Inline(uitext.App).String() + " | " + uitext.Inline(uitext.DefaultProfile).String()
-	if s.Identity.String() != "" {
-		header += " | " + s.Identity.String()
-	}
 	context := contextLine(s, g, focus)
-	lines := []string{fit(header, g.Width, method)}
+	lines := []string{headerLine(s, g.Width, method)}
 	switch {
 	case s.Status.String() == "":
 		lines = append(lines, fit(context, g.Width, method))
@@ -50,6 +47,10 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 	panes := Visible(g, focus)
 	columns := make([][]string, len(panes))
 	for i, p := range panes {
+		if p == Navigation {
+			columns[i] = navigation(s, ColumnWidth(g, p), g.BodyHeight, focus, method)
+			continue
+		}
 		columns[i] = pane(column(s, p), ColumnWidth(g, p), g.BodyHeight, p == focus, method)
 	}
 	for row := 0; row < g.BodyHeight; row++ {
@@ -62,6 +63,59 @@ func Render(s present.Screen, g Geometry, focus Pane, method ansi.Method) string
 	return strings.Join(append(lines, helpLines...), "\n")
 }
 
+// headerLine is the first line: the app, the profile and the identity on
+// the left, the agents' summary at the right end (C9b) when there is one.
+// Where the line is too narrow for both, the identity is cut first; then
+// the word "Agents" goes, then the counts one by one from the least
+// urgent; the app and the profile are never cut for the summary.
+func headerLine(s present.Screen, width int, method ansi.Method) string {
+	base := uitext.Inline(uitext.App).String() + " | " + uitext.Inline(uitext.DefaultProfile).String()
+	header, least := base, base
+	if s.Identity.String() != "" {
+		header += " | " + s.Identity.String()
+		least += " | " + uitext.Inline(uitext.Ellipsis).String()
+	}
+	counts := s.AgentCounts
+	word := width >= summaryWordFrom
+	for len(counts) > 0 {
+		summary := agentSummary(counts, word)
+		room := width - method.StringWidth(summary.plain()) - 1
+		if room >= method.StringWidth(least) {
+			left := fit(header, room, method)
+			return left + strings.Repeat(" ", width-method.StringWidth(left)-method.StringWidth(summary.plain())) + summary.render(width, method)
+		}
+		if word {
+			word = false
+			continue
+		}
+		counts = counts[:len(counts)-1]
+	}
+	return fit(header, width, method)
+}
+
+// summaryWordFrom is the width from which the summary starts with its
+// word: below it the glyphs say it alone.
+const summaryWordFrom = 120
+
+// agentSummary is the summary's line: the word, if any, then per state
+// its glyph in its tone and its count, parted by " · ".
+func agentSummary(counts []present.AgentCount, word bool) screenLine {
+	var l screenLine
+	if word {
+		l = append(l, part{text: uitext.Inline(uitext.Agents).String() + " "})
+	}
+	for i, c := range counts {
+		if i > 0 {
+			l = append(l, part{text: summarySeparator})
+		}
+		l = append(l, part{text: c.Glyph.String(), style: c.Style}, part{text: " " + strconv.Itoa(c.Count)})
+	}
+	return l
+}
+
+// summarySeparator parts the summary's counts.
+const summarySeparator = " · "
+
 // statusSeparator stands between the path and a notice beside it.
 const statusSeparator = " | "
 
@@ -70,6 +124,8 @@ const statusSeparator = " | "
 // it.
 func contextLine(s present.Screen, g Geometry, focus Pane) string {
 	switch {
+	case focus == Agents && g.Columns < 3:
+		return s.Agents.Title.String()
 	case g.Columns == 1:
 		step := uitext.Inline(uitext.PathStep).String()
 		context := s.Crumbs[0].String()
@@ -133,8 +189,71 @@ func column(s present.Screen, which Pane) present.Column {
 		return s.List
 	case Object:
 		return s.Object
+	case Agents:
+		return s.Agents
 	}
 	return s.Chooser
+}
+
+// navigation is the navigation pane: the organisations, and under them,
+// while an agent exists, the Agents area in a frame of its own
+// (AgentsHeight), focused when the focus is in it.
+func navigation(s present.Screen, width, height int, focus Pane, method ansi.Method) []string {
+	area := AgentsHeight(s.Chooser, s.Agents, height)
+	lines := pane(s.Chooser, width, height-area, focus == Navigation, method)
+	if area == 0 {
+		return lines
+	}
+	return append(lines, paneOf(s.Agents, width, area, focus == Agents, agentsRowLines(s.Agents, height), method)...)
+}
+
+// agentsRowLines is the height of the area's rows in a navigation pane of
+// height lines: two with a second line, one without, as in any list; the
+// half of the pane the area may take decides whether it is too short for
+// two (compactBelow), never the few lines a short list of agents needs.
+func agentsRowLines(c present.Column, height int) int {
+	return rowHeight(c, height/2-frameLines)
+}
+
+// AgentsCapacity is the number of agents the area shows at once in a
+// navigation pane of height lines; 0 without an area.
+func AgentsCapacity(chooser, c present.Column, height int) int {
+	body := AgentsHeight(chooser, c, height) - frameLines
+	if c.Notice.String() != "" {
+		body--
+	}
+	if body <= 0 {
+		return 0
+	}
+	return max(1, body/agentsRowLines(c, height))
+}
+
+// AgentsHeight is the height of the Agents area under the organisations
+// in a navigation pane of height lines: its frame and its rows, at most
+// half the pane, and never so much that the chooser above it keeps no row
+// (its frame, its notice and one entry); 0 without rows, or where what is
+// left holds no frame with a row in it. Beyond that its rows scroll with
+// the cursor.
+func AgentsHeight(chooser, c present.Column, height int) int {
+	keep := frameLines + 1
+	if chooser.Notice.String() != "" {
+		keep++
+	}
+	limit := min(height/2, height-keep)
+	if len(c.Rows) == 0 || limit < frameLines+1 {
+		return 0
+	}
+	need := frameLines + len(c.Rows)*agentsRowLines(c, height)
+	if c.Notice.String() != "" {
+		need++
+	}
+	return min(need, limit)
+}
+
+// ChooserCapacity is the number of entries the chooser shows at once in a
+// navigation pane of height lines, the Agents area under it taken off.
+func ChooserCapacity(chooser, agents present.Column, height int) int {
+	return Capacity(chooser, Geometry{BodyHeight: height - AgentsHeight(chooser, agents, height)})
 }
 
 // Capacity is the number of rows (or lines of text) a column of this
@@ -191,11 +310,16 @@ func rowHeight(c present.Column, body int) int {
 // bold, the others' faint, so the eye finds where the keys act. A pane too
 // small for a frame is its text alone.
 func pane(c present.Column, width, height int, focused bool, method ansi.Method) []string {
+	return paneOf(c, width, height, focused, 0, method)
+}
+
+// paneOf is pane with rows of lines lines each (0: by the body, rowHeight).
+func paneOf(c present.Column, width, height int, focused bool, lines int, method ansi.Method) []string {
 	if height <= 0 {
 		return nil
 	}
 	if width <= frameCells || height <= frameLines {
-		return content(c, width, height, focused, method)
+		return contentOf(c, width, height, focused, lines, method)
 	}
 	border := lipgloss.NewStyle().Faint(true)
 	title := lipgloss.NewStyle()
@@ -204,13 +328,13 @@ func pane(c present.Column, width, height int, focused bool, method ansi.Method)
 		title = title.Bold(true)
 	}
 	run := width - 2 // the border between the corners
-	lines := make([]string, 0, height)
-	lines = append(lines, frameTop(c.Title.String(), run, border, title, method))
+	out := make([]string, 0, height)
+	out = append(out, frameTop(c.Title.String(), run, border, title, method))
 	left, right := border.Render(frameSide)+" ", " "+border.Render(frameSide)
-	for _, line := range content(c, width-frameCells, height-frameLines, focused, method) {
-		lines = append(lines, left+line+right)
+	for _, line := range contentOf(c, width-frameCells, height-frameLines, focused, lines, method) {
+		out = append(out, left+line+right)
 	}
-	return append(lines, border.Render(frameBottomLeft+strings.Repeat(rule, run)+frameBottomRight))
+	return append(out, border.Render(frameBottomLeft+strings.Repeat(rule, run)+frameBottomRight))
 }
 
 // frameTop is the top border, run cells between its corners, with the
@@ -229,6 +353,11 @@ func frameTop(text string, run int, border, title lipgloss.Style, method ansi.Me
 // content is what stands inside a pane's frame, width by height, every
 // line padded to the width: the notice, then the rows or the text.
 func content(c present.Column, width, height int, focused bool, method ansi.Method) []string {
+	return contentOf(c, width, height, focused, 0, method)
+}
+
+// contentOf is content with rows of rowLines lines each (0: by the body).
+func contentOf(c present.Column, width, height int, focused bool, rowLines int, method ansi.Method) []string {
 	if height <= 0 {
 		return nil
 	}
@@ -242,7 +371,10 @@ func content(c present.Column, width, height int, focused bool, method ansi.Meth
 	var drawn []string
 	switch text := textArea(c, width); {
 	case c.Rows != nil:
-		drawn = rows(c, width, body, focused, method)
+		if rowLines == 0 {
+			rowLines = rowHeight(c, body)
+		}
+		drawn = rows(c, width, body, rowLines, focused, method)
 	case text < width:
 		drawn = besideMeta(scrollable(c, text, body, method), c.Meta, text, body, method)
 	default:
@@ -258,11 +390,10 @@ func content(c present.Column, width, height int, focused bool, method ansi.Meth
 // rows renders the visible rows, the cursor kept in sight: the offset moves
 // only when the cursor would be outside. The cursor row is a bar: reversed
 // in the focused pane, on a grey ground elsewhere.
-func rows(c present.Column, width, body int, focused bool, method ansi.Method) []string {
+func rows(c present.Column, width, body, h int, focused bool, method ansi.Method) []string {
 	if body <= 0 || width <= 0 {
 		return nil
 	}
-	h := rowHeight(c, body)
 	capacity := max(1, body/h)
 	offset := max(0, min(c.Offset, max(0, len(c.Rows)-capacity)))
 	if c.Cursor >= 0 && c.Cursor < len(c.Rows) {
@@ -514,6 +645,10 @@ const (
 	minMetaText = 52
 )
 
+// MetaRoom is the width of a line of the meta bar: the bar less its rule
+// and the spaces either side of it.
+const MetaRoom = metaCells - 3
+
 // MetaFits: a pane of this inner width has room for the meta bar beside
 // its text. The model asks it before it builds the bar, so the facts stand
 // either in the bar or in the ticket's head, never in both or neither.
@@ -532,7 +667,7 @@ func textArea(c present.Column, width int) int {
 // text's width; the bar starts at the top whatever the text's offset, and
 // a bar longer than the body is cut, its last line marked.
 func besideMeta(text []string, meta []present.MetaLine, width, body int, method ansi.Method) []string {
-	room := metaCells - 3
+	room := MetaRoom
 	rule := " " + lipgloss.NewStyle().Faint(true).Render(metaRule) + " "
 	lines := make([]string, body)
 	for i := range lines {
@@ -544,11 +679,23 @@ func besideMeta(text []string, meta []present.MetaLine, width, body int, method 
 		if i >= len(meta) {
 			continue
 		}
-		value, style := fit(meta[i].Text.String(), room, method), meta[i].Style
-		if i == body-1 && len(meta) > body {
-			value, style = fit(meta[i].Text.String()+uitext.Inline(uitext.Ellipsis).String(), room, method), present.Faint
+		text, lead := meta[i].Text.String(), meta[i].Lead.String()
+		if lead != "" && method.StringWidth(lead) != 1 {
+			lead = ""
 		}
-		lines[i] += styled(value, style)
+		if i == body-1 && len(meta) > body {
+			if lead != "" {
+				text = lead + " " + text
+			}
+			lines[i] += styled(fit(text+uitext.Inline(uitext.Ellipsis).String(), room, method), present.Faint)
+			continue
+		}
+		if lead != "" {
+			// The glyph in its tone, then the text, cut to what is left.
+			lines[i] += styled(lead, meta[i].LeadStyle) + " " + styled(fit(text, room-2, method), meta[i].Style)
+			continue
+		}
+		lines[i] += styled(fit(text, room, method), meta[i].Style)
 	}
 	return lines
 }

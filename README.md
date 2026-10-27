@@ -22,6 +22,9 @@ C2. One `x` in a ticket opens Claude Code beside it (C7): in a new iTerm
 pane, or without iTerm in this terminal until it ends. Since C9a the
 client learns from the session's hooks what each of these agents does, and
 shows it with a glyph in the ticket list and a line in the ticket's head.
+Since C9b it shows every agent of the profile across the organisations: an
+Agents area under the organisations, a glyph at each organisation, a
+summary in the header, and `A` to reach them.
 
 ## Setting up
 
@@ -49,7 +52,20 @@ navigation again.
 
 * **How it is drawn.** Every pane stands in a rounded frame with its title
   in the top border and a space inside either side; the pane in focus has a
-  blue, bold frame and a bold title, the others a faint frame. The line
+  blue, bold frame and a bold title, the others a faint frame. While an
+  agent exists (C9b), the header's first line ends with a summary of the
+  agents per state, the most urgent first, each glyph in its tone with its
+  count, `Agents ! 1 · ⣿ 2 · ✕ 1 · ⠹ 1 · ✓ 1`; a state without an agent is
+  left out, and below 120 columns the word `Agents` too. Where the line is
+  too narrow, the identity on its left is cut first, then the word goes,
+  then the counts from the least urgent; the app and the profile stay
+  whole. The navigation then keeps two cells before each entry for a
+  glyph: an organisation shows its most urgent agent's, "All
+  organisations" and the inbox and tickets entries none. Under the
+  organisations stands the Agents area in a frame of its own, at most half
+  the column high, its rows scrolling beyond that: per agent its glyph,
+  `#<number>` and the ticket's title, and under it its organisation when
+  that is not the one you are in; a seen agent that ended is faint. The line
   under the header is a path to where you are: the places parted by `›`,
   the search and the page by `·`, as in
   `Nordlicht GmbH › Tickets › Website · search "login" · page 1 of 3` or
@@ -75,7 +91,8 @@ navigation again.
   without one: the glyph is not faint in a done ticket's row, and in the
   cursor bar it takes the bar's colour, since its shape says the state.
   A ticket with an agent has one more line in its head, after the title
-  and its facts: the glyph in its tone, then `Agent <state> · for <age>`. Free text wraps at 80
+  and its facts: the glyph in its tone, then `Agent <state> · for <age>`;
+  where the meta bar stands (below), that line moves into the bar. Free text wraps at 80
   columns at most, however wide the pane. Times are shown in the
   computer's time zone, to the minute, as "28 Aug 15:45", with the year
   when it is not the current one ("3 Nov 2025 09:12").
@@ -87,9 +104,13 @@ navigation again.
   so the open ones stand out. Where the ticket pane is wide enough (76
   cells inside its frame, so from 158 columns with the list in focus, or from 120
   with the ticket in focus), the ticket's facts stand in a bar on its
-  right, which does not scroll: Status in its tone, Project, People (the
-  assignees, then the creator) and Updated, the labels faint, a long name
-  cut with "…"; the head then drops its line of facts. In a narrower pane
+  right, which does not scroll: for a ticket with an agent first (C9b)
+  Agent with the glyph in its tone, the state and its age
+  (`⣿ waiting for you`, then `· 4 min` under it where one line is too
+  short), so a low pane, which cuts the bar's end, keeps it; then Status
+  in its tone, Project, People (the assignees, then the creator) and
+  Updated, the labels faint, a long name cut with "…"; the head then drops
+  its line of facts and its agent's line. In a narrower pane
   they stay in one faint line under the title. Comments by the token's own
   person show the author as "Name (you)", blue and bold; every other author
   is bold without colour. Only the user id from `/api/v1/me` decides, never
@@ -130,7 +151,12 @@ navigation again.
   ticket opens it. `Esc` goes back one level, `R` refreshes what is shown
   (the directory and the counters in the chooser, the open page, the open
   ticket), `PgUp`/`PgDn` move by a screen, `←`/`→` move the focus, `q`
-  quits with 0, Ctrl-C and SIGINT with 130. The help line names exactly
+  quits with 0, Ctrl-C and SIGINT with 130. While an agent exists, `A`
+  opens the agents (C9b): in three columns the focus moves into the
+  Agents area, in two the agents take the list's place, in one they are a
+  screen of their own; `↑`/`↓` choose one, `Enter` opens its ticket, `Esc`
+  or `A` again go back. (`a` is not this key: it is kept for "assign to
+  me".) The help line names exactly
   the keys that act, on as many lines as it takes.
 * **The mouse wheel** scrolls the object pane (a ticket, the details of a
   notification) by three lines when the pointer is over it, whether the
@@ -331,7 +357,8 @@ navigation again.
     per agent `<id>.launch.json` (the ticket's address, the pane, written
     once by the launch), `<id>.state.json` (the state, when it began, the
     latest session id, the pid and its start time, replaced whole by the
-    hook under the lock `<id>.lock`). They are kept like the config
+    hook under the lock `<id>.lock`) and, once you opened the agent from
+    the client, `<id>.seen` (C9b, below). They are kept like the config
     (`internal/privatefs`); the hook never makes the directory. An agent
     stays until it is removed (a later slice); the launch directory's day
     and the disk cache do not touch them.
@@ -376,6 +403,38 @@ navigation again.
     approval", the second "working", until the next prompt or the
     session's end. Both follow an action of the person in that pane, and
     the state's age shows how old it is.
+  * **Across the organisations (C9b).** The Agents area, the glyphs at the
+    organisations and the header's summary show every agent of the
+    profile on this server, whichever organisation is open; agents of
+    another profile or another server appear nowhere. The area orders them
+    by urgency, then the oldest change first. Of an agent's files only
+    its number and its state are shown: the organisation's name and the
+    ticket's title come from the session (the directory, the ticket in the
+    pane, the list shown, the cache). A title the session lacks is read
+    once per ticket through the usual way (`get_ticket`), as idle work:
+    after every waiting preview, and with at most half of the background
+    budget, so the previews keep at least the other half (a title read
+    that runs holds the background place while it runs); the disk cache
+    is asked beside it,
+    and a title found there cancels the server's read while it still
+    waits;
+    until it comes, and after a failed read, the row shows `#<number>`
+    alone, and `R` (in the chooser or in the agents) reads the failed ones
+    again. A ticket of an organisation that is not in the list has no
+    second line. The area and the summary follow the reading every 500
+    ms; they read no files of their own.
+  * **Opening an agent.** `Enter` on an agent opens its ticket in its
+    organisation's tickets (the projects of that organisation, its project
+    selected, the ticket in the pane; or the list of its project, when
+    that is the one shown and holds the ticket), as a notification's
+    ticket opens; `Esc` goes back to the projects. An agent that ended or
+    is lost is then seen: an ended one is drawn faint from then on. The
+    client records it in `<id>.seen` (0600, created exclusively, never
+    replaced; the hook neither reads nor writes it), so it stays seen
+    after a restart. A seen file that is not a private file of your own
+    in its format (broken, a link, open to others) counts as not seen, and
+    the agent stays listed. The reading visits at most 4096 entries of the
+    directory, now up to four per agent.
 * **A comment that is gone.** When the server answers a comment read whole
   with "not found" (it was deleted or made private), its cached text goes
   and is hidden at once, the ticket stays and says "Comment unavailable",
@@ -723,7 +782,12 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   429 or when nothing was sent. Background work (previews, their reloads,
   their retries) starts at most six times per rolling minute; what is held
   waits for the window to roll on, the person's actions are never counted
-  or held, and a held background read a person joins starts as theirs. A
+  or held, and a held background read a person joins starts as theirs.
+  Idle work (C9b: the titles of the agents' tickets) waits behind every
+  background job and starts only while fewer than three starts are in the
+  window, so at least the other half of the budget stays the previews'
+  (one that runs holds the background place meanwhile); a preview
+  or a person joining an idle read lifts it. A
   shared request belongs to the program's
   lifetime, not to its first caller: it is canceled when its last caller
   leaves or the program stops its work (on quitting, or after a fatal error).

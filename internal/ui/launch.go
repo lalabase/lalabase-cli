@@ -49,8 +49,9 @@ func (m Model) launchTarget() (launch.Ticket, bool) {
 }
 
 // detailOrg is the organisation of the ticket in the pane: the one of the
-// notification it was opened from, or of the list it was opened in; ""
-// when neither is known (the agent's record keeps it, C9a).
+// notification it was opened from, of the list it was opened in, or of
+// the projects an agent opened it beside (C9b); "" when none is known
+// (the agent's record keeps it, C9a).
 func (a *app) detailOrg() string {
 	d := a.detail
 	switch {
@@ -58,6 +59,8 @@ func (a *app) detailOrg() string {
 		return a.origin.org
 	case a.tickets != nil && a.tickets.project == d.project:
 		return a.tickets.org
+	case a.agentTicket():
+		return a.projects.org
 	}
 	return ""
 }

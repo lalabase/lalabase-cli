@@ -63,8 +63,11 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case gateway.TicketsResult:
 		return m.receiveTickets(msg)
 	case gateway.TicketResult:
-		if msg.Area == gateway.Expansion {
+		switch msg.Area {
+		case gateway.Expansion:
 			return m.receiveExpansion(msg)
+		case gateway.Titles:
+			return m.receiveTitle(msg)
 		}
 		return m.receiveDetail(msg)
 	case gateway.MarkReadResult:
@@ -75,7 +78,14 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		if m.app == nil {
 			return m, nil
 		}
-		return m, m.app.receiveAgents(msg)
+		cmd := m.app.receiveAgents(msg)
+		if m.focus == view.Agents && len(m.app.agents.list) == 0 {
+			// The last agent is gone: its list closes, and the pane behind
+			// it gets its preview, as after esc.
+			m = m.closeAgents()
+			cmd = tea.Batch(cmd, m.selectionChanged())
+		}
+		return m, cmd
 	case gateway.Result:
 		// A read refused before it was sent: its waiter is freed, nothing
 		// is shown of it.
@@ -239,6 +249,12 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		return m.markRead()
 	case Launch:
 		return m.launchClaude()
+	case OpenAgents:
+		if m.focus == view.Agents {
+			m = m.closeAgents()
+			return m, m.selectionChanged()
+		}
+		return m.openAgents()
 	}
 	return m, nil
 }
@@ -250,6 +266,8 @@ func (m Model) move(delta int) (Model, tea.Cmd) {
 	switch m.focus {
 	case view.Navigation:
 		a.moveHighlight(delta)
+	case view.Agents:
+		a.moveAgent(delta)
 	case view.Object:
 		if a.detail != nil {
 			return m.moveComment(delta), nil
@@ -357,6 +375,8 @@ func (m Model) open() (Model, tea.Cmd) {
 			return m.openProjects(a.highlight)
 		}
 		return m.activate(a.highlight)
+	case view.Agents:
+		return m.openAgent()
 	case view.List:
 		switch {
 		case a.active != nil:
@@ -382,6 +402,9 @@ func (m Model) open() (Model, tea.Cmd) {
 func (m Model) back() (Model, tea.Cmd) {
 	a := m.app
 	switch m.focus {
+	case view.Agents:
+		m = m.closeAgents()
+		return m, m.selectionChanged()
 	case view.Navigation:
 		if a.shown() {
 			m.focus = view.List
@@ -412,6 +435,14 @@ func (m Model) back() (Model, tea.Cmd) {
 			}
 			m = m.closeTicket()
 			return m, m.selectionChanged()
+		case a.agentTicket():
+			// The ticket an agent opened (C9b): the expansion first, then
+			// the projects; the ticket stays in the pane.
+			if a.detail.expansion != nil {
+				a.closeExpansion()
+				return m, nil
+			}
+			m.focus = view.List
 		default:
 			m.focus = view.List
 		}

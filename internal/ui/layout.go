@@ -65,11 +65,10 @@ func (m Model) withNotice(g view.Geometry) view.Geometry {
 		return g
 	}
 	s := present.Screen{Context: m.context(), Crumbs: m.crumbs(), Chooser: m.chooserColumn(), Status: status, StatusStyle: tone}
-	focused := m.focusedColumn()
 	for lines := view.NoticeLines(s, g, m.focus, m.widthMethod); lines > 0; lines-- {
 		n := g
 		n.NoticeHeight, n.BodyHeight = lines, g.BodyHeight-lines
-		if view.Capacity(focused, n) >= 1 {
+		if m.focusedCapacity(n) >= 1 {
 			return n
 		}
 	}

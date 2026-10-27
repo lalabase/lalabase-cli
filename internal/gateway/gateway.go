@@ -385,7 +385,7 @@ func CheckDetailTicket(t Ticket) error {
 		return errors.New("ticket: a page that is neither plain nor a whole page")
 	}
 	switch t.Area {
-	case Detail:
+	case Detail, Titles:
 		if k.FullText || k.Post != "" {
 			return errors.New("ticket: an expansion in the area of the pages")
 		}

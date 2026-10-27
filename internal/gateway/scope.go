@@ -23,6 +23,10 @@ const (
 	// description or one comment. Closing it moves the area, so a late
 	// answer cannot open it again; the pages stay as they are.
 	Expansion
+	// Titles are the tickets of the agents whose titles the session does
+	// not hold (C9b), read once each beside what the person looks at:
+	// leaving the ticket in the pane does not cancel them.
+	Titles
 	areas
 )
 

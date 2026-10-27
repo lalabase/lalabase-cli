@@ -65,6 +65,8 @@ const (
 	forTickets
 	forDetail
 	forExpansion
+	// forTitle: the title of an agent's ticket (C9b).
+	forTitle
 )
 
 // waiter is one consumer of a read in flight: its ticket, how to cancel it,
@@ -187,6 +189,9 @@ type app struct {
 	// previewToken names the timer of the row the cursor rests on: only the
 	// wake-up with the current token reads a preview.
 	previewToken uint64
+	// titles are the reads of the titles of the agents' tickets the
+	// session did not hold (C9b), by ticket id: each is read once.
+	titles map[string]*title
 
 	// marks are the operations of marking as read, by notification id, each
 	// the newest for its target (C1f); nextOp numbers them. origin is the
@@ -231,6 +236,7 @@ func (a *app) reset() {
 	a.highlight, a.highlightSection, a.active, a.remembered = "", sectionInbox, nil, map[string]position{}
 	a.projects, a.tickets, a.detail = nil, nil, nil
 	a.rememberedProject, a.rememberedTickets, a.previewToken = map[string]string{}, map[string]ticketPosition{}, 0
+	a.titles = map[string]*title{}
 	a.marks, a.origin = map[string]*markOp{}, nil
 	a.pause = time.Time{}
 }

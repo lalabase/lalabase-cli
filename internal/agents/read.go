@@ -28,13 +28,16 @@ type Agent struct {
 	// Since is when the state began: the hook's time of the change, or
 	// the launch's time while the agent starts.
 	Since time.Time
+	// Seen: the person opened the agent from the client once (C9b).
+	Seen bool
 }
 
 // Read reads the agents in dir: every launch record that passes its
 // checks, with its state. A missing directory holds none. An agent whose
 // state file is missing, or fails a check, is starting; one whose process
 // is gone, or whose pid now names a process with another start time, is
-// lost. The agents are ordered by when their state began, the oldest first.
+// lost. One with a seen file of its own is seen. The agents are ordered by
+// when their state began, the oldest first.
 func Read(dir string, procs Procs) ([]Agent, error) {
 	if !filepath.IsAbs(dir) {
 		return nil, nil
@@ -97,7 +100,7 @@ func readAgent(dir, id string, procs Procs) (Agent, bool) {
 		return Agent{}, false
 	}
 	a := Agent{ID: id, Organisation: l.Organisation, Project: l.Project, Ticket: l.Ticket, Number: l.Number,
-		Pane: l.Pane, Session: l.Session, State: Starting, Since: l.At}
+		Pane: l.Pane, Session: l.Session, State: Starting, Since: l.At, Seen: seen(dir, id)}
 	s, err := readState(filepath.Join(dir, id+stateSuffix))
 	if err != nil {
 		return a, true

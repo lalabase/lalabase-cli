@@ -18,7 +18,8 @@ import (
 // C9a through a real terminal: an agent at ticket #6, waiting for the
 // person, recorded as a launch and a hook would (this test's process
 // stands in for Claude Code, so its pid lives). The list shows its glyph
-// before the number, the ticket's head its line. With NO_COLOR the glyph
+// before the number, the ticket's meta bar its line (the head below the
+// bar's width). With NO_COLOR the glyph
 // and the word stay and no colour is drawn; with colour the glyph is
 // magenta.
 func TestPTYAgentsInTheListAndTheHead(t *testing.T) {
@@ -64,7 +65,9 @@ func TestPTYAgentsInTheListAndTheHead(t *testing.T) {
 				c.act(t, keyDown, 120, title)
 			}
 			c.act(t, keyDown, 120, "> ⣿  #6 Ticket 6")
-			c.act(t, keyEnter, 120, "⣿ Agent waiting for you · for 4 min")
+			// The ticket in focus is wide enough for the meta bar (C9b):
+			// the agent's line stands there, under its label.
+			c.act(t, keyEnter, 120, "│ Agent", "│ ⣿ waiting for you", "│   · 4 min")
 			if err := c.send("q"); err != nil {
 				t.Fatal(err)
 			}
