@@ -12,12 +12,11 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/safefile"
 )
 
-// An agent the person opened once from the client is seen (C9b): an ended
-// one is then drawn faint. The client alone writes <agent id>.seen, after
-// the open, and never replaces it; the hook neither reads nor writes it.
-// It survives a restart of the client.
-
 // seenRecord is <agent id>.seen: the format and when it was first seen.
+// An agent the person opened once from the client is seen (C9b): an ended
+// one is then drawn faint. The client alone writes the file, after the
+// open, and never replaces it, so it survives a restart of the client; the
+// hook neither reads nor writes it, since a hook has no person who saw.
 type seenRecord struct {
 	Format int       `json:"format"`
 	At     time.Time `json:"at"`

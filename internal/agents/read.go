@@ -26,7 +26,8 @@ type Agent struct {
 	Pane, Session                 string
 	State                         State
 	// Since is when the state began: the hook's time of the change, or
-	// the launch's time while the agent starts.
+	// the launch's time while the agent starts. For a lost agent it is the
+	// last state its hooks recorded: when the process went is not known.
 	Since time.Time
 	// Seen: the person opened the agent from the client once (C9b).
 	Seen bool
