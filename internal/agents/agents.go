@@ -58,12 +58,14 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 
 	"github.com/gboyke/lalabase-cli/internal/privatefs"
+	"github.com/gboyke/lalabase-cli/internal/safefile"
 )
 
 // Dir is the name of the agents directory in a profile's directory.
@@ -87,6 +89,22 @@ const maxFile = 4 << 10
 
 // maxWalk bounds the directory entries a read visits.
 const maxWalk = 4096
+
+// readOwn reads one of the agents' files into v, as the threat model
+// above says: a regular file, no link in its place, private and of the
+// user's own (privatefs.OwnFile), at most maxFile bytes, JSON. Every reader
+// of a launch record, a state and a seen mark goes through it, then checks
+// the record's own fields.
+func readOwn(path string, v any) error {
+	data, info, err := safefile.ReadRegularNoLink(path, maxFile)
+	if err != nil {
+		return err
+	}
+	if err := privatefs.OwnFile(path, info); err != nil {
+		return err
+	}
+	return json.Unmarshal(data, v)
+}
 
 // idForm is an agent's id and a session id: a UUID, written by the client
 // in lower case.
