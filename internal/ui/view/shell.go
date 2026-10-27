@@ -199,7 +199,7 @@ func column(s present.Screen, which Pane) present.Column {
 // while an agent exists, the Agents area in a frame of its own
 // (AgentsHeight), focused when the focus is in it.
 func navigation(s present.Screen, width, height int, focus Pane, method ansi.Method) []string {
-	area := AgentsHeight(s.Agents, height)
+	area := AgentsHeight(s.Chooser, s.Agents, height)
 	lines := pane(s.Chooser, width, height-area, focus == Navigation, method)
 	if area == 0 {
 		return lines
@@ -217,8 +217,8 @@ func agentsRowLines(c present.Column, height int) int {
 
 // AgentsCapacity is the number of agents the area shows at once in a
 // navigation pane of height lines; 0 without an area.
-func AgentsCapacity(c present.Column, height int) int {
-	body := AgentsHeight(c, height) - frameLines
+func AgentsCapacity(chooser, c present.Column, height int) int {
+	body := AgentsHeight(chooser, c, height) - frameLines
 	if c.Notice.String() != "" {
 		body--
 	}
@@ -230,10 +230,16 @@ func AgentsCapacity(c present.Column, height int) int {
 
 // AgentsHeight is the height of the Agents area under the organisations
 // in a navigation pane of height lines: its frame and its rows, at most
-// half the pane; 0 without rows, or where half the pane holds no frame
-// with a row in it. Beyond that its rows scroll with the cursor.
-func AgentsHeight(c present.Column, height int) int {
-	limit := height / 2
+// half the pane, and never so much that the chooser above it keeps no row
+// (its frame, its notice and one entry); 0 without rows, or where what is
+// left holds no frame with a row in it. Beyond that its rows scroll with
+// the cursor.
+func AgentsHeight(chooser, c present.Column, height int) int {
+	keep := frameLines + 1
+	if chooser.Notice.String() != "" {
+		keep++
+	}
+	limit := min(height/2, height-keep)
 	if len(c.Rows) == 0 || limit < frameLines+1 {
 		return 0
 	}
@@ -242,6 +248,12 @@ func AgentsHeight(c present.Column, height int) int {
 		need++
 	}
 	return min(need, limit)
+}
+
+// ChooserCapacity is the number of entries the chooser shows at once in a
+// navigation pane of height lines, the Agents area under it taken off.
+func ChooserCapacity(chooser, agents present.Column, height int) int {
+	return Capacity(chooser, Geometry{BodyHeight: height - AgentsHeight(chooser, agents, height)})
 }
 
 // Capacity is the number of rows (or lines of text) a column of this

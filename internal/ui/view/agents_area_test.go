@@ -70,7 +70,7 @@ func TestTheAreaStandsUnderTheOrganisations(t *testing.T) {
 	out := Render(areaScreen(agentRows(2, false), -1), g, Navigation, ansi.WcWidth)
 	nav := bodyColumn(out, 0, 26, 2, g.BodyHeight)
 	// Two rows of one line: a frame of four lines at the bottom.
-	area := AgentsHeight(areaScreen(agentRows(2, false), -1).Agents, g.BodyHeight)
+	area := AgentsHeight(areaScreen(nil, -1).Chooser, areaScreen(agentRows(2, false), -1).Agents, g.BodyHeight)
 	if area != 4 {
 		t.Fatalf("area of %d lines", area)
 	}
@@ -95,7 +95,7 @@ func TestTheAreaIsAtMostHalfTheColumnAndScrolls(t *testing.T) {
 	g := geometryOf(120, 24)
 	rows := agentRows(20, true)
 	c := areaScreen(rows, 17).Agents
-	if got := AgentsHeight(c, g.BodyHeight); got != g.BodyHeight/2 {
+	if got := AgentsHeight(areaScreen(nil, -1).Chooser, c, g.BodyHeight); got != g.BodyHeight/2 {
 		t.Fatalf("area of %d lines in a body of %d", got, g.BodyHeight)
 	}
 	out := Render(areaScreen(rows, 17), g, Agents, ansi.WcWidth)
@@ -163,7 +163,7 @@ func TestTheAgentsInTwoColumnsAndOne(t *testing.T) {
 func TestTheAreasRowsKeepTheirSecondLine(t *testing.T) {
 	g := geometryOf(100, 24) // body 21, half 10
 	s := areaScreen(agentRows(2, true), -1)
-	if got := AgentsHeight(s.Agents, g.BodyHeight); got != 6 {
+	if got := AgentsHeight(s.Chooser, s.Agents, g.BodyHeight); got != 6 {
 		t.Fatalf("area of %d lines", got)
 	}
 	out := Render(s, g, Navigation, ansi.WcWidth)
@@ -175,17 +175,38 @@ func TestTheAreasRowsKeepTheirSecondLine(t *testing.T) {
 			t.Fatalf("line %d: %q, want %q\n%s", i, area[i], w, strings.Join(area, "\n"))
 		}
 	}
-	if got := AgentsCapacity(s.Agents, g.BodyHeight); got != 2 {
+	if got := AgentsCapacity(s.Chooser, s.Agents, g.BodyHeight); got != 2 {
 		t.Fatalf("capacity %d", got)
 	}
 	// Ten agents: half the column, four rows of two lines in sight.
 	ten := areaScreen(agentRows(10, true), 9).Agents
-	if got, capacity := AgentsHeight(ten, g.BodyHeight), AgentsCapacity(ten, g.BodyHeight); got != 10 || capacity != 4 {
+	if got, capacity := AgentsHeight(s.Chooser, ten, g.BodyHeight), AgentsCapacity(s.Chooser, ten, g.BodyHeight); got != 10 || capacity != 4 {
 		t.Fatalf("height %d, capacity %d", got, capacity)
 	}
 	// A short terminal: compact rows, as in any list.
 	short := geometryOf(100, 14) // body 11, half 5
-	if got, capacity := AgentsHeight(ten, short.BodyHeight), AgentsCapacity(ten, short.BodyHeight); got != 5 || capacity != 3 {
+	if got, capacity := AgentsHeight(s.Chooser, ten, short.BodyHeight), AgentsCapacity(s.Chooser, ten, short.BodyHeight); got != 5 || capacity != 3 {
 		t.Fatalf("short: height %d, capacity %d", got, capacity)
+	}
+}
+
+// Review of #36 on bdded98: in a low pane with a notice in the chooser,
+// the area leaves the chooser its frame, its notice and one entry.
+func TestTheAreaLeavesTheChooserAnEntry(t *testing.T) {
+	s := areaScreen(agentRows(2, false), -1)
+	s.Chooser.Notice = present.NewInline("Inbox is not supported.")
+	for height := 4; height <= 12; height++ {
+		area := AgentsHeight(s.Chooser, s.Agents, height)
+		if area > 0 && height-area < frameLines+2 {
+			t.Fatalf("height %d: the area takes %d, the chooser keeps %d", height, area, height-area)
+		}
+		if area > 0 && ChooserCapacity(s.Chooser, s.Agents, height) < 1 {
+			t.Fatalf("height %d: no entry of the chooser in sight", height)
+		}
+	}
+	g := geometryOf(120, 9) // body 6
+	out := Render(s, g, Navigation, ansi.WcWidth)
+	if !strings.Contains(out, "All organisations") {
+		t.Fatalf("no entry of the chooser:\n%s", ansi.Strip(out))
 	}
 }

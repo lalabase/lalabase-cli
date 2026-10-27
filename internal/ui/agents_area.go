@@ -183,11 +183,22 @@ func (m Model) receiveTitle(r gateway.TicketResult) (Model, tea.Cmd) {
 
 // learnTitle renews the remembered title of a ticket from an accepted read
 // of it (the list, the ticket): a title read earlier gives way to the
-// newer one, and a failed read is settled by it. Tickets without a
-// remembered title need nothing: the area takes theirs from the session.
+// newer one, and a failed read is settled by it. A title read still out
+// keeps it: its late answer fills only a title not known (receiveTitle).
+// Tickets without a remembered title need nothing: the area takes theirs
+// from the session.
 func (a *app) learnTitle(ticket, text string) {
-	if t := a.titles[ticket]; t != nil && !t.asked {
+	if t := a.titles[ticket]; t != nil {
 		t.known, t.failed, t.text = true, false, text
+	}
+}
+
+// forgetTitle drops the remembered title of a ticket the server removed
+// (not found, no access): the row says #n again, and R may read it.
+func (a *app) forgetTitle(ticket string) {
+	if t := a.titles[ticket]; t != nil {
+		t.known, t.text = false, ""
+		t.failed = !t.asked
 	}
 }
 
