@@ -31,12 +31,11 @@
 //
 // Threat model: internal/privatefs's, the one of the config (another local
 // user without root must not forge a state, a launch, a seen mark or a
-// hook). The
-// directory is the user's alone (0700, privatefs.CheckDirs on the whole
-// way), the files are 0600 and read as private files (privatefs.OwnFile)
-// through internal/safefile, at most maxFile bytes. The hook never makes the
-// directory: the launch does, and a hook that finds none, or one that fails
-// a check, writes nothing.
+// hook). The directory is the user's alone (0700, privatefs.CheckDirs on
+// the whole way), the files are 0600 and read as private files
+// (privatefs.OwnFile) through internal/safefile, at most maxFile bytes.
+// The hook never makes the directory: the launch does, and a hook that
+// finds none, or one that fails a check, writes nothing.
 //
 // A hook's input is foreign: it carries the person's prompt and paths. Hook
 // takes six values of it, each compared to a fixed text or checked
