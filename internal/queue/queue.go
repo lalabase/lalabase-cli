@@ -50,7 +50,8 @@ const (
 	// Background: a refresh or a preview.
 	Background
 	// Idle: work nobody looks at yet (C9b), after every background job and
-	// within IdleShare of the budget.
+	// within IdleShare of the budget. It stays the last priority: highest
+	// and a flight's callers count up to it.
 	Idle
 )
 
@@ -526,14 +527,20 @@ func (q *Queue) unstart(t *ticket) {
 	t.started = time.Time{}
 }
 
-// budgetFree says whether a background start is within the budget now,
-// after the starts that fell out of the window are forgotten. Called with
-// q.mu held.
-func (q *Queue) budgetFree(now time.Time) bool {
+// startsInWindow is the number of background and idle starts in the
+// window that ends now, after the starts that fell out of it are
+// forgotten. Called with q.mu held.
+func (q *Queue) startsInWindow(now time.Time) int {
 	for len(q.starts) > 0 && !now.Before(q.starts[0].Add(BudgetWindow)) {
 		q.starts = q.starts[1:]
 	}
-	return len(q.starts) < BackgroundBudget
+	return len(q.starts)
+}
+
+// budgetFree says whether a background start is within the budget now.
+// Called with q.mu held.
+func (q *Queue) budgetFree(now time.Time) bool {
+	return q.startsInWindow(now) < BackgroundBudget
 }
 
 // waitForBudget wakes dispatch when the oldest start falls out of the
@@ -662,7 +669,7 @@ func (q *Queue) next(now time.Time) *ticket {
 	}
 	for _, t := range q.waiting {
 		if t.prio == Idle {
-			if q.budgetFree(now); len(q.starts) >= IdleShare {
+			if q.startsInWindow(now) >= IdleShare {
 				q.waitForBudget(now)
 				return nil
 			}

@@ -58,8 +58,12 @@ type launchRecord struct {
 }
 
 // stateRecord is <agent id>.state.json. Start is the process's start time
-// in the platform's own unit, compared, never shown; 0 when unknown.
-// Waiter is read for records from before pending tools were tracked.
+// in the platform's own unit, compared, never shown; 0 when unknown (the
+// reader compares it to what the same platform reads now, so 0 meets 0).
+// Waiter is read for records a client before pending tools were tracked
+// (#35) wrote, which an agent may still have on disk; it is never written
+// and can go once no such record is left. FormatVersion stays 1: every
+// field added since is optional and an older reader ignores it.
 type stateRecord struct {
 	Format    int           `json:"format"`
 	State     string        `json:"state"`
@@ -73,21 +77,25 @@ type stateRecord struct {
 	Untracked bool          `json:"untracked,omitempty"`
 }
 
-// pendingWait identifies a request by its scoped call-id hash (ByID) or
-// by a hash of its session, subagent, tool name and input. No command,
-// path or question is kept. An empty
-// Tool cannot be matched: notifications carry no tool, and older or
-// unreadable requests may have none either. They wait for a turn boundary.
+// pendingWait is one open request (an approval or a question). Key is a
+// hash, never the text: the call's hash (callHash) when ByID, else the
+// hash of its session, subagent, tool name and input (inputHash). No
+// command, path or question is kept. An empty Key cannot be matched:
+// notifications carry no tool, and older or unreadable requests may have
+// none either; such a request waits for a turn boundary. The JSON names
+// are the file's format and stay.
 type pendingWait struct {
-	Tool     string `json:"tool,omitempty"`
+	Key      string `json:"tool,omitempty"`
 	ByID     bool   `json:"by_id,omitempty"`
 	Question bool   `json:"question,omitempty"`
 }
 
-// toolCall ties a PreToolUse's scoped call id to its tool/input hash so
-// a PermissionRequest (which has no id) can find a unique active call.
+// toolCall is one tool running since its PreToolUse, by three hashes: of
+// its call id (CallHash), of its input (InputHash) and of its name
+// (NameHash). A PermissionRequest carries no call id; through these it
+// finds the one running call it belongs to (pendingAfter).
 type toolCall struct {
-	ID   string `json:"id"`
-	Tool string `json:"tool"`
-	Name string `json:"name"`
+	CallHash  string `json:"id"`
+	InputHash string `json:"tool"`
+	NameHash  string `json:"name"`
 }

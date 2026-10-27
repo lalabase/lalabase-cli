@@ -38,12 +38,13 @@ var Events = []string{SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, P
 // MaxInput bounds a hook's input: a larger one is not read at all.
 const MaxInput = 1 << 20
 
-// lockFor is how long a hook tries for its agent's lock (a test that is
-// about the lock, not the time, makes it longer); lockStep how long it
+// lockFor is how long a hook tries for its agent's lock (HookCall.LockFor
+// changes it for a test about the lock, not the time); lockStep how long it
 // waits between tries. A hook has 5 s in all and must end well before.
-var lockFor = 300 * time.Millisecond
-
-const lockStep = 5 * time.Millisecond
+const (
+	lockFor  = 300 * time.Millisecond
+	lockStep = 5 * time.Millisecond
+)
 
 // The values a hook takes of its foreign input, compared to these.
 const (
@@ -53,10 +54,17 @@ const (
 	permissionPrompt = "permission_prompt"
 )
 
-// Keep the state below maxFile even with many simultaneous requests.
-// Overflow becomes an unidentified approval, never a lost prompt.
-const maxPending = 16
-const maxTools = 8
+// maxPending and maxTools keep the state file below maxFile (4 KiB) with
+// many simultaneous requests: a pending request is about 100 bytes of
+// JSON, a running tool about 220 (three 64-digit hashes), the rest about
+// 250, so 16 and 8 make about 3.6 KiB. Raising either can push the file
+// past maxFile, and readState then reads it as no state at all, which
+// loses the open requests (TestTrackingIsBoundedWithoutDroppingApprovals
+// holds the sum). Overflow becomes one unidentified approval, never a lost prompt.
+const (
+	maxPending = 16
+	maxTools   = 8
+)
 
 var toolHash = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var toolUseID = regexp.MustCompile(`^[0-9A-Za-z_-]{1,128}$`)
@@ -84,7 +92,12 @@ type HookCall struct {
 	Input             io.Reader
 	PID               string
 	Now               time.Time
-	Procs             Procs
+	// Procs reads a process's start time, recorded with PID so the
+	// reader can tell a lost agent from a live one; nil keeps the pid the
+	// state had.
+	Procs Procs
+	// LockFor is how long to try for the agent's lock; 0 is lockFor.
+	LockFor time.Duration
 }
 
 // input is all a hook decodes of its foreign input. Every other field is
@@ -103,21 +116,22 @@ type input struct {
 	} `json:"background_tasks"`
 }
 
-// facts are the values taken of the input, each checked; known is
-// false when the input was missing, too large or no JSON object of these
-// fields, and then only the event decides.
+// facts are the values taken of the input, each checked. Input that is
+// missing, too large or no JSON object of these fields gives the zero
+// facts, and then the event alone decides.
 type facts struct {
-	known   bool
 	session string
 	// subagent: the event comes from a subagent (an agent_id that is not
 	// empty), which runs beside the session; agent is its id when it has
 	// subagentID's form, else "".
-	subagent   bool
-	agent      string
-	tool       string
-	name       string
-	call       string
-	permission bool
+	subagent bool
+	agent    string
+	// The hashes of the tool's input, name and call id (identity), each
+	// scoped to the session and the subagent; "" when the event has none,
+	// or comes from a subagent whose id does not pass its check (then
+	// nothing of it can be told apart from another subagent's).
+	inputHash, nameHash, callHash string
+	permission                    bool
 	// restarted: SessionStart after /clear, /resume or /branch, which no
 	// Stop follows; compacted: SessionStart after a compaction, by hand
 	// or in the middle of a turn, which changes no state; restartEnd: a
@@ -139,23 +153,29 @@ func readFacts(r io.Reader) facts {
 	if err := json.Unmarshal(data, &in); err != nil {
 		return facts{}
 	}
-	f := facts{
-		known: true, subagent: in.AgentID != "", ask: in.ToolName == toolAskQuestion,
-		restarted: restart(in.Source), compacted: in.Source == sourceCompact, restartEnd: restart(in.Reason),
-		permission: in.NotificationType == permissionPrompt,
-	}
+	var f facts
+	f.subagent = in.AgentID != ""
+	f.ask = in.ToolName == toolAskQuestion
+	f.restarted = restart(in.Source)
+	f.compacted = in.Source == sourceCompact
+	f.restartEnd = restart(in.Reason)
+	f.permission = in.NotificationType == permissionPrompt
 	if serverID.MatchString(in.SessionID) {
 		f.session = in.SessionID
 	}
 	if subagentID.MatchString(in.AgentID) {
 		f.agent = in.AgentID
 	}
-	f.tool = toolIdentity(in, f)
-	if in.ToolName != "" && (!f.subagent || f.agent != "") {
-		f.name = identity([]string{f.session, f.agent, in.ToolName})
-	}
-	if toolUseID.MatchString(in.ToolUseID) && (!f.subagent || f.agent != "") {
-		f.call = identity([]string{f.session, f.agent, in.ToolUseID})
+	// A subagent whose id fails its check cannot be told apart from
+	// another: none of its tools gets a hash.
+	if identified := !f.subagent || f.agent != ""; identified {
+		f.inputHash = inputIdentity(in, f.session, f.agent)
+		if in.ToolName != "" {
+			f.nameHash = identity([]string{f.session, f.agent, in.ToolName})
+		}
+		if toolUseID.MatchString(in.ToolUseID) {
+			f.callHash = identity([]string{f.session, f.agent, in.ToolUseID})
+		}
 	}
 	for _, t := range in.BackgroundTasks {
 		if t.Status == taskRunning {
@@ -165,11 +185,12 @@ func readFacts(r io.Reader) facts {
 	return f
 }
 
-// PermissionRequest has no tool_use_id. Canonical JSON lets its input
-// match PostToolUse despite key order or whitespace. UseNumber avoids
-// rounding distinct integer arguments into the same identity.
-func toolIdentity(in input, f facts) string {
-	if in.ToolName == "" || (f.subagent && f.agent == "") {
+// inputIdentity is the hash of a tool's call by its input, for a
+// PermissionRequest, which has no tool_use_id. Canonical JSON lets its
+// input match PostToolUse despite key order or whitespace; UseNumber
+// avoids rounding distinct integer arguments into the same identity.
+func inputIdentity(in input, session, agent string) string {
+	if in.ToolName == "" {
 		return ""
 	}
 	var args map[string]any
@@ -178,9 +199,12 @@ func toolIdentity(in input, f facts) string {
 	if err := d.Decode(&args); err != nil || args == nil {
 		return ""
 	}
-	return identity([]any{f.session, f.agent, in.ToolName, args})
+	return identity([]any{session, agent, in.ToolName, args})
 }
 
+// identity is the SHA-256 of a value's JSON. The three hashes cannot meet
+// by accident: each is compared only with its own kind (an input hash with
+// input hashes, and so on), and the input's has four parts, not three.
 func identity(v any) string {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -254,11 +278,7 @@ func Hook(c HookCall) error {
 	if !ValidID(c.Agent) {
 		return errors.New("no agent id")
 	}
-	known := false
-	for _, e := range Events {
-		known = known || e == c.Event
-	}
-	if !known {
+	if !slices.Contains(Events, c.Event) {
 		return errors.New("an event the launch registers no hook for")
 	}
 	if err := existing(c.Dir); err != nil {
@@ -269,13 +289,26 @@ func Hook(c HookCall) error {
 	if does == nothing {
 		return nil
 	}
-	unlock, err := lock(filepath.Join(c.Dir, c.Agent+lockSuffix))
+	wait := c.LockFor
+	if wait <= 0 {
+		wait = lockFor
+	}
+	unlock, err := lock(filepath.Join(c.Dir, c.Agent+lockSuffix), wait)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 	path := filepath.Join(c.Dir, c.Agent+stateSuffix)
 	old, _ := readState(path)
+	// The state is decided in this order, each step over the one before:
+	//  1. the event's own state (next);
+	//  2. a compaction keeps the state there was (keep), which must come
+	//     before 3, since a compaction keeps the open requests too;
+	//  3. an open request outranks the event: a prompt stays open while a
+	//     parallel tool ends, so the state is approval or, for questions
+	//     alone, waiting;
+	//  4. without one, a background subagent's tool cannot end the main
+	//     session's waiting: its turn ended, the person still has it.
 	pending := pendingAfter(c.Event, f, old)
 	if does == keep && old.State != "" {
 		// A compaction keeps both the state and its pending requests.
@@ -313,10 +346,14 @@ func Hook(c HookCall) error {
 	return replace(c.Dir, path, rec)
 }
 
+// pendingAfter is the open requests after event. It works on a copy:
+// Hook reads the old ones afterwards.
 func pendingAfter(event string, f facts, old stateRecord) []pendingWait {
-	pending := old.Pending
+	pending := slices.Clone(old.Pending)
 	if len(pending) == 0 && (old.State == stateNames[WaitingForApproval] || old.Waiter != "") {
-		// Old records have no tool identity. Treat them conservatively.
+		// A record from before requests were tracked (Waiter, #35) has an
+		// open request but no hash of it: it is kept unidentified, so it
+		// waits for the next turn boundary instead of being dropped.
 		pending = []pendingWait{{Question: old.State == stateNames[WaitingForYou]}}
 	}
 	switch event {
@@ -325,24 +362,8 @@ func pendingAfter(event string, f facts, old stateRecord) []pendingWait {
 			return []pendingWait{{}}
 		}
 		wait := pendingWait{Question: f.ask}
-		if !old.Untracked && f.tool != "" {
-			wait.Tool = f.tool
-			matches, candidates := 0, 0
-			for _, call := range old.Tools {
-				if call.Name == f.name {
-					candidates++
-				}
-				if call.Tool == f.tool {
-					matches++
-					wait.Tool, wait.ByID = call.ID, true
-				}
-			}
-			if candidates > 1 || (candidates == 1 && matches == 0) {
-				// Other PreToolUse hooks can rewrite arguments before
-				// permission checks. Parallel calls of the same tool
-				// cannot safely be distinguished by their inputs alone.
-				wait.Tool, wait.ByID = "", false
-			}
+		if !old.Untracked && f.inputHash != "" {
+			wait.Key, wait.ByID = requestKey(old.Tools, f)
 		}
 		return append(pending, wait)
 	case Notification:
@@ -356,21 +377,21 @@ func pendingAfter(event string, f facts, old stateRecord) []pendingWait {
 		}
 	case PostToolUse, PostToolUseFailure:
 		for i, wait := range pending {
-			key := f.tool
+			key := f.inputHash
 			if wait.ByID {
-				key = f.call
+				key = f.callHash
 			}
-			if key != "" && wait.Tool == key {
+			if key != "" && wait.Key == key {
 				return slices.Delete(pending, i, i+1)
 			}
 		}
 	case PreToolUse:
 		// PreToolUse precedes permission checks, so it answers no prompt.
 		for i, wait := range pending {
-			if !wait.ByID && (f.tool == "" || wait.Tool == f.tool) {
+			if !wait.ByID && (f.inputHash == "" || wait.Key == f.inputHash) {
 				// A request observed without its PreToolUse can no longer
 				// be matched by arguments if an identical call starts.
-				pending[i].Tool = ""
+				pending[i].Key = ""
 			}
 		}
 	case SessionStart:
@@ -387,25 +408,53 @@ func pendingAfter(event string, f facts, old stateRecord) []pendingWait {
 	return pending
 }
 
+// requestKey is how a PermissionRequest is told by its tool's call:
+// through the one running call of that tool (by its call hash), by its
+// input when none of that tool runs, or not at all.
+func requestKey(running []toolCall, f facts) (key string, byID bool) {
+	var sameName []toolCall
+	for _, call := range running {
+		if call.NameHash == f.nameHash {
+			sameName = append(sameName, call)
+		}
+	}
+	switch {
+	case len(sameName) == 0:
+		// No PreToolUse of this tool seen: by its input.
+		return f.inputHash, false
+	case len(sameName) == 1 && sameName[0].InputHash == f.inputHash:
+		// The one running call of this tool, with this input.
+		return sameName[0].CallHash, true
+	default:
+		// Two calls of the same tool, or one whose input another
+		// PreToolUse hook rewrote before the permission check: inputs
+		// alone cannot tell them apart. Unidentified.
+		return "", false
+	}
+}
+
+// toolsAfter is the running tools after event, and whether one of them
+// could not be tracked (then no request is matched by them). It works on a
+// copy, as pendingAfter does.
 func toolsAfter(event string, f facts, old stateRecord) ([]toolCall, bool) {
-	tools, untracked := old.Tools, old.Untracked
+	tools, untracked := slices.Clone(old.Tools), old.Untracked
 	switch event {
 	case PreToolUse:
-		if f.call == "" || f.tool == "" {
+		if f.callHash == "" || f.inputHash == "" {
 			return tools, true
 		}
 		for _, call := range tools {
-			if call.ID == f.call {
+			if call.CallHash == f.callHash {
 				return tools, untracked
 			}
 		}
 		if len(tools) >= maxTools {
 			return tools, true
 		}
-		tools = append(tools, toolCall{ID: f.call, Tool: f.tool, Name: f.name})
+		tools = append(tools, toolCall{CallHash: f.callHash, InputHash: f.inputHash, NameHash: f.nameHash})
 	case PostToolUse, PostToolUseFailure:
 		for i, call := range tools {
-			if call.ID == f.call {
+			if call.CallHash == f.callHash {
 				tools = slices.Delete(tools, i, i+1)
 				break
 			}
@@ -441,10 +490,10 @@ func parsePID(s string) (int, bool) {
 	return n, true
 }
 
-// lock takes the agent's lock, trying for lockFor: a hook of the same
-// agent may hold it a moment.
-func lock(path string) (func(), error) {
-	deadline := time.Now().Add(lockFor)
+// lock takes the agent's lock, trying for wait: a hook of the same agent
+// may hold it a moment.
+func lock(path string, wait time.Duration) (func(), error) {
+	deadline := time.Now().Add(wait)
 	for {
 		unlock, err := privatefs.TryLock(path)
 		if !errors.Is(err, privatefs.ErrLocked) || time.Now().After(deadline) {
@@ -471,6 +520,11 @@ func readState(path string) (stateRecord, error) {
 	if _, ok := stateNamed(r.State); r.Format != FormatVersion || !ok || r.Changed.IsZero() {
 		return stateRecord{}, errors.New("not a state of this format")
 	}
+	// Each field that fails its check is dropped in the way that loses
+	// the least: a session id is forgotten (the next hook brings one); a
+	// request keeps standing unidentified, so an open approval is never
+	// lost; a running tool that fails throws away all of them and marks
+	// tracking off, since matching on half of them could match wrongly.
 	if r.Session != "" && !serverID.MatchString(r.Session) {
 		r.Session = ""
 	}
@@ -481,15 +535,15 @@ func readState(path string) (stateRecord, error) {
 		return stateRecord{}, errors.New("too many pending requests")
 	}
 	for i := range r.Pending {
-		if !toolHash.MatchString(r.Pending[i].Tool) {
-			r.Pending[i].Tool = ""
+		if !toolHash.MatchString(r.Pending[i].Key) {
+			r.Pending[i].Key = ""
 		}
 	}
 	if len(r.Tools) > maxTools {
 		return stateRecord{}, errors.New("too many active tools")
 	}
 	for _, call := range r.Tools {
-		if !toolHash.MatchString(call.Tool) || !toolHash.MatchString(call.ID) || !toolHash.MatchString(call.Name) {
+		if !toolHash.MatchString(call.InputHash) || !toolHash.MatchString(call.CallHash) || !toolHash.MatchString(call.NameHash) {
 			r.Tools, r.Untracked = nil, true
 			break
 		}

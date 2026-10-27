@@ -490,9 +490,6 @@ func TestOnlyAValidPIDIsRecorded(t *testing.T) {
 func TestOverlappingHooksLoseNothing(t *testing.T) {
 	// A slow disk under a loaded test run must not make a hook give up:
 	// this is about the lock, the wait's bound is the next test's.
-	saved := lockFor
-	lockFor = 10 * time.Second
-	t.Cleanup(func() { lockFor = saved })
 	for round := range 8 {
 		dir := agentsDir(t)
 		p := live(4242, 7)
@@ -502,11 +499,11 @@ func TestOverlappingHooksLoseNothing(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			errs <- Hook(HookCall{Dir: dir, Event: PreToolUse, Agent: agentID, PID: "4242", Now: t0, Procs: p})
+			errs <- Hook(HookCall{Dir: dir, Event: PreToolUse, Agent: agentID, PID: "4242", Now: t0, Procs: p, LockFor: 10 * time.Second})
 		}()
 		go func() {
 			defer wg.Done()
-			errs <- Hook(HookCall{Dir: dir, Event: UserPromptSubmit, Agent: agentID, Input: strings.NewReader(`{"session_id":"` + sessionID + `"}`), Now: t0, Procs: p})
+			errs <- Hook(HookCall{Dir: dir, Event: UserPromptSubmit, Agent: agentID, Input: strings.NewReader(`{"session_id":"` + sessionID + `"}`), Now: t0, Procs: p, LockFor: 10 * time.Second})
 		}()
 		done := make(chan struct{})
 		go func() { wg.Wait(); close(done) }()

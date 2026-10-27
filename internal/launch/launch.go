@@ -44,10 +44,10 @@ type Config struct {
 	// has no cache directory.
 	Files string
 	// Agents is the directory the agents' files live in
-	// (<cache root>/<profile>/a, internal/agents), Executable the client's
-	// own program, links resolved: the hooks a launch hands Claude Code
-	// run it to record the agent's state there (C9a). "" for either: the
-	// launch goes on without hooks.
+	// (<cache root>/<profile>/a/<server>, internal/agents), Executable
+	// the client's own program, links resolved: the hooks a launch hands
+	// Claude Code run it to record the agent's state there (C9a). "" for
+	// either: the launch goes on without hooks.
 	Agents, Executable string
 	// TermProgram and SessionID are TERM_PROGRAM and ITERM_SESSION_ID as
 	// the environment has them; their form is checked here.

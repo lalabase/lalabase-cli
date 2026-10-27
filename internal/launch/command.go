@@ -122,8 +122,10 @@ type hookGroup struct {
 // own program by its absolute path with the agents directory, the event
 // and the agent's id. The event comes from here, so the hook needs no
 // field of its foreign input to know it; the directory too, so the hook
-// never works it out from the pane's environment. Both paths passed
-// passable, so each is one word for the shell Claude Code runs a hook in.
+// never works it out from the pane's environment. Claude Code runs a hook
+// through a shell, so each path is single-quoted (quote) to stay one word
+// whatever it holds; passable has already refused the characters a quote
+// does not stop (a line break, a control character).
 func settings(executable, agentsDir, agent string) []byte {
 	hooks := map[string][]hookGroup{}
 	for _, event := range agents.Events {

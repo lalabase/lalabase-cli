@@ -33,13 +33,21 @@ const agentsEvery = 500 * time.Millisecond
 // newest read, the spinner's frame, and the agent the Agents area's
 // cursor is on (C9b).
 type agentsState struct {
-	ref     uint64
-	reading bool
-	again   bool
-	until   time.Time
-	list    []agents.Agent
-	frame   int
-	cursor  string
+	// ref numbers the reads; an answer to any but the newest is dropped.
+	ref uint64
+	// reading: a read is out; again: another was asked for meanwhile and
+	// follows it at once (readAgents).
+	reading, again bool
+	// until is the deadline of the next read; zero while none is set.
+	until time.Time
+	// list is the newest read's agents, in the order read; empty after
+	// a failed read.
+	list []agents.Agent
+	// frame turns the glyph of working agents, one step per read.
+	frame int
+	// cursor is the agent the list's cursor was put on, by its id, so it
+	// follows the agent when the order changes.
+	cursor string
 	// seen are the agents the person opened in this run (C9b): faint at
 	// once, before their file is read back.
 	seen map[string]bool
@@ -134,8 +142,11 @@ func (a *app) mostUrgent(match func(agents.Agent) bool) (agents.Agent, bool) {
 func (a *app) agentsInOrder() []agents.Agent {
 	out := slices.Clone(a.agents.list)
 	slices.SortStableFunc(out, func(x, y agents.Agent) int {
-		if x.State != y.State {
-			return int(x.State) - int(y.State)
+		switch {
+		case x.State.Urgent(y.State):
+			return -1
+		case y.State.Urgent(x.State):
+			return 1
 		}
 		return x.Since.Compare(y.Since)
 	})

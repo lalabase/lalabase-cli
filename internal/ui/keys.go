@@ -238,7 +238,10 @@ func (m Model) bindings(small bool) []binding {
 	}
 	if m.focus == view.Agents {
 		// The agents' list (C9b): its own keys; esc and a second A go
-		// back to where it was opened.
+		// back to where it was opened. Returning here also ends the
+		// recursion below: agentsFit asks small of the model with the
+		// agents in focus, small asks bindings, and those, here, do not
+		// ask agentsFit again.
 		return append(out, m.agentsBindings()...)
 	}
 	switch m.focus {

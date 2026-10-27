@@ -18,12 +18,10 @@ import (
 // and its state are shown; the title of its ticket comes from what the
 // session holds (the newest accepted read of it, the ticket in the pane,
 // the list shown, the cache), and a title it lacks is read once through
-// the gateway, as background work.
+// the gateway, as idle work (queue.Idle): after every preview, so the
+// area never slows what the person reads.
 
-// title is what the session knows of one agent's ticket for its title:
-// whether a read of it is out, failed (kept until R) or known, whether the
-// server removed the ticket, and whether the disk cache was asked; its
-// project, for a removal of the project's list.
+// title is what the session knows of one agent's ticket for its title.
 //
 // The one rule: a known title or a removal is the newest fact an accepted
 // read brought, ordered by the request's flight (queue.Flight, numbered
@@ -31,10 +29,46 @@ import (
 // the pane or the list shown still holds. A fact from an older request
 // never replaces a newer one; the cache's and the disk's (flight 0) only
 // fill a title nothing is known of.
+//
+// The order comes from the flight and not from the order answers arrive
+// in: a list read sent before a rename can answer after the rename's
+// ticket read, and must not bring the old title back.
 type title struct {
-	asked, failed, known, removed, disk bool
-	text, project                       string
-	flight                              uint64
+	// asked: a read of the title is out; there is at most one.
+	asked bool
+	// failed: the last read brought no title; it is not asked again
+	// before R (retryTitles), so a failing server is not read in a loop.
+	failed bool
+	// known: text is the title. removed: the server removed the ticket
+	// (not found, no access); the row shows its number alone. Never both.
+	known, removed bool
+	text           string
+	// disk: the disk cache was asked for the title, once per entry.
+	disk bool
+	// project is the ticket's project, so that a removal of the
+	// project's list finds the titles of its tickets (titlesRemoved).
+	project string
+	// flight is the request that brought known or removed; 0 for the
+	// cache and the disk, and while neither is set.
+	flight uint64
+}
+
+// learn takes a title as the newest fact, brought by flight.
+func (t *title) learn(text string, flight uint64) {
+	t.known = true
+	t.text = text
+	t.removed = false
+	t.failed = false
+	t.flight = flight
+}
+
+// forget takes a removal of the ticket as the newest fact, brought by
+// flight.
+func (t *title) forget(flight uint64) {
+	t.known = false
+	t.text = ""
+	t.removed = true
+	t.flight = flight
 }
 
 // agentsColumn is the Agents area: per agent, in the order of urgency,
@@ -150,13 +184,16 @@ func (a *app) requestTitles() tea.Cmd {
 		if !t.disk && !t.removed {
 			// Whatever became of the server's read (out, failed): the
 			// disk may hold the title.
-			switch room := a.diskRoom(); {
-			case room < 0:
-				t.disk = true // no disk cache in this session
+			room, ok := a.diskRoom()
+			switch {
+			case !ok:
+				t.disk = true // this session has no disk cache
 			case room > 0:
 				a.diskRead(gateway.Titles, key, forTitle)
 				t.disk = true
 			}
+			// No room: the disk is not open yet, or other reads wait
+			// for it; the next reading of the agents asks again.
 		}
 	}
 	return tea.Batch(cmds...)
@@ -178,8 +215,13 @@ func (a *app) titleFromDisk(t *title, k cache.Key) bool {
 }
 
 // titleFromCache takes the title from the memory entry of the ticket, if
-// there is one that still reads, and says whether it did.
+// there is one that still reads, and says whether it did. It only fills a
+// title nothing is known of: the cache has no flight, so a title or a
+// removal an accepted read brought always outranks it.
 func (a *app) titleFromCache(t *title, k cache.Key) bool {
+	if t.known || t.removed {
+		return false
+	}
 	e, ok := a.store.Get(k)
 	if !ok {
 		return false
@@ -188,7 +230,7 @@ func (a *app) titleFromCache(t *title, k cache.Key) bool {
 	if !ans.OK() || gateway.CheckDetail(k, record) != nil {
 		return false
 	}
-	t.known, t.failed, t.removed, t.text = true, false, false, record.Title
+	t.learn(record.Title, 0)
 	return true
 }
 
@@ -209,11 +251,13 @@ func (m Model) receiveTitle(r gateway.TicketResult) (Model, tea.Cmd) {
 		return m, nil
 	}
 	t.asked = false
-	switch {
-	case ok && d == cache.Replace:
+	if ok && d == cache.Replace {
 		a.learnTitle(r.Key.Ticket, r.Record.Title, uint64(r.Flight))
-	case t.known:
-	case t.removed || !a.titleFromCache(t, r.Key):
+		return m, nil
+	}
+	// Not accepted (a failure, a refusal, a removal, kept stale): the
+	// cache may still hold the title; a title known meanwhile stays.
+	if !t.known && !a.titleFromCache(t, r.Key) {
 		t.failed = true
 	}
 	return m, nil
@@ -229,7 +273,7 @@ func (a *app) learnTitle(ticket, text string, flight uint64) {
 	if t == nil || flight < t.flight {
 		return
 	}
-	t.known, t.failed, t.removed, t.text, t.flight = true, false, false, text, flight
+	t.learn(text, flight)
 }
 
 // forgetTitle follows an accepted removal of a ticket (not found, no
@@ -246,7 +290,9 @@ func (a *app) forgetTitle(ticket string, flight uint64, project string) {
 	if flight < t.flight {
 		return
 	}
-	t.known, t.text, t.removed, t.disk, t.flight = false, "", true, true, flight
+	t.forget(flight)
+	// Failed, so that R offers to read it again; while a read of it is
+	// out, that read's answer settles it (receiveTitle).
 	t.failed = !t.asked
 }
 
@@ -371,7 +417,9 @@ func (m Model) openAgents() (Model, tea.Cmd) {
 }
 
 // agentsFit: the agents' list would show at least one agent in the
-// current terminal, so A does not lead into a screen too small to use.
+// current terminal, so A does not lead into a screen too small to use. It
+// asks small of the model as A would leave it, with the help that model
+// shows, since the help's lines take from the list's room (bindings).
 func (m Model) agentsFit() bool {
 	next := m
 	next.agentsFrom, next.focus = m.focus, view.Agents
