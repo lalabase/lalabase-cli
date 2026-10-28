@@ -247,7 +247,7 @@ func TestATitleFromTheDiskCancelsItsRead(t *testing.T) {
 	}
 	// Its canceled answer fails nothing.
 	h.drive(cmd)
-	if tt := a.titles[ag.Ticket]; !tt.known || tt.failed {
+	if tt := a.titles[ag.Ticket]; tt.fact != titled || tt.failed {
 		t.Fatalf("%+v", tt)
 	}
 }

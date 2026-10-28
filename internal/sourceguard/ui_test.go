@@ -109,8 +109,11 @@ var fileSystemImports = map[string]map[string][]string{
 		"io/fs":   nil,
 		"syscall": {"O_NONBLOCK", "O_NOFOLLOW"},
 	},
+	// The threat model, and since C9c the two file operations the client's
+	// own files share: a file created exclusively (CreateExclusive) and a
+	// directory walked within a bound (Walk).
 	"internal/privatefs": {
-		"os":    {"OpenFile", "O_RDWR", "O_CREATE", "Getuid", "Lstat", "Readlink"},
+		"os":    {"Open", "OpenFile", "O_RDWR", "O_WRONLY", "O_CREATE", "O_EXCL", "Remove", "Getuid", "Lstat", "Readlink"},
 		"io/fs": nil,
 		// The path functions alone: Glob, Walk, WalkDir and EvalSymlinks
 		// read the file system and are not among them.
@@ -125,28 +128,30 @@ var fileSystemImports = map[string]map[string][]string{
 		"golang.org/x/sys/unix": {"BytePtrFromString", "Syscall6", "SYS_GETATTRLIST"},
 	},
 	"internal/diskcache": {
-		"os":            {"File", "MkdirAll", "Open", "Remove", "CreateTemp", "Chtimes", "Rename"},
+		"os":            {"File", "MkdirAll", "Remove", "CreateTemp", "Chtimes", "Rename"},
 		"io/fs":         nil,
 		"path/filepath": {"Dir", "IsAbs", "Join"},
 		"crypto/sha256": nil,
 		"encoding/hex":  nil,
 	},
-	// A new directory per launch and its files, each created exclusively,
-	// and the removal of old ones by name; the directory's name is random.
+	// A new directory per launch and its files, each created exclusively
+	// (through privatefs), and the removal of old ones by name; the
+	// directory's name is random.
 	"internal/launchdir": {
-		"os":            {"Mkdir", "MkdirAll", "Open", "OpenFile", "O_WRONLY", "O_CREATE", "O_EXCL", "Remove"},
+		"os":            {"Mkdir", "MkdirAll", "Remove"},
 		"io/fs":         nil,
 		"path/filepath": {"IsAbs", "Join"},
 		"crypto/rand":   {"Read"},
 		"encoding/hex":  nil,
 	},
 	// The agents' files (C9a): the directory made once by the launch, a
-	// launch record created exclusively, a state replaced through a
-	// temporary file and a rename, and the directory read. The process
+	// launch record created exclusively (through privatefs), a state
+	// replaced through a temporary file and a rename, and the directory
+	// read (through privatefs). The process
 	// table of macOS is asked through sysctl by name (not a raw system
 	// call); Linux's is a file read through internal/safefile.
 	"internal/agents": {
-		"os":                    {"MkdirAll", "Lstat", "Open", "OpenFile", "O_WRONLY", "O_CREATE", "O_EXCL", "CreateTemp", "Rename", "Remove"},
+		"os":                    {"MkdirAll", "Lstat", "CreateTemp", "Rename", "Remove"},
 		"io/fs":                 nil,
 		"path/filepath":         {"IsAbs", "Join"},
 		"crypto/rand":           {"Read"},

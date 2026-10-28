@@ -44,7 +44,7 @@ func withAgents(extra map[string]string) map[string]string {
 
 func TestTheAgentsPackageImportsByName(t *testing.T) {
 	for name, source := range map[string]string{
-		"internal/agents/x.go":        `package agents; import ("os"; "io/fs"; "path/filepath"; "crypto/rand"; "encoding/hex"); var _ = os.MkdirAll; var _ = os.Lstat; var _ = os.Open; var _ = os.OpenFile; var _ = os.O_WRONLY | os.O_CREATE | os.O_EXCL; var _ = os.CreateTemp; var _ = os.Rename; var _ = os.Remove; var _ fs.DirEntry; var _ = filepath.Join; var _ = filepath.IsAbs; var _ = rand.Read; var _ = hex.EncodeToString`,
+		"internal/agents/x.go":        `package agents; import ("os"; "io/fs"; "path/filepath"; "crypto/rand"; "encoding/hex"); var _ = os.MkdirAll; var _ = os.Lstat; var _ = os.CreateTemp; var _ = os.Rename; var _ = os.Remove; var _ fs.DirEntry; var _ = filepath.Join; var _ = filepath.IsAbs; var _ = rand.Read; var _ = hex.EncodeToString`,
 		"internal/agents/x_darwin.go": `package agents; import "golang.org/x/sys/unix"; var _ = unix.SysctlKinfoProcSlice`,
 	} {
 		if got := inspectUI(withAgents(map[string]string{name: source})); len(got) != 0 {
@@ -61,6 +61,10 @@ func TestTheAgentsPackageImportsByName(t *testing.T) {
 		"readfile":  `package agents; import "os"; var read = os.ReadFile`,
 		"writefile": `package agents; import "os"; var write = os.WriteFile`,
 		"removeall": `package agents; import "os"; var rm = os.RemoveAll`,
+		// Since C9c its files are created and its directory walked
+		// through privatefs.
+		"openfile":  `package agents; import "os"; var _ = os.OpenFile`,
+		"open":      `package agents; import "os"; var _ = os.Open`,
 		"chmod":     `package agents; import "os"; var _ = os.Chmod`,
 		"symlink":   `package agents; import "os"; var _ = os.Symlink`,
 		"exec":      `package agents; import "os/exec"; var _ = exec.Command`,

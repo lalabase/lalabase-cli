@@ -3,7 +3,6 @@ package agents
 import (
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -51,32 +50,8 @@ func WriteLaunch(dir string, l Launch) error {
 }
 
 // createOwn writes a new file of the client's own in the agents
-// directory: created exclusively (an existing file, or a link in its
-// place, is an error and stays as it is), synced and checked as a private
-// file; one that cannot be written whole is removed.
-func createOwn(path string, data []byte) (err error) {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // a new file in the agents directory, checked by privatefs
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = f.Close()
-			_ = os.Remove(path)
-		}
-	}()
-	if _, err := f.Write(data); err != nil {
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		return err
-	}
-	info, err := f.Stat()
-	if err != nil {
-		return err
-	}
-	if err := privatefs.OwnFile(path, info); err != nil {
-		return err
-	}
-	return f.Close()
+// directory (privatefs.CreateExclusive): the launch record and the seen
+// mark.
+func createOwn(path string, data []byte) error {
+	return privatefs.CreateExclusive(path, data, 0o600)
 }

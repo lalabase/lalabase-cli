@@ -33,31 +33,48 @@ import (
 // The order comes from the flight and not from the order answers arrive
 // in: a list read sent before a rename can answer after the rename's
 // ticket read, and must not bring the old title back.
+//
+// The rule holds for every ticket an agent has, whether a title read of it
+// was made or not: an accepted read of such a ticket makes its entry
+// (learnTitle, forgetTitle). Only three functions change the fact:
+// learnTitle and forgetTitle by flight, titleFromCache while there is none.
 type title struct {
+	// fact is what the newest accepted read said of the ticket, and text
+	// its title when the fact is one.
+	fact titleFact
+	text string
+	// flight is the request that brought the fact; 0 for the cache and
+	// the disk, and while there is none.
+	flight uint64
 	// asked: a read of the title is out; there is at most one.
 	asked bool
 	// failed: the last read brought no title; it is not asked again
 	// before R (retryTitles), so a failing server is not read in a loop.
 	failed bool
-	// known: text is the title. removed: the server removed the ticket
-	// (not found, no access); the row shows its number alone. Never both.
-	known, removed bool
-	text           string
 	// disk: the disk cache was asked for the title, once per entry.
 	disk bool
 	// project is the ticket's project, so that a removal of the
 	// project's list finds the titles of its tickets (titlesRemoved).
 	project string
-	// flight is the request that brought known or removed; 0 for the
-	// cache and the disk, and while neither is set.
-	flight uint64
 }
+
+// titleFact is what an accepted read said of a ticket.
+type titleFact int
+
+const (
+	// noFact: nothing yet; the views' data shows, else a read is made.
+	noFact titleFact = iota
+	// titled: the ticket has the title text.
+	titled
+	// removed: the server removed the ticket (not found, no access); its
+	// agent's row shows the number alone.
+	removed
+)
 
 // learn takes a title as the newest fact, brought by flight.
 func (t *title) learn(text string, flight uint64) {
-	t.known = true
+	t.fact = titled
 	t.text = text
-	t.removed = false
 	t.failed = false
 	t.flight = flight
 }
@@ -65,11 +82,18 @@ func (t *title) learn(text string, flight uint64) {
 // forget takes a removal of the ticket as the newest fact, brought by
 // flight.
 func (t *title) forget(flight uint64) {
-	t.known = false
+	t.fact = removed
 	t.text = ""
-	t.removed = true
 	t.flight = flight
 }
+
+// outranks says whether the fact remembered came from a request sent
+// after flight: then a fact flight brought changes nothing.
+func (t *title) outranks(flight uint64) bool { return flight < t.flight }
+
+// outrankedBy says whether flight was sent after the request of the fact
+// remembered: then what it brought is the newer.
+func (t *title) outrankedBy(flight uint64) bool { return flight > t.flight }
 
 // agentsColumn is the Agents area: per agent, in the order of urgency,
 // its glyph, its number and its ticket's title (the number alone until
@@ -125,28 +149,36 @@ func (a *app) chosenOrg() string {
 }
 
 // agentTitle is the title of the agent's ticket from what the session
-// holds: the newest accepted fact remembered of it (title), else the
-// ticket in the pane, else a row of the list shown. ok is false while
-// none of them has it, and after a removal.
+// holds: of the fact remembered of it (title) and the views' data
+// (viewTitle), the one a later request brought; the fact when both came
+// with the same one, and so a fact against views without data. A fact
+// from the cache or the disk has no flight: every read of this session a
+// view shows outranks it. ok is false while none has a title, and when
+// the removal is the newest.
 func (a *app) agentTitle(ag agents.Agent) (string, bool) {
-	if t := a.titles[ag.Ticket]; t != nil {
-		// The newest accepted fact outranks the views' data (title).
-		switch {
-		case t.removed:
+	text, flight, ok := a.viewTitle(ag.Ticket)
+	if t := a.titles[ag.Ticket]; t != nil && t.fact != noFact && (!ok || !t.outrankedBy(flight)) {
+		if t.fact == removed {
 			return "", false
-		case t.known:
-			return t.text, true
 		}
+		return t.text, true
 	}
-	if d := a.detail; d != nil && d.known && d.record.ID == ag.Ticket {
-		return d.record.Title, true
+	return text, ok
+}
+
+// viewTitle is the title the views hold of ticket (the ticket in the
+// pane, a row of the list shown), of the two the one a later request
+// brought, and that request's flight; the pane's when both are equal.
+func (a *app) viewTitle(ticket string) (text string, flight uint64, ok bool) {
+	if d := a.detail; d != nil && d.known && d.record.ID == ticket {
+		text, flight, ok = d.record.Title, d.flight, true
 	}
 	if v := a.tickets; v != nil {
-		if i := v.index(ag.Ticket); i >= 0 {
-			return v.rows[i].Title, true
+		if i := v.index(ticket); i >= 0 && (!ok || v.flight > flight) {
+			text, flight, ok = v.rows[i].Title, v.flight, true
 		}
 	}
-	return "", false
+	return text, flight, ok
 }
 
 // requestTitles reads, once each, the titles of the agents' tickets the
@@ -170,8 +202,7 @@ func (a *app) requestTitles() tea.Cmd {
 		key := a.detailKey(ag.Project, ag.Ticket)
 		t := a.titles[ag.Ticket]
 		if t == nil {
-			t = &title{project: ag.Project}
-			a.titles[ag.Ticket] = t
+			t = a.newTitle(ag.Ticket, ag.Project)
 			if a.titleFromCache(t, key) {
 				continue
 			}
@@ -182,7 +213,7 @@ func (a *app) requestTitles() tea.Cmd {
 				cmds = append(cmds, cmd)
 			}
 		}
-		if !t.disk && !t.removed {
+		if !t.disk && t.fact != removed {
 			// Whatever became of the server's read (out, failed): the
 			// disk may hold the title.
 			room, ok := a.diskRoom()
@@ -220,7 +251,7 @@ func (a *app) titleFromDisk(t *title, k cache.Key) bool {
 // title nothing is known of: the cache has no flight, so a title or a
 // removal an accepted read brought always outranks it.
 func (a *app) titleFromCache(t *title, k cache.Key) bool {
-	if t.known || t.removed {
+	if t.fact != noFact {
 		return false
 	}
 	e, ok := a.store.Get(k)
@@ -258,50 +289,77 @@ func (m Model) receiveTitle(r gateway.TicketResult) (Model, tea.Cmd) {
 	}
 	// Not accepted (a failure, a refusal, a removal, kept stale): the
 	// cache may still hold the title; a title known meanwhile stays.
-	if !t.known && !a.titleFromCache(t, r.Key) {
+	if t.fact != titled && !a.titleFromCache(t, r.Key) {
 		t.failed = true
 	}
 	return m, nil
 }
 
 // learnTitle takes the title of an accepted read of a ticket (its title
-// read, the ticket, its list), sent as flight: it renews a remembered
-// title, settles a failed read and lifts a removal, unless the fact it
-// holds came from a request sent later. Tickets without a remembered title
-// need nothing: the area takes theirs from the views.
+// read, the ticket, its full text, its list), sent as flight: it renews a
+// remembered title, settles a failed read and lifts a removal, unless the
+// fact it holds came from a request sent later. A ticket an agent has gets
+// its entry here if it had none: else the views' order would decide (the
+// ticket in the pane before the list), not the newest read. A ticket no
+// agent has needs nothing.
 func (a *app) learnTitle(ticket, text string, flight uint64) {
 	t := a.titles[ticket]
-	if t == nil || flight < t.flight {
+	if t == nil {
+		ag, ok := a.agentAt(ticket)
+		if !ok {
+			return
+		}
+		t = a.newTitle(ticket, ag.Project)
+	}
+	if t.outranks(flight) {
 		return
 	}
 	t.learn(text, flight)
+}
+
+// newTitle makes the entry of a ticket's title, seeded with what the
+// views show of it (the ticket in the pane, a row of the list shown) and
+// the flight that brought it: a read accepted before the entry existed
+// takes part in the order too, so an older answer arriving now cannot
+// outrank it. Each view keeps the flight of its data (viewTitle); data
+// without one (a cache entry of an earlier run) seeds nothing.
+func (a *app) newTitle(ticket, project string) *title {
+	t := &title{project: project}
+	if text, flight, ok := a.viewTitle(ticket); ok && flight > 0 {
+		t.learn(text, flight)
+	}
+	a.titles[ticket] = t
+	return t
 }
 
 // forgetTitle follows an accepted removal of a ticket (not found, no
 // access), sent as flight: its agent's row says #n again, whatever the
 // views still hold, until a read sent later succeeds; R may read it once
 // no read of it is out. A removal from a request older than the fact
-// remembered changes nothing.
-func (a *app) forgetTitle(ticket string, flight uint64, project string) {
+// remembered (the entry's, or, for a new entry, the views') changes
+// nothing; took says whether it was taken.
+func (a *app) forgetTitle(ticket string, flight uint64, project string) (took bool) {
 	t := a.titles[ticket]
 	if t == nil {
-		t = &title{project: project}
-		a.titles[ticket] = t
+		t = a.newTitle(ticket, project)
 	}
-	if flight < t.flight {
-		return
+	if t.outranks(flight) {
+		return false
 	}
 	t.forget(flight)
 	// Failed, so that R offers to read it again; while a read of it is
 	// out, that read's answer settles it (receiveTitle).
 	t.failed = !t.asked
+	return true
 }
 
 // titlesRemoved follows an accepted removal, sent as flight: of one ticket,
 // or of a project's list, which takes the titles of its tickets the agents
 // show and of those remembered (an agent missing from one read of the
 // agents comes back), and refuses every read of them begun before, as the
-// scope does for a ticket's own removal.
+// scope does for a ticket's own removal. A ticket whose remembered fact
+// came from a request sent after the list's is left alone, its reads too:
+// the newer read saw it, and a title read begun since must not be refused.
 func (a *app) titlesRemoved(k cache.Key, flight uint64) {
 	switch k.Operation {
 	case api.TicketSpec.Tool:
@@ -319,8 +377,9 @@ func (a *app) titlesRemoved(k cache.Key, flight uint64) {
 			}
 		}
 		for id := range tickets {
-			a.forgetTitle(id, flight, k.Project)
-			a.scope.Invalidate(a.detailKey(k.Project, id))
+			if a.forgetTitle(id, flight, k.Project) {
+				a.scope.Invalidate(a.detailKey(k.Project, id))
+			}
 		}
 	}
 }

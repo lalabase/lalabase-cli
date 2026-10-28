@@ -2,10 +2,7 @@ package agents
 
 import (
 	"errors"
-	"fmt"
-	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -44,32 +41,18 @@ func Read(dir string, procs Procs) ([]Agent, error) {
 	if err := privatefs.CheckDirs(dir); err != nil {
 		return nil, err
 	}
-	d, err := os.Open(dir) //nolint:gosec // the agents directory, checked by privatefs
+	var ids []string
+	err := privatefs.Walk(dir, maxWalk, func(e fs.DirEntry) error {
+		if id, ok := strings.CutSuffix(e.Name(), launchSuffix); ok && ValidID(id) {
+			ids = append(ids, id)
+		}
+		return nil
+	})
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
-	}
-	defer func() { _ = d.Close() }()
-	var ids []string
-	visited := 0
-	for {
-		entries, err := d.ReadDir(256)
-		for _, e := range entries {
-			if visited++; visited > maxWalk {
-				return nil, fmt.Errorf("%s holds too many entries", dir)
-			}
-			if id, ok := strings.CutSuffix(e.Name(), launchSuffix); ok && ValidID(id) {
-				ids = append(ids, id)
-			}
-		}
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
 	}
 	var out []Agent
 	for _, id := range ids {

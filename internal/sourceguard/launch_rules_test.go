@@ -40,7 +40,7 @@ func TestTheLaunchPackagesImportByName(t *testing.T) {
 		"internal/launch/x.go":    `package launch; import ("os"; "os/exec"; "path/filepath"); var _ = exec.Command; var _ = exec.CommandContext; var _ = exec.LookPath; var _ *exec.Cmd; var _ = os.Stat; var _ os.FileInfo; var _ = filepath.Join; var _ = filepath.IsAbs; var _ = filepath.Clean`,
 		"internal/launch/y.go":    `package launch; import ("` + clientModule + `internal/launchdir"; "` + clientModule + `internal/worker"); var _ = launchdir.Make; var _ = worker.Run`,
 		"internal/launch/z.go":    `package launch; import "` + clientModule + `internal/agents"; var _ = agents.WriteLaunch; var _ = agents.Prepare; var _ = agents.NewID; var _ = agents.Events; var _ agents.Launch`,
-		"internal/launchdir/x.go": `package launchdir; import ("os"; "io/fs"; "path/filepath"; "crypto/rand"; "encoding/hex"); var _ = os.Mkdir; var _ = os.MkdirAll; var _ = os.Open; var _ = os.OpenFile; var _ = os.O_WRONLY | os.O_CREATE | os.O_EXCL; var _ = os.Remove; var _ fs.DirEntry; var _ = filepath.Join; var _ = filepath.IsAbs; var _ = rand.Read; var _ = hex.EncodeToString`,
+		"internal/launchdir/x.go": `package launchdir; import ("os"; "io/fs"; "path/filepath"; "crypto/rand"; "encoding/hex"); var _ = os.Mkdir; var _ = os.MkdirAll; var _ = os.Remove; var _ fs.DirEntry; var _ = filepath.Join; var _ = filepath.IsAbs; var _ = rand.Read; var _ = hex.EncodeToString`,
 	} {
 		if got := inspectUI(withLaunch(map[string]string{name: source})); len(got) != 0 {
 			t.Errorf("%s rejected: %v", name, got)
@@ -57,16 +57,19 @@ func TestTheLaunchPackagesImportByName(t *testing.T) {
 		"launch#readfile":     `package launch; import "os"; var read = os.ReadFile`,
 		"launch#writefile":    `package launch; import "os"; var write = os.WriteFile`,
 		"launch#remove":       `package launch; import "os"; var rm = os.Remove`,
-		"launch#chdir":        `package launch; import "os"; var cd = os.Chdir`,
-		"launch#syscallexec":  `package launch; import "syscall"; var run = syscall.Exec`,
-		"launch#forkexec":     `package launch; import "syscall"; var run = syscall.ForkExec`,
-		"launch#go":           `package launch; func run(f func()) { go f() }`,
-		"launch#log":          `package launch; import "log"; var out = log.Printf`,
-		"launch#println":      `package launch; import "fmt"; var out = fmt.Println`,
-		"launch#glob":         `package launch; import "path/filepath"; var _ = filepath.Glob`,
-		"launch#unix":         `package launch; import "golang.org/x/sys/unix"; var _ = unix.Exec`,
-		"launch#execname":     `package launch; import "os/exec"; var _ = exec.ErrNotFound`,
-		"launch#term":         `package launch; import "golang.org/x/term"; var _ = term.MakeRaw`,
+		// Since C9c the launch files are created through privatefs.
+		"launchdir#openfile": `package launchdir; import "os"; var _ = os.OpenFile`,
+		"launchdir#open":     `package launchdir; import "os"; var _ = os.Open`,
+		"launch#chdir":       `package launch; import "os"; var cd = os.Chdir`,
+		"launch#syscallexec": `package launch; import "syscall"; var run = syscall.Exec`,
+		"launch#forkexec":    `package launch; import "syscall"; var run = syscall.ForkExec`,
+		"launch#go":          `package launch; func run(f func()) { go f() }`,
+		"launch#log":         `package launch; import "log"; var out = log.Printf`,
+		"launch#println":     `package launch; import "fmt"; var out = fmt.Println`,
+		"launch#glob":        `package launch; import "path/filepath"; var _ = filepath.Glob`,
+		"launch#unix":        `package launch; import "golang.org/x/sys/unix"; var _ = unix.Exec`,
+		"launch#execname":    `package launch; import "os/exec"; var _ = exec.ErrNotFound`,
+		"launch#term":        `package launch; import "golang.org/x/term"; var _ = term.MakeRaw`,
 		// Review round 2 of #33, F1: the launch reads no file, also not
 		// through the client's own readers.
 		"launch#safefile":  `package launch; import "` + clientModule + `internal/safefile"; var _ = safefile.ReadRegular`,

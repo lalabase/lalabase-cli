@@ -350,6 +350,11 @@ func (m Model) receiveExpansion(r gateway.TicketResult) (Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+	if dec == cache.Replace {
+		// The full text comes with the ticket: an accepted one is a read
+		// of its title too, whatever became of the pane meanwhile.
+		a.learnTitle(r.Key.Ticket, r.Record.Title, uint64(r.Flight))
+	}
 	d := a.detail
 	if d == nil {
 		return m, nil
@@ -408,7 +413,7 @@ func (m Model) detailRemoved() Model {
 	a := m.app
 	d := a.detail
 	a.closeExpansion()
-	d.record, d.shown = api.Ticket{}, cache.Key{}
+	d.record, d.shown, d.flight = api.Ticket{}, cache.Key{}, 0
 	d.removed()
 	if t := a.tickets; t != nil && t.opened == d.id {
 		t.opened = ""

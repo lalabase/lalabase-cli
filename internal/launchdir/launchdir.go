@@ -29,8 +29,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -101,37 +99,9 @@ func Make(root string, now time.Time) (Dir, error) {
 // Write creates the file name in the directory with data and mode (the
 // owner's bits alone count) and returns its path. A file that cannot be
 // written whole is removed.
-func (d Dir) Write(name string, data []byte, mode fs.FileMode) (path string, err error) {
-	path = filepath.Join(d.Path, name)
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // a new file in the launch directory, checked by privatefs
-	if err != nil {
-		return "", err
-	}
-	// Capture the created path: an error return clears the named result.
-	defer func(createdPath string) {
-		if err != nil {
-			_ = f.Close()
-			_ = os.Remove(createdPath)
-		}
-	}(path)
-	// Set, not left to the umask: the script must be executable.
-	if err := f.Chmod(mode & 0o700); err != nil {
-		return "", err
-	}
-	if _, err := f.Write(data); err != nil {
-		return "", err
-	}
-	if err := f.Sync(); err != nil {
-		return "", err
-	}
-	info, err := f.Stat()
-	if err != nil {
-		return "", err
-	}
-	if err := privatefs.OwnFile(path, info); err != nil {
-		return "", err
-	}
-	if err := f.Close(); err != nil {
+func (d Dir) Write(name string, data []byte, mode fs.FileMode) (string, error) {
+	path := filepath.Join(d.Path, name)
+	if err := privatefs.CreateExclusive(path, data, mode); err != nil {
 		return "", err
 	}
 	return path, nil
@@ -147,32 +117,11 @@ func Prune(root string, now time.Time) error {
 	if err := privatefs.CheckDirs(root); err != nil {
 		return err
 	}
-	d, err := os.Open(root) //nolint:gosec // the launch root, checked by privatefs
+	err := privatefs.Walk(root, maxWalk, func(e fs.DirEntry) error { return prune1(root, e, now) })
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-	defer func() { _ = d.Close() }()
-	visited := 0
-	for {
-		entries, err := d.ReadDir(256)
-		for _, e := range entries {
-			if visited++; visited > maxWalk {
-				return fmt.Errorf("%s holds too many entries", root)
-			}
-			if err := prune1(root, e, now); err != nil {
-				return err
-			}
-		}
-		if errors.Is(err, io.EOF) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-	}
+	return err
 }
 
 // prune1 removes one entry of the root when it is an expired launch
