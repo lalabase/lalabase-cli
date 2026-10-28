@@ -76,6 +76,7 @@ func (m Model) launchClaude() (Model, tea.Cmd) {
 	a.launch.ref++
 	a.launch.busy, a.launch.ticket = true, t.ID
 	a.launch.notice, a.launch.tone = uitext.Fill(uitext.Launching, t.Number), present.NoticeWaiting
+	a.clearAgentsNotice()
 	a.launch.until = time.Time{}
 	// While it runs, the agents are read: its record comes with its end.
 	return m, tea.Batch(a.deps.Launcher.Launch(a.launch.ref, t), a.readAgents())
@@ -106,15 +107,20 @@ func (m Model) launchDone(d launch.Done) tea.Cmd {
 	}
 	// The launch cleared the deadline when it started (launchClaude): a
 	// problem or a canceled launch has none.
-	if a.launch.tone != present.Plain || a.launch.notice.String() == "" {
-		return nil
+	var cmd tea.Cmd
+	if a.launch.tone == present.Plain && a.launch.notice.String() != "" {
+		now := a.now()
+		a.launch.until = now.Add(hintFor)
+		if a.deps.Events != nil {
+			cmd = a.deps.Events.Expiry(a.launch.until, now)
+		}
 	}
-	now := a.now()
-	a.launch.until = now.Add(hintFor)
-	if a.deps.Events == nil {
-		return nil
+	if a.launchShown() {
+		// Decide after the final tone and deadline: a plain hint needs
+		// its deadline, and an opened launch may have a tracking error.
+		a.clearAgentsNotice()
 	}
-	return a.deps.Events.Expiry(a.launch.until, now)
+	return cmd
 }
 
 // launchTone is the notice's tone by the outcome: plain when Claude Code

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gboyke/lalabase-cli/internal/privatefs"
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
@@ -57,7 +58,7 @@ func TestSeenIsWrittenOnceAndPrivately(t *testing.T) {
 	if err != nil || string(after) != string(before) {
 		t.Fatalf("the file changed: %q to %q (%v)", before, after, err)
 	}
-	if got := names(t, dir); len(got) != 2 {
+	if got := names(t, dir); len(got) != 3 {
 		t.Fatalf("files %v", got)
 	}
 }
@@ -196,5 +197,38 @@ func TestTheWatcherMarksSeen(t *testing.T) {
 	}
 	if msg, ok := w.See("x", t0)().(Marked); !ok || msg.Err == nil {
 		t.Fatalf("%#v", msg)
+	}
+}
+
+// A seen mark changes the retention age. It must take the same lock as
+// cleanup, so it cannot appear between the age check and the deletion.
+func TestSeenSharesTheRemovalLock(t *testing.T) {
+	dir := agentsDir(t)
+	now := time.Now()
+	old := now.Add(-40 * 24 * time.Hour)
+	launchAgent(t, dir, agentID, old, SessionEnd, live(4242, 7))
+	age(t, dir, agentID, old)
+	unlock, err := privatefs.Lock(filepath.Join(dir, agentID+lockSuffix))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// MarkSeen's lock wait is bounded; no scheduling or sleep is needed
+	// to prove that it cannot write while cleanup holds the lock.
+	err = MarkSeen(dir, agentID, now)
+	unlock()
+	if !errors.Is(err, privatefs.ErrLocked) {
+		t.Fatalf("seen mark bypassed the removal lock: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, agentID+seenSuffix)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a refused mark left a file: %v", err)
+	}
+	if err := MarkSeen(dir, agentID, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := Prune(dir, now, live(4242, 7)); err != nil {
+		t.Fatal(err)
+	}
+	if ag := readOne(t, dir); !ag.Seen || ag.State != Ended {
+		t.Fatalf("the fresh mark did not retain the ended agent: %+v", ag)
 	}
 }

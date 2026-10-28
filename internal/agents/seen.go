@@ -25,7 +25,8 @@ type seenRecord struct {
 // exist (Prepare). The file is created exclusively; one that is there
 // already is left as it is and is no error, as long as it is a private
 // file of the user's own (a link, a directory or a file others may change
-// in its place is).
+// in its place is). The agent's lock keeps this change of its retention
+// age together with the cleanup's age check and removal.
 func MarkSeen(dir, id string, at time.Time) error {
 	if !ValidID(id) {
 		return errors.New("no agent's id")
@@ -36,6 +37,11 @@ func MarkSeen(dir, id string, at time.Time) error {
 	if err := existing(dir); err != nil {
 		return err
 	}
+	unlock, err := lock(filepath.Join(dir, id+lockSuffix), lockFor)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	data, err := json.Marshal(seenRecord{Format: FormatVersion, At: at.UTC()})
 	if err != nil {
 		return err

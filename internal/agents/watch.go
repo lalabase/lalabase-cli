@@ -1,9 +1,12 @@
 package agents
 
 import (
+	"errors"
+	"io/fs"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/gboyke/lalabase-cli/internal/privatefs"
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
@@ -59,7 +62,7 @@ type Marked struct {
 func (w *Watcher) See(id string, at time.Time) tea.Cmd {
 	return func() tea.Msg {
 		msg, ok := worker.Run(w.sup, "agents: seen", func() tea.Msg {
-			return Marked{ID: id, Err: MarkSeen(w.dir, id, at)}
+			return Marked{ID: id, Err: withoutPath(MarkSeen(w.dir, id, at))}
 		})
 		if !ok {
 			if w.sup.Err() != nil {
@@ -69,4 +72,43 @@ func (w *Watcher) See(id string, at time.Time) tea.Cmd {
 		}
 		return msg
 	}
+}
+
+// Removed is the message of one Remove: the agent, and why it is still
+// there (nil when it is gone).
+type Removed struct {
+	ID  string
+	Err error
+}
+
+// Remove is the command that removes the agent id's files (d), under the
+// supervisor like Read, if it is still Removable at the model's time at
+// when its lock is held.
+func (w *Watcher) Remove(id string, at time.Time) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := worker.Run(w.sup, "agents: remove", func() tea.Msg {
+			return Removed{ID: id, Err: withoutPath(Remove(w.dir, id, at, w.procs))}
+		})
+		if !ok {
+			if w.sup.Err() != nil {
+				return worker.Fatal{}
+			}
+			return nil
+		}
+		return msg
+	}
+}
+
+// withoutPath is err for the status line: of a file operation the reason
+// alone (permission denied), not the file's path, which would push the
+// reason out of a narrow line; any other error as it is.
+func withoutPath(err error) error {
+	if errors.Is(err, privatefs.ErrLocked) {
+		return privatefs.ErrLocked
+	}
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		return pathErr.Err
+	}
+	return err
 }

@@ -10,7 +10,9 @@ status colours (#18), the cursor bar (#19) and the scrollbar on free text
 folders per profile) and C7b (#33); C9a (the agents' state: hooks,
 `lalabase hook`, `internal/agents`, #34); C9b (the agents across the
 organisations: the Agents area, `A`, the seen mark, #36); the order of
-C9b's titles (the newest accepted answer decides) is this branch.
+C9b's titles (#37), the C9 review's readability and duplication passes
+(#38, #39) and C9c's groundwork (#40); C9c-2 (`d`, the cleanup) is this
+branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
@@ -51,7 +53,7 @@ on a Mac before every merge, by running the tests here.
 | `internal/claudecfg` | Lalabase entries in Claude Code's configuration, for `auth import` alone (the launch reads none of it since C7b) |
 | `internal/launch` | Claude Code beside the ticket (C7, C7b): the folder, the server file's bytes, the arguments, the launch script, the typed line, the AppleScript; the only package that starts a child process |
 | `internal/launchdir` | the launch files (C7b): one private directory per press beside the disk cache, its files created exclusively, old ones pruned |
-| `internal/agents` | the agents x started (C9a): their directory beside the launch files, the launch record, the state `lalabase hook` writes, the reading every 500 ms, lost processes, the seen mark the client alone writes (C9b) |
+| `internal/agents` | the agents x started (C9a): their directory beside the launch files, the launch record, the state `lalabase hook` writes, the reading every 500 ms, lost processes, the seen mark the client alone writes (C9b), the removal of an agent's files and the cleanup at every start (C9c) |
 | `internal/clean` | making foreign text safe for a terminal |
 | `internal/contract` | copy of the core's MCP contract; imported by tests only |
 | `internal/sourceguard` | tests over the repository's own files |

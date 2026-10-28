@@ -93,6 +93,13 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			cmd = tea.Batch(cmd, back)
 		}
 		return m, cmd
+	case agents.Removed:
+		return m.receiveRemoved(msg)
+	case agents.Marked:
+		if m.app != nil {
+			m.app.receiveMarked(msg)
+		}
+		return m, nil
 	case gateway.Result:
 		// A read refused before it was sent: its waiter is freed, nothing
 		// is shown of it.
@@ -111,6 +118,9 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 			if msg.Until.Equal(a.launch.until) {
 				a.launch.notice, a.launch.until = present.Inline{}, time.Time{}
+			}
+			if msg.Until.Equal(a.agents.noticeUntil) {
+				a.clearAgentsNotice()
 			}
 			return m, a.agentsDue(msg.Until)
 		}
@@ -261,6 +271,8 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 			return m.closeAgents()
 		}
 		return m.openAgents()
+	case RemoveAgent:
+		return m, m.removeAgent()
 	}
 	return m, nil
 }
