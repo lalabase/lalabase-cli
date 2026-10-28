@@ -350,6 +350,11 @@ func (m Model) receiveExpansion(r gateway.TicketResult) (Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+	if dec == cache.Replace {
+		// The full text comes with the ticket: an accepted one is a read
+		// of its title too, whatever became of the pane meanwhile.
+		a.learnTitle(r.Key.Ticket, r.Record.Title, uint64(r.Flight))
+	}
 	d := a.detail
 	if d == nil {
 		return m, nil
