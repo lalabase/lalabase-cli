@@ -427,7 +427,10 @@ navigation again.
     Answers are ordered by when their request was sent, so an older answer
     arriving late changes nothing (a project's removal included, also for
     the reads begun after a newer one), and that newest answer outranks
-    what the ticket pane or a list shown still holds. A ticket
+    what the ticket pane or a list shown still holds. Where the session
+    has no answer of its own for an agent's ticket yet, the pane and the
+    list shown are ranked the same way: the one a later read brought
+    shows, and it counts in the order once the agent's answers come. A ticket
     of an organisation that is not in the list has no second line. The
     area and the summary follow the reading every 500 ms; they read no
     files of their own.

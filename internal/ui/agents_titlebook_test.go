@@ -143,3 +143,72 @@ func TestAnOlderAnswerCannotSeedANewAgentsTitle(t *testing.T) {
 		t.Fatalf("after the older list: %q", got)
 	}
 }
+
+// Review round 2 of the C9c groundwork, finding 1: an agent appears while
+// the pane holds an older read of its ticket than the list shown. The
+// views keep the flight of their data, so the newer of the two decides,
+// not the order pane before list.
+func TestTheNewerViewDecidesForANewAgent(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher()
+	h.openSix() // the pane: "Ticket 6"
+	h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+		rows := h.d.ticketRows(website, 30)
+		for i := range rows {
+			if rows[i].Number == 6 {
+				rows[i].Title = "Six, renamed"
+			}
+		}
+		return ticketPageAnswer(1, 25, len(rows), rows[:25])
+	})
+	h.m.focus = view.List
+	h.drive(h.press("R"))
+	if d := h.m.app.detail; d == nil || d.record.Title != "Ticket 6" {
+		t.Fatalf("the pane was read again: not the case: %+v", d)
+	}
+	a := h.m.app
+	a.agents.list = []agents.Agent{agentIn(1, orgA, 6, agents.Working, h.now)}
+	h.drive(a.requestTitles())
+	if got := h.areaRow(6).Primary.String(); got != "#6 Six, renamed" {
+		t.Fatalf("the pane's older title won: %q", got)
+	}
+}
+
+// Review round 2 of the C9c groundwork, finding 2: a page of comments
+// that comes back empty moves the pane to page 1 without a read. The
+// pane's title keeps the flight of the answer that brought it, not the
+// older one filed for page 1, so an older list answer cannot outrank it.
+func TestACorrectedPageKeepsItsTitlesFlight(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher()
+	h.openSix()
+	h.press("tab")
+	h.drive(h.press("]"))
+	if k := h.m.app.detail.shown; k.PostsPage != 2 {
+		t.Fatalf("not on page 2: %+v", k)
+	}
+	h.m.focus = view.List
+	older := messages(t, h.press("R")) // the list, "Ticket 6", held
+	if len(older) == 0 {
+		t.Fatal("no list read")
+	}
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		r := h.d.ticketRecord(project, 6, o)
+		r.Title = "Six, renamed"
+		r.Posts, r.PostsTotal, r.PostsPages, r.PostsTruncated = []api.Post{}, 0, 0, false
+		return ticketAnswer(r)
+	})
+	h.m.focus = view.Object
+	h.drive(h.press("R"))
+	d := h.m.app.detail
+	if d.record.Title != "Six, renamed" || d.shown.PostsPage != 1 {
+		t.Fatalf("not corrected to page 1 with the new title: %q, %+v", d.record.Title, d.shown)
+	}
+	a := h.m.app
+	a.agents.list = []agents.Agent{agentIn(1, orgA, 6, agents.Working, h.now)}
+	h.drive(a.requestTitles())
+	h.drive(h.feed(older...)...)
+	if got := h.areaRow(6).Primary.String(); got != "#6 Six, renamed" {
+		t.Fatalf("the older list outranked the corrected pane: %q", got)
+	}
+}

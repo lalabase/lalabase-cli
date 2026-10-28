@@ -78,6 +78,10 @@ type ticketsView struct {
 	key            cache.Key
 	rows           []api.TicketRow
 	total, perPage int
+	// flight is the request whose answer the rows are (queue.Flight); from
+	// the cache, the newest filed for the key, which the memory entry is.
+	// It ranks the rows' titles against other reads (newTitle).
+	flight uint64
 	status
 	// selected is the row the cursor is on; opened the ticket opened with
 	// Enter, "" for none (the pane then shows a preview, if any).
@@ -125,6 +129,9 @@ type detailView struct {
 	// differ while a page turn or a correction loads (C1d).
 	key, shown cache.Key
 	record     api.Ticket
+	// flight is the request whose answer the record is, as the list's;
+	// a page corrected without a read keeps it (correctDetailPage).
+	flight uint64
 	status
 	offset int
 	// area is the active section, post the selected comment (by id),
@@ -339,6 +346,7 @@ func (a *app) cachedTickets(v *ticketsView) (cache.Entry, bool) {
 		return cache.Entry{}, false
 	}
 	v.rows, v.total, v.perPage = page.Data, page.Meta.Total, page.Meta.PerPage
+	v.flight = a.filed[v.key]
 	v.reselect()
 	return e, true
 }
@@ -586,6 +594,7 @@ func (a *app) cachedPage(d *detailView, k cache.Key) (cache.Entry, bool) {
 		return cache.Entry{}, false
 	}
 	d.record, d.shown = record, k
+	d.flight = a.filed[k]
 	a.settle(d)
 	return e, true
 }
@@ -702,6 +711,7 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 	switch d {
 	case cache.Replace:
 		v.rows, v.total, v.perPage = r.Page.Data, r.Page.Meta.Total, r.Page.Meta.PerPage
+		v.flight = uint64(r.Flight)
 		for _, row := range r.Page.Data {
 			a.learnTitle(row.ID, row.Title, uint64(r.Flight))
 		}
@@ -786,6 +796,7 @@ func (m Model) receiveDetail(r gateway.TicketResult) (Model, tea.Cmd) {
 	switch d {
 	case cache.Replace:
 		v.record, v.shown = r.Record, r.Key
+		v.flight = uint64(r.Flight)
 		v.fresh(a.now())
 		a.settle(v)
 		return m.correctDetailPage()

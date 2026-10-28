@@ -413,7 +413,7 @@ func (m Model) detailRemoved() Model {
 	a := m.app
 	d := a.detail
 	a.closeExpansion()
-	d.record, d.shown = api.Ticket{}, cache.Key{}
+	d.record, d.shown, d.flight = api.Ticket{}, cache.Key{}, 0
 	d.removed()
 	if t := a.tickets; t != nil && t.opened == d.id {
 		t.opened = ""
