@@ -284,8 +284,8 @@ func Hook(c HookCall) error {
 		return err
 	}
 	f := readFacts(c.Input)
-	state, does := next(c.Event, f)
-	if does == nothing {
+	if _, does := next(c.Event, f); does == nothing {
+		// An event without meaning for the state: no lock, no write.
 		return nil
 	}
 	wait := c.LockFor
@@ -299,16 +299,35 @@ func Hook(c HookCall) error {
 	defer unlock()
 	path := filepath.Join(c.Dir, c.Agent+stateSuffix)
 	old, _ := readState(path)
-	// The state is decided in this order, each step over the one before:
-	//  1. the event's own state (next);
-	//  2. a compaction keeps the state there was (keep), which must come
-	//     before 3, since a compaction keeps the open requests too;
-	//  3. an open request outranks the event: a prompt stays open while a
-	//     parallel tool ends, so the state is approval or, for questions
-	//     alone, waiting;
-	//  4. without one, a background subagent's tool cannot end the main
-	//     session's waiting: its turn ended, the person still has it.
-	pending := pendingAfter(c.Event, f, old)
+	rec := step(c.Event, f, old, c.Now)
+	if pid, ok := parsePID(c.PID); ok && c.Procs != nil {
+		// The start time is taken while the process surely lives: it
+		// called this hook. A pid whose process cannot be read keeps what
+		// the state had.
+		if start, alive, err := c.Procs.Start(pid); err == nil && alive {
+			rec.PID, rec.Start = pid, start
+		}
+	}
+	return replace(c.Dir, path, rec)
+}
+
+// step is the hook's decision apart from its files: the record after
+// event, from the facts of its input and the record before (the zero
+// record when there is none). It reads and writes nothing, so a test can
+// walk any order of events through it without a directory; Hook adds the
+// lock, the reading, the process's start time and the writing. The state
+// is decided in this order, each step over the one before:
+//  1. the event's own state (next);
+//  2. a compaction keeps the state there was (keep), which must come
+//     before 3, since a compaction keeps the open requests too;
+//  3. an open request outranks the event: a prompt stays open while a
+//     parallel tool ends, so the state is approval or, for questions
+//     alone, waiting;
+//  4. without one, a background subagent's tool cannot end the main
+//     session's waiting: its turn ended, the person still has it.
+func step(event string, f facts, old stateRecord, now time.Time) stateRecord {
+	state, does := next(event, f)
+	pending := pendingAfter(event, f, old)
 	if does == keep && old.State != "" {
 		// A compaction keeps both the state and its pending requests.
 		state, _ = stateNamed(old.State)
@@ -321,12 +340,12 @@ func Hook(c HookCall) error {
 				break
 			}
 		}
-	} else if subagentTool(c.Event, f) && old.State == stateNames[WaitingForYou] && len(old.Pending) == 0 {
+	} else if subagentTool(event, f) && old.State == stateNames[WaitingForYou] && len(old.Pending) == 0 {
 		// A background tool cannot answer the main session's ended turn.
 		state = WaitingForYou
 	}
-	tools, untracked := toolsAfter(c.Event, f, old)
-	rec := stateRecord{Format: FormatVersion, State: stateNames[state], Changed: c.Now.UTC(), Session: old.Session, PID: old.PID, Start: old.Start, Pending: pending, Tools: tools, Untracked: untracked}
+	tools, untracked := toolsAfter(event, f, old)
+	rec := stateRecord{Format: FormatVersion, State: stateNames[state], Changed: now.UTC(), Session: old.Session, PID: old.PID, Start: old.Start, Pending: pending, Tools: tools, Untracked: untracked}
 	if old.State == rec.State && !old.Changed.IsZero() {
 		// The same state goes on: its age counts from when it began.
 		rec.Changed = old.Changed
@@ -334,15 +353,7 @@ func Hook(c HookCall) error {
 	if f.session != "" {
 		rec.Session = f.session
 	}
-	if pid, ok := parsePID(c.PID); ok && c.Procs != nil {
-		// The start time is taken while the process surely lives: it
-		// called this hook. A pid whose process cannot be read keeps what
-		// the state had.
-		if start, alive, err := c.Procs.Start(pid); err == nil && alive {
-			rec.PID, rec.Start = pid, start
-		}
-	}
-	return replace(c.Dir, path, rec)
+	return rec
 }
 
 // pendingAfter is the open requests after event. It works on a copy:
