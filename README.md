@@ -778,7 +778,7 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   that sends it, so an older server keeps the base feature. A tool a
   slice brings whole (S2: `update_ticket`) is a feature of its own, on
   only when every argument its spec declares is in the schema. The
-  contract copy is at MCP 0.11.0; a 0.9.0 or 0.10.0 server is shown as
+  contract copy is at MCP 0.12.0; a 0.9.0 to 0.11.0 server is shown as
   older than the tested version and works with what its schemas say. An answer to such a request must carry the fields it relies on
   (a page without `posts_pages` is a protocol error, not page 0 of 0). A
   missing or hidden comment asked for by `post_id` comes back as a refusal

@@ -1,9 +1,9 @@
 {
   "header": {
     "regenerate": "RAILS_ENV=test bin/rails mcp:contract",
-    "core_commit": "d4d6322615bd67d285773b26ae356562147881b3",
+    "core_commit": "fd599cb693f019c491228e081a54e59380d50b7d",
     "core_dirty": true,
-    "contract_sha256": "617ccb4d3671ee6fb82dfd0cc4857c0001450b2886b3eb6db6b8354c9961abc8"
+    "contract_sha256": "5bcc5e85d196623f5d95be207275d2f8493062b988703534cfc0e0633d84d8bc"
   },
   "contract": {
     "mcp": {
@@ -42,7 +42,7 @@
               },
               "serverInfo": {
                 "name": "lalabase",
-                "version": "0.11.0"
+                "version": "0.12.0"
               }
             }
           }
@@ -560,6 +560,43 @@
                     },
                     "required": [
                       "ticket_id",
+                      "project_id"
+                    ]
+                  }
+                },
+                {
+                  "name": "summarize_time_sessions",
+                  "description": "Sums the booked time of the project by billing state, from the database. Returns minutes, hours and session counts for three buckets: billed (invoice number recorded), in_billing (assigned to an open billing, not invoiced yet), without_billing (not assigned to any billing); plus total and not_invoiced (= in_billing + without_billing). Optional filters: start_date / end_date (YYYY-MM-DD, inclusive), creator (\"me\" or a user UUID), ticket (UUID or the \"#187\" number). The scope field says whether the numbers cover ALL sessions of the project or only the asking user's OWN (\"own\"); when it is \"own\", say so in the answer. Returns no individual sessions. In an org-wide assistant thread the sums span every project whose time the user may see, each narrowed to its own permission tier; scope is then \"all\", \"own\" or \"mixed\", and coverage says how many of the organisation's projects the numbers cover - state both in the answer.",
+                  "inputSchema": {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object",
+                    "properties": {
+                      "start_date": {
+                        "type": "string",
+                        "description": "First day to include, YYYY-MM-DD."
+                      },
+                      "end_date": {
+                        "type": "string",
+                        "description": "Last day to include, YYYY-MM-DD (inclusive)."
+                      },
+                      "creator": {
+                        "type": "string",
+                        "description": "Only sessions booked by this user: \"me\" or a user UUID."
+                      },
+                      "ticket": {
+                        "type": "string",
+                        "description": "Only sessions booked on this ticket: its UUID or the number shown in the app, e.g. \"187\" or \"#187\"."
+                      },
+                      "project": {
+                        "type": "string",
+                        "description": "Restrict to THIS project: its name as shown in the app (e.g. \"Nordlicht\") or its UUID. Org-wide calls only. An ambiguous or unknown name answers with a candidate list instead of a result, so ask which one was meant rather than guessing."
+                      },
+                      "project_id": {
+                        "type": "string",
+                        "description": "UUID of the Lalabase project to scope this call to."
+                      }
+                    },
+                    "required": [
                       "project_id"
                     ]
                   }
@@ -2679,6 +2716,247 @@
               }
             }
           }
+        },
+        "summarize_time_sessions": {
+          "ok_own": {
+            "token": "read",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "summarize_time_sessions",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket": "00000000-0000-4000-8000-000000000041",
+                  "creator": "me"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "{\n  \"scope\": \"all\",\n  \"filters\": {\n    \"creator_id\": \"00000000-0000-4000-8000-000000000011\",\n    \"ticket\": {\n      \"id\": \"00000000-0000-4000-8000-000000000041\",\n      \"number\": 1,\n      \"title\": \"Login bricht ab\"\n    }\n  },\n  \"buckets\": {\n    \"without_billing\": {\n      \"minutes\": 30,\n      \"sessions\": 1,\n      \"hours\": 0.5\n    },\n    \"in_billing\": {\n      \"minutes\": 0,\n      \"sessions\": 0,\n      \"hours\": 0.0\n    },\n    \"billed\": {\n      \"minutes\": 0,\n      \"sessions\": 0,\n      \"hours\": 0.0\n    }\n  },\n  \"not_invoiced\": {\n    \"minutes\": 30,\n    \"sessions\": 1,\n    \"hours\": 0.5\n  },\n  \"total\": {\n    \"minutes\": 30,\n    \"sessions\": 1,\n    \"hours\": 0.5\n  }\n}"
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "ok"
+                  }
+                }
+              }
+            }
+          },
+          "ok_total": {
+            "token": "read",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "summarize_time_sessions",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket": "00000000-0000-4000-8000-000000000041"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "{\n  \"scope\": \"all\",\n  \"filters\": {\n    \"ticket\": {\n      \"id\": \"00000000-0000-4000-8000-000000000041\",\n      \"number\": 1,\n      \"title\": \"Login bricht ab\"\n    }\n  },\n  \"buckets\": {\n    \"without_billing\": {\n      \"minutes\": 75,\n      \"sessions\": 2,\n      \"hours\": 1.25\n    },\n    \"in_billing\": {\n      \"minutes\": 0,\n      \"sessions\": 0,\n      \"hours\": 0.0\n    },\n    \"billed\": {\n      \"minutes\": 0,\n      \"sessions\": 0,\n      \"hours\": 0.0\n    }\n  },\n  \"not_invoiced\": {\n    \"minutes\": 75,\n    \"sessions\": 2,\n    \"hours\": 1.25\n  },\n  \"total\": {\n    \"minutes\": 75,\n    \"sessions\": 2,\n    \"hours\": 1.25\n  }\n}"
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "ok"
+                  }
+                }
+              }
+            }
+          },
+          "empty": {
+            "token": "read",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "summarize_time_sessions",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket": "00000000-0000-4000-8000-000000000999"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "No ticket found for 00000000-0000-4000-8000-000000000999."
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "empty"
+                  }
+                }
+              }
+            }
+          },
+          "refused": {
+            "token": "read",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "summarize_time_sessions",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000033",
+                  "ticket": "00000000-0000-4000-8000-000000000043"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "no access to the time sessions of this project"
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "refused"
+                  }
+                }
+              }
+            }
+          },
+          "not_found": {
+            "token": "read",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "summarize_time_sessions",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000034",
+                  "ticket": "00000000-0000-4000-8000-000000000041"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Project not found or not accessible."
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "invalid_date": {
+            "token": "read",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "summarize_time_sessions",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "start_date": "05.01.2026"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "invalid start_date (expected YYYY-MM-DD)"
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "refused"
+                  }
+                }
+              }
+            }
+          },
+          "ok_own_tier": {
+            "token": "read",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "summarize_time_sessions",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket": "00000000-0000-4000-8000-000000000041"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "{\n  \"scope\": \"own\",\n  \"filters\": {\n    \"ticket\": {\n      \"id\": \"00000000-0000-4000-8000-000000000041\",\n      \"number\": 1,\n      \"title\": \"Login bricht ab\"\n    }\n  },\n  \"buckets\": {\n    \"without_billing\": {\n      \"minutes\": 30,\n      \"sessions\": 1,\n      \"hours\": 0.5\n    },\n    \"in_billing\": {\n      \"minutes\": 0,\n      \"sessions\": 0,\n      \"hours\": 0.0\n    },\n    \"billed\": {\n      \"minutes\": 0,\n      \"sessions\": 0,\n      \"hours\": 0.0\n    }\n  },\n  \"not_invoiced\": {\n    \"minutes\": 30,\n    \"sessions\": 1,\n    \"hours\": 0.5\n  },\n  \"total\": {\n    \"minutes\": 30,\n    \"sessions\": 1,\n    \"hours\": 0.5\n  }\n}"
+                    }
+                  ],
+                  "isError": false,
+                  "_meta": {
+                    "lalabase/kind": "ok"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -2954,6 +3232,110 @@
             "status": 401,
             "body": {
               "error": "unauthorized"
+            }
+          }
+        }
+      },
+      "GET /api/v1/tickets/:id/attachments": {
+        "ok": {
+          "token": "write",
+          "request": {
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/attachments"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "<generated-id-5>",
+                  "filename": "test_document.pdf",
+                  "content_type": "application/pdf",
+                  "byte_size": 452,
+                  "attached_to": "ticket",
+                  "parent_id": null,
+                  "url": "http://www.example.com/rails/active_storage/disk/<signed-key>/test_document.pdf",
+                  "created_at": "2026-01-05T09:36:00Z"
+                },
+                {
+                  "id": "<generated-id-6>",
+                  "filename": "test_file.txt",
+                  "content_type": "text/plain",
+                  "byte_size": 500,
+                  "attached_to": "post",
+                  "parent_id": "00000000-0000-4000-8000-000000000051",
+                  "url": "http://www.example.com/rails/active_storage/disk/<signed-key>/test_file.txt",
+                  "created_at": "2026-01-05T09:36:00Z"
+                }
+              ]
+            }
+          }
+        },
+        "ok_read_only": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/attachments"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "<generated-id-5>",
+                  "filename": "test_document.pdf",
+                  "content_type": "application/pdf",
+                  "byte_size": 452,
+                  "attached_to": "ticket",
+                  "parent_id": null,
+                  "url": "http://www.example.com/rails/active_storage/disk/<signed-key>/test_document.pdf",
+                  "created_at": "2026-01-05T09:36:00Z"
+                },
+                {
+                  "id": "<generated-id-6>",
+                  "filename": "test_file.txt",
+                  "content_type": "text/plain",
+                  "byte_size": 500,
+                  "attached_to": "post",
+                  "parent_id": "00000000-0000-4000-8000-000000000051",
+                  "url": "http://www.example.com/rails/active_storage/disk/<signed-key>/test_file.txt",
+                  "created_at": "2026-01-05T09:36:00Z"
+                }
+              ]
+            }
+          }
+        },
+        "empty": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/attachments"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": []
+            }
+          }
+        },
+        "not_found": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000999/attachments"
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found"
+            }
+          }
+        },
+        "hidden": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000043/attachments"
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found"
             }
           }
         }

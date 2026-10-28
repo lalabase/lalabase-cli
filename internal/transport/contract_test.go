@@ -105,6 +105,20 @@ var toolCases = map[string]expected{
 	"post_comment_formats/read_only":         {class: ReadOnly, legacyClass: ReadOnly},
 	"post_comment_formats/hidden":            {class: NotFound, legacyClass: NotFound},
 	"post_comment_formats/forbidden":         {class: NoAccess, legacyClass: NoAccess},
+
+	// S6 (0.12.0): the booked time of a ticket. A server before 0.12.0
+	// has no such tool and is never asked (feature detection), so the
+	// legacy classes only say how its texts would read without the
+	// machine field. A ticket the token cannot read, or none, is "not
+	// found", as for get_ticket.
+	"summarize_time_sessions/ok_own":      {class: Object, legacyClass: Object},
+	"summarize_time_sessions/ok_total":    {class: Object, legacyClass: Object},
+	"summarize_time_sessions/ok_own_tier": {class: Object, legacyClass: Object},
+	// Without the machine field its text is not one the client knows.
+	"summarize_time_sessions/empty":        {class: NotFound, legacyClass: Refused},
+	"summarize_time_sessions/refused":      {class: Refused, legacyClass: Refused},
+	"summarize_time_sessions/invalid_date": {class: Refused, legacyClass: Refused},
+	"summarize_time_sessions/not_found":    {class: NotFound, legacyClass: NotFound},
 }
 
 // The tools that address one record, and the argument naming it. Their empty
@@ -114,6 +128,8 @@ var oneRecord = map[string]string{
 	"post_comment":           "ticket_id",
 	"update_ticket":          "ticket_id",
 	"mark_notification_read": "notification_id",
+	// The booked time is asked of one ticket: no ticket is not found.
+	"summarize_time_sessions": "ticket",
 }
 
 // replay answers every request with one recorded response.
@@ -243,7 +259,9 @@ func TestRecordedRestAnswersAreClassified(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]Class{"ok": Object, "ok_read_only": Object, "ok_one_organisation": Object, "empty": Object, "unauthorized": Unauthenticated}
+	// not_found and hidden: the attachments of a missing ticket and of
+	// one the token cannot read (S5) answer alike, 404.
+	want := map[string]Class{"ok": Object, "ok_read_only": Object, "ok_one_organisation": Object, "empty": Object, "unauthorized": Unauthenticated, "not_found": NotFound, "hidden": NotFound}
 	for path, cases := range file.Contract.REST {
 		for name, ex := range cases {
 			class, ok := want[name]
@@ -273,13 +291,13 @@ func TestTheRecordedServerAnswersInitializeAndToolsList(t *testing.T) {
 	}
 	srv := replay(t, 200, file.Contract.MCP.Initialize.Response.Body)
 	info, ans := newClient(t, srv.URL).Initialize(context.Background())
-	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.11.0" {
+	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.12.0" {
 		t.Fatalf("initialize: %v %+v", ans.Class, info)
 	}
 
 	srv = replay(t, 200, file.Contract.MCP.ToolsList.Response.Body)
 	tools, ans := newClient(t, srv.URL).ListTools(context.Background())
-	if ans.Class != Object || len(tools) != 14 || tools[0].Name != "search_code_symbols" {
+	if ans.Class != Object || len(tools) != 15 || tools[0].Name != "search_code_symbols" {
 		t.Fatalf("tools/list: %v, %d tools", ans.Class, len(tools))
 	}
 	if _, ok := tools[6].Properties()["ticket_id"]; !ok || tools[6].Name != "get_ticket" {
