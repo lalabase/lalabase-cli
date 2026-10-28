@@ -70,3 +70,27 @@ func (w *Watcher) See(id string, at time.Time) tea.Cmd {
 		return msg
 	}
 }
+
+// Removed is the message of one Remove: the agent, and why it is still
+// there (nil when it is gone).
+type Removed struct {
+	ID  string
+	Err error
+}
+
+// Remove is the command that removes the agent id's files (d on an ended
+// or lost agent), under the supervisor like Read.
+func (w *Watcher) Remove(id string) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := worker.Run(w.sup, "agents: remove", func() tea.Msg {
+			return Removed{ID: id, Err: Remove(w.dir, id)}
+		})
+		if !ok {
+			if w.sup.Err() != nil {
+				return worker.Fatal{}
+			}
+			return nil
+		}
+		return msg
+	}
+}

@@ -1,0 +1,198 @@
+package agents
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+)
+
+// agentNumbered is the id of a test's agent n.
+func agentNumbered(n int) string { return fmt.Sprintf("0f8fad5b-d9cb-469f-a165-%012d", n) }
+
+// launchAgent records agent id, launched at at, and its state after event
+// at the same time; pid 4242 lives in p unless p says otherwise.
+func launchAgent(t *testing.T, dir, id string, at time.Time, event string, p Procs) {
+	t.Helper()
+	l := launchOf(at)
+	l.Agent = id
+	if err := WriteLaunch(dir, l); err != nil {
+		t.Fatal(err)
+	}
+	if event == "" {
+		return
+	}
+	if err := Hook(HookCall{Dir: dir, Event: event, Agent: id, PID: "4242", Now: at, Procs: p}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// age sets the modification time of every file of dir whose name starts
+// with prefix.
+func age(t *testing.T, dir, prefix string, at time.Time) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), prefix) {
+			if err := os.Chtimes(filepath.Join(dir, e.Name()), at, at); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+func filesOf(t *testing.T, dir, id string) []string {
+	t.Helper()
+	var out []string
+	for _, name := range names(t, dir) {
+		if strings.HasPrefix(name, id) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// Remove takes every file of the agent, its launch record first; a file
+// already gone is no error, and nothing of another agent or of another
+// name is touched.
+func TestRemoveTakesEveryFileOfTheAgent(t *testing.T) {
+	dir := agentsDir(t)
+	one, two := agentNumbered(1), agentNumbered(2)
+	launchAgent(t, dir, one, t0, SessionEnd, live(4242, 7))
+	launchAgent(t, dir, two, t0, SessionEnd, live(4242, 7))
+	if err := MarkSeen(dir, one, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if len(filesOf(t, dir, one)) != 4 {
+		t.Fatalf("set-up: %v", names(t, dir))
+	}
+	if err := Remove(dir, one); err != nil {
+		t.Fatal(err)
+	}
+	if got := filesOf(t, dir, one); len(got) != 0 {
+		t.Fatalf("left: %v", got)
+	}
+	if len(filesOf(t, dir, two)) != 3 || !slices.Contains(names(t, dir), "notes.txt") {
+		t.Fatalf("took more: %v", names(t, dir))
+	}
+	if err := Remove(dir, one); err != nil {
+		t.Fatalf("again: %v", err)
+	}
+	if err := Remove(dir, "../"+one); err == nil {
+		t.Fatal("an id of another form was taken")
+	}
+}
+
+// Prune at the start of a run: an ended or lost agent whose last state is
+// older than 30 days goes (owner, 2026-10-28), every other agent stays,
+// whatever its age.
+func TestPruneTakesEndedAndLostAgentsAfterThirtyDays(t *testing.T) {
+	dir := agentsDir(t)
+	now := t0.Add(31 * 24 * time.Hour)
+	cases := []struct {
+		event string
+		at    time.Time
+		stays bool
+	}{
+		{SessionEnd, t0, false},                           // ended, old
+		{UserPromptSubmit, t0, false},                     // lost (below), old
+		{SessionEnd, now.Add(-29 * 24 * time.Hour), true}, // ended, young
+		{UserPromptSubmit, t0, true},                      // working, old
+		{Stop, t0, true},                                  // waiting, old
+		{"", t0, true},                                    // starting, old
+	}
+	for i, c := range cases {
+		launchAgent(t, dir, agentNumbered(i), c.at, c.event, live(4242, 7))
+	}
+	// Agent 1 ran as pid 5151, which is gone by the time of the prune.
+	if err := Hook(HookCall{Dir: dir, Event: UserPromptSubmit, Agent: agentNumbered(1), PID: "5151", Now: t0, Procs: live(5151, 9)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Prune(dir, now, live(4242, 7)); err != nil {
+		t.Fatal(err)
+	}
+	for i, c := range cases {
+		if got := len(filesOf(t, dir, agentNumbered(i))) > 0; got != c.stays {
+			t.Errorf("agent %d (%s): stays %v, want %v", i, c.event, got, c.stays)
+		}
+	}
+}
+
+// Leftovers go once they are an hour old: a temporary file a hook left,
+// the files of an agent without its launch record (removed by d while a
+// hook still ran), an agent whose record fails its check. Younger ones
+// may still be written, and stay; names not of this form are left alone.
+func TestPruneTakesLeftoversAfterAnHour(t *testing.T) {
+	dir := agentsDir(t)
+	now := t0.Add(2 * time.Hour)
+	old, young := t0, now.Add(-time.Minute)
+	write := func(name string, data string, at time.Time) {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(tempPrefix+"old", "{", old)
+	write(tempPrefix+"young", "{", young)
+	write(agentNumbered(1)+stateSuffix, "{}", old) // no record, old
+	write(agentNumbered(1)+lockSuffix, "", old)
+	write(agentNumbered(2)+stateSuffix, "{}", young) // no record, young
+	write(agentNumbered(3)+launchSuffix, "broken", old)
+	write(agentNumbered(4)+launchSuffix, "broken", young)
+	write("notes.txt", "", old)
+	write("0f8fad5b.state.json", "", old) // not an agent's id
+	if err := Prune(dir, now, live(4242, 7)); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{tempPrefix + "young", "0f8fad5b.state.json", agentNumbered(2) + stateSuffix, agentNumbered(4) + launchSuffix, "notes.txt"}
+	got := names(t, dir)
+	slices.Sort(want)
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Fatalf("left %v, want %v", got, want)
+	}
+}
+
+// A directory too full for Read (maxWalk) is still pruned, so that the
+// next run shows its agents again; one beyond Prune's own bound is
+// refused whole, and a missing one has nothing to prune.
+func TestPruneReachesADirectoryReadRefuses(t *testing.T) {
+	dir := agentsDir(t)
+	for i := range maxWalk {
+		path := filepath.Join(dir, fmt.Sprintf("%s%d", tempPrefix, i))
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	age(t, dir, tempPrefix, t0)
+	launchAgent(t, dir, agentID, t0, Stop, live(4242, 7))
+	if _, err := Read(dir, live(4242, 7)); err == nil {
+		t.Fatal("set-up: Read took the full directory")
+	}
+	if err := Prune(dir, t0.Add(2*time.Hour), live(4242, 7)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Read(dir, live(4242, 7))
+	if err != nil || len(got) != 1 {
+		t.Fatalf("after the prune: %v, %v", got, err)
+	}
+	if err := Prune(filepath.Join(dir, "missing"), t0, nil); err != nil {
+		t.Fatalf("missing: %v", err)
+	}
+	if err := Prune("relative", t0, nil); err != nil {
+		t.Fatalf("relative: %v", err)
+	}
+}

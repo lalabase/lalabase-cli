@@ -90,6 +90,11 @@ func runInteractive(name string, env Env) int {
 			})), sup)
 		}
 	}
+	// The agents directory is cleaned before the first read (C9c): old
+	// ended and lost agents and leftovers go, so that a directory grown
+	// past what a read takes shows its agents again. One that cannot be
+	// cleaned is read as it is.
+	_ = agents.Prune(agentsFiles(env, p), time.Now(), agents.System)
 	sup := worker.New(ctx)
 	err = run(ctx, env.Stdin, env.Stdout, environment, sup)
 	// The terminal is restored here. A fatal error counts even when its
