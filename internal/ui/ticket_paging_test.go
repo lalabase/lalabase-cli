@@ -1126,7 +1126,6 @@ func (h *harness) driveWithin(cmds ...tea.Cmd) {
 func TestR2NoReadOfTheTicketWaitsForTheBudget(t *testing.T) {
 	h := newHarness(t)
 	h.openTickets(website)
-	h.withoutBookedTime()
 	a := h.m.app
 	for i := range 6 {
 		if i > 0 {

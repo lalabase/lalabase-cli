@@ -116,9 +116,10 @@ navigation again.
   narrower pane they stay in one faint line under the title, the time last
   ("booked by you 2:30"). The time is read when a ticket opens and with
   `R`, with the person's priority beside the ticket's own read, never for
-  a preview; the memory cache shows it at once when the ticket opened
-  before. Without access to the project's time, for a ticket that is not
-  there, or against an older server there is no such line. Comments by the token's own
+  a preview; the cache (memory, else the disk) shows it at once when the
+  ticket opened before, and a refusal takes it from there too. Without access to the project's time, for a ticket that is not
+  there, or against an older server there is no such line.
+  Comments by the token's own
   person show the author as "Name (you)", blue and bold; every other author
   is bold without colour. Only the user id from `/api/v1/me` decides, never
   a name, and without colour the "(you)" still says it. The client never guesses a meaning from a status name, since every

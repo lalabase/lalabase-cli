@@ -552,6 +552,8 @@ func (f *Fixture) rpc(w http.ResponseWriter, r *http.Request, req Request) {
 			f.updateTicket(w, r, call.Params.Arguments, reply, req)
 		case "post_comment":
 			f.postComment(w, r, call.Params.Arguments, reply, req)
+		case "summarize_time_sessions":
+			f.bookedTime(call.Params.Arguments, reply)
 		default:
 			reply(http.StatusOK, toolError("refused", "not available in the inbox fixture: "+call.Params.Name), nil)
 		}

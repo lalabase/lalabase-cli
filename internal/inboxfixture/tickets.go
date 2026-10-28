@@ -461,3 +461,28 @@ func (f *Fixture) projectName(id string) string {
 	}
 	return ""
 }
+
+// bookedTime answers summarize_time_sessions as the server does for the
+// own time on one ticket (S6): 15 minutes for each step of the ticket's
+// number, so a person trying the client sees the line and tests can tell
+// tickets apart; no such ticket is empty, as on the server.
+func (f *Fixture) bookedTime(args map[string]any, reply func(int, any, any)) {
+	project, _ := args["project_id"].(string)
+	id, _ := args["ticket"].(string)
+	number := 0
+	for n := 1; n <= ticketCounts[project]; n++ {
+		if TicketID(project, n) == id {
+			number = n
+		}
+	}
+	if number == 0 {
+		reply(http.StatusOK, toolEmpty("No ticket found for "+id+"."), nil)
+		return
+	}
+	minutes := 15 * number
+	reply(http.StatusOK, toolObject(map[string]any{
+		"scope":   "own",
+		"filters": map[string]any{"ticket": map[string]any{"id": id, "number": number}},
+		"total":   map[string]any{"minutes": minutes, "sessions": 1, "hours": float64(minutes) / 60},
+	}), nil)
+}

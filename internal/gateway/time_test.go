@@ -32,13 +32,15 @@ func TestTheChecksOfTheBookedTimeRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	bad := map[string]Ticket{
-		"another area":     s.Begin(Detail, timeKey(ns, timeProject, timeTicket), queue.Background),
-		"no ticket":        s.Begin(Time, timeKey(ns, timeProject, ""), queue.Background),
-		"no project":       s.Begin(Time, timeKey(ns, "", timeTicket), queue.Background),
-		"a page":           s.Begin(Time, func() cache.Key { k := timeKey(ns, timeProject, timeTicket); k.Page = 1; return k }(), queue.Background),
-		"full text":        s.Begin(Time, func() cache.Key { k := timeKey(ns, timeProject, timeTicket); k.FullText = true; return k }(), queue.Background),
-		"an organisation":  s.Begin(Time, func() cache.Key { k := timeKey(ns, timeProject, timeTicket); k.Organisation = orgA; return k }(), queue.Background),
-		"a ticket's pages": s.Begin(Time, detailKey(ns, timeProject, timeTicket, true), queue.Background),
+		"another area":      s.Begin(Detail, timeKey(ns, timeProject, timeTicket), queue.Background),
+		"no ticket":         s.Begin(Time, timeKey(ns, timeProject, ""), queue.Background),
+		"no project":        s.Begin(Time, timeKey(ns, "", timeTicket), queue.Background),
+		"a page":            s.Begin(Time, func() cache.Key { k := timeKey(ns, timeProject, timeTicket); k.Page = 1; return k }(), queue.Background),
+		"full text":         s.Begin(Time, func() cache.Key { k := timeKey(ns, timeProject, timeTicket); k.FullText = true; return k }(), queue.Background),
+		"an organisation":   s.Begin(Time, func() cache.Key { k := timeKey(ns, timeProject, timeTicket); k.Organisation = orgA; return k }(), queue.Background),
+		"a ticket's pages":  s.Begin(Time, detailKey(ns, timeProject, timeTicket, true), queue.Background),
+		"a status":          s.Begin(Time, func() cache.Key { k := timeKey(ns, timeProject, timeTicket); k.Status = "unread"; return k }(), queue.Background),
+		"all organisations": s.Begin(Time, func() cache.Key { k := timeKey(ns, timeProject, timeTicket); k.Global = true; return k }(), queue.Background),
 	}
 	for name, b := range bad {
 		if err := CheckReadTicket(b); err == nil {

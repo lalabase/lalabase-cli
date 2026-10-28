@@ -17,8 +17,9 @@ import (
 // bar, under "Booked by you", in hours and minutes. It is read when the
 // ticket opens (never for a preview, so moving through a list costs no
 // request more) and again with R, beside the ticket's own read and with
-// the person's priority; the memory cache shows it at once when the ticket opened
-// before. The time is extra: no access to the project's time, no such
+// the person's priority. The cache shows it at once when the ticket
+// opened before: from memory, else from the disk (C1e), as every read.
+// The time is extra: no access to the project's time, no such
 // ticket or a server without the tool shows no line, and nothing else of
 // the ticket changes.
 
@@ -42,13 +43,8 @@ func (a *app) readTime(d *detailView) tea.Cmd {
 		return nil
 	}
 	key := a.timeKey(d.project, d.id)
-	if !d.booked.known {
-		if e, ok := a.store.Get(key); ok {
-			booked, ans := api.DecodeBookedTime(transport.Answer{Class: transport.Object, Payload: e.Payload, Status: 200, Sent: true})
-			if ans.OK() && gateway.CheckBookedTime(key, booked) == nil {
-				d.booked = bookedTime{known: true, minutes: booked.Minutes}
-			}
-		}
+	if !d.booked.known && !a.timeFromCache(d, key) {
+		a.diskRead(gateway.Time, key, forTime)
 	}
 	if a.pending(key) {
 		return nil
@@ -57,6 +53,22 @@ func (a *app) readTime(d *detailView) tea.Cmd {
 	// open or R the person made, never a stream of them, and no budget
 	// to wait for (the agents' titles, many and unasked, are idle work).
 	return a.issue(gateway.Time, key, forTime, queue.User)
+}
+
+// timeFromCache shows the time the memory entry of key holds, if it still
+// reads and is of the ticket, and says whether it did.
+func (a *app) timeFromCache(d *detailView, key cache.Key) bool {
+	e, ok := a.store.Get(key)
+	if !ok {
+		return false
+	}
+	booked, ans := api.DecodeBookedTime(transport.Answer{Class: transport.Object, Payload: e.Payload, Status: 200, Sent: true})
+	if !ans.OK() || gateway.CheckBookedTime(key, booked) != nil {
+		a.forget(key)
+		return false
+	}
+	d.booked = bookedTime{known: true, minutes: booked.Minutes}
+	return true
 }
 
 // receiveTime takes a time read's answer, filed through the scope like
@@ -77,6 +89,10 @@ func (m Model) receiveTime(r gateway.TimeResult) (Model, tea.Cmd) {
 		v.booked = bookedTime{known: true, minutes: r.Time.Minutes}
 	case r.Answer.Class == transport.Refused || r.Answer.Class == transport.NotFound || r.Answer.Class == transport.NoAccess:
 		v.booked = bookedTime{}
+		// A refusal keeps the cache's entry (it keeps a page with its
+		// message); a time the person may no longer see must not come
+		// back from it at the next open.
+		a.forget(r.Key)
 	}
 	return m, nil
 }

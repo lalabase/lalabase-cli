@@ -650,7 +650,8 @@ func (m Model) refreshSection() tea.Cmd {
 }
 
 // canRefreshSection mirrors refreshSection: R is offered only when it
-// would issue a read.
+// would issue a read of what is shown. The ticket's booked time (S6),
+// which R reads beside it, does not offer R alone: it is extra.
 func (m Model) canRefreshSection() bool {
 	a := m.app
 	if m.focus == view.Object && a.detail != nil {

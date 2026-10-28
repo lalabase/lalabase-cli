@@ -133,7 +133,8 @@ func TestPTYDiskCacheRestartFlow(t *testing.T) {
 			if first != 8 {
 				t.Fatalf("%d requests in the first run", first)
 			}
-			if n := len(entries()); n != 3 {
+			// Since S6 the ticket's booked time is one entry more.
+			if n := len(entries()); n != 4 {
 				t.Fatalf("%d entries after the first run", n)
 			}
 			// The second run: /me again, the counters fresh, the inbox from
@@ -182,7 +183,7 @@ func TestPTYDiskCacheRestartFlow(t *testing.T) {
 				}
 				t.Fatalf("%d requests in the second run:\n%s", n, strings.Join(lines, "\n"))
 			}
-			if n := len(entries()); n != 3 {
+			if n := len(entries()); n != 4 {
 				t.Fatalf("%d entries after the second run", n)
 			}
 			// The directory and its files are the user's alone.
