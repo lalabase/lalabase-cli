@@ -23,13 +23,41 @@ type fakeWatcher struct {
 	err    error
 	// marks are the agents See recorded as seen (C9b).
 	marks []string
+	// seeErr and removeErr are the errors See and Remove answer with;
+	// removed are the agents Remove was asked for (C9c).
+	seeErr, removeErr error
+	removed           []string
+}
+
+func (f *fakeWatcher) Remove(id string) tea.Cmd {
+	f.mu.Lock()
+	f.removed = append(f.removed, id)
+	err := f.removeErr
+	if err == nil {
+		kept := f.agents[:0:0]
+		for _, ag := range f.agents {
+			if ag.ID != id {
+				kept = append(kept, ag)
+			}
+		}
+		f.agents = kept
+	}
+	f.mu.Unlock()
+	return func() tea.Msg { return agents.Removed{ID: id, Err: err} }
+}
+
+func (f *fakeWatcher) removals() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.removed...)
 }
 
 func (f *fakeWatcher) See(id string, _ time.Time) tea.Cmd {
 	f.mu.Lock()
 	f.marks = append(f.marks, id)
+	err := f.seeErr
 	f.mu.Unlock()
-	return func() tea.Msg { return agents.Marked{ID: id} }
+	return func() tea.Msg { return agents.Marked{ID: id, Err: err} }
 }
 
 func (f *fakeWatcher) seen() []string {

@@ -109,6 +109,8 @@ func (m Model) status() (present.Inline, present.Style) {
 		return uitext.Inline(a.diskStatus()), present.NoticeProblem
 	case a.launchShown():
 		return a.launch.notice, a.launch.tone
+	case a.agents.notice.String() != "":
+		return a.agents.notice, a.agents.tone
 	}
 	return present.Inline{}, present.Plain
 }

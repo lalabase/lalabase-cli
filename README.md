@@ -444,8 +444,23 @@ navigation again.
     replaced; the hook neither reads nor writes it), so it stays seen
     after a restart. A seen file that is not a private file of your own
     in its format (broken, a link, open to others) counts as not seen, and
-    the agent stays listed. The reading visits at most 4096 entries of the
-    directory, now up to four per agent.
+    the agent stays listed; a seen mark that cannot be written says so in
+    the status line, and the agent is faint for that run only.
+  * **Removing an agent (C9c).** `d` removes an agent that ended or is
+    lost, without asking: in the agents' list the one under the cursor, in
+    the ticket pane the ticket's agent the head shows. Only the client's
+    files of it go (its launch record, state, seen mark and lock); nothing
+    that runs is stopped, and an agent that still works, waits or starts
+    offers no `d`. A removal that fails keeps the agent and says why.
+  * **Cleaning up.** Every start of the interactive client cleans the
+    agents' directory before its first read: an agent that ended or is
+    lost goes 30 days after its last state, seen or not; a hook's
+    temporary file, the files of an agent without its launch record and a
+    launch record that fails its check go once they are an hour old. Any
+    other agent stays, whatever its age. The reading visits at most 4096
+    entries of the directory (about four files per agent); the cleanup
+    visits up to 65536, so that a directory grown past the reading's bound
+    shows its agents again after the next start.
 * **A comment that is gone.** When the server answers a comment read whole
   with "not found" (it was deleted or made private), its cached text goes
   and is hidden at once, the ticket stays and says "Comment unavailable",

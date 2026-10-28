@@ -48,6 +48,8 @@ const (
 	Launch
 	// C9b: the agents, and back from them.
 	OpenAgents
+	// C9c: remove an ended or lost agent.
+	RemoveAgent
 )
 
 type keyAction struct {
@@ -126,6 +128,8 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: Launch}
 	case "A":
 		return keyAction{Kind: OpenAgents}
+	case "d":
+		return keyAction{Kind: RemoveAgent}
 	}
 	return keyAction{}
 }
@@ -439,6 +443,9 @@ func (m Model) ticketBindings() []binding {
 	}
 	if _, ok := m.launchTarget(); ok {
 		out = append(out, binding{Launch, uitext.LaunchKey, uitext.LaunchHelp})
+	}
+	if _, ok := m.removeTarget(); ok {
+		out = append(out, binding{RemoveAgent, uitext.RemoveAgentKey, uitext.RemoveAgentHelp})
 	}
 	return append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
 }

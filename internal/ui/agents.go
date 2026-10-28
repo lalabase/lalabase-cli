@@ -20,6 +20,9 @@ type AgentWatcher interface {
 	// See records an agent the person opened as seen (C9b); its message
 	// is an agents.Marked.
 	See(id string, at time.Time) tea.Cmd
+	// Remove removes an ended or lost agent's files (C9c); its message is
+	// an agents.Removed.
+	Remove(id string) tea.Cmd
 }
 
 // agentsEvery is how often the agents' files are read while there is one,
@@ -51,6 +54,14 @@ type agentsState struct {
 	// seen are the agents the person opened in this run (C9b): faint at
 	// once, before their file is read back.
 	seen map[string]bool
+	// removing are the agents d asked to remove whose answer is out, by
+	// id, with their number for the notice (C9c).
+	removing map[string]int
+	// notice is what became of a removal or a seen mark, in its tone; a
+	// hint goes at noticeUntil, a problem stays until the next d or open.
+	notice      present.Inline
+	tone        present.Style
+	noticeUntil time.Time
 }
 
 // readAgents issues a read unless one is out or due already: one chain of
