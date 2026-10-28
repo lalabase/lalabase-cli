@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -68,6 +69,10 @@ type agentsState struct {
 	tone        present.Style
 	noticeUntil time.Time
 	noticeAgent string
+	// tooMany: the newest read failed because the directory holds more
+	// files than a read takes (agents.ErrTooManyFiles), said in the
+	// status line until a read succeeds.
+	tooMany bool
 }
 
 // readAgents issues a read unless one is out or due already: one chain of
@@ -98,6 +103,7 @@ func (a *app) receiveAgents(s agents.Snapshot) tea.Cmd {
 		return nil
 	}
 	a.agents.reading = false
+	a.agents.tooMany = errors.Is(s.Err, agents.ErrTooManyFiles)
 	a.agents.list = withoutGone(s.Agents, a.agents.gone, s.Ref)
 	if s.Err != nil {
 		a.agents.list = nil

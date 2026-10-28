@@ -269,6 +269,7 @@ const (
 	AgentRemoved
 	AgentNotRemoved
 	AgentNotSeen
+	AgentsTooMany
 	count
 )
 
@@ -413,4 +414,5 @@ var english = map[ID]string{
 	AgentRemoved:    "Agent #%d removed.",
 	AgentNotRemoved: "Agent #%d could not be removed: %s",
 	AgentNotSeen:    "Agent #%d is seen for this run only: %s",
+	AgentsTooMany:   "The agents' directory holds too many files to read; the next start cleans it up.",
 }

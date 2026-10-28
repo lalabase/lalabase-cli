@@ -201,7 +201,7 @@ var launchImports = map[string]map[string][]string{
 // touch them on the interface's own goroutine.
 var interfaceImports = map[string]map[string][]string{
 	rootController: {
-		clientModule + "internal/agents": {"Agent", "State", "Ended", "Lost", "Working", "Starting", "WaitingForYou", "WaitingForApproval", "Snapshot", "Marked", "Removed", "Removable"},
+		clientModule + "internal/agents": {"Agent", "State", "Ended", "Lost", "Working", "Starting", "WaitingForYou", "WaitingForApproval", "Snapshot", "Marked", "Removed", "Removable", "ErrTooManyFiles"},
 	},
 }
 

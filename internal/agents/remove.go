@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -42,6 +43,13 @@ const (
 	// record that fails its check. Younger ones may still be written: a
 	// hook has 5 s, the launch writes its record before claude starts.
 	strayAfter = time.Hour
+	// maxOver is how many agents whose session is over (Removable: ended,
+	// lost, stuck starting) Prune keeps, whatever their age (owner,
+	// 2026-10-28): of more, those with the oldest last change go first.
+	// With about four files each this keeps the directory well below
+	// what Read visits (maxWalk), also for someone who starts dozens of
+	// agents a day and never presses d.
+	maxOver = 500
 	// maxPruneWalk bounds the entries Prune visits: far more than Read's
 	// maxWalk, so that a directory Read refuses can still be cleaned, and
 	// still a bound, so that a directory another process fills cannot
@@ -56,6 +64,11 @@ const (
 // interface drops it after a removal that succeeded (withoutGone). The
 // lock goes after the lock is let go.
 var removeOrder = []string{seenSuffix, stateSuffix, launchSuffix}
+
+// ErrTooManyFiles is Read's error for a directory with more entries than
+// a read visits (maxWalk): the interface says so instead of showing no
+// agent without a word; the next start's Prune brings it below.
+var ErrTooManyFiles = privatefs.ErrTooManyEntries
 
 // ErrRunning is Remove's answer for an agent that is no longer removable:
 // a hook wrote since the interface read it, and it works or waits again.
@@ -173,7 +186,8 @@ func find(dir, id string, procs Procs) (current, error) {
 // agent's files without its launch record, an agent whose launch record
 // fails its check). An agent that works or waits stays, whatever its age,
 // and so does one whose launch record is of a newer format (another
-// client's); names of another form are left alone. Each agent is decided
+// client's); names of another form are left alone. Of the agents whose
+// session is over at most maxOver stay, the newest. Each agent is decided
 // under its lock, as it is then (removeIf), not as the walk found it. One
 // file that cannot be removed does not stop the rest: its error is
 // returned after. A missing directory has nothing to prune; procs tells a
@@ -210,8 +224,34 @@ func Prune(dir string, now time.Time, procs Procs) error {
 	if err != nil {
 		return err
 	}
+	// The agents whose session is over and that stay by their age, with
+	// their last change, for the bound on their number.
+	type overAgent struct {
+		id     string
+		newest time.Time
+	}
+	var over []overAgent
 	for id := range ids {
-		failed = append(failed, removeIf(dir, id, procs, func(c current) bool { return pruned(dir, id, c, now) }))
+		failed = append(failed, removeIf(dir, id, procs, func(c current) bool {
+			if pruned(dir, id, c, now) {
+				return true
+			}
+			if c.listed && Removable(c.agent, now) {
+				over = append(over, overAgent{id, c.newest})
+			}
+			return false
+		}))
+	}
+	if len(over) > maxOver {
+		slices.SortFunc(over, func(x, y overAgent) int {
+			if c := x.newest.Compare(y.newest); c != 0 {
+				return c
+			}
+			return strings.Compare(x.id, y.id)
+		})
+		for _, o := range over[:len(over)-maxOver] {
+			failed = append(failed, removeIf(dir, o.id, procs, func(c current) bool { return c.listed && Removable(c.agent, now) }))
+		}
 	}
 	return errors.Join(failed...)
 }

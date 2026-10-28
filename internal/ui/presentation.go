@@ -108,6 +108,8 @@ func (m Model) status() (present.Inline, present.Style) {
 		return uitext.Fill(uitext.RateLimited, a.pause.In(a.loc).Format("15:04:05")), present.NoticeWaiting
 	case a.diskStatus() != 0:
 		return uitext.Inline(a.diskStatus()), present.NoticeProblem
+	case a.agents.tooMany:
+		return uitext.Inline(uitext.AgentsTooMany), present.NoticeProblem
 	case a.agentsNoticeShown():
 		// Of the agents' notice and the launch's the newer shows: a
 		// launch's start and its answer clear the agents' notice.

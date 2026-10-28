@@ -361,3 +361,31 @@ func TestAFailedRemovalLeavesTheAgentListed(t *testing.T) {
 		t.Fatalf("the agent left though its removal failed: %v, %v", got, err)
 	}
 }
+
+// Owner, 2026-10-28: besides the 30 days the cleanup keeps at most
+// maxOver agents whose session is over (ended, lost, stuck starting); of
+// more, the ones with the oldest last change go first, also before their
+// 30 days. An agent that works or waits is never counted or taken.
+func TestPruneKeepsAtMostMaxOverEndedAgents(t *testing.T) {
+	dir := agentsDir(t)
+	now := t0.Add(10 * 24 * time.Hour)
+	for i := range maxOver + 3 {
+		id := agentNumbered(i)
+		launchAgent(t, dir, id, t0, SessionEnd, live(4242, 7))
+		age(t, dir, id, t0.Add(time.Duration(i)*time.Minute)) // agent 0 the oldest
+	}
+	working := agentNumbered(9999)
+	launchAgent(t, dir, working, t0, UserPromptSubmit, live(4242, 7))
+	age(t, dir, working, t0.Add(-time.Hour)) // older than every ended one
+	if err := Prune(dir, now, live(4242, 7)); err != nil {
+		t.Fatal(err)
+	}
+	for i := range maxOver + 3 {
+		if stays := len(filesOf(t, dir, agentNumbered(i))) > 0; stays != (i >= 3) {
+			t.Fatalf("agent %d stays %v", i, stays)
+		}
+	}
+	if len(filesOf(t, dir, working)) == 0 {
+		t.Fatal("the working agent was counted and taken")
+	}
+}

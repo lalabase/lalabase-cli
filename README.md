@@ -471,11 +471,15 @@ navigation again.
     agent that works or waits stays, whatever its age, and so does one
     whose launch record a newer client wrote. When a lost process went is
     not known: an agent that waited silently for 30 days and then went is
-    removed at the next start without having been shown as lost. A file
+    removed at the next start without having been shown as lost. Besides
+    the 30 days, at most 500 agents whose session is over stay; of more,
+    those with the oldest last change go first, also before their 30
+    days, so that the directory stays below what a read takes. A file
     that cannot be removed does not stop the rest. The reading visits at
-    most 4096 entries of the directory (about four files per agent); the
-    cleanup visits up to 65536, so that a directory grown past the
-    reading's bound shows its agents again after the next start.
+    most 4096 entries of the directory (about four files per agent); a
+    directory with more says so in the status line instead of showing no
+    agent, and the cleanup, which visits up to 65536, brings it below at
+    the next start.
 * **A comment that is gone.** When the server answers a comment read whole
   with "not found" (it was deleted or made private), its cached text goes
   and is hidden at once, the ticket stays and says "Comment unavailable",

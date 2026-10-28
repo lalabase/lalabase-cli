@@ -6,6 +6,7 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -251,5 +252,28 @@ func TestAFailedReadKeepsTheProblem(t *testing.T) {
 	h.due()
 	if got := h.status(); !strings.Contains(got, "disk gone") {
 		t.Fatalf("a failed read took the problem: %q", got)
+	}
+}
+
+// Owner, 2026-10-28: a directory with more files than a read takes shows
+// a notice instead of an empty area without a word; a read that succeeds
+// takes it away.
+func TestTooManyAgentFilesAreTold(t *testing.T) {
+	h := newHarness(t)
+	f := h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+	h.start()
+	f.mu.Lock()
+	f.err = fmt.Errorf("/x/a: %w", agents.ErrTooManyFiles)
+	f.mu.Unlock()
+	h.due()
+	if got := h.status(); !strings.Contains(got, "too many") {
+		t.Fatalf("status %q", got)
+	}
+	f.mu.Lock()
+	f.err = nil
+	f.mu.Unlock()
+	h.due()
+	if got := h.status(); strings.Contains(got, "too many") {
+		t.Fatalf("status after a good read %q", got)
 	}
 }
