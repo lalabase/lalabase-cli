@@ -107,10 +107,11 @@ func (m Model) status() (present.Inline, present.Style) {
 		return uitext.Fill(uitext.RateLimited, a.pause.In(a.loc).Format("15:04:05")), present.NoticeWaiting
 	case a.diskStatus() != 0:
 		return uitext.Inline(a.diskStatus()), present.NoticeProblem
+	case a.agentsNoticeShown():
+		// Newer than any launch notice: a launch clears it.
+		return a.agents.notice, a.agents.tone
 	case a.launchShown():
 		return a.launch.notice, a.launch.tone
-	case a.agents.notice.String() != "":
-		return a.agents.notice, a.agents.tone
 	}
 	return present.Inline{}, present.Plain
 }

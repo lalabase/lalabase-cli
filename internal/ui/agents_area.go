@@ -525,7 +525,7 @@ func (m Model) openAgent() (Model, tea.Cmd) {
 	}
 	var cmds []tea.Cmd
 	// A problem told of an agent stands until the next open or d.
-	a.agents.notice = present.Inline{}
+	a.clearAgentsNotice()
 	a.highlight, a.highlightSection = ag.Organisation, sectionTickets
 	if v := a.tickets; v != nil && v.org == ag.Organisation && v.project == ag.Project && v.index(ag.Ticket) >= 0 {
 		v.selected = ag.Ticket

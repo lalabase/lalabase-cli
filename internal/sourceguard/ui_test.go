@@ -146,8 +146,9 @@ var fileSystemImports = map[string]map[string][]string{
 	},
 	// The agents' files (C9a): the directory made once by the launch, a
 	// launch record created exclusively (through privatefs), a state
-	// replaced through a temporary file and a rename, and the directory
-	// read (through privatefs). The process
+	// replaced through a temporary file and a rename, the directory read
+	// (through privatefs), and since C9c an agent's files removed (d, the
+	// cleanup at the start). The process
 	// table of macOS is asked through sysctl by name (not a raw system
 	// call); Linux's is a file read through internal/safefile.
 	"internal/agents": {
@@ -188,6 +189,18 @@ var launchImports = map[string]map[string][]string{
 		// writes them, checks the ticket in the form the record takes
 		// (ForeignID, TicketNumber) and reads nothing of the agents.
 		clientModule + "internal/agents": {"Events", "ForeignID", "Launch", "NewID", "Prepare", "TicketNumber", "WriteLaunch"},
+	},
+}
+
+// interfaceImports are the names the root controller may use of the
+// client's packages where a package offers more than the interface may
+// call (C9c): of internal/agents its types, states and messages. Its files
+// the interface reaches only through the watcher's commands, under the
+// supervisor; Remove, Prune, Read or MarkSeen called from here would
+// touch them on the interface's own goroutine.
+var interfaceImports = map[string]map[string][]string{
+	rootController: {
+		clientModule + "internal/agents": {"Agent", "State", "Ended", "Lost", "Working", "Starting", "WaitingForYou", "WaitingForApproval", "Snapshot", "Marked", "Removed"},
 	},
 }
 
@@ -412,8 +425,8 @@ func inspectForeignCallbacks(name string, file *ast.File, aliases map[string]str
 }
 
 // inspectReachableImports applies reachableImports to a production file,
-// and fileSystemImports and launchImports to the files of the packages
-// named there.
+// and fileSystemImports, launchImports and interfaceImports to the files
+// of the packages named there.
 func inspectReachableImports(name string, file *ast.File, aliases map[string]string) []string {
 	var findings []string
 	dir := path.Dir(name)
@@ -422,6 +435,9 @@ func inspectReachableImports(name string, file *ast.File, aliases map[string]str
 			return names, true
 		}
 		if names, ok = launchNames(dir, p); ok {
+			return names, true
+		}
+		if names, ok = interfaceImports[dir][p]; ok {
 			return names, true
 		}
 		return fileSystemNames(dir, p)

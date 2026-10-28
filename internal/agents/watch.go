@@ -1,6 +1,8 @@
 package agents
 
 import (
+	"errors"
+	"io/fs"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -59,7 +61,7 @@ type Marked struct {
 func (w *Watcher) See(id string, at time.Time) tea.Cmd {
 	return func() tea.Msg {
 		msg, ok := worker.Run(w.sup, "agents: seen", func() tea.Msg {
-			return Marked{ID: id, Err: MarkSeen(w.dir, id, at)}
+			return Marked{ID: id, Err: withoutPath(MarkSeen(w.dir, id, at))}
 		})
 		if !ok {
 			if w.sup.Err() != nil {
@@ -83,7 +85,7 @@ type Removed struct {
 func (w *Watcher) Remove(id string) tea.Cmd {
 	return func() tea.Msg {
 		msg, ok := worker.Run(w.sup, "agents: remove", func() tea.Msg {
-			return Removed{ID: id, Err: Remove(w.dir, id)}
+			return Removed{ID: id, Err: withoutPath(Remove(w.dir, id))}
 		})
 		if !ok {
 			if w.sup.Err() != nil {
@@ -93,4 +95,15 @@ func (w *Watcher) Remove(id string) tea.Cmd {
 		}
 		return msg
 	}
+}
+
+// withoutPath is err for the status line: of a file operation the reason
+// alone (permission denied), not the file's path, which would push the
+// reason out of a narrow line; any other error as it is.
+func withoutPath(err error) error {
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		return pathErr.Err
+	}
+	return err
 }

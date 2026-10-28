@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -92,23 +93,26 @@ func TestRemoveTakesEveryFileOfTheAgent(t *testing.T) {
 	}
 }
 
-// Prune at the start of a run: an ended or lost agent whose last state is
-// older than 30 days goes (owner, 2026-10-28), every other agent stays,
-// whatever its age.
-func TestPruneTakesEndedAndLostAgentsAfterThirtyDays(t *testing.T) {
+// Prune at the start of a run: an agent that ended, is lost or never got
+// past starting goes 30 days after the last change of its files (its last
+// hook, its end, its open; owner, 2026-10-28), seen or not; an agent that
+// works or waits stays, whatever its age.
+func TestPruneTakesEndedLostAndStuckAgentsAfterThirtyDays(t *testing.T) {
 	dir := agentsDir(t)
 	now := t0.Add(31 * 24 * time.Hour)
+	young := now.Add(-29 * 24 * time.Hour)
 	cases := []struct {
 		event string
 		at    time.Time
 		stays bool
 	}{
-		{SessionEnd, t0, false},                           // ended, old
-		{UserPromptSubmit, t0, false},                     // lost (below), old
-		{SessionEnd, now.Add(-29 * 24 * time.Hour), true}, // ended, young
-		{UserPromptSubmit, t0, true},                      // working, old
-		{Stop, t0, true},                                  // waiting, old
-		{"", t0, true},                                    // starting, old
+		{SessionEnd, t0, false},       // ended, old
+		{UserPromptSubmit, t0, false}, // lost (below), old
+		{SessionEnd, young, true},     // ended, young
+		{UserPromptSubmit, t0, true},  // working, old
+		{Stop, t0, true},              // waiting, old
+		{"", t0, false},               // starting, old: never got past it
+		{"", young, true},             // starting, young
 	}
 	for i, c := range cases {
 		launchAgent(t, dir, agentNumbered(i), c.at, c.event, live(4242, 7))
@@ -117,13 +121,70 @@ func TestPruneTakesEndedAndLostAgentsAfterThirtyDays(t *testing.T) {
 	if err := Hook(HookCall{Dir: dir, Event: UserPromptSubmit, Agent: agentNumbered(1), PID: "5151", Now: t0, Procs: live(5151, 9)}); err != nil {
 		t.Fatal(err)
 	}
+	for i, c := range cases {
+		age(t, dir, agentNumbered(i), c.at)
+	}
 	if err := Prune(dir, now, live(4242, 7)); err != nil {
 		t.Fatal(err)
 	}
 	for i, c := range cases {
 		if got := len(filesOf(t, dir, agentNumbered(i))) > 0; got != c.stays {
-			t.Errorf("agent %d (%s): stays %v, want %v", i, c.event, got, c.stays)
+			t.Errorf("agent %d (%q): stays %v, want %v", i, c.event, got, c.stays)
 		}
+	}
+}
+
+// The age counts from the last change of any of the agent's files: an
+// ended agent opened a week ago stays, though its end is older.
+func TestPruneCountsFromTheLastChange(t *testing.T) {
+	dir := agentsDir(t)
+	now := t0.Add(40 * 24 * time.Hour)
+	launchAgent(t, dir, agentID, t0, SessionEnd, live(4242, 7))
+	age(t, dir, agentID, t0)
+	if err := MarkSeen(dir, agentID, now.Add(-7*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	age(t, dir, agentID+seenSuffix, now.Add(-7*24*time.Hour))
+	if err := Prune(dir, now, live(4242, 7)); err != nil {
+		t.Fatal(err)
+	}
+	if len(filesOf(t, dir, agentID)) == 0 {
+		t.Fatal("an agent opened a week ago went")
+	}
+}
+
+// A launch record of a newer format is another client's (a newer version
+// on the same profile): it is not this client's to judge, and stays.
+func TestPruneLeavesARecordOfANewerFormat(t *testing.T) {
+	dir := agentsDir(t)
+	path := filepath.Join(dir, agentID+launchSuffix)
+	if err := os.WriteFile(path, []byte(fmt.Sprintf(`{"format":%d,"agent":%q}`, FormatVersion+1, agentID)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	age(t, dir, agentID, t0)
+	if err := Prune(dir, t0.Add(365*24*time.Hour), live(4242, 7)); err != nil {
+		t.Fatal(err)
+	}
+	if len(filesOf(t, dir, agentID)) != 1 {
+		t.Fatal("a newer client's agent was removed")
+	}
+}
+
+// One leftover that cannot be removed does not stop the cleanup: the rest
+// goes, and its error is told after.
+func TestOneStubbornLeftoverDoesNotStopTheCleanup(t *testing.T) {
+	dir := agentsDir(t)
+	stubborn := filepath.Join(dir, tempPrefix+"0dir")
+	if err := os.MkdirAll(filepath.Join(stubborn, "inside"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	launchAgent(t, dir, agentID, t0, SessionEnd, live(4242, 7))
+	age(t, dir, "", t0)
+	if err := Prune(dir, t0.Add(40*24*time.Hour), live(4242, 7)); err == nil {
+		t.Fatal("the stubborn leftover was not told")
+	}
+	if len(filesOf(t, dir, agentID)) != 0 {
+		t.Fatal("the old ended agent stayed behind the stubborn leftover")
 	}
 }
 
@@ -194,5 +255,21 @@ func TestPruneReachesADirectoryReadRefuses(t *testing.T) {
 	}
 	if err := Prune("relative", t0, nil); err != nil {
 		t.Fatalf("relative: %v", err)
+	}
+}
+
+// The status line gets the reason of a failed file operation, not its
+// path: a long path would push the reason out of a narrow line.
+func TestTheWatchersErrorsLeaveThePathOut(t *testing.T) {
+	err := &os.PathError{Op: "remove", Path: "/a/long/path/" + agentID + launchSuffix, Err: os.ErrPermission}
+	if got := withoutPath(err); !errors.Is(got, os.ErrPermission) || strings.Contains(got.Error(), "/a/long/path") {
+		t.Fatalf("%v", got)
+	}
+	if withoutPath(nil) != nil {
+		t.Fatal("nil became an error")
+	}
+	other := fmt.Errorf("no agent id")
+	if got := withoutPath(other); got.Error() != other.Error() {
+		t.Fatal("another error changed")
 	}
 }

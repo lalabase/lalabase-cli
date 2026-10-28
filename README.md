@@ -24,7 +24,8 @@ client learns from the session's hooks what each of these agents does, and
 shows it with a glyph in the ticket list and a line in the ticket's head.
 Since C9b it shows every agent of the profile across the organisations: an
 Agents area under the organisations, a glyph at each organisation, a
-summary in the header, and `A` to reach them.
+summary in the header, and `A` to reach them. Since C9c `d` removes an
+agent whose session is over, and every start cleans up old ones.
 
 ## Setting up
 
@@ -156,7 +157,9 @@ navigation again.
   Agents area, in two the agents take the list's place, in one they are a
   screen of their own; `↑`/`↓` choose one, `Enter` opens its ticket, `Esc`
   or `A` again go back. (`a` is not this key: it is kept for "assign to
-  me".) The help line names exactly
+  me".) `d` removes an agent that ended or is lost, or has been starting
+  for over an hour (C9c), in the agents or in its ticket's pane. The help
+  line names exactly
   the keys that act, on as many lines as it takes.
 * **The mouse wheel** scrolls the object pane (a ticket, the details of a
   notification) by three lines when the pointer is over it, whether the
@@ -447,20 +450,29 @@ navigation again.
     the agent stays listed; a seen mark that cannot be written says so in
     the status line, and the agent is faint for that run only.
   * **Removing an agent (C9c).** `d` removes an agent that ended or is
-    lost, without asking: in the agents' list the one under the cursor, in
-    the ticket pane the ticket's agent the head shows. Only the client's
-    files of it go (its launch record, state, seen mark and lock); nothing
-    that runs is stopped, and an agent that still works, waits or starts
-    offers no `d`. A removal that fails keeps the agent and says why.
+    lost, or that has been starting for more than an hour (its folder's
+    trust dialog was closed, or no pane opened, so no hook ever came),
+    without asking: in the agents' list the one under the cursor, in the
+    ticket pane the ticket's agent the head shows. Only the client's files
+    of it go (its launch record, state, seen mark and lock); nothing that
+    runs is stopped, and an agent that works or waits offers no `d`. A
+    removal that fails keeps the agent and says why (the reason, without
+    the file's path); the notice goes with the agent, at the next `d` or
+    open, or at a launch.
   * **Cleaning up.** Every start of the interactive client cleans the
-    agents' directory before its first read: an agent that ended or is
-    lost goes 30 days after its last state, seen or not; a hook's
+    agents' directory before its first read: an agent that ended, is lost
+    or never got past starting goes 30 days after the last change of its
+    files (its last hook, its end, its open), seen or not; a hook's
     temporary file, the files of an agent without its launch record and a
-    launch record that fails its check go once they are an hour old. Any
-    other agent stays, whatever its age. The reading visits at most 4096
-    entries of the directory (about four files per agent); the cleanup
-    visits up to 65536, so that a directory grown past the reading's bound
-    shows its agents again after the next start.
+    launch record that fails its check go once they are an hour old. An
+    agent that works or waits stays, whatever its age, and so does one
+    whose launch record a newer client wrote. When a lost process went is
+    not known: an agent that waited silently for 30 days and then went is
+    removed at the next start without having been shown as lost. A file
+    that cannot be removed does not stop the rest. The reading visits at
+    most 4096 entries of the directory (about four files per agent); the
+    cleanup visits up to 65536, so that a directory grown past the
+    reading's bound shows its agents again after the next start.
 * **A comment that is gone.** When the server answers a comment read whole
   with "not found" (it was deleted or made private), its cached text goes
   and is hidden at once, the ticket stays and says "Comment unavailable",

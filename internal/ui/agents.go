@@ -57,11 +57,17 @@ type agentsState struct {
 	// removing are the agents d asked to remove whose answer is out, by
 	// id, with their number for the notice (C9c).
 	removing map[string]int
+	// gone are the agents removed, by id, with the newest read issued
+	// when their files went: a read up to it may have seen them before,
+	// so its answer does not bring them back (receiveAgents).
+	gone map[string]uint64
 	// notice is what became of a removal or a seen mark, in its tone; a
-	// hint goes at noticeUntil, a problem stays until the next d or open.
+	// hint goes at noticeUntil, a problem when noticeAgent leaves the
+	// list, at the next d or open that starts, or at a launch.
 	notice      present.Inline
 	tone        present.Style
 	noticeUntil time.Time
+	noticeAgent string
 }
 
 // readAgents issues a read unless one is out or due already: one chain of
@@ -92,9 +98,14 @@ func (a *app) receiveAgents(s agents.Snapshot) tea.Cmd {
 		return nil
 	}
 	a.agents.reading = false
-	a.agents.list = s.Agents
+	a.agents.list = withoutGone(s.Agents, a.agents.gone, s.Ref)
 	if s.Err != nil {
 		a.agents.list = nil
+	}
+	if id := a.agents.noticeAgent; id != "" && !slices.ContainsFunc(a.agents.list, func(ag agents.Agent) bool { return ag.ID == id }) {
+		// A problem told of an agent goes with it: nothing could clear
+		// it once the agent is no longer listed.
+		a.clearAgentsNotice()
 	}
 	for _, ag := range a.agents.list {
 		if ag.State == agents.Working {
@@ -303,4 +314,25 @@ func age(d time.Duration) string {
 		return uitext.Fill(uitext.AgeHours, int(d/time.Hour)).String()
 	}
 	return uitext.Fill(uitext.AgeDays, int(d/(24*time.Hour))).String()
+}
+
+// withoutGone is the agents of the read ref, less those removed when
+// that read may already have been out (gone); an entry of gone a later
+// read passed is forgotten, since that read saw the directory after.
+func withoutGone(list []agents.Agent, gone map[string]uint64, ref uint64) []agents.Agent {
+	for id, upTo := range gone {
+		if ref > upTo {
+			delete(gone, id)
+		}
+	}
+	if len(gone) == 0 {
+		return list
+	}
+	out := make([]agents.Agent, 0, len(list))
+	for _, ag := range list {
+		if _, ok := gone[ag.ID]; !ok {
+			out = append(out, ag)
+		}
+	}
+	return out
 }

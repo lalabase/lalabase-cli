@@ -366,3 +366,20 @@ func TestTheInterfaceHasNoClockOfItsOwn(t *testing.T) {
 		t.Errorf("refused %v", got)
 	}
 }
+
+// C9c: the interface takes the agents' types, states and messages by name;
+// their files it reaches only through the watcher's commands, which run
+// under the supervisor. A call of Remove, Prune, Read or MarkSeen from the
+// interface would touch the files on the interface's own goroutine.
+func TestTheInterfaceUsesTheAgentsByName(t *testing.T) {
+	allowed := `package ui; import "` + clientModule + `internal/agents"; var _ agents.Agent; var _ agents.State = agents.Ended; var _ = agents.Lost; var _ = agents.Working; var _ = agents.Starting; var _ = agents.WaitingForYou; var _ = agents.WaitingForApproval; var _ agents.Snapshot; var _ agents.Marked; var _ agents.Removed`
+	if got := inspectUI(withAgents(map[string]string{"internal/ui/agents.go": allowed})); len(got) != 0 {
+		t.Fatalf("rejected: %v", got)
+	}
+	for _, name := range []string{"Remove", "Prune", "Read", "MarkSeen", "WriteLaunch", "Hook", "NewWatcher"} {
+		probe := `package ui; import "` + clientModule + `internal/agents"; var _ = agents.` + name
+		if got := inspectUI(withAgents(map[string]string{"internal/ui/agents.go": probe})); len(got) == 0 {
+			t.Errorf("agents.%s passed in the interface", name)
+		}
+	}
+}

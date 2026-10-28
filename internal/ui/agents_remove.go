@@ -15,8 +15,21 @@ import (
 // only the client's own files of it go. In the agents' list it is the
 // agent under the cursor, in the pane the ticket's agent the head shows.
 
-// removable: the agent's session is over, ended or lost.
-func removable(ag agents.Agent) bool { return ag.State == agents.Ended || ag.State == agents.Lost }
+// stuckStarting is how long an agent may be starting before d may remove
+// it (owner, 2026-10-28): claude's trust dialog may take a while, but one
+// an hour old never got past it (closed, or no pane opened).
+const stuckStarting = time.Hour
+
+// removable: the agent's session is over (ended, lost) or never began.
+func (a *app) removable(ag agents.Agent) bool {
+	switch ag.State {
+	case agents.Ended, agents.Lost:
+		return true
+	case agents.Starting:
+		return a.now().Sub(ag.Since) > stuckStarting
+	}
+	return false
+}
 
 // removeTarget is the agent d removes now; ok is false when there is
 // none, it still runs, or its removal is out already.
@@ -33,7 +46,7 @@ func (m Model) removeTarget() (agents.Agent, bool) {
 	case m.focus == view.Object && a.detail != nil && a.detail.known:
 		ag, ok = a.agentAt(a.detail.id)
 	}
-	if !ok || !removable(ag) {
+	if !ok || !a.removable(ag) {
 		return agents.Agent{}, false
 	}
 	if _, out := a.agents.removing[ag.ID]; out {
@@ -54,7 +67,7 @@ func (m Model) removeAgent() tea.Cmd {
 		a.agents.removing = map[string]int{}
 	}
 	a.agents.removing[ag.ID] = ag.Number
-	a.agents.notice = present.Inline{}
+	a.clearAgentsNotice()
 	return a.deps.Agents.Remove(ag.ID)
 }
 
@@ -72,17 +85,14 @@ func (m Model) receiveRemoved(r agents.Removed) (Model, tea.Cmd) {
 	}
 	delete(a.agents.removing, r.ID)
 	if r.Err != nil {
-		a.agents.notice, a.agents.tone = uitext.Fill(uitext.AgentNotRemoved, number, r.Err.Error()), present.NoticeProblem
-		a.agents.noticeUntil = time.Time{}
+		a.agentsProblem(r.ID, uitext.Fill(uitext.AgentNotRemoved, number, r.Err.Error()))
 		return m, nil
 	}
-	kept := a.agents.list[:0:0]
-	for _, ag := range a.agents.list {
-		if ag.ID != r.ID {
-			kept = append(kept, ag)
-		}
+	if a.agents.gone == nil {
+		a.agents.gone = map[string]uint64{}
 	}
-	a.agents.list = kept
+	a.agents.gone[r.ID] = a.agents.ref
+	a.agents.list = withoutGone(a.agents.list, a.agents.gone, a.agents.ref)
 	delete(a.agents.seen, r.ID)
 	cmds := []tea.Cmd{a.agentsHint(uitext.Fill(uitext.AgentRemoved, number)), a.readAgents()}
 	if m.focus == view.Agents && len(a.agents.list) == 0 {
@@ -99,21 +109,38 @@ func (a *app) receiveMarked(r agents.Marked) {
 	if r.Err == nil {
 		return
 	}
-	number := 0
 	for _, ag := range a.agents.list {
 		if ag.ID == r.ID {
-			number = ag.Number
+			a.agentsProblem(r.ID, uitext.Fill(uitext.AgentNotSeen, ag.Number, r.Err.Error()))
 		}
 	}
-	a.agents.notice, a.agents.tone = uitext.Fill(uitext.AgentNotSeen, number, r.Err.Error()), present.NoticeProblem
-	a.agents.noticeUntil = time.Time{}
+}
+
+// agentsProblem shows a problem of the agent id; it stands until the next
+// d or open starts, a launch starts, or the agent leaves the list.
+func (a *app) agentsProblem(id string, text present.Inline) {
+	a.agents.notice, a.agents.tone, a.agents.noticeUntil, a.agents.noticeAgent = text, present.NoticeProblem, time.Time{}, id
+}
+
+// clearAgentsNotice takes the agents' notice away.
+func (a *app) clearAgentsNotice() {
+	a.agents.notice, a.agents.noticeUntil, a.agents.noticeAgent = present.Inline{}, time.Time{}, ""
+}
+
+// agentsNoticeShown: there is a notice of the agents, and a hint's
+// deadline has not come by the model's clock.
+func (a *app) agentsNoticeShown() bool {
+	if a.agents.notice.String() == "" {
+		return false
+	}
+	return a.agents.tone != present.Plain || a.agents.noticeUntil.After(a.now())
 }
 
 // agentsHint shows a plain notice of the agents until hintFor has passed
 // by the model's clock.
 func (a *app) agentsHint(text present.Inline) tea.Cmd {
 	now := a.now()
-	a.agents.notice, a.agents.tone, a.agents.noticeUntil = text, present.Plain, now.Add(hintFor)
+	a.agents.notice, a.agents.tone, a.agents.noticeUntil, a.agents.noticeAgent = text, present.Plain, now.Add(hintFor), ""
 	if a.deps.Events == nil {
 		return nil
 	}

@@ -118,7 +118,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 				a.launch.notice, a.launch.until = present.Inline{}, time.Time{}
 			}
 			if msg.Until.Equal(a.agents.noticeUntil) {
-				a.agents.notice, a.agents.noticeUntil = present.Inline{}, time.Time{}
+				a.clearAgentsNotice()
 			}
 			return m, a.agentsDue(msg.Until)
 		}

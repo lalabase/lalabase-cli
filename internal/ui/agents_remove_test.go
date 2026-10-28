@@ -8,8 +8,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/agents"
+	"github.com/gboyke/lalabase-cli/internal/launch"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
 
@@ -115,5 +117,100 @@ func TestAFailedRemovalOrSeenMarkIsTold(t *testing.T) {
 	h.drive(h.press("enter")) // seen: an ended agent
 	if got := h.status(); !strings.Contains(got, "seen") || !strings.Contains(got, "disk gone") {
 		t.Fatalf("status after the open %q", got)
+	}
+}
+
+// Owner, 2026-10-28 (c): an agent stuck in starting (its trust dialog
+// closed, no pane opened) offers d once its start is an hour old; a
+// younger one may still be starting and offers none.
+func TestDRemovesAnAgentStuckInStarting(t *testing.T) {
+	for _, c := range []struct {
+		since time.Duration
+		d     bool
+	}{{59 * time.Minute, false}, {61 * time.Minute, true}} {
+		h := newHarness(t)
+		h.withWatcher(agentIn(1, orgA, 6, agents.Starting, h.now.Add(-c.since)))
+		h.start()
+		h.drive(h.press("A"))
+		if got := h.offers(RemoveAgent); got != c.d {
+			t.Fatalf("starting for %v: d offered %v", c.since, got)
+		}
+	}
+}
+
+// Review round 1 of C9c-2: a read that was out when the removal answered
+// may have seen the agent before its files went; its answer does not
+// bring the agent back, and a read follows that sees the directory after.
+func TestAReadFromBeforeTheRemovalDoesNotBringItBack(t *testing.T) {
+	h := newHarness(t)
+	f := h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now), agentIn(2, orgA, 7, agents.Working, h.now))
+	h.start()
+	h.drive(h.press("A"))
+	h.drive(h.press("down")) // #6, after the working #7
+	a := h.m.app
+	// The next read is due and goes out before the removal: it sees #6.
+	before := messages(t, a.agentsDue(a.agents.until))
+	if len(before) != 1 {
+		t.Fatalf("no read out: %v", before)
+	}
+	removal := messages(t, h.press("d"))
+	h.drive(h.feed(removal...)...)
+	// The old read's answer, before the read owed after it runs: no
+	// moment shows #6 again.
+	next := h.feed(before...)
+	for _, ag := range a.agents.list {
+		if ag.Number == 6 {
+			t.Fatal("the read from before the removal brought #6 back")
+		}
+	}
+	if len(next) == 0 {
+		t.Fatal("no read follows the old one")
+	}
+	h.drive(next...)
+	if len(f.removals()) != 1 {
+		t.Fatalf("removals %v", f.removals())
+	}
+}
+
+// Review round 1 of C9c-2: the newest notice shows. A launch's problem on
+// the ticket does not hide what d did there, and a launch after d shows
+// its own.
+func TestTheNewestNoticeShows(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.kind = launch.NoClaude
+	h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now))
+	h.openSix()
+	h.drive(h.press("x"))
+	if got := h.status(); !strings.Contains(got, "laude") {
+		t.Fatalf("no launch problem: %q", got)
+	}
+	h.drive(h.press("d"))
+	if got := h.status(); got != "Agent #6 removed." {
+		t.Fatalf("the launch's problem hid the removal: %q", got)
+	}
+	h.drive(h.press("x"))
+	if got := h.status(); got == "Agent #6 removed." {
+		t.Fatal("the removal's hint hid the newer launch")
+	}
+}
+
+// Review round 1 of C9c-2: a problem told of an agent goes with the agent:
+// once a read no longer has it, nothing could clear it otherwise.
+func TestAProblemGoesWithItsAgent(t *testing.T) {
+	h := newHarness(t)
+	f := h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now), agentIn(2, orgA, 7, agents.Working, h.now))
+	f.removeErr = errors.New("disk gone")
+	h.start()
+	h.drive(h.press("A"))
+	h.drive(h.press("down"))
+	h.drive(h.press("d"))
+	if got := h.status(); !strings.Contains(got, "disk gone") {
+		t.Fatalf("status %q", got)
+	}
+	f.set(agentIn(2, orgA, 7, agents.Working, h.now)) // #6 went by other means
+	h.due()
+	if got := h.status(); strings.Contains(got, "#6") {
+		t.Fatalf("the problem stayed without its agent: %q", got)
 	}
 }

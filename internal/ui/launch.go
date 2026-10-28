@@ -76,6 +76,7 @@ func (m Model) launchClaude() (Model, tea.Cmd) {
 	a.launch.ref++
 	a.launch.busy, a.launch.ticket = true, t.ID
 	a.launch.notice, a.launch.tone = uitext.Fill(uitext.Launching, t.Number), present.NoticeWaiting
+	a.clearAgentsNotice()
 	a.launch.until = time.Time{}
 	// While it runs, the agents are read: its record comes with its end.
 	return m, tea.Batch(a.deps.Launcher.Launch(a.launch.ref, t), a.readAgents())
