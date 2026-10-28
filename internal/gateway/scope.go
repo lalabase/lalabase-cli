@@ -27,6 +27,10 @@ const (
 	// not hold (C9b), read once each beside what the person looks at:
 	// leaving the ticket in the pane does not cancel them.
 	Titles
+	// Time is the time the person booked on the ticket in the pane (S6):
+	// leaving the ticket moves the area, so a late answer of another
+	// ticket's time cannot reach the pane.
+	Time
 	areas
 )
 

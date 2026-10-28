@@ -39,6 +39,7 @@ type Source interface {
 	MarkNotificationRead(ctx context.Context, id, key string) (api.NotificationState, transport.Answer)
 	UpdateTicket(ctx context.Context, projectID, ticketID string, c api.TicketChange, key string) (api.TicketRow, transport.Answer)
 	PostComment(ctx context.Context, projectID, ticketID, body string, o api.CommentOptions, key string) (api.Comment, transport.Answer)
+	BookedTimeAnswer(ctx context.Context, projectID, ticketID string) transport.Answer
 }
 
 // Gateway turns tickets into commands.
@@ -132,6 +133,8 @@ func (g *Gateway) Read(ctx context.Context, t Ticket) tea.Cmd {
 		return g.Tickets(ctx, t)
 	case api.TicketSpec.Tool:
 		return g.Detail(ctx, t)
+	case api.BookedTimeSpec.Tool:
+		return g.BookedTime(ctx, t)
 	}
 	return func() tea.Msg {
 		err := fmt.Errorf("gateway: no read of %q", t.Key.Operation)
@@ -227,6 +230,72 @@ func (g *Gateway) Detail(ctx context.Context, t Ticket) tea.Cmd {
 	})
 }
 
+// TimeResult is one waiter's booked time of a ticket (S6). Time is empty
+// unless Answer is an object.
+type TimeResult struct {
+	Ticket
+	Time   api.BookedTime
+	Answer transport.Answer
+	Flight queue.Flight
+}
+
+func (r TimeResult) Header() Result {
+	return Result{Ticket: r.Ticket, Answer: r.Answer, Flight: r.Flight}
+}
+
+// BookedTime reads the time the person booked on the ticket t names (S6),
+// shared like every read; an answer that names another ticket is a
+// contradiction, never filed.
+func (g *Gateway) BookedTime(ctx context.Context, t Ticket) tea.Cmd {
+	if err := CheckBookedTimeTicket(t); err != nil {
+		return func() tea.Msg { return TimeResult{Ticket: t, Answer: refusedTicket(err)} }
+	}
+	project, id := t.Key.Project, t.Key.Ticket
+	return shared(g, ctx, t, "gateway: booked time", func(shared context.Context) transport.Answer {
+		return g.src.BookedTimeAnswer(shared, project, id)
+	}, func(ans transport.Answer, flight queue.Flight) TimeResult {
+		booked, ans := api.DecodeBookedTime(ans)
+		if ans.OK() {
+			if err := CheckBookedTime(t.Key, booked); err != nil {
+				booked, ans = api.BookedTime{}, contradiction(ans, err)
+			}
+		}
+		return TimeResult{Ticket: t, Time: booked, Answer: ans, Flight: flight}
+	})
+}
+
+// CheckBookedTimeTicket says whether a ticket is the read S6 sends: the
+// time of one ticket of one project, in the Time area, no other option.
+func CheckBookedTimeTicket(t Ticket) error {
+	k := t.Key
+	switch {
+	case k.Operation != api.BookedTimeSpec.Tool:
+		return fmt.Errorf("booked time: a ticket of %q", k.Operation)
+	case t.Area != Time:
+		return errors.New("booked time: another area")
+	case k.Project == "" || k.Ticket == "":
+		return errors.New("booked time: no project or no ticket id")
+	case k.Resource() != k || k.Status != "" || k.Organisation != "" || k.Global:
+		return errors.New("booked time: an option the read does not have")
+	}
+	return nil
+}
+
+// CheckBookedTime says whether an answer is to the question the key asked:
+// the time of that ticket, summed in a scope the server names, never
+// below zero.
+func CheckBookedTime(k cache.Key, b api.BookedTime) error {
+	switch {
+	case b.Ticket != k.Ticket:
+		return fmt.Errorf("booked time: the time of ticket %q, asked of %q", b.Ticket, k.Ticket)
+	case b.Scope != "all" && b.Scope != "own":
+		return fmt.Errorf("booked time: an unknown scope %q", b.Scope)
+	case b.Minutes < 0:
+		return fmt.Errorf("booked time: %d minutes", b.Minutes)
+	}
+	return nil
+}
+
 // shared is the command of one shared read: the request under the
 // ticket's share key and priority, observed for the mailbox, the answer
 // cloned for this waiter and built into its result by build. A command
@@ -294,6 +363,8 @@ func CheckReadTicket(t Ticket) error {
 		return CheckTicketsTicket(t)
 	case api.TicketSpec.Tool:
 		return CheckDetailTicket(t)
+	case api.BookedTimeSpec.Tool:
+		return CheckBookedTimeTicket(t)
 	}
 	return fmt.Errorf("gateway: no read of %q", t.Key.Operation)
 }

@@ -1,32 +1,151 @@
 package ui
 
+// S6: the time the person booked on the ticket in the pane, in its meta
+// bar, read when the ticket opens and with R.
+
 import (
+	"context"
+	"encoding/json"
+	"slices"
+	"strings"
 	"testing"
-	"time"
+
+	"github.com/gboyke/lalabase-cli/internal/transport"
+	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
 
-// A server time is shown in the person's zone, without seconds, with the
-// year only when it is not the current one (in that zone).
-func TestTimesAreLocalShortAndYearOnlyWhenOther(t *testing.T) {
-	berlin := time.FixedZone("CEST", 2*60*60)
-	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
-	for _, tc := range []struct {
-		raw  string
-		loc  *time.Location
-		now  time.Time
-		want string
-	}{
-		{"2026-08-28T15:45:03Z", time.UTC, now, "28 Aug 15:45"},
-		{"2026-08-28T15:45:03Z", berlin, now, "28 Aug 17:45"},
-		{"2026-08-28T15:45:03.123+02:00", time.UTC, now, "28 Aug 13:45"},
-		{"2025-11-03T09:12:00Z", time.UTC, now, "3 Nov 2025 09:12"},
-		// New year's eve in UTC is already the new year in Berlin.
-		{"2025-12-31T23:30:00Z", berlin, time.Date(2026, 1, 1, 0, 0, 0, 0, berlin), "1 Jan 01:30"},
-		{"2025-12-31T23:30:00Z", time.UTC, time.Date(2026, 1, 1, 0, 0, 0, 0, berlin), "31 Dec 23:30"},
-		{"not a time", time.UTC, now, "Time unknown"},
+func (f *fakes) BookedTimeAnswer(_ context.Context, project, id string) transport.Answer {
+	f.mu.Lock()
+	f.timeReads = append(f.timeReads, id)
+	answer := f.booked
+	f.mu.Unlock()
+	if answer != nil {
+		return answer(project, id)
+	}
+	return bookedAnswer(id, 150)
+}
+
+func (f *fakes) bookedReads() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.timeReads)
+}
+
+// bookedAnswer is the server's answer for the own time on ticket id.
+func bookedAnswer(id string, minutes int) transport.Answer {
+	body := map[string]any{
+		"scope":   "own",
+		"filters": map[string]any{"ticket": map[string]any{"id": id}},
+		"total":   map[string]any{"minutes": minutes, "sessions": 1, "hours": float64(minutes) / 60},
+	}
+	payload, _ := json.Marshal(body)
+	return transport.Answer{Class: transport.Object, Payload: payload, Status: 200, Sent: true}
+}
+
+// metaText is the meta bar of the pane, its lines joined.
+func (h *harness) metaText() string {
+	var lines []string
+	for _, l := range h.m.objectColumn().Meta {
+		lines = append(lines, l.Text.String())
+	}
+	return strings.Join(lines, "\n")
+}
+
+// Opening a ticket reads the person's own time on it, once, and the meta
+// bar shows it in hours and minutes under its label.
+func TestAnOpenTicketShowsTheTimeBookedByYou(t *testing.T) {
+	h := newHarness(t)
+	h.openSix()
+	if got := h.f.bookedReads(); len(got) != 1 || got[0] != ticketID(website, 6) {
+		t.Fatalf("time reads %v", got)
+	}
+	if got := h.metaText(); !strings.Contains(got, "Booked by you\n2:30") {
+		t.Fatalf("meta bar:\n%s", got)
+	}
+}
+
+// A preview reads no time: only an opened ticket does, so moving through
+// the list costs no request more.
+func TestAPreviewReadsNoTime(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	h.drive(h.press("down"))
+	h.drive(h.press("down"))
+	if got := h.f.bookedReads(); len(got) != 0 {
+		t.Fatalf("time reads on previews: %v", got)
+	}
+}
+
+// R in the ticket reads the time again.
+func TestRReadsTheTimeAgain(t *testing.T) {
+	h := newHarness(t)
+	h.openSix()
+	h.f.mu.Lock()
+	h.f.booked = func(_, id string) transport.Answer { return bookedAnswer(id, 5) }
+	h.f.mu.Unlock()
+	h.m.focus = view.Object
+	h.drive(h.press("R"))
+	if got := h.f.bookedReads(); len(got) != 2 {
+		t.Fatalf("time reads %v", got)
+	}
+	if got := h.metaText(); !strings.Contains(got, "Booked by you\n0:05") {
+		t.Fatalf("meta bar:\n%s", got)
+	}
+}
+
+// No access to the project's time, no such ticket, or a server without
+// the tool: no line, and nothing else changes.
+func TestNoTimeLineWithoutTheTime(t *testing.T) {
+	for name, answer := range map[string]transport.Answer{
+		"no access": {Class: transport.Refused, Message: "no access to the time sessions of this project", Status: 200, Sent: true},
+		"not found": {Class: transport.NotFound, Message: "No ticket found.", Status: 200, Sent: true},
 	} {
-		if got := timeOf(tc.raw, tc.now, tc.loc); got != tc.want {
-			t.Errorf("%s in %s: %q, want %q", tc.raw, tc.loc, got, tc.want)
+		h := newHarness(t)
+		h.f.booked = func(string, string) transport.Answer { return answer }
+		h.openSix()
+		if got := h.metaText(); strings.Contains(got, "Booked") {
+			t.Fatalf("%s: meta bar:\n%s", name, got)
 		}
 	}
+	h := newHarness(t)
+	h.openTickets(website)
+	h.m.app.report.Enabled["booked_time"] = false // a server before S6
+	h.m.app.tickets.selected = ticketID(website, 6)
+	h.drive(h.press("enter"))
+	if got := h.f.bookedReads(); len(got) != 0 || strings.Contains(h.metaText(), "Booked") {
+		t.Fatalf("an older server: reads %v, meta\n%s", got, h.metaText())
+	}
+}
+
+// The time of a ticket left meanwhile never reaches the pane: leaving the
+// ticket moves the Time area.
+func TestTheTimeOfATicketLeftDoesNotShow(t *testing.T) {
+	h := newHarness(t)
+	h.f.booked = func(_, id string) transport.Answer {
+		if id == ticketID(website, 6) {
+			return bookedAnswer(id, 60)
+		}
+		return bookedAnswer(id, 7)
+	}
+	h.openTickets(website)
+	h.m.app.tickets.selected = ticketID(website, 6)
+	held := messages(t, h.press("enter")) // the reads of #6, its time among them
+	h.m.focus = view.List
+	h.m.app.tickets.selected = ticketID(website, 7)
+	h.drive(h.press("enter"))
+	h.drive(h.feed(held...)...)
+	if d := h.m.app.detail; d == nil || d.id != ticketID(website, 7) {
+		t.Fatalf("the pane: %+v", d)
+	}
+	if got := h.metaText(); !strings.Contains(got, "Booked by you\n0:07") {
+		t.Fatalf("the late time of #6 reached #7's meta bar:\n%s", got)
+	}
+}
+
+// withoutBookedTime switches S6 off, as a server before it: for the tests
+// of the ticket's own read that run the open's command and want the read
+// alone, not batched with the time beside it (that is tested here).
+func (h *harness) withoutBookedTime() {
+	h.t.Helper()
+	h.m.app.report.Enabled["booked_time"] = false
 }

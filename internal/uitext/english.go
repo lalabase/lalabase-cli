@@ -262,6 +262,10 @@ const (
 	AgentsHelp
 	BarAgent
 	AgentMeta
+	// S6: the meta bar's label of the person's time on a ticket, and the
+	// same in the head's line of facts.
+	BarBooked
+	MetaBooked
 	count
 )
 
@@ -401,4 +405,6 @@ var english = map[ID]string{
 	// its state after its word there.
 	Agents: "Agents", AgentsKey: "A", AgentsHelp: "agents",
 	BarAgent: "Agent", AgentMeta: "· %s",
+	// S6: the label of the time the person booked on the ticket.
+	BarBooked: "Booked by you", MetaBooked: "booked by you %s",
 }

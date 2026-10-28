@@ -108,10 +108,17 @@ navigation again.
   Agent with the glyph in its tone, the state and its age
   (`⣿ waiting for you`, then `· 4 min` under it where one line is too
   short), so a low pane, which cuts the bar's end, keeps it; then Status
-  in its tone, Project, People (the assignees, then the creator) and
-  Updated, the labels faint, a long name cut with "…"; the head then drops
-  its line of facts and its agent's line. In a narrower pane
-  they stay in one faint line under the title. Comments by the token's own
+  in its tone, Project, People (the assignees, then the creator),
+  Updated and, against a server with S6 (MCP 0.12.0, feature
+  `booked_time`), Booked by you: the time you booked on the ticket, in
+  hours and minutes ("2:30"), the labels faint, a long name cut with "…";
+  the head then drops its line of facts and its agent's line. In a
+  narrower pane they stay in one faint line under the title, the time last
+  ("booked by you 2:30"). The time is read when a ticket opens and with
+  `R`, with the person's priority beside the ticket's own read, never for
+  a preview; the memory cache shows it at once when the ticket opened
+  before. Without access to the project's time, for a ticket that is not
+  there, or against an older server there is no such line. Comments by the token's own
   person show the author as "Name (you)", blue and bold; every other author
   is bold without colour. Only the user id from `/api/v1/me` decides, never
   a name, and without colour the "(you)" still says it. The client never guesses a meaning from a status name, since every

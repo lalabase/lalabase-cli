@@ -211,6 +211,10 @@ type fakes struct {
 	projectCalls  []string
 	ticketQueries []api.TicketQuery
 	ticketReads   []ticketRead
+	// S6: the booked time of a ticket (time_test.go); nil answers 150
+	// minutes of the ticket asked, as the server does for the own time.
+	booked    func(project, id string) transport.Answer
+	timeReads []string
 	// The gate holds these too: every project read, every ticket list
 	// read, or the reads of one ticket.
 	gateProjects bool

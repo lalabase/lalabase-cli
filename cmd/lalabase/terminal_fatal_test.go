@@ -59,6 +59,10 @@ func (inboxOnly) PostComment(context.Context, string, string, string, api.Commen
 	return api.Comment{}, transport.Answer{Class: transport.Refused, Message: "not in this test"}
 }
 
+func (inboxOnly) BookedTimeAnswer(context.Context, string, string) transport.Answer {
+	return transport.Answer{Class: transport.Refused, Message: "not in this test"}
+}
+
 type panicSource struct{ inboxOnly }
 
 func (panicSource) NotificationsAnswer(context.Context, api.NotificationQuery) transport.Answer {

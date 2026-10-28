@@ -11,7 +11,7 @@ import (
 )
 
 // factLine is the head's line of facts of ticket #1 as before L2.
-const factLine = "in_progress · Website-Relaunch · assigned Anna Albers · created by Anna Albers · updated 5 Jan 09:26"
+const factLine = "in_progress · Website-Relaunch · assigned Anna Albers · created by Anna Albers · updated 5 Jan 09:26 · booked by you 2:30"
 
 // showLogin opens ticket #1 and goes back to the list, the ticket still
 // shown beside it.
@@ -41,7 +41,7 @@ func metaText(c present.Column) []string {
 func TestTheMetaBarFollowsTheTicketPanesWidth(t *testing.T) {
 	h := newHarness(t)
 	h.showLogin()
-	want := []string{"Status", "in_progress", "", "Project", "Website-Relaunch", "", "People", "Anna Albers", "created by Anna Albers", "", "Updated", "5 Jan 09:26"}
+	want := []string{"Status", "in_progress", "", "Project", "Website-Relaunch", "", "People", "Anna Albers", "created by Anna Albers", "", "Updated", "5 Jan 09:26", "", "Booked by you", "2:30"}
 	for _, tc := range []struct {
 		width int
 		focus view.Pane

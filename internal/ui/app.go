@@ -67,6 +67,8 @@ const (
 	forExpansion
 	// forTitle: the title of an agent's ticket (C9b).
 	forTitle
+	// forTime: the time the person booked on the ticket in the pane (S6).
+	forTime
 )
 
 // waiter is one consumer of a read in flight: its ticket, how to cancel it,
