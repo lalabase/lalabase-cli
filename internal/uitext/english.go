@@ -262,6 +262,14 @@ const (
 	AgentsHelp
 	BarAgent
 	AgentMeta
+	// C9c: d removes an ended or lost agent; what became of it, and of a
+	// seen mark that could not be written.
+	RemoveAgentKey
+	RemoveAgentHelp
+	AgentRemoved
+	AgentNotRemoved
+	AgentNotSeen
+	AgentsTooMany
 	count
 )
 
@@ -401,4 +409,10 @@ var english = map[ID]string{
 	// its state after its word there.
 	Agents: "Agents", AgentsKey: "A", AgentsHelp: "agents",
 	BarAgent: "Agent", AgentMeta: "· %s",
+	// C9c: the key that removes an agent, and the notices of its result.
+	RemoveAgentKey: "d", RemoveAgentHelp: "remove agent",
+	AgentRemoved:    "Agent #%d removed.",
+	AgentNotRemoved: "Agent #%d could not be removed: %s",
+	AgentNotSeen:    "Agent #%d is seen for this run only: %s",
+	AgentsTooMany:   "The agents' directory holds too many files to read; the next start cleans it up.",
 }

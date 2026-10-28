@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -20,6 +21,9 @@ type AgentWatcher interface {
 	// See records an agent the person opened as seen (C9b); its message
 	// is an agents.Marked.
 	See(id string, at time.Time) tea.Cmd
+	// Remove removes an agent's files if it is still removable at at, as
+	// its lock is held (C9c); its message is an agents.Removed.
+	Remove(id string, at time.Time) tea.Cmd
 }
 
 // agentsEvery is how often the agents' files are read while there is one,
@@ -51,6 +55,24 @@ type agentsState struct {
 	// seen are the agents the person opened in this run (C9b): faint at
 	// once, before their file is read back.
 	seen map[string]bool
+	// removing are the agents d asked to remove whose answer is out, by
+	// id, with their number for the notice (C9c).
+	removing map[string]int
+	// gone are the agents removed, by id, with the newest read issued
+	// when their files went: a read up to it may have seen them before,
+	// so its answer does not bring them back (receiveAgents).
+	gone map[string]uint64
+	// notice is what became of a removal or a seen mark, in its tone; a
+	// hint goes at noticeUntil, a problem when noticeAgent leaves the
+	// list, at the next d or open that starts, or at a launch.
+	notice      present.Inline
+	tone        present.Style
+	noticeUntil time.Time
+	noticeAgent string
+	// tooMany: the newest read failed because the directory holds more
+	// files than a read takes (agents.ErrTooManyFiles), said in the
+	// status line until a read succeeds.
+	tooMany bool
 }
 
 // readAgents issues a read unless one is out or due already: one chain of
@@ -81,9 +103,16 @@ func (a *app) receiveAgents(s agents.Snapshot) tea.Cmd {
 		return nil
 	}
 	a.agents.reading = false
-	a.agents.list = s.Agents
+	a.agents.tooMany = errors.Is(s.Err, agents.ErrTooManyFiles)
+	a.agents.list = withoutGone(s.Agents, a.agents.gone, s.Ref)
 	if s.Err != nil {
 		a.agents.list = nil
+	}
+	if id := a.agents.noticeAgent; id != "" && s.Err == nil && !slices.ContainsFunc(a.agents.list, func(ag agents.Agent) bool { return ag.ID == id }) {
+		// A problem told of an agent goes with it: nothing could clear
+		// it once the agent is no longer listed. A failed read lists no
+		// agent but says nothing of this one, and keeps the problem.
+		a.clearAgentsNotice()
 	}
 	for _, ag := range a.agents.list {
 		if ag.State == agents.Working {
@@ -292,4 +321,25 @@ func age(d time.Duration) string {
 		return uitext.Fill(uitext.AgeHours, int(d/time.Hour)).String()
 	}
 	return uitext.Fill(uitext.AgeDays, int(d/(24*time.Hour))).String()
+}
+
+// withoutGone is the agents of the read ref, less those removed when
+// that read may already have been out (gone); an entry of gone a later
+// read passed is forgotten, since that read saw the directory after.
+func withoutGone(list []agents.Agent, gone map[string]uint64, ref uint64) []agents.Agent {
+	for id, upTo := range gone {
+		if ref > upTo {
+			delete(gone, id)
+		}
+	}
+	if len(gone) == 0 {
+		return list
+	}
+	out := make([]agents.Agent, 0, len(list))
+	for _, ag := range list {
+		if _, ok := gone[ag.ID]; !ok {
+			out = append(out, ag)
+		}
+	}
+	return out
 }
