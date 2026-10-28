@@ -190,8 +190,7 @@ func (a *app) requestTitles() tea.Cmd {
 		key := a.detailKey(ag.Project, ag.Ticket)
 		t := a.titles[ag.Ticket]
 		if t == nil {
-			t = &title{project: ag.Project}
-			a.titles[ag.Ticket] = t
+			t = a.newTitle(ag.Ticket, ag.Project)
 			if a.titleFromCache(t, key) {
 				continue
 			}
@@ -298,13 +297,36 @@ func (a *app) learnTitle(ticket, text string, flight uint64) {
 		if !ok {
 			return
 		}
-		t = &title{project: ag.Project}
-		a.titles[ticket] = t
+		t = a.newTitle(ticket, ag.Project)
 	}
 	if t.outranks(flight) {
 		return
 	}
 	t.learn(text, flight)
+}
+
+// newTitle makes the entry of a ticket's title, seeded with what the
+// views show of it (the ticket in the pane, a row of the list shown) and
+// the flight that brought it: a read accepted before the entry existed
+// takes part in the order too, so an older answer arriving now cannot
+// outrank it. Data the views took from the cache has no flight and seeds
+// nothing.
+func (a *app) newTitle(ticket, project string) *title {
+	t := &title{project: project}
+	if d := a.detail; d != nil && d.known && d.record.ID == ticket {
+		if f := a.filed[d.shown]; f > t.flight {
+			t.learn(d.record.Title, f)
+		}
+	}
+	if v := a.tickets; v != nil {
+		if i := v.index(ticket); i >= 0 {
+			if f := a.filed[v.key]; f > t.flight {
+				t.learn(v.rows[i].Title, f)
+			}
+		}
+	}
+	a.titles[ticket] = t
+	return t
 }
 
 // forgetTitle follows an accepted removal of a ticket (not found, no
@@ -315,8 +337,7 @@ func (a *app) learnTitle(ticket, text string, flight uint64) {
 func (a *app) forgetTitle(ticket string, flight uint64, project string) {
 	t := a.titles[ticket]
 	if t == nil {
-		t = &title{project: project}
-		a.titles[ticket] = t
+		t = a.newTitle(ticket, project)
 	}
 	if t.outranks(flight) {
 		return

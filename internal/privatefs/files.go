@@ -14,8 +14,10 @@ import (
 // must be executable), synced, and checked as a private file of the user's
 // own (OwnFile). A file that cannot be written whole is removed, so a
 // reader never finds half of one. The directory is the caller's to check
-// first (CheckDirs): this is the one way the client creates a file of its
-// own in the launch and agents directories.
+// first (CheckDirs). Every file the launch and the agents' records create
+// once and never replace comes this way (the launch files, the launch
+// record, the seen mark); a file that is replaced, as an agent's state,
+// goes through a temporary file and a rename instead.
 func CreateExclusive(path string, data []byte, mode fs.FileMode) (err error) {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // a new file of the client's own, checked below
 	if err != nil {

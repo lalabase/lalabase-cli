@@ -111,3 +111,35 @@ func TestTheFullTextRenewsTheTitle(t *testing.T) {
 		t.Fatalf("after the full text: %q", got)
 	}
 }
+
+// Review of the C9c groundwork: an agent appears after the session
+// accepted a newer read of its ticket (the pane, renamed) while an older
+// list read was still out. The entry the older list answer makes starts
+// from what the views hold, with the flight that brought it, so the older
+// answer is outranked and the pane's newer title stays.
+func TestAnOlderAnswerCannotSeedANewAgentsTitle(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher()
+	h.openTickets(website)
+	h.m.focus = view.List
+	older := messages(t, h.press("R")) // the list, still saying "Ticket 6"
+	if len(older) == 0 {
+		t.Fatal("no list read")
+	}
+	h.f.setTicket(renamedSix(h))
+	h.m.app.tickets.selected = ticketID(website, 6)
+	h.drive(h.press("enter"))
+	if d := h.m.app.detail; d == nil || d.record.Title != "Six, renamed" {
+		t.Fatalf("the pane: %+v", d)
+	}
+	a := h.m.app
+	a.agents.list = []agents.Agent{agentIn(1, orgA, 6, agents.Working, h.now)}
+	h.drive(a.requestTitles())
+	if got := h.areaRow(6).Primary.String(); got != "#6 Six, renamed" {
+		t.Fatalf("before the older list: %q", got)
+	}
+	h.drive(h.feed(older...)...)
+	if got := h.areaRow(6).Primary.String(); got != "#6 Six, renamed" {
+		t.Fatalf("after the older list: %q", got)
+	}
+}

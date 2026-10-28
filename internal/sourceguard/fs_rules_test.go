@@ -69,7 +69,9 @@ func TestTheFileSystemPackagesImportByName(t *testing.T) {
 		"diskcache#exec":      `package diskcache; import "os/exec"; var _ = exec.Command`,
 		"privatefs#stdout":    `package privatefs; import "os"; var out = os.Stdout`,
 		// Since C9c privatefs removes the one file it created, when it
-		// could not write it whole (CreateExclusive); nothing more.
+		// could not write it whole (CreateExclusive). The guard allows
+		// os.Remove in the package; that it removes nothing else is for
+		// review to hold.
 		"privatefs#removeall": `package privatefs; import "os"; var rm = os.RemoveAll`,
 		"privatefs#rename":    `package privatefs; import "os"; var mv = os.Rename`,
 		"diskcache#open":      `package diskcache; import "os"; var _ = os.Open`,

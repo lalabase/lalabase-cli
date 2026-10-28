@@ -13,7 +13,8 @@ type hookEvent struct{ event, input string }
 // The hook's decision is step, apart from its files: every order of
 // events that Hook writes to disk, step reaches without a directory, so
 // a test of the decision needs none. The records are compared after the
-// trip through JSON a file makes.
+// trip through JSON a file makes. This guards the split (what Hook does
+// around step); the decision itself is held by the other hook tests.
 func TestStepDecidesWhatHookWrites(t *testing.T) {
 	bash := func(cmd, id string) string {
 		return toolPayload(t, "", "Bash", `{"command":"`+cmd+`"}`, id)
