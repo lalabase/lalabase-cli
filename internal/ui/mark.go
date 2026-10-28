@@ -396,7 +396,7 @@ func (m Model) openLinkedTicket() (Model, tea.Cmd) {
 	}
 	a.origin = &origin{notification: n.ID, org: n.Organisation.ID, project: n.Ticket.ProjectID, ticket: n.Ticket.ID, unread: !n.Read}
 	d := a.ensureDetail(n.Ticket.ProjectID, n.Ticket.ID)
-	d.offset, d.follow, d.area, d.post = 0, anchorNone, areaDescription, ""
+	d.startAtHead()
 	m.focus = view.Object
 	return m, a.readUnlessFresh(d)
 }

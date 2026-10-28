@@ -78,6 +78,17 @@ func (d *detailView) selectedPost() *api.Post {
 	return nil
 }
 
+// startAtHead puts a ticket that opens anew in the pane at its head: the
+// description in view, no comment selected, no anchor to follow. A ticket
+// opened from a notification and one opened from an agent start so; Enter
+// on a ticket row resets the position alone (openTicket).
+func (d *detailView) startAtHead() {
+	d.offset = 0
+	d.follow = anchorNone
+	d.area = areaDescription
+	d.post = ""
+}
+
 // settle follows a new record: the selected comment is kept by its id or
 // moves to the first one; an expanded comment no longer on the page
 // closes, a missing one's marker too (nothing stays open that the pane

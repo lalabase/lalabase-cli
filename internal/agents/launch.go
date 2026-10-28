@@ -27,7 +27,7 @@ const maxNumber = 1<<31 - 1
 func (l Launch) valid() bool {
 	return ValidID(l.Agent) && ValidID(l.Session) &&
 		serverID.MatchString(l.Organisation) && serverID.MatchString(l.Project) && serverID.MatchString(l.Ticket) &&
-		l.Number > 0 && l.Number <= maxNumber && (l.Pane == "" || serverID.MatchString(l.Pane)) && !l.At.IsZero()
+		TicketNumber(l.Number) && (l.Pane == "" || serverID.MatchString(l.Pane)) && !l.At.IsZero()
 }
 
 // WriteLaunch records a new agent in dir, which must exist (Prepare). The

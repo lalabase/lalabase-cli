@@ -94,9 +94,10 @@ func (m Model) agentsColumn() present.Column {
 		if t, ok := a.agentTitle(ag); ok {
 			text += " " + textOr(t, uitext.UntitledTicket)
 		}
+		l := a.look(ag.State)
 		row := present.Row{
 			Primary: present.NewInline(text), Marked: true,
-			Mark: present.NewInline(a.glyph(ag.State)), MarkStyle: agentStyles[ag.State],
+			Mark: present.NewInline(l.glyph), MarkStyle: l.style,
 			Quiet: ag.State == agents.Ended && a.seen(ag),
 		}
 		if o := a.organisation(ag.Organisation); o != nil && ag.Organisation != chosen {
@@ -391,7 +392,7 @@ func (m Model) agentsBindings() []binding {
 	if ag, ok := a.agentUnderCursor(); ok && a.canOpenAgent(ag) {
 		out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenTicketHelp})
 	}
-	if a.titlesFailed() {
+	if m.canRefresh() {
 		out = append(out, binding{Refresh, uitext.RefreshKey, uitext.RetryHelp})
 	}
 	return append(out, binding{Back, uitext.EscapeKey, uitext.BackHelp})
@@ -428,16 +429,18 @@ func (m Model) agentsFit() bool {
 
 // closeAgents goes back to where A was pressed; to the list instead of an
 // object pane that shows nothing any more (its ticket was removed
-// meanwhile).
-func (m Model) closeAgents() Model {
+// meanwhile). The focus it returns to gets its preview again, which the
+// agents' list held back (selectionChanged): every way out of the list
+// needs both, so they are one step.
+func (m Model) closeAgents() (Model, tea.Cmd) {
 	if m.focus != view.Agents {
-		return m
+		return m, nil
 	}
 	m.focus = m.agentsFrom
 	if a := m.app; m.focus == view.Object && a.detail == nil && (a.active == nil || a.active.opened == "") {
 		m.focus = view.List
 	}
-	return m
+	return m, m.selectionChanged()
 }
 
 // agentTicket: the pane shows a ticket an agent opened (openAgent): the
@@ -474,14 +477,7 @@ func (m Model) openAgent() (Model, tea.Cmd) {
 		}
 	} else {
 		if p := a.projects; p == nil || p.org != ag.Organisation {
-			a.leaveInbox()
-			a.leaveTickets()
-			name := ""
-			if o := a.organisation(ag.Organisation); o != nil {
-				name = o.Name
-			}
-			a.projects = &projectsView{org: ag.Organisation, name: name, key: a.projectsKey(ag.Organisation)}
-			cmds = append(cmds, a.loadProjects())
+			cmds = append(cmds, a.enterProjects(ag.Organisation))
 		} else if a.tickets != nil {
 			a.leaveList()
 		}
@@ -491,7 +487,7 @@ func (m Model) openAgent() (Model, tea.Cmd) {
 		if !shown {
 			// A ticket new in the pane starts at its head; one already
 			// shown keeps its place and its selected comment.
-			d.offset, d.follow, d.area, d.post = 0, anchorNone, areaDescription, ""
+			d.startAtHead()
 			a.settle(d)
 		}
 		m.focus = view.Object

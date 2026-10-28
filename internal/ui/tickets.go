@@ -241,6 +241,17 @@ func (m Model) openProjects(org string) (Model, tea.Cmd) {
 		m.focus = view.List
 		return m, nil
 	}
+	cmd := a.enterProjects(org)
+	m.focus = view.List
+	return m, cmd
+}
+
+// enterProjects leaves what is open in the list's place (an inbox, another
+// organisation's tickets), opens the projects of org there and loads
+// them. The selected project is the one selected when the person last
+// left them; openAgent selects the agent's project afterwards. The chooser
+// and an agent open the projects this one way.
+func (a *app) enterProjects(org string) tea.Cmd {
 	a.leaveInbox()
 	a.leaveTickets()
 	name := ""
@@ -248,8 +259,7 @@ func (m Model) openProjects(org string) (Model, tea.Cmd) {
 		name = o.Name
 	}
 	a.projects = &projectsView{org: org, name: name, key: a.projectsKey(org), selected: a.rememberedProject[org]}
-	m.focus = view.List
-	return m, a.loadProjects()
+	return a.loadProjects()
 }
 
 // loadProjects shows the cached list, if there is one that still reads,

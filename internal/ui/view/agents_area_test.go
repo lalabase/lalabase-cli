@@ -210,3 +210,19 @@ func TestTheAreaLeavesTheChooserAnEntry(t *testing.T) {
 		t.Fatalf("no entry of the chooser:\n%s", ansi.Strip(out))
 	}
 }
+
+// FocusedCapacity promises as many agents as the screen draws, in every
+// layout the agents' list shows in: beside the chooser in three columns,
+// in the list's place in two, alone in one. Its split was once worked out
+// in the interface apart from the drawing, and the two drifted.
+func TestFocusedCapacityIsWhatTheAgentsPaneDraws(t *testing.T) {
+	for _, size := range [][2]int{{60, 30}, {100, 30}, {130, 30}, {130, 14}, {100, 14}} {
+		g := geometryOf(size[0], size[1])
+		s := areaScreen(agentRows(20, true), 0)
+		want := FocusedCapacity(s.Agents, s.Chooser, s.Agents, g, Agents)
+		out := Render(s, g, Agents, ansi.WcWidth)
+		if got := strings.Count(ansi.Strip(out), " Task "); got != want {
+			t.Errorf("%dx%d (%d columns): %d agents drawn, capacity %d\n%s", size[0], size[1], g.Columns, got, want, out)
+		}
+	}
+}

@@ -166,8 +166,8 @@ func (a *app) agentSummary() []present.AgentCount {
 	var out []present.AgentCount
 	for s, n := range counts {
 		if n > 0 {
-			state := agents.State(s)
-			out = append(out, present.AgentCount{Glyph: present.NewInline(a.glyph(state)), Style: agentStyles[state], Count: n})
+			l := a.look(agents.State(s))
+			out = append(out, present.AgentCount{Glyph: present.NewInline(l.glyph), Style: l.style, Count: n})
 		}
 	}
 	return out
@@ -177,32 +177,37 @@ func (a *app) agentSummary() []present.AgentCount {
 // each.
 var spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-// agentGlyphs are the glyphs of the other states, one cell each: the shape
-// says the state where no colour is drawn (NO_COLOR, the cursor bar).
-var agentGlyphs = map[agents.State]string{
-	agents.WaitingForApproval: "!",
-	agents.WaitingForYou:      "⣿",
-	agents.Lost:               "✕",
-	agents.Starting:           "⠂",
-	agents.Ended:              "✓",
+// agentLook is how a state is drawn wherever an agent shows (the area,
+// the ticket rows, the header's counts, the ticket's head, the meta bar):
+// its glyph, one cell; its tone; its word. The glyph's shape and the word
+// carry the state where no colour is drawn (NO_COLOR, the cursor bar);
+// the tone only weighs it.
+type agentLook struct {
+	glyph string
+	style present.Style
+	word  uitext.ID
 }
 
-// agentStyles are the states' tones.
-var agentStyles = map[agents.State]present.Style{
-	agents.WaitingForApproval: present.AgentApproval,
-	agents.WaitingForYou:      present.AgentWaiting,
-	agents.Lost:               present.AgentLost,
-	agents.Working:            present.AgentWorking,
-	agents.Starting:           present.AgentStarting,
-	agents.Ended:              present.AgentEnded,
+// agentLooks are the states' looks, one table so that no state can have a
+// glyph without a tone or a word. Working's glyph turns: look takes it from
+// the spinner.
+var agentLooks = map[agents.State]agentLook{
+	agents.WaitingForApproval: {"!", present.AgentApproval, uitext.AgentApproval},
+	agents.WaitingForYou:      {"⣿", present.AgentWaiting, uitext.AgentWaiting},
+	agents.Lost:               {"✕", present.AgentLost, uitext.AgentLost},
+	agents.Working:            {"", present.AgentWorking, uitext.AgentWorking},
+	agents.Starting:           {"⠂", present.AgentStarting, uitext.AgentStarting},
+	agents.Ended:              {"✓", present.AgentEnded, uitext.AgentEnded},
 }
 
-// glyph is a state's glyph; working's is the spinner's frame.
-func (a *app) glyph(s agents.State) string {
+// look is a state's look; working's glyph is the spinner's frame of this
+// read.
+func (a *app) look(s agents.State) agentLook {
+	l := agentLooks[s]
 	if s == agents.Working {
-		return spinner[a.agents.frame%len(spinner)]
+		l.glyph = spinner[a.agents.frame%len(spinner)]
 	}
-	return agentGlyphs[s]
+	return l
 }
 
 // markAgent puts the glyph of the most urgent agent at the ticket into the
@@ -210,19 +215,9 @@ func (a *app) glyph(s agents.State) string {
 func (a *app) markAgent(row *present.Row, ticket string) {
 	row.Marked = true
 	if ag, ok := a.agentAt(ticket); ok {
-		row.Mark, row.MarkStyle = present.NewInline(a.glyph(ag.State)), agentStyles[ag.State]
+		l := a.look(ag.State)
+		row.Mark, row.MarkStyle = present.NewInline(l.glyph), l.style
 	}
-}
-
-// agentWords are the states' words: with the glyph they carry the state,
-// the tone only weighs it.
-var agentWords = map[agents.State]uitext.ID{
-	agents.WaitingForApproval: uitext.AgentApproval,
-	agents.WaitingForYou:      uitext.AgentWaiting,
-	agents.Lost:               uitext.AgentLost,
-	agents.Working:            uitext.AgentWorking,
-	agents.Starting:           uitext.AgentStarting,
-	agents.Ended:              uitext.AgentEnded,
 }
 
 // agentHead is the line of the ticket's head for its most urgent agent:
@@ -233,8 +228,8 @@ func (a *app) agentHead(ticket string) (glyph string, style present.Style, text 
 	if !ok {
 		return "", present.Plain, "", false
 	}
-	word := uitext.Inline(agentWords[ag.State]).String()
-	return a.glyph(ag.State), agentStyles[ag.State], uitext.Fill(uitext.AgentLine, word, age(a.now().Sub(ag.Since))).String(), true
+	l := a.look(ag.State)
+	return l.glyph, l.style, uitext.Fill(uitext.AgentLine, uitext.Inline(l.word).String(), age(a.now().Sub(ag.Since))).String(), true
 }
 
 // agentMeta are the meta bar's first lines for the ticket's most urgent
@@ -248,11 +243,11 @@ func (a *app) agentMeta(ticket string) []present.MetaLine {
 	if !ok {
 		return nil
 	}
-	word := uitext.Inline(agentWords[ag.State]).String()
+	l := a.look(ag.State)
 	out := []present.MetaLine{{Text: uitext.Inline(uitext.BarAgent), Style: present.Faint}}
-	for i, line := range barLines(word, age(a.now().Sub(ag.Since)), view.MetaRoom-markCells) {
+	for i, line := range barLines(uitext.Inline(l.word).String(), age(a.now().Sub(ag.Since)), view.MetaRoom-markCells) {
 		if i == 0 {
-			out = append(out, present.MetaLine{Lead: present.NewInline(a.glyph(ag.State)), LeadStyle: agentStyles[ag.State], Text: present.NewInline(line)})
+			out = append(out, present.MetaLine{Lead: present.NewInline(l.glyph), LeadStyle: l.style, Text: present.NewInline(line)})
 			continue
 		}
 		out = append(out, present.MetaLine{Text: present.NewInline(strings.Repeat(" ", markCells) + line)})

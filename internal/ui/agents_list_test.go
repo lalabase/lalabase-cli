@@ -10,6 +10,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
+	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
 // C9a: every ticket list reserves two cells for an agent's glyph, and the
@@ -70,8 +71,10 @@ func TestTheWorkingGlyphIsTheSpinnersFrame(t *testing.T) {
 // Every glyph is one cell wide, by either way of counting widths.
 func TestTheGlyphsAreOneCellWide(t *testing.T) {
 	glyphs := append([]string(nil), spinner...)
-	for _, g := range agentGlyphs {
-		glyphs = append(glyphs, g)
+	for s, l := range agentLooks {
+		if s != agents.Working {
+			glyphs = append(glyphs, l.glyph)
+		}
 	}
 	for _, g := range glyphs {
 		for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
@@ -80,8 +83,20 @@ func TestTheGlyphsAreOneCellWide(t *testing.T) {
 			}
 		}
 	}
-	if len(agentGlyphs) != 5 || len(agentStyles) != 6 {
-		t.Fatalf("%d glyphs, %d tones", len(agentGlyphs), len(agentStyles))
+}
+
+// Every state of internal/agents has a look: a glyph, a tone and a word
+// (a state added there without one would show as an empty, plain cell).
+func TestEveryStateHasALook(t *testing.T) {
+	a := &app{}
+	for s := agents.WaitingForApproval; s <= agents.Ended; s++ {
+		l, ok := agentLooks[s]
+		if !ok || a.look(s).glyph == "" || l.style == present.Plain || uitext.Inline(l.word).String() == "" {
+			t.Errorf("state %d: %+v, in the table %v", s, a.look(s), ok)
+		}
+	}
+	if len(agentLooks) != int(agents.Ended)+1 {
+		t.Fatalf("%d looks", len(agentLooks))
 	}
 }
 

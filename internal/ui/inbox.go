@@ -367,109 +367,102 @@ func (a *app) anyFailed() bool {
 	return false
 }
 
-// retryOrRefresh is R: before /me, /me again; failed steps first, each
-// alone (the tools after initialize come by themselves); then, healthy, the
-// directory and the counters from the chooser, the active page from the
-// inbox. Work still pending is not issued again.
-func (m Model) retryOrRefresh() (Model, tea.Cmd) {
+// refreshRead is one read R makes: run issues it, free says whether it
+// would issue one now (a read already out for its key is not issued
+// again, so R is not offered for it).
+type refreshRead struct {
+	free bool
+	run  func() tea.Cmd
+}
+
+// refreshPlan is what R reads now, the one place that decides it: R runs
+// every read of it (retryOrRefresh) and is offered while one of them is
+// free (canRefresh). Which reads R makes is so decided once for both;
+// each read's free stands beside its run, so the two that must agree are
+// on one line.
+//
+// Before /me, /me again. In the agents' list, the titles whose read
+// failed (C9b). Failed steps first, each alone (the tools after initialize
+// come by themselves), with the page or the section in view, so R from a
+// failed page reads the page, not only the counters. Healthy: the ticket
+// opened from a notification, the active page, the section; from the
+// chooser the directory, the counters and the agents' failed titles.
+func (m Model) refreshPlan() []refreshRead {
 	a := m.app
 	if a.expired {
-		return m, nil
+		return nil
 	}
 	if a.steps[stepMe].state != ready {
 		if a.steps[stepMe].state == failed {
-			return m, a.startStep(stepMe)
+			return []refreshRead{{true, func() tea.Cmd { return a.startStep(stepMe) }}}
 		}
-		return m, nil
+		return nil
 	}
+	titles := refreshRead{a.titlesFailed(), a.retryTitles}
 	if m.focus == view.Agents {
-		// The agents' list: the titles whose read failed (C9b).
-		return m, a.retryTitles()
+		return []refreshRead{titles}
 	}
-	if a.anyFailed() {
-		var cmds []tea.Cmd
-		for i := stepInitialize; i < stepCounters; i++ {
-			if a.steps[i].state == failed {
-				cmds = append(cmds, a.startStep(i))
-			}
-		}
-		if a.steps[stepCounters].state == failed {
-			cmds = append(cmds, a.issueCounters())
-		}
-		if m.focus == view.Navigation {
-			// The titles of the agents under the chooser too (C9b).
-			cmds = append(cmds, a.retryTitles())
-		}
-		if m.focus == view.Object && a.origin != nil {
-			cmds = append(cmds, m.refreshSection())
-		} else if m.focus != view.Navigation && a.active != nil {
-			// The active page as well: a failed page of the global inbox
-			// failed the counters step too, and R from the page must read
-			// the page, not only the counters.
-			cmds = append(cmds, a.refreshActive())
-		}
-		if m.focus != view.Navigation && a.projects != nil {
-			cmds = append(cmds, m.refreshSection())
-		}
-		return m, tea.Batch(cmds...)
-	}
-	if m.focus == view.Object && a.origin != nil {
-		// The ticket opened from a notification: R reads the ticket.
-		return m, m.refreshSection()
-	}
-	if m.focus != view.Navigation && a.active != nil {
-		return m, a.refreshActive()
-	}
-	if m.focus != view.Navigation && a.projects != nil {
-		return m, m.refreshSection()
-	}
-	var cmds []tea.Cmd
-	if a.steps[stepOrganisations].state == ready {
-		cmds = append(cmds, a.startStep(stepOrganisations))
-	}
-	if a.steps[stepCounters].state == ready {
-		cmds = append(cmds, a.issueCounters())
-	}
-	// The titles of the agents under the chooser whose read failed (C9b).
-	cmds = append(cmds, a.retryTitles())
-	return m, tea.Batch(cmds...)
-}
-
-// canRefresh says whether R would do anything now.
-func (m Model) canRefresh() bool {
-	a := m.app
-	if a.expired {
-		return false
-	}
-	if a.steps[stepMe].state != ready {
-		return a.steps[stepMe].state == failed
-	}
-	// Mirrors retryOrRefresh: R is offered only when it would issue a read
-	// (a read already out for the same key is not issued again).
-	countersFree := !a.pending(a.inboxKey("", 1))
+	counters := refreshRead{!a.pending(a.inboxKey("", 1)), a.issueCounters}
 	// The ticket opened from a notification takes R when the pane is
 	// focused; the page takes it from the list, or from the details.
 	linked := m.focus == view.Object && a.origin != nil
-	linkedFree := linked && a.detail != nil && !a.pending(a.detail.key)
-	activeFree := m.focus != view.Navigation && !linked && a.active != nil && !a.pending(a.active.key)
-	sectionFree := m.focus != view.Navigation && a.projects != nil && m.canRefreshSection()
-	if a.anyFailed() {
-		for i := stepInitialize; i < stepCounters; i++ {
-			if a.steps[i].state == failed {
-				return true
-			}
-		}
-		titles := m.focus == view.Navigation && a.titlesFailed()
-		return (a.steps[stepCounters].state == failed && countersFree) || linkedFree || activeFree || sectionFree || titles
-	}
-	if m.focus == view.Object && a.origin != nil {
-		return linkedFree
-	}
-	if m.focus != view.Navigation && a.active != nil {
-		return activeFree
+	var shown []refreshRead
+	switch {
+	case linked:
+		shown = []refreshRead{{a.detail != nil && !a.pending(a.detail.key), m.refreshSection}}
+	case m.focus != view.Navigation && a.active != nil:
+		shown = []refreshRead{{!a.pending(a.active.key), a.refreshActive}}
 	}
 	if m.focus != view.Navigation && a.projects != nil {
-		return sectionFree
+		shown = append(shown, refreshRead{m.canRefreshSection(), m.refreshSection})
 	}
-	return a.steps[stepOrganisations].state == ready || (a.steps[stepCounters].state == ready && countersFree) || a.titlesFailed()
+	if a.anyFailed() {
+		var plan []refreshRead
+		for i := stepInitialize; i < stepCounters; i++ {
+			if a.steps[i].state == failed {
+				plan = append(plan, refreshRead{true, func() tea.Cmd { return a.startStep(i) }})
+			}
+		}
+		if a.steps[stepCounters].state == failed {
+			plan = append(plan, counters)
+		}
+		if m.focus == view.Navigation {
+			plan = append(plan, titles)
+		}
+		return append(plan, shown...)
+	}
+	if len(shown) > 0 {
+		// Healthy, R reads one thing in view, the first of shown as it
+		// is built above: the ticket of a notification, else the active
+		// page, else the section.
+		return shown[:1]
+	}
+	var plan []refreshRead
+	if a.steps[stepOrganisations].state == ready {
+		plan = append(plan, refreshRead{true, func() tea.Cmd { return a.startStep(stepOrganisations) }})
+	}
+	if a.steps[stepCounters].state == ready {
+		plan = append(plan, counters)
+	}
+	return append(plan, titles)
+}
+
+// retryOrRefresh is R: every read of the plan; one already out is not
+// issued again.
+func (m Model) retryOrRefresh() (Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	for _, r := range m.refreshPlan() {
+		cmds = append(cmds, r.run())
+	}
+	return m, tea.Batch(cmds...)
+}
+
+// canRefresh says whether R would read anything now.
+func (m Model) canRefresh() bool {
+	for _, r := range m.refreshPlan() {
+		if r.free {
+			return true
+		}
+	}
+	return false
 }

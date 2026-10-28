@@ -1,7 +1,6 @@
 package agents
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/privatefs"
-	"github.com/gboyke/lalabase-cli/internal/safefile"
 )
 
 // Agent is one agent as the interface shows it: its address, and what it
@@ -87,12 +85,8 @@ func Read(dir string, procs Procs) ([]Agent, error) {
 // the launch record fails a check.
 func readAgent(dir, id string, procs Procs) (Agent, bool) {
 	path := filepath.Join(dir, id+launchSuffix)
-	data, info, err := safefile.ReadRegularNoLink(path, maxFile)
-	if err != nil || privatefs.OwnFile(path, info) != nil {
-		return Agent{}, false
-	}
 	var r launchRecord
-	if err := json.Unmarshal(data, &r); err != nil || r.Format != FormatVersion || r.Agent != id {
+	if err := readOwn(path, &r); err != nil || r.Format != FormatVersion || r.Agent != id {
 		return Agent{}, false
 	}
 	l := Launch{Agent: r.Agent, Organisation: r.Organisation, Project: r.Project, Ticket: r.Ticket,

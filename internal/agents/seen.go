@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/privatefs"
-	"github.com/gboyke/lalabase-cli/internal/safefile"
 )
 
 // seenRecord is <agent id>.seen: the format and when it was first seen.
@@ -61,10 +60,6 @@ func MarkSeen(dir, id string, at time.Time) error {
 // seen.
 func seen(dir, id string) bool {
 	path := filepath.Join(dir, id+seenSuffix)
-	data, info, err := safefile.ReadRegularNoLink(path, maxFile)
-	if err != nil || privatefs.OwnFile(path, info) != nil {
-		return false
-	}
 	var r seenRecord
-	return json.Unmarshal(data, &r) == nil && r.Format == FormatVersion && !r.At.IsZero()
+	return readOwn(path, &r) == nil && r.Format == FormatVersion && !r.At.IsZero()
 }

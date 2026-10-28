@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/privatefs"
-	"github.com/gboyke/lalabase-cli/internal/safefile"
 )
 
 // The events the launch registers a hook for, as Claude Code names them.
@@ -506,15 +505,8 @@ func lock(path string, wait time.Duration) (func(), error) {
 // readState reads a state file as a private file of at most maxFile bytes;
 // a missing or failing one is the zero record.
 func readState(path string) (stateRecord, error) {
-	data, info, err := safefile.ReadRegularNoLink(path, maxFile)
-	if err != nil {
-		return stateRecord{}, err
-	}
-	if err := privatefs.OwnFile(path, info); err != nil {
-		return stateRecord{}, err
-	}
 	var r stateRecord
-	if err := json.Unmarshal(data, &r); err != nil {
+	if err := readOwn(path, &r); err != nil {
 		return stateRecord{}, err
 	}
 	if _, ok := stateNamed(r.State); r.Format != FormatVersion || !ok || r.Changed.IsZero() {

@@ -220,7 +220,8 @@ func (m Model) chooserColumn() present.Column {
 		if first || e.org != heading {
 			row := present.Row{Primary: present.NewInline(e.name), Marked: marked}
 			if ag, ok := a.mostUrgent(func(ag agents.Agent) bool { return e.org != "" && ag.Organisation == e.org }); ok {
-				row.Mark, row.MarkStyle = present.NewInline(a.glyph(ag.State)), agentStyles[ag.State]
+				l := a.look(ag.State)
+				row.Mark, row.MarkStyle = present.NewInline(l.glyph), l.style
 			}
 			c.Rows = append(c.Rows, row)
 			heading, first = e.org, false

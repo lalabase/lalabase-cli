@@ -205,7 +205,7 @@ func (l *Launcher) track(t Ticket, dir launchdir.Dir) (tr tracking, agent, why s
 		return tracking{}, "", "the program's path cannot be put into a hook: " + exe, nil
 	case !filepath.IsAbs(agentsDir) || !passable(agentsDir):
 		return tracking{}, "", "the agents' directory cannot be put into a hook: " + agentsDir, nil
-	case !uuid.MatchString(t.Org):
+	case !agents.ForeignID(t.Org):
 		return tracking{}, "", "the ticket's organisation is unknown", nil
 	}
 	agent, session, why := l.newAgent()
@@ -256,7 +256,7 @@ func (l *Launcher) record(t Ticket, agent string, tr tracking, pane string) (why
 // when the output has another form.
 func paneID(stdout string) string {
 	id := strings.TrimSpace(stdout)
-	if !uuid.MatchString(id) {
+	if !agents.ForeignID(id) {
 		return ""
 	}
 	return id
