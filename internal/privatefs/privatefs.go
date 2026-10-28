@@ -1,7 +1,10 @@
 // Package privatefs holds the one threat model of the files the client
 // keeps for itself: the config and its lock file (internal/profile) and the
-// disk cache (internal/diskcache, C1e). It was extracted from the profile
-// package so that the cache does not grow a second model beside it.
+// disk cache (internal/diskcache, C1e), the launch files and the agents'
+// files. It was extracted from the profile package so that the cache does
+// not grow a second model beside it. Since C9c it also holds the two file
+// operations those packages share (files.go): a file created exclusively
+// and a directory walked within a bound.
 //
 // The attacker is another local user without root, who can write only where
 // it is writable for them and replace only entries they own. What the person

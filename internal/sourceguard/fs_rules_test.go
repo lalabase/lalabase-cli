@@ -40,8 +40,8 @@ func withFS(extra map[string]string) map[string]string {
 func TestTheFileSystemPackagesImportByName(t *testing.T) {
 	// What they do is allowed.
 	for name, source := range map[string]string{
-		"internal/diskcache/x.go":          `package diskcache; import ("os"; "io/fs"; "path/filepath"; "crypto/sha256"; "encoding/hex"); var _ = os.CreateTemp; var _ = os.Rename; var _ = os.Remove; var _ = os.MkdirAll; var _ = os.Chtimes; var _ = os.Open; var _ *os.File; var _ fs.FileInfo; var _ = filepath.Join; var _ = sha256.Sum256; var _ = hex.EncodeToString`,
-		"internal/privatefs/x.go":          `package privatefs; import ("os"; "syscall"; "io/fs"; "path/filepath"); var _ = os.OpenFile; var _ = os.Getuid; var _ = os.Lstat; var _ = os.Readlink; var _ = syscall.Flock; var _ = syscall.LOCK_NB; var _ syscall.Stat_t; var _ fs.FileMode; var _ = filepath.Abs`,
+		"internal/diskcache/x.go":          `package diskcache; import ("os"; "io/fs"; "path/filepath"; "crypto/sha256"; "encoding/hex"); var _ = os.CreateTemp; var _ = os.Rename; var _ = os.Remove; var _ = os.MkdirAll; var _ = os.Chtimes; var _ *os.File; var _ fs.FileInfo; var _ = filepath.Join; var _ = sha256.Sum256; var _ = hex.EncodeToString`,
+		"internal/privatefs/x.go":          `package privatefs; import ("os"; "syscall"; "io/fs"; "path/filepath"); var _ = os.OpenFile; var _ = os.O_WRONLY | os.O_CREATE | os.O_EXCL; var _ = os.Open; var _ = os.Remove; var _ = os.Getuid; var _ = os.Lstat; var _ = os.Readlink; var _ = syscall.Flock; var _ = syscall.LOCK_NB; var _ syscall.Stat_t; var _ fs.FileMode; var _ = filepath.Abs`,
 		"internal/privatefs/acl_darwin.go": `package privatefs; import ("unsafe"; "encoding/binary"; "golang.org/x/sys/unix"); func f(p *byte) { unix.Syscall6(unix.SYS_GETATTRLIST, uintptr(unsafe.Pointer(p)), 0, 0, 0, 0, 0) }; var _ = unix.BytePtrFromString; var _ = binary.NativeEndian`,
 		"internal/safefile/x.go":           `package safefile; import ("os"; "syscall"; "io/fs"); var _ = os.OpenFile; var _ = os.O_RDONLY; var _ = syscall.O_NONBLOCK; var _ = syscall.O_NOFOLLOW; var _ fs.FileInfo`,
 	} {
@@ -68,7 +68,11 @@ func TestTheFileSystemPackagesImportByName(t *testing.T) {
 		"diskcache#unix":      `package diskcache; import "golang.org/x/sys/unix"; var _ = unix.Write`,
 		"diskcache#exec":      `package diskcache; import "os/exec"; var _ = exec.Command`,
 		"privatefs#stdout":    `package privatefs; import "os"; var out = os.Stdout`,
-		"privatefs#remove":    `package privatefs; import "os"; var rm = os.Remove`,
+		// Since C9c privatefs removes the one file it created, when it
+		// could not write it whole (CreateExclusive); nothing more.
+		"privatefs#removeall": `package privatefs; import "os"; var rm = os.RemoveAll`,
+		"privatefs#rename":    `package privatefs; import "os"; var mv = os.Rename`,
+		"diskcache#open":      `package diskcache; import "os"; var _ = os.Open`,
 		"privatefs#unixwrite": `package privatefs; import "golang.org/x/sys/unix"; var _ = unix.Write`,
 		"privatefs#unixread":  `package privatefs; import u "golang.org/x/sys/unix"; var _ = u.Read`,
 		"privatefs#go":        `package privatefs; func run(f func()) { go f() }`,

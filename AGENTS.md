@@ -37,7 +37,7 @@ on a Mac before every merge, by running the tests here.
 | `internal/features` | which features a server has, from `tools/list` and input schemas |
 | `internal/cache` | the decisions on an answer, from its class alone, the memory store they act on, and the journal of its changes the disk replays |
 | `internal/diskcache` | the disk cache (C1e): one directory per profile, one lock per run, a replay of the journal, every file checked before it is an entry |
-| `internal/privatefs` | the one threat model of the client's private files (the config, its lock, the disk cache, the launch files): owners, modes, the directory chain, macOS access lists, locks |
+| `internal/privatefs` | the one threat model of the client's private files (the config, its lock, the disk cache, the launch files, the agents' files): owners, modes, the directory chain, macOS access lists, locks; the exclusive create and the bounded directory walk they share |
 | `internal/queue` | the one queue every request goes through |
 | `internal/gateway` | reads from the queue to the interface: one typed message per waiter, `Scope`, which checks a result before it is cached, and the one write path (`Write`), which confirms a success only from the answer |
 | `internal/worker` | the supervisor: the only place a goroutine is started, its panics become one fatal error |

@@ -57,7 +57,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -360,28 +359,12 @@ func (c *Cache) prune(now time.Time) error {
 	if err := c.step("readdir", c.dir); err != nil {
 		return err
 	}
-	d, err := os.Open(c.dir) //nolint:gosec // the cache directory, checked by privatefs
+	err := privatefs.Walk(c.dir, maxWalk, c.index1)
+	if errors.Is(err, privatefs.ErrTooManyEntries) {
+		return errWalk
+	}
 	if err != nil {
 		return err
-	}
-	defer func() { _ = d.Close() }()
-	visited := 0
-	for {
-		entries, err := d.ReadDir(256)
-		for _, e := range entries {
-			if visited++; visited > maxWalk {
-				return errWalk
-			}
-			if err := c.index1(e); err != nil {
-				return err
-			}
-		}
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return err
-		}
 	}
 	for name, m := range c.index {
 		if expired(m.mtime, now) {
