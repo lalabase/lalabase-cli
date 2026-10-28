@@ -252,6 +252,10 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 		if err := f.dropArgument("post_comment", "format"); err != nil {
 			return nil, err
 		}
+		// A server before S6 (0.12.0) has no booked time either.
+		if err := f.dropTool("summarize_time_sessions"); err != nil {
+			return nil, err
+		}
 	}
 	if scenario == NoMarkRead {
 		if err := f.dropTool("mark_notification_read"); err != nil {

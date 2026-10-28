@@ -549,7 +549,7 @@ func (m Model) openTicket() (Model, tea.Cmd) {
 // ticket whose read or refresh failed is read again.
 func (a *app) readUnlessFresh(d *detailView) tea.Cmd {
 	// Every open reads the person's time on the ticket too (S6).
-	booked := a.readTime(d)
+	booked := a.readTime(d, true)
 	if d.holds() && !d.loading {
 		return booked
 	}
@@ -625,7 +625,7 @@ func (m Model) refreshSection() tea.Cmd {
 	if m.focus == view.Object && a.detail != nil {
 		d := a.detail
 		d.loading, d.corrected = true, false
-		booked := a.readTime(d) // R reads the time again too (S6)
+		booked := a.readTime(d, false) // R reads the time again too (S6)
 		if a.pending(d.key) {
 			return booked
 		}

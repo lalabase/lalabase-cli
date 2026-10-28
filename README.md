@@ -642,9 +642,10 @@ scenario took out of `tools/list` is unknown to the fixture, as to the
 server, and a scenario standing for an older server names that server's
 version in `initialize`. Scenarios:
 `normal`, `older` (a 0.7.0 server: no organisation filter, no paging of
-comments, no expansion, no `update_ticket`, no `format`), `s1-only` (a
-0.9.0 server: no `update_ticket`, no `format`), `s2-only` (a 0.10.0
-server: no `format`, so a comment is HTML to it), `temporary` (page 2 of the first organisation's inbox and of
+comments, no expansion, no `update_ticket`, no `format`, no booked
+time), `s1-only` (a 0.9.0 server: no `update_ticket`, no `format`, no
+booked time), `s2-only` (a 0.10.0 server: no `format`, so a comment is
+HTML to it, no booked time), `temporary` (page 2 of the first organisation's inbox and of
 Website-Relaunch's tickets fails twice, `R` succeeds; so does page 2 of
 ticket #6's comments), `429` (one short pause, on page 2 and on the first
 attempt of every write), `401` (the session expires, also on a preview of

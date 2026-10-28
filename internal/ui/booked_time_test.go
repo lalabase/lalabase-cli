@@ -179,10 +179,17 @@ func TestTheTimeIsReadWithThePersonsPriority(t *testing.T) {
 	h.openTickets(website)
 	h.m.app.tickets.selected = ticketID(website, 6)
 	h.press("enter")
+	reads := 0
 	for _, w := range h.m.app.waiters {
-		if w.ticket.Area == gateway.Time && w.ticket.Priority != queue.User {
-			t.Fatalf("the time read's priority %v", w.ticket.Priority)
+		if w.ticket.Area == gateway.Time {
+			reads++
+			if w.ticket.Priority != queue.User {
+				t.Fatalf("the time read's priority %v", w.ticket.Priority)
+			}
 		}
+	}
+	if reads != 1 {
+		t.Fatalf("%d time reads", reads)
 	}
 }
 
@@ -249,5 +256,21 @@ func TestEachGuardOfTheTimesTicket(t *testing.T) {
 	h.drive(a.issue(gateway.Time, six, forTime, queue.User)) // #6's time, #7 in the pane
 	if got := h.metaText(); strings.Contains(got, "1:39") {
 		t.Fatalf("#6's time in #7's bar:\n%s", got)
+	}
+}
+
+// Review round 2 of #42: a time a run read shows in the next run from
+// the disk, also when its reload fails.
+func TestTheTimeComesBackFromTheDisk(t *testing.T) {
+	root := t.TempDir()
+	h := newDiskHarness(t, root, nil)
+	h.openSix() // 2:30, on the disk once the journal is written
+	h2 := h.restart(root)
+	h2.setBooked(func(string, string) transport.Answer {
+		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
+	})
+	h2.openSix()
+	if got := h2.metaText(); !strings.Contains(got, "Booked by you\n2:30") {
+		t.Fatalf("the time did not come from the disk:\n%s", got)
 	}
 }

@@ -37,13 +37,14 @@ func (a *app) timeKey(project, id string) cache.Key {
 }
 
 // readTime asks the time on the ticket in the pane, unless a read of it is
-// out; a time the memory cache holds shows at once.
-func (a *app) readTime(d *detailView) tea.Cmd {
+// out; a time the memory cache holds shows at once, and on an open the
+// disk is asked beside (not on R: the network read is out by then).
+func (a *app) readTime(d *detailView, open bool) tea.Cmd {
 	if d == nil || !a.on("booked_time") {
 		return nil
 	}
 	key := a.timeKey(d.project, d.id)
-	if !d.booked.known && !a.timeFromCache(d, key) {
+	if !d.booked.known && !a.timeFromCache(d, key) && open {
 		a.diskRead(gateway.Time, key, forTime)
 	}
 	if a.pending(key) {

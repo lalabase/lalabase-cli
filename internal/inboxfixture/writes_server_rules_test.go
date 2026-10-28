@@ -297,6 +297,10 @@ func TestTheScenariosNameTheirVersion(t *testing.T) {
 		if below := features.Detect(info, tools).BelowTested; below != (want != "0.12.0") {
 			t.Errorf("%s: below tested %v", scenario, below)
 		}
+		// A server before S6 has no booked time (review round 2 of #42).
+		if on := features.Detect(info, tools).Enabled["booked_time"]; on != (want == "0.12.0") {
+			t.Errorf("%s: booked time %v", scenario, on)
+		}
 	}
 }
 
