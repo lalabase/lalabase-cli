@@ -50,6 +50,8 @@ var All = []Feature{
 	// comment_plain needs format on top of the base feature comment.
 	{Name: "ticket_update", Spec: api.UpdateTicketSpec, Since: "S2"},
 	{Name: "comment_plain", Spec: api.CommentSpec, ExtraArgs: []string{"format"}, Since: "S2b"},
+	// S6: the time the person booked on a ticket, in its meta bar.
+	{Name: "booked_time", Spec: api.BookedTimeSpec, Since: "S6"},
 }
 
 // Report is what one server supports.

@@ -56,6 +56,7 @@ func TestEveryEnabledFeatureFindsItsFieldsInTheRecordedAnswers(t *testing.T) {
 	successes := map[string][][2]string{
 		"ticket_update": {{"update_ticket", "ok_status"}, {"update_ticket", "ok_assign"}, {"update_ticket", "ok_title"}},
 		"comment_plain": {{"post_comment_formats", "plain"}},
+		"booked_time":   {{"summarize_time_sessions", "ok_own"}, {"summarize_time_sessions", "ok_own_tier"}},
 	}
 	for _, f := range All {
 		if !report.Enabled[f.Name] {
@@ -392,7 +393,7 @@ func TestOnTheServerBeforeS2TheWriteFeaturesAreOff(t *testing.T) {
 	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.9.0"}, tools)
 	on := 0
 	for _, f := range All {
-		want := f.Since != "S2" && f.Since != "S2b"
+		want := f.Since != "S2" && f.Since != "S2b" && f.Since != "S6"
 		if report.Enabled[f.Name] != want {
 			t.Errorf("%s on %v on a 0.9.0 server (missing %v)", f.Name, report.Enabled[f.Name], report.Missing[f.Name])
 		}
