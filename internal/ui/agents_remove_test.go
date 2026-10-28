@@ -214,3 +214,42 @@ func TestAProblemGoesWithItsAgent(t *testing.T) {
 		t.Fatalf("the problem stayed without its agent: %q", got)
 	}
 }
+
+// Review round 2 of C9c-2: the newest notice shows also when a launch
+// answers after d told something: the launch's problem is newer.
+func TestALaunchAnsweringAfterDShowsItsProblem(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.kind = launch.NoClaude
+	f := h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now))
+	f.removeErr = errors.New("disk gone")
+	h.openSix()
+	answer := messages(t, h.press("x")) // the launch, answered later
+	h.drive(h.press("d"))
+	if got := h.status(); !strings.Contains(got, "disk gone") {
+		t.Fatalf("status %q", got)
+	}
+	h.drive(h.feed(answer...)...)
+	if got := h.status(); strings.Contains(got, "disk gone") {
+		t.Fatalf("the older removal's problem hid the launch's: %q", got)
+	}
+}
+
+// Review round 2 of C9c-2: a failed read lists no agent, but says nothing
+// about whether the agent of a problem went: the problem stays until a
+// read that succeeded no longer has it.
+func TestAFailedReadKeepsTheProblem(t *testing.T) {
+	h := newHarness(t)
+	f := h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now))
+	f.removeErr = errors.New("disk gone")
+	h.start()
+	h.drive(h.press("A"))
+	h.drive(h.press("d"))
+	f.mu.Lock()
+	f.err = errors.New("directory refused")
+	f.mu.Unlock()
+	h.due()
+	if got := h.status(); !strings.Contains(got, "disk gone") {
+		t.Fatalf("a failed read took the problem: %q", got)
+	}
+}

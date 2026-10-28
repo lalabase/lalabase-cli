@@ -15,21 +15,9 @@ import (
 // only the client's own files of it go. In the agents' list it is the
 // agent under the cursor, in the pane the ticket's agent the head shows.
 
-// stuckStarting is how long an agent may be starting before d may remove
-// it (owner, 2026-10-28): claude's trust dialog may take a while, but one
-// an hour old never got past it (closed, or no pane opened).
-const stuckStarting = time.Hour
-
-// removable: the agent's session is over (ended, lost) or never began.
-func (a *app) removable(ag agents.Agent) bool {
-	switch ag.State {
-	case agents.Ended, agents.Lost:
-		return true
-	case agents.Starting:
-		return a.now().Sub(ag.Since) > stuckStarting
-	}
-	return false
-}
+// removable: the agent's session is over or never began, by the one rule
+// the removal asks again under the agent's lock (agents.Removable).
+func (a *app) removable(ag agents.Agent) bool { return agents.Removable(ag, a.now()) }
 
 // removeTarget is the agent d removes now; ok is false when there is
 // none, it still runs, or its removal is out already.
@@ -68,7 +56,7 @@ func (m Model) removeAgent() tea.Cmd {
 	}
 	a.agents.removing[ag.ID] = ag.Number
 	a.clearAgentsNotice()
-	return a.deps.Agents.Remove(ag.ID)
+	return a.deps.Agents.Remove(ag.ID, a.now())
 }
 
 // receiveRemoved takes a removal's answer: the agent leaves the area at

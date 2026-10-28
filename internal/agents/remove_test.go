@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gboyke/lalabase-cli/internal/privatefs"
 )
 
 // agentNumbered is the id of a test's agent n.
@@ -76,7 +78,7 @@ func TestRemoveTakesEveryFileOfTheAgent(t *testing.T) {
 	if len(filesOf(t, dir, one)) != 4 {
 		t.Fatalf("set-up: %v", names(t, dir))
 	}
-	if err := Remove(dir, one); err != nil {
+	if err := Remove(dir, one, t0, live(4242, 7)); err != nil {
 		t.Fatal(err)
 	}
 	if got := filesOf(t, dir, one); len(got) != 0 {
@@ -85,10 +87,13 @@ func TestRemoveTakesEveryFileOfTheAgent(t *testing.T) {
 	if len(filesOf(t, dir, two)) != 3 || !slices.Contains(names(t, dir), "notes.txt") {
 		t.Fatalf("took more: %v", names(t, dir))
 	}
-	if err := Remove(dir, one); err != nil {
+	if err := Remove(dir, one, t0, live(4242, 7)); err != nil {
 		t.Fatalf("again: %v", err)
 	}
-	if err := Remove(dir, "../"+one); err == nil {
+	if got := filesOf(t, dir, one); len(got) != 0 {
+		t.Fatalf("a removal of a removed agent left %v", got)
+	}
+	if err := Remove(dir, "../"+one, t0, live(4242, 7)); err == nil {
 		t.Fatal("an id of another form was taken")
 	}
 }
@@ -165,8 +170,8 @@ func TestPruneLeavesARecordOfANewerFormat(t *testing.T) {
 	if err := Prune(dir, t0.Add(365*24*time.Hour), live(4242, 7)); err != nil {
 		t.Fatal(err)
 	}
-	if len(filesOf(t, dir, agentID)) != 1 {
-		t.Fatal("a newer client's agent was removed")
+	if _, err := os.Lstat(path); err != nil {
+		t.Fatalf("a newer client's agent was removed: %v", err)
 	}
 }
 
@@ -218,7 +223,9 @@ func TestPruneTakesLeftoversAfterAnHour(t *testing.T) {
 	if err := Prune(dir, now, live(4242, 7)); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{tempPrefix + "young", "0f8fad5b.state.json", agentNumbered(2) + stateSuffix, agentNumbered(4) + launchSuffix, "notes.txt"}
+	// Deciding under an agent's lock makes its lock file where there was
+	// none: an agent that stays keeps it, as every agent with a hook has.
+	want := []string{tempPrefix + "young", "0f8fad5b.state.json", agentNumbered(2) + stateSuffix, agentNumbered(2) + lockSuffix, agentNumbered(4) + launchSuffix, agentNumbered(4) + lockSuffix, "notes.txt"}
 	got := names(t, dir)
 	slices.Sort(want)
 	slices.Sort(got)
@@ -271,5 +278,86 @@ func TestTheWatchersErrorsLeaveThePathOut(t *testing.T) {
 	other := fmt.Errorf("no agent id")
 	if got := withoutPath(other); got.Error() != other.Error() {
 		t.Fatal("another error changed")
+	}
+}
+
+// Remove decides again as the agent is when its lock is held: one that
+// works or waits, or started less than an hour ago, stays, with
+// ErrRunning, though the interface took it for removable.
+func TestRemoveLeavesAnAgentThatRunsNow(t *testing.T) {
+	dir := agentsDir(t)
+	launchAgent(t, dir, agentNumbered(1), t0, UserPromptSubmit, live(4242, 7))
+	launchAgent(t, dir, agentNumbered(2), t0, "", nil) // starting since t0
+	for id, now := range map[string]time.Time{agentNumbered(1): t0.Add(2 * time.Hour), agentNumbered(2): t0.Add(59 * time.Minute)} {
+		if err := Remove(dir, id, now, live(4242, 7)); !errors.Is(err, ErrRunning) {
+			t.Fatalf("%s: %v", id, err)
+		}
+		if len(filesOf(t, dir, id)) == 0 {
+			t.Fatalf("%s went", id)
+		}
+	}
+	if err := Remove(dir, agentNumbered(2), t0.Add(61*time.Minute), live(4242, 7)); err != nil {
+		t.Fatalf("stuck starting: %v", err)
+	}
+}
+
+// A hook that writes while d or the cleanup waits for the agent's lock
+// decides: the agent works again, and stays (review of #41: the decision
+// was made before, on what an earlier read or the walk had seen).
+func TestARemovalWaitingForTheLockSeesTheHook(t *testing.T) {
+	for _, name := range []string{"d", "prune"} {
+		dir := agentsDir(t)
+		launchAgent(t, dir, agentID, t0, SessionEnd, live(4242, 7))
+		age(t, dir, agentID, t0)
+		unlock, err := privatefs.Lock(filepath.Join(dir, agentID+lockSuffix))
+		if err != nil {
+			t.Fatal(err)
+		}
+		now := t0.Add(40 * 24 * time.Hour)
+		done := make(chan error, 1)
+		go func() {
+			if name == "d" {
+				done <- Remove(dir, agentID, now, live(4242, 7))
+				return
+			}
+			done <- Prune(dir, now, live(4242, 7))
+		}()
+		time.Sleep(50 * time.Millisecond) // the removal waits for the lock
+		// The hook, holding the lock: the session works again.
+		rec := stateRecord{Format: FormatVersion, State: stateNames[Working], Changed: now, PID: 4242, Start: 7}
+		if err := replace(dir, filepath.Join(dir, agentID+stateSuffix), rec); err != nil {
+			t.Fatal(err)
+		}
+		unlock()
+		select {
+		case err = <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the removal hangs")
+		}
+		if name == "d" && !errors.Is(err, ErrRunning) {
+			t.Fatalf("d: %v", err)
+		}
+		if got, _ := Read(dir, live(4242, 7)); len(got) != 1 || got[0].State != Working {
+			t.Fatalf("%s: the working agent is %v", name, got)
+		}
+	}
+}
+
+// A removal that fails part way leaves the agent listed, as its error
+// says: the launch record goes last.
+func TestAFailedRemovalLeavesTheAgentListed(t *testing.T) {
+	dir := agentsDir(t)
+	launchAgent(t, dir, agentID, t0, SessionEnd, live(4242, 7))
+	// A seen mark that cannot be removed: a directory with something in
+	// it. It reads as not seen, so the agent stays ended and removable.
+	seen := filepath.Join(dir, agentID+seenSuffix)
+	if err := os.MkdirAll(filepath.Join(seen, "inside"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := Remove(dir, agentID, t0, live(4242, 7)); err == nil {
+		t.Fatal("the removal reported no error")
+	}
+	if got, err := Read(dir, live(4242, 7)); err != nil || len(got) != 1 {
+		t.Fatalf("the agent left though its removal failed: %v, %v", got, err)
 	}
 }

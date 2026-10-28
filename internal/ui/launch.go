@@ -99,6 +99,11 @@ func (m Model) launchDone(d launch.Done) tea.Cmd {
 	a := m.app
 	a.launch.busy, a.launch.ticket = false, d.Ticket.ID
 	a.launch.notice, a.launch.tone = launchNotice(d), launchTone(d.Kind)
+	if a.launchShown() {
+		// The launch's answer is newer than what the agents told since
+		// it started: the newest notice shows.
+		a.clearAgentsNotice()
+	}
 	if (d.Kind == launch.Opened || d.Kind == launch.Ended) && d.Untracked != "" {
 		// Opened (or ran here), but its state is not shown: a problem to
 		// see, not a hint that goes. iTerm's silence (NoAnswer) says more

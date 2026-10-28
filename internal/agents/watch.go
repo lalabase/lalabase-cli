@@ -80,12 +80,13 @@ type Removed struct {
 	Err error
 }
 
-// Remove is the command that removes the agent id's files (d on an ended
-// or lost agent), under the supervisor like Read.
-func (w *Watcher) Remove(id string) tea.Cmd {
+// Remove is the command that removes the agent id's files (d), under the
+// supervisor like Read, if it is still Removable at the model's time at
+// when its lock is held.
+func (w *Watcher) Remove(id string, at time.Time) tea.Cmd {
 	return func() tea.Msg {
 		msg, ok := worker.Run(w.sup, "agents: remove", func() tea.Msg {
-			return Removed{ID: id, Err: withoutPath(Remove(w.dir, id))}
+			return Removed{ID: id, Err: withoutPath(Remove(w.dir, id, at, w.procs))}
 		})
 		if !ok {
 			if w.sup.Err() != nil {

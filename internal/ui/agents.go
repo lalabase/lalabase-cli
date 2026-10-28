@@ -20,9 +20,9 @@ type AgentWatcher interface {
 	// See records an agent the person opened as seen (C9b); its message
 	// is an agents.Marked.
 	See(id string, at time.Time) tea.Cmd
-	// Remove removes an ended or lost agent's files (C9c); its message is
-	// an agents.Removed.
-	Remove(id string) tea.Cmd
+	// Remove removes an agent's files if it is still removable at at, as
+	// its lock is held (C9c); its message is an agents.Removed.
+	Remove(id string, at time.Time) tea.Cmd
 }
 
 // agentsEvery is how often the agents' files are read while there is one,
@@ -102,9 +102,10 @@ func (a *app) receiveAgents(s agents.Snapshot) tea.Cmd {
 	if s.Err != nil {
 		a.agents.list = nil
 	}
-	if id := a.agents.noticeAgent; id != "" && !slices.ContainsFunc(a.agents.list, func(ag agents.Agent) bool { return ag.ID == id }) {
+	if id := a.agents.noticeAgent; id != "" && s.Err == nil && !slices.ContainsFunc(a.agents.list, func(ag agents.Agent) bool { return ag.ID == id }) {
 		// A problem told of an agent goes with it: nothing could clear
-		// it once the agent is no longer listed.
+		// it once the agent is no longer listed. A failed read lists no
+		// agent but says nothing of this one, and keeps the problem.
 		a.clearAgentsNotice()
 	}
 	for _, ag := range a.agents.list {

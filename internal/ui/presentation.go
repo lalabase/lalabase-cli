@@ -93,7 +93,8 @@ func (m Model) screen() present.Screen {
 }
 
 // status is the notice of the second line, the most urgent first: an
-// expired session, a rate-limit pause, the disk cache, a launch's outcome;
+// expired session, a rate-limit pause, the disk cache, then of what the
+// agents told (a removal, a seen mark) and a launch's outcome the newer;
 // with its tone, from the same state. A plain one is a hint, which the
 // view draws in the path's place.
 func (m Model) status() (present.Inline, present.Style) {
@@ -108,7 +109,8 @@ func (m Model) status() (present.Inline, present.Style) {
 	case a.diskStatus() != 0:
 		return uitext.Inline(a.diskStatus()), present.NoticeProblem
 	case a.agentsNoticeShown():
-		// Newer than any launch notice: a launch clears it.
+		// Of the agents' notice and the launch's the newer shows: a
+		// launch's start and its answer clear the agents' notice.
 		return a.agents.notice, a.agents.tone
 	case a.launchShown():
 		return a.launch.notice, a.launch.tone

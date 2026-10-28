@@ -29,7 +29,7 @@ type fakeWatcher struct {
 	removed           []string
 }
 
-func (f *fakeWatcher) Remove(id string) tea.Cmd {
+func (f *fakeWatcher) Remove(id string, _ time.Time) tea.Cmd {
 	f.mu.Lock()
 	f.removed = append(f.removed, id)
 	err := f.removeErr
