@@ -212,3 +212,41 @@ func TestACorrectedPageKeepsItsTitlesFlight(t *testing.T) {
 		t.Fatalf("the older list outranked the corrected pane: %q", got)
 	}
 }
+
+// Review round 3 of the C9c groundwork: a title taken from the cache (no
+// flight) does not outrank a newer read a view shows again from the
+// cache: the list, renamed, reopened from memory while its reload fails.
+func TestACachedTitleLosesToANewerViewFromTheCache(t *testing.T) {
+	h := newHarness(t)
+	h.withWatcher()
+	h.openSix() // the pane and the cache: "Ticket 6"
+	h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+		rows := h.d.ticketRows(website, 30)
+		for i := range rows {
+			if rows[i].Number == 6 {
+				rows[i].Title = "Six, renamed"
+			}
+		}
+		return ticketPageAnswer(1, 25, len(rows), rows[:25])
+	})
+	h.m.focus = view.List
+	h.drive(h.press("R"))
+	a := h.m.app
+	a.leaveTickets()
+	a.agents.list = []agents.Agent{agentIn(1, orgA, 6, agents.Working, h.now)}
+	h.drive(a.requestTitles())
+	if tt := a.titles[ticketID(website, 6)]; tt == nil || tt.fact != titled || tt.flight != 0 {
+		t.Fatalf("the title did not come from the cache: not the case: %+v", tt)
+	}
+	h.f.setTickets(func(api.TicketQuery) transport.Answer {
+		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
+	})
+	h.drive(h.chooseTickets(orgA))
+	h.drive(h.openProject(website))
+	if v := a.tickets; v == nil || v.index(ticketID(website, 6)) < 0 || v.flight == 0 {
+		t.Fatalf("the list is not shown from memory: %+v", v)
+	}
+	if got := h.areaRow(6).Primary.String(); got != "#6 Six, renamed" {
+		t.Fatalf("the cache's title outranked the list's newer read: %q", got)
+	}
+}

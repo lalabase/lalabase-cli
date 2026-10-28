@@ -91,6 +91,10 @@ func (t *title) forget(flight uint64) {
 // after flight: then a fact flight brought changes nothing.
 func (t *title) outranks(flight uint64) bool { return flight < t.flight }
 
+// outrankedBy says whether flight was sent after the request of the fact
+// remembered: then what it brought is the newer.
+func (t *title) outrankedBy(flight uint64) bool { return flight > t.flight }
+
 // agentsColumn is the Agents area: per agent, in the order of urgency,
 // its glyph, its number and its ticket's title (the number alone until
 // the title is known), and under it its organisation when that is not the
@@ -145,20 +149,20 @@ func (a *app) chosenOrg() string {
 }
 
 // agentTitle is the title of the agent's ticket from what the session
-// holds: the newest accepted fact remembered of it (title), else the
-// ticket in the pane, else a row of the list shown. ok is false while
-// none of them has it, and after a removal.
+// holds: of the fact remembered of it (title) and the views' data
+// (viewTitle), the one a later request brought; the fact when both came
+// with the same one, and so a fact against views without data. A fact
+// from the cache or the disk has no flight: every read of this session a
+// view shows outranks it. ok is false while none has a title, and when
+// the removal is the newest.
 func (a *app) agentTitle(ag agents.Agent) (string, bool) {
-	if t := a.titles[ag.Ticket]; t != nil {
-		// The newest accepted fact outranks the views' data (title).
-		switch t.fact {
-		case removed:
+	text, flight, ok := a.viewTitle(ag.Ticket)
+	if t := a.titles[ag.Ticket]; t != nil && t.fact != noFact && (!ok || !t.outrankedBy(flight)) {
+		if t.fact == removed {
 			return "", false
-		case titled:
-			return t.text, true
 		}
+		return t.text, true
 	}
-	text, _, ok := a.viewTitle(ag.Ticket)
 	return text, ok
 }
 
