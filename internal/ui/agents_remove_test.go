@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/launch"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
@@ -233,6 +234,42 @@ func TestALaunchAnsweringAfterDShowsItsProblem(t *testing.T) {
 	h.drive(h.feed(answer...)...)
 	if got := h.status(); strings.Contains(got, "disk gone") {
 		t.Fatalf("the older removal's problem hid the launch's: %q", got)
+	}
+}
+
+// Completion decides a launch's final tone and hint deadline. Even an
+// opened launch can have a tracking problem; both must replace an older
+// removal notice once the complete launch result is ready to show.
+func TestACompletedLaunchReplacesTheRemovalNotice(t *testing.T) {
+	for _, c := range []struct {
+		kind      launch.Kind
+		untracked string
+		want      string
+	}{
+		{launch.Opened, "", "Claude Code opened beside #6"},
+		{launch.Ended, "", "Claude Code ended; back at #6"},
+		{launch.Opened, "no id", "The state of Claude Code beside #6 cannot be shown: no id"},
+		{launch.Ended, "no id", "The state of Claude Code beside #6 cannot be shown: no id"},
+	} {
+		t.Run(c.want, func(t *testing.T) {
+			h := newHarness(t)
+			l := h.withLauncher()
+			f := h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now))
+			f.removeErr = errors.New("disk gone")
+			h.openSix()
+			_ = h.press("x")
+			call := l.launched()[0]
+			h.drive(h.press("d"))
+			if got := h.status(); !strings.Contains(got, "disk gone") {
+				t.Fatalf("no removal problem: %q", got)
+			}
+			h.drive(func() tea.Msg {
+				return launch.Done{Ref: call.ref, Ticket: call.ticket, Kind: c.kind, Untracked: c.untracked}
+			})
+			if got := h.status(); got != c.want {
+				t.Fatalf("launch notice %q, want %q", got, c.want)
+			}
+		})
 	}
 }
 

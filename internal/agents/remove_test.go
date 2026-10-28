@@ -61,7 +61,7 @@ func filesOf(t *testing.T, dir, id string) []string {
 	return out
 }
 
-// Remove takes every file of the agent, its launch record first; a file
+// Remove takes every file of the agent, its launch record last; a file
 // already gone is no error, and nothing of another agent or of another
 // name is touched.
 func TestRemoveTakesEveryFileOfTheAgent(t *testing.T) {
@@ -274,6 +274,10 @@ func TestTheWatchersErrorsLeaveThePathOut(t *testing.T) {
 	}
 	if withoutPath(nil) != nil {
 		t.Fatal("nil became an error")
+	}
+	locked := fmt.Errorf("lock file /a/long/path/%s.lock: %w", agentID, privatefs.ErrLocked)
+	if got := withoutPath(locked); !errors.Is(got, privatefs.ErrLocked) || got.Error() != privatefs.ErrLocked.Error() {
+		t.Fatalf("the lock error kept its path: %v", got)
 	}
 	other := fmt.Errorf("no agent id")
 	if got := withoutPath(other); got.Error() != other.Error() {

@@ -456,12 +456,14 @@ navigation again.
     ticket pane the ticket's agent the head shows. Only the client's files
     of it go (its launch record, state, seen mark and lock); nothing that
     runs is stopped, and an agent that works or waits offers no `d`. The
-    removal decides again under the agent's lock, the one its hooks take:
+    removal decides again under the agent's lock, the one its hooks and
+    seen marks take:
     an agent that works again since the screen showed it stays ("it is
     running again"), and so does the cleanup below. Its launch record goes
     last, so a removal that fails part way keeps the agent listed and
     says why (the reason, without the file's path); the notice goes with
-    the agent, at the next `d` or open, or with a newer launch notice.
+    the agent, at the next `d` or open, or with a newer launch notice
+    (including a successful launch or a problem with its tracking).
   * **Cleaning up.** Every start of the interactive client cleans the
     agents' directory before its first read: an agent that ended, is lost
     or never got past starting goes 30 days after the last change of its

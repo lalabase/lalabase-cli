@@ -99,11 +99,6 @@ func (m Model) launchDone(d launch.Done) tea.Cmd {
 	a := m.app
 	a.launch.busy, a.launch.ticket = false, d.Ticket.ID
 	a.launch.notice, a.launch.tone = launchNotice(d), launchTone(d.Kind)
-	if a.launchShown() {
-		// The launch's answer is newer than what the agents told since
-		// it started: the newest notice shows.
-		a.clearAgentsNotice()
-	}
 	if (d.Kind == launch.Opened || d.Kind == launch.Ended) && d.Untracked != "" {
 		// Opened (or ran here), but its state is not shown: a problem to
 		// see, not a hint that goes. iTerm's silence (NoAnswer) says more
@@ -112,15 +107,20 @@ func (m Model) launchDone(d launch.Done) tea.Cmd {
 	}
 	// The launch cleared the deadline when it started (launchClaude): a
 	// problem or a canceled launch has none.
-	if a.launch.tone != present.Plain || a.launch.notice.String() == "" {
-		return nil
+	var cmd tea.Cmd
+	if a.launch.tone == present.Plain && a.launch.notice.String() != "" {
+		now := a.now()
+		a.launch.until = now.Add(hintFor)
+		if a.deps.Events != nil {
+			cmd = a.deps.Events.Expiry(a.launch.until, now)
+		}
 	}
-	now := a.now()
-	a.launch.until = now.Add(hintFor)
-	if a.deps.Events == nil {
-		return nil
+	if a.launchShown() {
+		// Decide after the final tone and deadline: a plain hint needs
+		// its deadline, and an opened launch may have a tracking error.
+		a.clearAgentsNotice()
 	}
-	return a.deps.Events.Expiry(a.launch.until, now)
+	return cmd
 }
 
 // launchTone is the notice's tone by the outcome: plain when Claude Code

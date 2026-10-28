@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/gboyke/lalabase-cli/internal/privatefs"
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
@@ -102,6 +103,9 @@ func (w *Watcher) Remove(id string, at time.Time) tea.Cmd {
 // alone (permission denied), not the file's path, which would push the
 // reason out of a narrow line; any other error as it is.
 func withoutPath(err error) error {
+	if errors.Is(err, privatefs.ErrLocked) {
+		return privatefs.ErrLocked
+	}
 	var pathErr *fs.PathError
 	if errors.As(err, &pathErr) {
 		return pathErr.Err
