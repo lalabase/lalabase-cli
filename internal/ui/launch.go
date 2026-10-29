@@ -4,8 +4,10 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/launch"
 	"github.com/gboyke/lalabase-cli/internal/present"
+	"github.com/gboyke/lalabase-cli/internal/ui/view"
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
@@ -160,6 +162,7 @@ var launchTexts = map[launch.Kind]uitext.ID{
 	launch.SessionGone:    uitext.LaunchSessionGone,
 	launch.NoAnswer:       uitext.LaunchNoAnswer,
 	launch.ITermFailed:    uitext.LaunchFailed,
+	launch.TmuxFailed:     uitext.LaunchTmuxFailed,
 }
 
 var withDetail = map[launch.Kind]bool{
@@ -181,4 +184,45 @@ func launchNotice(d launch.Done) present.Inline {
 		return uitext.Fill(id, d.Detail)
 	}
 	return uitext.Inline(id)
+}
+
+// agentViewer shows an agent's tmux session beside the client (prototype,
+// launch.Launcher.View); a launcher without it has no viewer.
+type agentViewer interface {
+	View(agent string) tea.Cmd
+}
+
+// syncViewer asks the viewer for the agent that should be seen, when that
+// changed: the newest running agent of the ticket in the pane, while the
+// focus is on the ticket or in the agents' list; none otherwise.
+func (m Model) syncViewer() tea.Cmd {
+	a := m.app
+	v, ok := a.deps.Launcher.(agentViewer)
+	if !ok {
+		return nil
+	}
+	want := m.viewedAgent()
+	if want == a.viewing {
+		return nil
+	}
+	a.viewing = want
+	return v.View(want)
+}
+
+// viewedAgent is the agent the viewer should show, "" for none.
+func (m Model) viewedAgent() string {
+	a := m.app
+	if a.expired || a.detail == nil || (m.focus != view.Object && m.focus != view.Agents) {
+		return ""
+	}
+	var best agents.Agent
+	for _, ag := range a.agents.list {
+		if ag.Ticket != a.detail.id || ag.State == agents.Ended || ag.State == agents.Lost {
+			continue
+		}
+		if best.ID == "" || ag.Since.After(best.Since) {
+			best = ag
+		}
+	}
+	return best.ID
 }

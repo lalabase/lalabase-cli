@@ -36,6 +36,8 @@ const (
 	ITermFailed
 	// Canceled: the session ended before the launch ran.
 	Canceled
+	// TmuxFailed: tmux could not start the agent's session (prototype).
+	TmuxFailed
 )
 
 // Done is the message of one launch: the caller's reference, the ticket it

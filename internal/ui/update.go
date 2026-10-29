@@ -21,6 +21,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if flush := a.flushDisk(); flush != nil {
 			cmd = tea.Batch(cmd, flush)
 		}
+		if show := next.syncViewer(); show != nil {
+			cmd = tea.Batch(cmd, show)
+		}
 	}
 	return next, cmd
 }
