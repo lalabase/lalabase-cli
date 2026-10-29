@@ -36,6 +36,24 @@ const (
 	ITermFailed
 	// Canceled: the session ended before the launch ran.
 	Canceled
+	// Jumped: iTerm selected the agent's pane (C9c).
+	Jumped
+	// PaneGone: the jump found the agent's pane in no window or tab of
+	// iTerm (the script's own error 4201): it was closed.
+	PaneGone
+	// NoPane: there is no pane to jump to: the client runs without iTerm
+	// (or in a multiplexer), or the agent's pane is not known.
+	NoPane
+)
+
+// Action is what x asked for (C9c): a first start, the jump to a running
+// agent's pane, or a start again of one whose session is over.
+type Action uint8
+
+const (
+	StartAction Action = iota
+	JumpAction
+	AgainAction
 )
 
 // Done is the message of one launch: the caller's reference, the ticket it
@@ -52,4 +70,10 @@ type Done struct {
 	// recorded; "" when it is known. It may name a path: cleaned where it
 	// is shown.
 	Untracked string
+	// Action is what was asked for. Agent is the agent a start recorded
+	// ("" when it recorded none), or the one the jump was for; Replaces
+	// the agent a start again replaces (C9c), whose files the launch does
+	// not touch: the interface settles it (agents.Settle).
+	Action          Action
+	Agent, Replaces string
 }

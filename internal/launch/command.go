@@ -77,9 +77,11 @@ func mcpConfig(server, address, token string) []byte {
 
 // tracking is what lets the client know a launched session's state (C9a):
 // the session id it starts with and the settings file with its hooks; the
-// zero value for a launch without.
+// zero value for a launch without. resume: the session is one to resume
+// (C9c), not a new one, and then it is passed even without hooks.
 type tracking struct {
 	session, settings string
+	resume            bool
 }
 
 // claudeArgs are claude's arguments: the server file, no other server
@@ -87,13 +89,26 @@ type tracking struct {
 // the session id and the hooks' settings file when the launch tracks the
 // agent, the session's name and the prompt. The token is in the file,
 // never here: a process's arguments are visible to every local user. The
-// hooks are a file for the same reason, never inline JSON.
+// hooks are a file for the same reason, never inline JSON. A start again
+// (C9c, F9) resumes its session instead: --resume, its hooks' settings
+// file again (without it only the project's hooks run) and no prompt,
+// since the conversation is there.
 func claudeArgs(t Ticket, server, mcpFile string, tr tracking) []string {
 	args := []string{"--mcp-config", mcpFile, "--strict-mcp-config"}
-	if tr.settings != "" {
-		args = append(args, "--session-id", tr.session, "--settings", tr.settings)
+	switch {
+	case tr.resume:
+		args = append(args, "--resume", tr.session)
+	case tr.settings != "":
+		args = append(args, "--session-id", tr.session)
 	}
-	return append(args, "-n", "lalabase #"+strconv.Itoa(t.Number), prompt(t, server))
+	if tr.settings != "" {
+		args = append(args, "--settings", tr.settings)
+	}
+	args = append(args, "-n", "lalabase #"+strconv.Itoa(t.Number))
+	if tr.resume {
+		return args
+	}
+	return append(args, prompt(t, server))
 }
 
 // hookTimeout is the seconds Claude Code gives a hook: the hook ends well
@@ -208,6 +223,34 @@ const appleScript = `on run argv
 						end tell
 						tell n to write text cmdline
 						return unique id of n
+					end if
+				end repeat
+			end repeat
+		end repeat
+	end tell
+	error "session not found" number 4201
+end run
+`
+
+// jumpScript selects an agent's pane (C9c, F8): it finds the pane by its
+// unique id in every window and tab and selects its tab, then the
+// session, then the window, in this order: the window first breaks the
+// loop's references (-1719), the session before the tab leaves the tab's
+// old pane in front. A constant like appleScript: the id arrives as the
+// run handler's one argument (osascript - <pane>). Error 4201: no such
+// pane, it was closed.
+const jumpScript = `on run argv
+	if (count of argv) is not 1 then error "one argument expected" number 4202
+	set pid to item 1 of argv
+	tell application "iTerm2"
+		repeat with w in windows
+			repeat with t in tabs of w
+				repeat with s in sessions of t
+					if (unique id of s) is pid then
+						tell t to select
+						tell s to select
+						select w
+						return
 					end if
 				end repeat
 			end repeat
