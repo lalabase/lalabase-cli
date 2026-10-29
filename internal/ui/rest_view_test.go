@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/features"
@@ -446,5 +447,44 @@ func TestTheRequestBudgetOfTheTicketView(t *testing.T) {
 				t.Errorf("%s, %s: %+v, want %+v", name, steps[i], got[i], c.want[i])
 			}
 		}
+	}
+}
+
+// One comment read whole is a read of the comment alone, on either way:
+// the title of the ticket's agent stays what it was (REST's answer names
+// no ticket, and the tools' is cut down to its comment).
+func TestOneCommentReadWholeLeavesTheTitleAsItWas(t *testing.T) {
+	for name, h := range map[string]*harness{"tools": newHarness(t), "rest": newRESTHarness(t)} {
+		t.Run(name, func(t *testing.T) {
+			long := "Six comment 30 " + strings.Repeat("goes on ", 1200) + "and ends here."
+			h.f.setRESTTicket(func(id string, o api.TicketOptions) transport.Answer {
+				ans := h.d.defaultRESTTicket(id, o)
+				var body map[string]any
+				_ = json.Unmarshal(ans.Payload, &body)
+				for _, p := range body["data"].(map[string]any)["posts"].([]any) {
+					if p := p.(map[string]any); p["id"] == sixPostID(30) {
+						p["body_text"] = long
+					}
+				}
+				ans.Payload, _ = json.Marshal(body)
+				return ans
+			})
+			h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+			h.openSix()
+			if got := h.areaRow(6).Primary.String(); got != "#6 Ticket 6" {
+				t.Fatalf("before: %q", got)
+			}
+			h.drive(h.press("tab"))
+			if !h.offers(Expand) {
+				t.Fatal("e is not offered on the newest comment")
+			}
+			h.drive(h.press("e"))
+			if e := h.m.app.detail.expansion; e == nil || !e.known || e.post != sixPostID(30) {
+				t.Fatalf("expansion %+v", e)
+			}
+			if got := h.areaRow(6).Primary.String(); got != "#6 Ticket 6" {
+				t.Fatalf("after one comment: %q", got)
+			}
+		})
 	}
 }
