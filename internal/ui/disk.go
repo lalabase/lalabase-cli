@@ -430,6 +430,10 @@ func (a *app) showFromDisk(p purpose, key cache.Key) bool {
 				return true
 			}
 		}
+	case forTime:
+		if v := a.detail; v != nil && !v.booked.known && a.timeKey(v.project, v.id) == key {
+			return a.timeFromCache(v, key)
+		}
 	case forTitle:
 		if t := a.titles[key.Ticket]; t != nil {
 			return a.titleFromDisk(t, key)

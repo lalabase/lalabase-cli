@@ -129,6 +129,8 @@ type detailView struct {
 	// differ while a page turn or a correction loads (C1d).
 	key, shown cache.Key
 	record     api.Ticket
+	// booked is the person's time on the ticket (S6, time.go).
+	booked bookedTime
 	// flight is the request whose answer the record is, as the list's;
 	// a page corrected without a read keeps it (correctDetailPage).
 	flight uint64
@@ -213,6 +215,7 @@ func (a *app) leaveList() {
 func (a *app) dropDetail() {
 	a.cancelArea(gateway.Detail)
 	a.cancelArea(gateway.Expansion)
+	a.cancelArea(gateway.Time)
 	a.detail = nil
 }
 
@@ -545,11 +548,13 @@ func (m Model) openTicket() (Model, tea.Cmd) {
 // open a ticket takes it (the list, an agent, a notification's link), so a
 // ticket whose read or refresh failed is read again.
 func (a *app) readUnlessFresh(d *detailView) tea.Cmd {
+	// Every open reads the person's time on the ticket too (S6).
+	booked := a.readTime(d, true)
 	if d.holds() && !d.loading {
-		return nil
+		return booked
 	}
 	d.loading = true
-	return a.issue(gateway.Detail, d.key, forDetail, queue.User)
+	return tea.Batch(a.issue(gateway.Detail, d.key, forDetail, queue.User), booked)
 }
 
 // ensureDetail makes the pane show the ticket: the one already there, or
@@ -620,10 +625,11 @@ func (m Model) refreshSection() tea.Cmd {
 	if m.focus == view.Object && a.detail != nil {
 		d := a.detail
 		d.loading, d.corrected = true, false
+		booked := a.readTime(d, false) // R reads the time again too (S6)
 		if a.pending(d.key) {
-			return nil
+			return booked
 		}
-		return a.issue(gateway.Detail, d.key, forDetail, queue.User)
+		return tea.Batch(a.issue(gateway.Detail, d.key, forDetail, queue.User), booked)
 	}
 	if v := a.tickets; v != nil {
 		v.corrected = false
@@ -644,7 +650,8 @@ func (m Model) refreshSection() tea.Cmd {
 }
 
 // canRefreshSection mirrors refreshSection: R is offered only when it
-// would issue a read.
+// would issue a read of what is shown. The ticket's booked time (S6),
+// which R reads beside it, does not offer R alone: it is extra.
 func (m Model) canRefreshSection() bool {
 	a := m.app
 	if m.focus == view.Object && a.detail != nil {

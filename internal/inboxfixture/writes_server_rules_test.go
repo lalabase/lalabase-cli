@@ -287,15 +287,19 @@ func TestAnUndashedUserIDNamesThePerson(t *testing.T) {
 // the tested version" shows against it as against the real thing.
 func TestTheScenariosNameTheirVersion(t *testing.T) {
 	ctx := context.Background()
-	for scenario, want := range map[Scenario]string{Older: "0.7.0", S1Only: "0.9.0", S2Only: "0.10.0", Normal: "0.11.0", Refusals: "0.11.0"} {
+	for scenario, want := range map[Scenario]string{Older: "0.7.0", S1Only: "0.9.0", S2Only: "0.10.0", Normal: "0.12.0", Refusals: "0.12.0"} {
 		_, _, c := serve(t, scenario)
 		info, ans := c.Initialize(ctx)
 		if !ans.OK() || info.Name != "lalabase" || info.Version != want {
 			t.Errorf("%s: %v %+v, want %s", scenario, ans.Class, info, want)
 		}
 		tools, _ := c.ListTools(ctx)
-		if below := features.Detect(info, tools).BelowTested; below != (want != "0.11.0") {
+		if below := features.Detect(info, tools).BelowTested; below != (want != "0.12.0") {
 			t.Errorf("%s: below tested %v", scenario, below)
+		}
+		// A server before S6 has no booked time (review round 2 of #42).
+		if on := features.Detect(info, tools).Enabled["booked_time"]; on != (want == "0.12.0") {
+			t.Errorf("%s: booked time %v", scenario, on)
 		}
 	}
 }

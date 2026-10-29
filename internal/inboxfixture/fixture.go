@@ -252,6 +252,10 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 		if err := f.dropArgument("post_comment", "format"); err != nil {
 			return nil, err
 		}
+		// A server before S6 (0.12.0) has no booked time either.
+		if err := f.dropTool("summarize_time_sessions"); err != nil {
+			return nil, err
+		}
 	}
 	if scenario == NoMarkRead {
 		if err := f.dropTool("mark_notification_read"); err != nil {
@@ -552,6 +556,8 @@ func (f *Fixture) rpc(w http.ResponseWriter, r *http.Request, req Request) {
 			f.updateTicket(w, r, call.Params.Arguments, reply, req)
 		case "post_comment":
 			f.postComment(w, r, call.Params.Arguments, reply, req)
+		case "summarize_time_sessions":
+			f.bookedTime(call.Params.Arguments, reply)
 		default:
 			reply(http.StatusOK, toolError("refused", "not available in the inbox fixture: "+call.Params.Name), nil)
 		}

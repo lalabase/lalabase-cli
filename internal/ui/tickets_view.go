@@ -180,7 +180,7 @@ func (m Model) detailColumn() present.Column {
 	if meta {
 		// The agent first: the bar does not scroll, and a low pane cuts its
 		// end (review round 1 of #36, F2).
-		c.Meta = append(a.agentMeta(d.id), metaBar(d.record, a.when)...)
+		c.Meta = append(append(a.agentMeta(d.id), metaBar(d.record, a.when)...), timeMeta(d)...)
 	}
 	c.Offset = d.offset
 	line := -1
@@ -328,13 +328,18 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 		if len(r.Assignees) > 0 {
 			assigned = uitext.Fill(uitext.MetaAssigned, assigneesOf(r.Assignees)).String()
 		}
-		// The status leads the facts, in the tone of its meaning.
-		t.addLead(present.NewInline(statusOf(r.Status)).String(), statusStyle(r.StatusFunctions, present.Faint), " · "+strings.Join([]string{
+		facts := []string{
 			textOr(r.Project.Name, uitext.UnnamedProject),
 			assigned,
 			uitext.Fill(uitext.MetaCreator, personOf(r.Creator)).String(),
 			uitext.Fill(uitext.MetaUpdated, when(r.UpdatedAt)).String(),
-		}, " · "), present.Faint)
+		}
+		if d.booked.known {
+			// The person's time on it (S6), as the bar shows it.
+			facts = append(facts, uitext.Fill(uitext.MetaBooked, hoursMinutes(d.booked.minutes)).String())
+		}
+		// The status leads the facts, in the tone of its meaning.
+		t.addLead(present.NewInline(statusOf(r.Status)).String(), statusStyle(r.StatusFunctions, present.Faint), " · "+strings.Join(facts, " · "), present.Faint)
 	}
 	if c.agent != "" {
 		// What the ticket's agent does (C9a), under the facts.

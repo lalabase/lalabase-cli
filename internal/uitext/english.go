@@ -270,6 +270,10 @@ const (
 	AgentNotRemoved
 	AgentNotSeen
 	AgentsTooMany
+	// S6: the meta bar's label of the person's time on a ticket, and the
+	// same in the head's line of facts.
+	BarBooked
+	MetaBooked
 	count
 )
 
@@ -415,4 +419,6 @@ var english = map[ID]string{
 	AgentNotRemoved: "Agent #%d could not be removed: %s",
 	AgentNotSeen:    "Agent #%d is seen for this run only: %s",
 	AgentsTooMany:   "The agents' directory holds too many files to read; the next start cleans it up.",
+	// S6: the label of the time the person booked on the ticket.
+	BarBooked: "Booked by you", MetaBooked: "booked by you %s",
 }

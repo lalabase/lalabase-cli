@@ -109,10 +109,18 @@ navigation again.
   Agent with the glyph in its tone, the state and its age
   (`⣿ waiting for you`, then `· 4 min` under it where one line is too
   short), so a low pane, which cuts the bar's end, keeps it; then Status
-  in its tone, Project, People (the assignees, then the creator) and
-  Updated, the labels faint, a long name cut with "…"; the head then drops
-  its line of facts and its agent's line. In a narrower pane
-  they stay in one faint line under the title. Comments by the token's own
+  in its tone, Project, People (the assignees, then the creator),
+  Updated and, against a server with S6 (MCP 0.12.0, feature
+  `booked_time`), Booked by you: the time you booked on the ticket, in
+  hours and minutes ("2:30"), the labels faint, a long name cut with "…";
+  the head then drops its line of facts and its agent's line. In a
+  narrower pane they stay in one faint line under the title, the time last
+  ("booked by you 2:30"). The time is read when a ticket opens and with
+  `R`, with the person's priority beside the ticket's own read, never for
+  a preview; the cache (memory, else the disk) shows it at once when the
+  ticket opened before, and a refusal takes it from there too. Without access to the project's time, for a ticket that is not
+  there, or against an older server there is no such line.
+  Comments by the token's own
   person show the author as "Name (you)", blue and bold; every other author
   is bold without colour. Only the user id from `/api/v1/me` decides, never
   a name, and without colour the "(you)" still says it. The client never guesses a meaning from a status name, since every
@@ -670,9 +678,10 @@ scenario took out of `tools/list` is unknown to the fixture, as to the
 server, and a scenario standing for an older server names that server's
 version in `initialize`. Scenarios:
 `normal`, `older` (a 0.7.0 server: no organisation filter, no paging of
-comments, no expansion, no `update_ticket`, no `format`), `s1-only` (a
-0.9.0 server: no `update_ticket`, no `format`), `s2-only` (a 0.10.0
-server: no `format`, so a comment is HTML to it), `temporary` (page 2 of the first organisation's inbox and of
+comments, no expansion, no `update_ticket`, no `format`, no booked
+time), `s1-only` (a 0.9.0 server: no `update_ticket`, no `format`, no
+booked time), `s2-only` (a 0.10.0 server: no `format`, so a comment is
+HTML to it, no booked time), `temporary` (page 2 of the first organisation's inbox and of
 Website-Relaunch's tickets fails twice, `R` succeeds; so does page 2 of
 ticket #6's comments), `429` (one short pause, on page 2 and on the first
 attempt of every write), `401` (the session expires, also on a preview of
@@ -814,7 +823,7 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   that sends it, so an older server keeps the base feature. A tool a
   slice brings whole (S2: `update_ticket`) is a feature of its own, on
   only when every argument its spec declares is in the schema. The
-  contract copy is at MCP 0.11.0; a 0.9.0 or 0.10.0 server is shown as
+  contract copy is at MCP 0.12.0; a 0.9.0 to 0.11.0 server is shown as
   older than the tested version and works with what its schemas say. An answer to such a request must carry the fields it relies on
   (a page without `posts_pages` is a protocol error, not page 0 of 0). A
   missing or hidden comment asked for by `post_id` comes back as a refusal

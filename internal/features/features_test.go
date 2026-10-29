@@ -28,10 +28,10 @@ func contractTools(t *testing.T) ([]transport.Tool, *contract.File) {
 	return tools, file
 }
 
-var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.11.0"}
+var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.12.0"}
 
-// On the contract the client was built against (MCP 0.11.0, server slices
-// S1, S2 and S2b included), every feature is on.
+// On the contract the client was built against (MCP 0.12.0, server slices
+// S1, S2, S2b and S6 included), every feature is on.
 func TestOnTheContractEveryFeatureIsOn(t *testing.T) {
 	tools, _ := contractTools(t)
 	report := Detect(contractServer, tools)
@@ -56,6 +56,7 @@ func TestEveryEnabledFeatureFindsItsFieldsInTheRecordedAnswers(t *testing.T) {
 	successes := map[string][][2]string{
 		"ticket_update": {{"update_ticket", "ok_status"}, {"update_ticket", "ok_assign"}, {"update_ticket", "ok_title"}},
 		"comment_plain": {{"post_comment_formats", "plain"}},
+		"booked_time":   {{"summarize_time_sessions", "ok_own"}, {"summarize_time_sessions", "ok_own_tier"}},
 	}
 	for _, f := range All {
 		if !report.Enabled[f.Name] {
@@ -156,7 +157,7 @@ func TestAMissingToolSwitchesOffItsFeatures(t *testing.T) {
 func TestANewerServerWithMoreToolsIsANotice(t *testing.T) {
 	tools, _ := contractTools(t)
 	tools = append(tools, transport.Tool{Name: "delete_ticket", InputSchema: json.RawMessage(`{"type":"object","properties":{"ticket_id":{}}}`)})
-	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.11.0"}, tools)
+	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.12.0"}, tools)
 	for _, f := range All {
 		if !report.Enabled[f.Name] {
 			t.Errorf("%s went off on a newer server", f.Name)
@@ -392,7 +393,7 @@ func TestOnTheServerBeforeS2TheWriteFeaturesAreOff(t *testing.T) {
 	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.9.0"}, tools)
 	on := 0
 	for _, f := range All {
-		want := f.Since != "S2" && f.Since != "S2b"
+		want := f.Since != "S2" && f.Since != "S2b" && f.Since != "S6"
 		if report.Enabled[f.Name] != want {
 			t.Errorf("%s on %v on a 0.9.0 server (missing %v)", f.Name, report.Enabled[f.Name], report.Missing[f.Name])
 		}
@@ -407,7 +408,7 @@ func TestOnTheServerBeforeS2TheWriteFeaturesAreOff(t *testing.T) {
 		t.Errorf("missing %v / %v", report.Missing["ticket_update"], report.Missing["comment_plain"])
 	}
 	if !report.BelowTested {
-		t.Error("0.9.0 is not below the tested 0.11.0")
+		t.Error("0.9.0 is not below the tested 0.12.0")
 	}
 }
 

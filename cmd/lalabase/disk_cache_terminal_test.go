@@ -128,10 +128,13 @@ func TestPTYDiskCacheRestartFlow(t *testing.T) {
 			}
 			c.finish(t, 0)
 			first := len(f.Requests())
-			if first != 7 {
+			// The ticket opened from the notification reads its booked
+			// time beside it (S6): one request more than before.
+			if first != 8 {
 				t.Fatalf("%d requests in the first run", first)
 			}
-			if n := len(entries()); n != 3 {
+			// Since S6 the ticket's booked time is one entry more.
+			if n := len(entries()); n != 4 {
 				t.Fatalf("%d entries after the first run", n)
 			}
 			// The second run: /me again, the counters fresh, the inbox from
@@ -172,15 +175,15 @@ func TestPTYDiskCacheRestartFlow(t *testing.T) {
 			}
 			// The second run made the same requests as the first: the disk
 			// added none and saved none (every cached page is reloaded
-			// once).
-			if n := len(f.Requests()) - first; n != 7 {
+			// once, the booked time read again with the open).
+			if n := len(f.Requests()) - first; n != 8 {
 				var lines []string
 				for _, r := range f.Requests()[first:] {
 					lines = append(lines, fmt.Sprintf("%s %s %s %v", r.Method, r.Path, r.Tool, r.Args))
 				}
 				t.Fatalf("%d requests in the second run:\n%s", n, strings.Join(lines, "\n"))
 			}
-			if n := len(entries()); n != 3 {
+			if n := len(entries()); n != 4 {
 				t.Fatalf("%d entries after the second run", n)
 			}
 			// The directory and its files are the user's alone.

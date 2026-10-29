@@ -1456,6 +1456,7 @@ func TestR2AMissingCommentIsNotOfferedAgainAndLeavesWithIt(t *testing.T) {
 func TestR2TheReloadDoesNotJoinAReadStillOut(t *testing.T) {
 	h := newHarness(t)
 	h.openSix()
+	h.withoutBookedTime()
 	h.press("tab")
 	release := make(chan struct{})
 	var held atomic.Bool

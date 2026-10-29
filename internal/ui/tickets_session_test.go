@@ -337,6 +337,7 @@ func TestAPreviewIsReadAfterThePauseWhenTheObjectPaneIsVisible(t *testing.T) {
 func TestOpenJoinsAPendingPreviewAndEscGoesBack(t *testing.T) {
 	h := newHarness(t)
 	h.openTickets(website)
+	h.withoutBookedTime()
 	a := h.m.app
 	gate := make(chan struct{})
 	h.f.gate, h.f.gateTicket = gate, login
@@ -1293,6 +1294,7 @@ func TestADueWithoutASessionIsIgnored(t *testing.T) {
 func TestAWakeUpWhileATicketIsOpenedReadsNothing(t *testing.T) {
 	h := newHarness(t)
 	h.openTickets(website)
+	h.withoutBookedTime()
 	a := h.m.app
 	token := a.previewToken // the timer of row 0, not yet due
 	gate := make(chan struct{})

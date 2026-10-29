@@ -794,6 +794,68 @@ func (a *API) SearchKnowledge(ctx context.Context, q KnowledgeQuery) (KnowledgeP
 	return page, a.call(ctx, KnowledgeSpec, args, &page)
 }
 
+// --- booked time (S6) -------------------------------------------------------
+
+// BookedTimeSpec is summarize_time_sessions asked for the time the token's
+// own person booked on one ticket. The server decides what the person may
+// see (all time or only their own); asking with creator "me" makes it the
+// own time either way. One record: no ticket, or one the token cannot
+// read, is not found. filters.ticket.id names the ticket the sum is of,
+// so an answer for another ticket can be refused (gateway.CheckBookedTime).
+var BookedTimeSpec = Spec{
+	Name: "summarize_time_sessions", Tool: "summarize_time_sessions",
+	// start_date, end_date and project are declared and never sent: S6
+	// brought the whole tool, and a feature of a whole tool needs all of
+	// it (a server with half of it keeps the feature off), as
+	// remove_assignee_ids of update_ticket.
+	Args:      []string{"project_id", "ticket", "creator", "start_date", "end_date", "project"},
+	OneRecord: true,
+	Required:  []string{"scope", "filters.ticket.id", "total.minutes"},
+}
+
+// BookedTime is the time booked on one ticket: in minutes, the ticket it is
+// of, and the scope the server summed in ("all" or "own").
+type BookedTime struct {
+	Ticket  string
+	Scope   string
+	Minutes int
+}
+
+// creatorMe asks for the time of the token's own person.
+const creatorMe = "me"
+
+// BookedTime reads the own time booked on the ticket id of a project.
+func (a *API) BookedTime(ctx context.Context, projectID, ticketID string) (BookedTime, transport.Answer) {
+	return DecodeBookedTime(a.BookedTimeAnswer(ctx, projectID, ticketID))
+}
+
+// BookedTimeAnswer is BookedTime's raw answer, for the gateway's shared
+// reads: every waiter decodes its own (DecodeBookedTime).
+func (a *API) BookedTimeAnswer(ctx context.Context, projectID, ticketID string) transport.Answer {
+	args := map[string]any{"project_id": projectID, "ticket": ticketID, "creator": creatorMe}
+	return a.c.CallTool(ctx, transport.Call{Tool: BookedTimeSpec.Tool, Args: args, OneRecord: BookedTimeSpec.OneRecord})
+}
+
+// DecodeBookedTime decodes and checks an answer of BookedTimeAnswer.
+func DecodeBookedTime(ans transport.Answer) (BookedTime, transport.Answer) {
+	var body struct {
+		Scope   string `json:"scope"`
+		Filters struct {
+			Ticket struct {
+				ID string `json:"id"`
+			} `json:"ticket"`
+		} `json:"filters"`
+		Total struct {
+			Minutes int `json:"minutes"`
+		} `json:"total"`
+	}
+	ans = decode(BookedTimeSpec, ans, &body)
+	if !ans.OK() {
+		return BookedTime{}, ans
+	}
+	return BookedTime{Ticket: body.Filters.Ticket.ID, Scope: body.Scope, Minutes: body.Total.Minutes}, ans
+}
+
 // --- REST readers ------------------------------------------------------------
 
 var MeSpec = Spec{

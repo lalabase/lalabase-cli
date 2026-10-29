@@ -70,6 +70,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			return m.receiveTitle(msg)
 		}
 		return m.receiveDetail(msg)
+	case gateway.TimeResult:
+		return m.receiveTime(msg)
 	case gateway.MarkReadResult:
 		return m.receiveMark(msg)
 	case launch.Done:
