@@ -898,7 +898,10 @@ func TestAFutureStampIsExpiredOnOpen(t *testing.T) {
 // on its way out; the next open gets it.
 func TestCloseNeverWaitsForABatch(t *testing.T) {
 	root := t.TempDir()
-	entered, release := make(chan struct{}), make(chan struct{})
+	// entered holds one signal: the batch may reach its sync before the
+	// test waits for it (a loaded CI run under -race), and a send nobody
+	// takes yet must not be dropped; later syncs find it full and go on.
+	entered, release := make(chan struct{}, 1), make(chan struct{})
 	o := Opener{Root: root, Faults: func(step, _ string) error {
 		if step == "sync" {
 			select {
