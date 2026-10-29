@@ -374,7 +374,7 @@ func TestTheTicketWriteScenarios(t *testing.T) {
 			_, a, c := serve(t, scenario)
 			info, _ := c.Initialize(ctx)
 			tools, _ := c.ListTools(ctx)
-			report := features.Detect(info, tools)
+			report := features.Detect(info, tools, nil)
 			if report.Enabled["ticket_update"] != want.update || report.Enabled["comment_plain"] != want.plain || !report.Enabled["comment"] || !report.Enabled["inbox"] {
 				t.Errorf("%s: %+v", scenario, report.Enabled)
 			}

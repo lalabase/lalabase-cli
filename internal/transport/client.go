@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -177,7 +176,7 @@ func (c *Client) Get(ctx context.Context, apiPath string) Answer {
 	if !ok {
 		return ans
 	}
-	ans = c.classifyREST(status, header, body)
+	ans = c.classifyREST(status, header, body, false)
 	ans.Sent = true
 	return ans
 }
@@ -215,6 +214,13 @@ func (c *Client) resolve(apiPath string) (*url.URL, error) {
 // send performs one request. ok is false when no usable answer arrived; ans
 // then holds the class (Temporary for the network, Protocol for the rest).
 func (c *Client) send(ctx context.Context, method string, target *url.URL, body []byte) (status int, header http.Header, data []byte, ans Answer, ok bool) {
+	return c.sendWith(ctx, method, target, body, nil)
+}
+
+// sendWith is send with headers of the request's own (a write's
+// Idempotency-Key). They are set before the client's own, which no
+// caller can replace.
+func (c *Client) sendWith(ctx context.Context, method string, target *url.URL, body []byte, extra http.Header) (status int, header http.Header, data []byte, ans Answer, ok bool) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
@@ -222,6 +228,18 @@ func (c *Client) send(ctx context.Context, method string, target *url.URL, body 
 	req, err := http.NewRequestWithContext(ctx, method, target.String(), reader)
 	if err != nil {
 		return 0, nil, nil, Answer{Class: Protocol, Message: err.Error(), Err: err}, false
+	}
+	for name, values := range extra {
+		for _, v := range values {
+			req.Header.Add(name, v)
+		}
+	}
+	// net/http counts a request with an Idempotency-Key as one it may send
+	// again by itself when a reused connection breaks after it went out.
+	// Without GetBody it cannot: a write leaves once per attempt, and only
+	// the queue decides whether there is another (plan, Writes).
+	if req.Header.Get("Idempotency-Key") != "" {
+		req.GetBody = nil
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/json")
@@ -351,42 +369,50 @@ func (c *Client) classifyStatus(status int, header http.Header, body []byte) (An
 	return Answer{}, true
 }
 
-func (c *Client) classifyREST(status int, header http.Header, body []byte) Answer {
+// classifyREST places a REST answer. A success is 200, for a write 201 too.
+// A client error in the API's own form with a machine field (R0, "code")
+// is placed by that field alone, never by its wording; a code the client
+// does not know is a refusal. Without one (a server before R0) the status
+// and "error" decide as they did before.
+func (c *Client) classifyREST(status int, header http.Header, body []byte, write bool) Answer {
+	e, apiForm := readRESTError(body)
 	if ans, ok := c.classifyStatus(status, header, body); !ok {
+		ans.Code = e.Code
 		return ans
 	}
-	switch status {
-	case http.StatusOK:
+	switch {
+	case status == http.StatusOK, write && status == http.StatusCreated:
 		if !jsonValid(body) {
 			return Answer{Class: Protocol, Status: status, Message: "the answer is no JSON"}
 		}
 		return Answer{Class: Object, Status: status, Payload: body}
+	case apiForm && e.Code != "" && status >= 400 && status < 500:
+		class, known := restCodeClasses[e.Code]
+		if !known {
+			class = Refused
+		}
+		ans := Answer{Class: class, Code: e.Code, Status: status, Message: string(body)}
+		if class == Refused {
+			ans.Reason = e.Reason
+		}
+		return ans
+	}
+	switch status {
 	// A 403 or 404 counts only in the API's own form: one from a proxy, a
 	// firewall or a wrong base address says nothing about the record and
 	// must not make the cache drop it.
 	case http.StatusForbidden:
-		if apiError(body) == "forbidden" {
+		if e.Error == "forbidden" {
 			return Answer{Class: NoAccess, Status: status, Message: string(body)}
 		}
 	case http.StatusNotFound:
-		if apiError(body) == "not_found" {
+		if e.Error == "not_found" {
 			return Answer{Class: NotFound, Status: status, Message: string(body)}
 		}
 	case http.StatusUnprocessableEntity:
 		return Answer{Class: InvalidInput, Status: status, Message: string(body)}
 	}
 	return Answer{Class: Protocol, Status: status, Message: string(body)}
-}
-
-// apiError reads the "error" of the API's error body ({"error":"..."}).
-func apiError(body []byte) string {
-	var e struct {
-		Error string `json:"error"`
-	}
-	if json.Unmarshal(body, &e) != nil {
-		return ""
-	}
-	return e.Error
 }
 
 // retryAt reads when a rate limit window opens again: Retry-After (seconds

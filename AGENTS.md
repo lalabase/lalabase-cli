@@ -35,9 +35,9 @@ on a Mac before every merge, by running the tests here.
 | Package | Job |
 |---|---|
 | `cmd/lalabase` | commands; everything a command reads or writes goes through `Env` (tests pass their own) |
-| `internal/transport` | REST `/api/v1` and MCP `/api/mcp`; every answer becomes one `Answer` with one `Class` |
+| `internal/transport` | REST `/api/v1` and MCP `/api/mcp`; every answer becomes one `Answer` with one `Class` (a REST error by its `code` since K0); REST writes with an `Idempotency-Key` (`Write`) |
 | `internal/api` | one adapter per tool or REST reader, each with a `Spec` |
-| `internal/features` | which features a server has, from `tools/list` and input schemas |
+| `internal/features` | which features a server has, from `tools/list` and input schemas, and since K0 the REST capabilities of `/api/v1/me` (REST way first, MCP the fallback) |
 | `internal/cache` | the decisions on an answer, from its class alone, the memory store they act on, and the journal of its changes the disk replays |
 | `internal/diskcache` | the disk cache (C1e): one directory per profile, one lock per run, a replay of the journal, every file checked before it is an entry |
 | `internal/privatefs` | the one threat model of the client's private files (the config, its lock, the disk cache, the launch files, the agents' files): owners, modes, the directory chain, macOS access lists, locks; the exclusive create and the bounded directory walk they share |

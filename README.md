@@ -871,6 +871,15 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   certificate that does not check out is a protocol error (never retried), and
   redirects are not followed. `Sent` says whether a request left the client, so
   a write with an unclear outcome is reloaded, not sent again.
+  A REST error of a server since the core's R0 carries a machine field
+  (`code`), which alone places it: `invalid_input`, `read_only`,
+  `forbidden` (no access), `not_found`, `refused` (with its `reason`) and
+  `unauthorized`; a code the client does not know is a refusal. It counts
+  only in the API's own form (a JSON object with `error` and `code`): a
+  proxy's 404 drops nothing from the cache. A 401, a 429, a 5xx and a
+  redirect are placed by their status alone, as before. A server before R0
+  (no `code`) is placed as it was: a 403 or 404 by its `error`, a 422 as
+  an invalid input, any other client error as a protocol error.
 * **Writes** need the idempotency key of the person's action (8 to 128
   letters, digits or `._:-`, a form the server keeps unchanged); an adapter
   refuses a write without one before sending. An answer to a write never
@@ -887,6 +896,16 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   `"me"` to add; nobody is ever removed) and refuses a change of none or
   two before sending; `post_comment` sends `format: plain` only when asked
   (feature `comment_plain`), so an older server gets the request it knows.
+  A REST write (K0, no feature of the interface uses one yet) is a POST or
+  PATCH under `/api/` with a JSON body and the key as its `Idempotency-Key`
+  header; one with another method, no usable key or a body that is no JSON
+  object is refused before sending. The body is encoded once, so a retry
+  of the same job sends the same bytes, which the server's replay compares;
+  it answers a repeat with its first answer and another request under the
+  same key as an invalid input. A write leaves once per attempt: Go's HTTP
+  client, which would send a request with that header again by itself
+  after a broken connection, is kept from it, and only the queue decides
+  a retry.
 * **Adapters** (`internal/api`): one per tool and REST reader, each with a
   `Spec` naming the arguments it sends and the fields it needs back (present
   and not null; a field that may be null is marked `?`). The same
@@ -899,8 +918,15 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   that sends it, so an older server keeps the base feature. A tool a
   slice brings whole (S2: `update_ticket`) is a feature of its own, on
   only when every argument its spec declares is in the schema. The
-  contract copy is at MCP 0.12.0; a 0.9.0 to 0.11.0 server is shown as
-  older than the tested version and works with what its schemas say. An answer to such a request must carry the fields it relies on
+  contract copy is at MCP 0.13.0 (the core with R0); a 0.9.0 to 0.12.0
+  server is shown as older than the tested version and works with what
+  its schemas say. Fields a newer server sends are `Newer` in the spec:
+  absent is fine, present they are checked like the required ones
+  (`/api/v1/me` names `api_version` and `capabilities` since R0). A
+  feature may name the REST capabilities its REST way needs; a server
+  whose `/me` lists them all gets that way, any other the MCP way, so a
+  server without capabilities keeps every feature. No feature names one
+  yet: every feature takes the MCP way (K1 on switches them one by one). An answer to such a request must carry the fields it relies on
   (a page without `posts_pages` is a protocol error, not page 0 of 0). A
   missing or hidden comment asked for by `post_id` comes back as a refusal
   (`comment_not_found`), not as "not found": the cache would drop the ticket.

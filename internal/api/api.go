@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -44,7 +44,7 @@ func decode(spec Spec, ans transport.Answer, out any) transport.Answer {
 	if !ans.OK() {
 		return ans
 	}
-	missing, err := Missing(ans.Payload, spec.Required)
+	missing, err := spec.Missing(ans.Payload)
 	if err != nil {
 		return protocol(ans, spec.Name+": the answer is "+err.Error(), err)
 	}
@@ -63,19 +63,35 @@ func protocol(ans transport.Answer, msg string, err error) transport.Answer {
 	return transport.Answer{Class: transport.Protocol, Status: ans.Status, Message: msg, Err: err, Sent: ans.Sent}
 }
 
-// keyForm is what an idempotency key of this client looks like. The server
-// strips a key and treats a blank one as none, writing without remembering
-// it; a key of this form survives that unchanged.
-var keyForm = regexp.MustCompile(`^[A-Za-z0-9._:-]{8,128}$`)
-
 // checkKey refuses a write without a usable idempotency key before anything
 // is sent: every write carries the key of the person's action, so a retry
-// after a lost answer cannot write twice (plan, Writes).
+// after a lost answer cannot write twice (plan, Writes). The form is the
+// transport's (transport.ValidKey), one rule for MCP and REST.
 func checkKey(spec Spec, key string) (transport.Answer, bool) {
-	if keyForm.MatchString(key) {
+	if transport.ValidKey(key) {
 		return transport.Answer{}, true
 	}
 	return transport.Answer{Class: transport.InvalidInput, Message: spec.Name + ": a write needs an idempotency key of 8 to 128 letters, digits or ._:-"}, false
+}
+
+// write runs a REST write adapter (K0: no adapter of the interface uses it
+// yet). The key is checked first; the body is encoded once, so a retry of
+// the same job sends the same bytes, which the server's replay compares.
+// path is spec.Path with its ids filled in. The answer is decoded like a
+// read's: a written object without a field the client relies on is a
+// protocol error that stays sent.
+func (a *API) write(ctx context.Context, spec Spec, path string, body any, key string, out any) transport.Answer {
+	if ans, ok := checkKey(spec, key); !ok {
+		return ans
+	}
+	if spec.Tool != "" || spec.Method != http.MethodPost && spec.Method != http.MethodPatch {
+		return transport.Answer{Class: transport.InvalidInput, Message: spec.Name + ": no REST write"}
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return transport.Answer{Class: transport.InvalidInput, Message: spec.Name + ": the body cannot be encoded", Err: err}
+	}
+	return decode(spec, a.c.Write(ctx, spec.Method, path, encoded, key), out)
 }
 
 // setString and setInt add an argument only when it carries a value, so an
@@ -862,6 +878,8 @@ var MeSpec = Spec{
 	Name: "GET /api/v1/me", Path: "/api/v1/me",
 	Required: []string{"data.user.id", "data.user.display_name", "data.token.id", "data.token.prefix",
 		"data.scoped_organisations[].id", "data.scoped_organisations[].name"},
+	// Since the core's R0: the REST API's version and what it offers.
+	Newer: []string{"data.api_version", "data.capabilities[]"},
 }
 
 // Me is who the token belongs to. Token.ReadOnly is nil on a server before
@@ -880,6 +898,11 @@ type Me struct {
 		ReadOnly *bool  `json:"read_only"`
 	} `json:"token"`
 	ScopedOrganisations []Ref `json:"scoped_organisations"`
+	// APIVersion and Capabilities are empty and nil on a server before
+	// R0, which does not say: the features then take the MCP way
+	// (internal/features).
+	APIVersion   string   `json:"api_version"`
+	Capabilities []string `json:"capabilities"`
 }
 
 func (a *API) Me(ctx context.Context) (Me, transport.Answer) {

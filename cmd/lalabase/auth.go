@@ -413,7 +413,7 @@ func statusOf(req *requests, p profile.Profile, mode profile.Mode, out io.Writer
 		fmt.Fprintf(out, "  MCP tools: %s\n", req.failed(ctx, ans))
 		return false
 	}
-	report := features.Detect(info, tools)
+	report := features.Detect(info, tools, me.Capabilities)
 	fmt.Fprintf(out, "  server %s %s", show(info.Name), show(info.Version))
 	if report.BelowTested {
 		fmt.Fprintf(out, " (older than %s, the version this client was tested with)", features.MinTestedServerVersion)

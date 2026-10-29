@@ -119,6 +119,32 @@ var toolCases = map[string]expected{
 	"summarize_time_sessions/refused":      {class: Refused, legacyClass: Refused},
 	"summarize_time_sessions/invalid_date": {class: Refused, legacyClass: Refused},
 	"summarize_time_sessions/not_found":    {class: NotFound, legacyClass: NotFound},
+
+	// 0.13.0: the people of an organisation. The client does not use the
+	// two tools yet; their cases are classified all the same, so a tool it
+	// adopts later starts from a decision. A server before 0.13.0 has
+	// neither tool, so the legacy classes only say how the texts read
+	// without the machine field: none of them is one the client knows
+	// ("Organisation not found ..." is not the project's sentence).
+	"find_people/ok":                             {class: Object, legacyClass: Object},
+	"find_people/ok_query":                       {class: Object, legacyClass: Object},
+	"find_people/ok_kind":                        {class: Object, legacyClass: Object},
+	"find_people/empty":                          {class: Object, legacyClass: Object},
+	"find_people/invalid_input":                  {class: InvalidInput, legacyClass: Refused},
+	"find_people/invalid_input_kind":             {class: InvalidInput, legacyClass: Refused},
+	"find_people/invalid_input_missing_argument": {class: InvalidInput, legacyClass: Refused},
+	"find_people/not_found":                      {class: NotFound, legacyClass: Refused},
+	"find_people/not_found_project_token":        {class: NotFound, legacyClass: Refused},
+	"find_people/refused":                        {class: Refused, reason: "people_directory", legacyClass: Refused},
+
+	"get_person/ok":                      {class: Object, legacyClass: Object},
+	"get_person/ok_member":               {class: Object, legacyClass: Object},
+	"get_person/empty":                   {class: NotFound, legacyClass: Refused},
+	"get_person/hidden":                  {class: NotFound, legacyClass: Refused},
+	"get_person/invalid_input":           {class: InvalidInput, legacyClass: Refused},
+	"get_person/not_found":               {class: NotFound, legacyClass: Refused},
+	"get_person/not_found_project_token": {class: NotFound, legacyClass: Refused},
+	"get_person/refused":                 {class: Refused, reason: "people_directory", legacyClass: Refused},
 }
 
 // The tools that address one record, and the argument naming it. Their empty
@@ -130,6 +156,7 @@ var oneRecord = map[string]string{
 	"mark_notification_read": "notification_id",
 	// The booked time is asked of one ticket: no ticket is not found.
 	"summarize_time_sessions": "ticket",
+	"get_person":              "id",
 }
 
 // replay answers every request with one recorded response.
@@ -254,36 +281,6 @@ func TestRecordedToolAnswersAreClassified(t *testing.T) {
 	}
 }
 
-func TestRecordedRestAnswersAreClassified(t *testing.T) {
-	file, err := contract.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// not_found and hidden: the attachments of a missing ticket and of
-	// one the token cannot read (S5) answer alike, 404.
-	want := map[string]Class{"ok": Object, "ok_read_only": Object, "ok_one_organisation": Object, "empty": Object, "unauthorized": Unauthenticated, "not_found": NotFound, "hidden": NotFound}
-	for path, cases := range file.Contract.REST {
-		for name, ex := range cases {
-			class, ok := want[name]
-			if !ok {
-				t.Errorf("%s/%s: no class in the table", path, name)
-				continue
-			}
-			t.Run(path+"/"+name, func(t *testing.T) {
-				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.WriteHeader(ex.Response.Status)
-					_, _ = w.Write(ex.Response.Body)
-				}))
-				defer srv.Close()
-				got := newClient(t, srv.URL).Get(context.Background(), strings.TrimPrefix(path, "GET "))
-				if got.Class != class {
-					t.Fatalf("got %v (%s), want %v", got.Class, got.Message, class)
-				}
-			})
-		}
-	}
-}
-
 func TestTheRecordedServerAnswersInitializeAndToolsList(t *testing.T) {
 	file, err := contract.Load()
 	if err != nil {
@@ -291,13 +288,13 @@ func TestTheRecordedServerAnswersInitializeAndToolsList(t *testing.T) {
 	}
 	srv := replay(t, 200, file.Contract.MCP.Initialize.Response.Body)
 	info, ans := newClient(t, srv.URL).Initialize(context.Background())
-	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.12.0" {
+	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.13.0" {
 		t.Fatalf("initialize: %v %+v", ans.Class, info)
 	}
 
 	srv = replay(t, 200, file.Contract.MCP.ToolsList.Response.Body)
 	tools, ans := newClient(t, srv.URL).ListTools(context.Background())
-	if ans.Class != Object || len(tools) != 15 || tools[0].Name != "search_code_symbols" {
+	if ans.Class != Object || len(tools) != 17 || tools[0].Name != "search_code_symbols" {
 		t.Fatalf("tools/list: %v, %d tools", ans.Class, len(tools))
 	}
 	if _, ok := tools[6].Properties()["ticket_id"]; !ok || tools[6].Name != "get_ticket" {

@@ -28,13 +28,13 @@ func contractTools(t *testing.T) ([]transport.Tool, *contract.File) {
 	return tools, file
 }
 
-var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.12.0"}
+var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.13.0"}
 
-// On the contract the client was built against (MCP 0.12.0, server slices
+// On the contract the client was built against (MCP 0.13.0, server slices
 // S1, S2, S2b and S6 included), every feature is on.
 func TestOnTheContractEveryFeatureIsOn(t *testing.T) {
 	tools, _ := contractTools(t)
-	report := Detect(contractServer, tools)
+	report := Detect(contractServer, tools, nil)
 	for _, f := range All {
 		if !report.Enabled[f.Name] {
 			t.Errorf("%s: off (missing %v)", f.Name, report.Missing[f.Name])
@@ -49,7 +49,7 @@ func TestOnTheContractEveryFeatureIsOn(t *testing.T) {
 // adapter needs: presence is checked, not only that the answer decodes.
 func TestEveryEnabledFeatureFindsItsFieldsInTheRecordedAnswers(t *testing.T) {
 	tools, file := contractTools(t)
-	report := Detect(contractServer, tools)
+	report := Detect(contractServer, tools, nil)
 	// The recorded successes a feature's fields are checked against where
 	// they are not the tool's one "ok": update_ticket records one per
 	// kind, the plain comment lives in a group of its own.
@@ -89,8 +89,10 @@ func TestEveryEnabledFeatureFindsItsFieldsInTheRecordedAnswers(t *testing.T) {
 		}
 	}
 	for _, spec := range []api.Spec{api.MeSpec, api.OrganisationsSpec, api.ProjectsSpec} {
+		// A newer field (MeSpec's capabilities) is one the contract's
+		// server sends: here it is required.
 		ex := file.Contract.REST[spec.Name]["ok"]
-		missing, err := api.Missing(ex.Response.Body, spec.Required)
+		missing, err := api.Missing(ex.Response.Body, slices.Concat(spec.Required, spec.Newer))
 		if err != nil || len(missing) > 0 {
 			t.Errorf("%s: the recorded answer lacks %v (%v)", spec.Name, missing, err)
 		}
@@ -129,7 +131,7 @@ func TestAMissingArgumentSwitchesOffOnlyItsFeature(t *testing.T) {
 		delete(schema["properties"].(map[string]any), "q")
 		tools[i].InputSchema, _ = json.Marshal(schema)
 	}
-	report := Detect(contractServer, tools)
+	report := Detect(contractServer, tools, nil)
 	if report.Enabled["tickets_search"] {
 		t.Error("the search stayed on without q")
 	}
@@ -146,7 +148,7 @@ func TestAMissingArgumentSwitchesOffOnlyItsFeature(t *testing.T) {
 func TestAMissingToolSwitchesOffItsFeatures(t *testing.T) {
 	tools, _ := contractTools(t)
 	tools = slices.DeleteFunc(tools, func(tool transport.Tool) bool { return tool.Name == "post_comment" })
-	report := Detect(contractServer, tools)
+	report := Detect(contractServer, tools, nil)
 	if report.Enabled["comment"] || !slices.Contains(report.Missing["comment"], "tool post_comment") {
 		t.Fatalf("comment: %v %v", report.Enabled["comment"], report.Missing["comment"])
 	}
@@ -157,7 +159,7 @@ func TestAMissingToolSwitchesOffItsFeatures(t *testing.T) {
 func TestANewerServerWithMoreToolsIsANotice(t *testing.T) {
 	tools, _ := contractTools(t)
 	tools = append(tools, transport.Tool{Name: "delete_ticket", InputSchema: json.RawMessage(`{"type":"object","properties":{"ticket_id":{}}}`)})
-	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.12.0"}, tools)
+	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.13.0"}, tools, nil)
 	for _, f := range All {
 		if !report.Enabled[f.Name] {
 			t.Errorf("%s went off on a newer server", f.Name)
@@ -173,17 +175,17 @@ func TestANewerServerWithMoreToolsIsANotice(t *testing.T) {
 func TestTheVersionDecidesNothing(t *testing.T) {
 	tools, _ := contractTools(t)
 	tools = slices.DeleteFunc(tools, func(tool transport.Tool) bool { return tool.Name == "get_ticket" })
-	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "9.0.0"}, tools)
+	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "9.0.0"}, tools, nil)
 	if report.Enabled["ticket"] {
 		t.Error("a high version switched on a feature whose tool is missing")
 	}
 	tools, _ = contractTools(t)
-	report = Detect(transport.ServerInfo{Name: "lalabase", Version: "0.6.0"}, tools)
+	report = Detect(transport.ServerInfo{Name: "lalabase", Version: "0.6.0"}, tools, nil)
 	if !report.BelowTested || !report.Enabled["inbox"] {
 		t.Errorf("0.6.0: below tested %v, inbox %v", report.BelowTested, report.Enabled["inbox"])
 	}
 	for _, v := range []string{"", "x", "0.7", "1.0.0-beta"} {
-		r := Detect(transport.ServerInfo{Version: v}, tools)
+		r := Detect(transport.ServerInfo{Version: v}, tools, nil)
 		if v == "1.0.0-beta" && r.BelowTested {
 			t.Errorf("%q counted as below", v)
 		}
@@ -232,7 +234,7 @@ func TestEveryArgumentOfEveryFeatureIsChecked(t *testing.T) {
 				delete(schema["properties"].(map[string]any), arg)
 				tools[i].InputSchema, _ = json.Marshal(schema)
 			}
-			if Detect(contractServer, tools).Enabled[f.Name] {
+			if Detect(contractServer, tools, nil).Enabled[f.Name] {
 				t.Errorf("%s stayed on without %s", f.Name, arg)
 			}
 		}
@@ -317,7 +319,7 @@ func TestAnS1ArgumentSwitchesOffOnlyItsFeature(t *testing.T) {
 			delete(schema["properties"].(map[string]any), c.arg)
 			tools[i].InputSchema, _ = json.Marshal(schema)
 		}
-		report := Detect(contractServer, tools)
+		report := Detect(contractServer, tools, nil)
 		if report.Enabled[c.off] || !report.Enabled[c.stays] {
 			t.Errorf("without %s: %s on %v, %s on %v", c.arg, c.off, report.Enabled[c.off], c.stays, report.Enabled[c.stays])
 		}
@@ -390,7 +392,7 @@ func toolsListOf(t *testing.T, path string) []transport.Tool {
 // features of C1 stay on: a 0.9.0 server keeps everything it had.
 func TestOnTheServerBeforeS2TheWriteFeaturesAreOff(t *testing.T) {
 	tools := toolsListOf(t, "testdata/tools_list_0.9.0.json")
-	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.9.0"}, tools)
+	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.9.0"}, tools, nil)
 	on := 0
 	for _, f := range All {
 		want := f.Since != "S2" && f.Since != "S2b" && f.Since != "S6"
@@ -408,7 +410,7 @@ func TestOnTheServerBeforeS2TheWriteFeaturesAreOff(t *testing.T) {
 		t.Errorf("missing %v / %v", report.Missing["ticket_update"], report.Missing["comment_plain"])
 	}
 	if !report.BelowTested {
-		t.Error("0.9.0 is not below the tested 0.12.0")
+		t.Error("0.9.0 is not below the tested 0.13.0")
 	}
 }
 
@@ -426,7 +428,7 @@ func TestOnAServerWithS2AloneOnlyThePlainCommentIsOff(t *testing.T) {
 		delete(schema["properties"].(map[string]any), "format")
 		tools[i].InputSchema, _ = json.Marshal(schema)
 	}
-	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.10.0"}, tools)
+	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.10.0"}, tools, nil)
 	if !report.Enabled["ticket_update"] || report.Enabled["comment_plain"] || !report.Enabled["comment"] || !report.BelowTested {
 		t.Fatalf("ticket_update %v, comment_plain %v, comment %v, below %v", report.Enabled["ticket_update"], report.Enabled["comment_plain"], report.Enabled["comment"], report.BelowTested)
 	}

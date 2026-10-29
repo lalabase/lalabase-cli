@@ -94,7 +94,7 @@ func (m Model) receiveStartup(r gateway.StartupResult) (Model, tea.Cmd) {
 		a.server = r.Server
 		return m, a.startStep(stepTools)
 	case stepTools:
-		report := features.Detect(a.server, r.Tools)
+		report := features.Detect(a.server, r.Tools, a.me.Capabilities)
 		a.report = &report
 		// The titles of the agents' tickets wait for the ticket tool.
 		if !a.inboxOn() {

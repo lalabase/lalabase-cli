@@ -48,7 +48,7 @@ func TestTheStartWorksAgainstTheFixture(t *testing.T) {
 	if !ans.OK() {
 		t.Fatalf("tools: %v", ans.Class)
 	}
-	report := features.Detect(info, tools)
+	report := features.Detect(info, tools, nil)
 	if !report.Enabled["inbox"] || !report.Enabled["inbox_by_organisation"] || report.BelowTested {
 		t.Fatalf("report %+v", report)
 	}
@@ -270,7 +270,7 @@ func TestTheTicketScenarios(t *testing.T) {
 		_, _, c := serve(t, Older)
 		info, _ := c.Initialize(ctx)
 		tools, _ := c.ListTools(ctx)
-		report := features.Detect(info, tools)
+		report := features.Detect(info, tools, nil)
 		if !report.Enabled["tickets"] || !report.Enabled["ticket"] || !report.Enabled["tickets_search"] || report.Enabled["ticket_posts_paged"] || report.Enabled["ticket_full_text"] {
 			t.Fatalf("report %+v", report.Enabled)
 		}
@@ -318,7 +318,7 @@ func TestTheScenarios(t *testing.T) {
 		_, a, c := serve(t, Older)
 		info, _ := c.Initialize(ctx)
 		tools, _ := c.ListTools(ctx)
-		report := features.Detect(info, tools)
+		report := features.Detect(info, tools, nil)
 		if !report.Enabled["inbox"] || report.Enabled["inbox_by_organisation"] {
 			t.Fatalf("report %+v", report)
 		}
@@ -557,7 +557,7 @@ func TestTheMarkReadScenarios(t *testing.T) {
 		_, _, c := serve(t, NoMarkRead)
 		info, _ := c.Initialize(ctx)
 		tools, _ := c.ListTools(ctx)
-		report := features.Detect(info, tools)
+		report := features.Detect(info, tools, nil)
 		if report.Enabled["mark_read"] || !report.Enabled["inbox"] || !report.Enabled["ticket"] {
 			t.Fatalf("report %+v", report.Enabled)
 		}
