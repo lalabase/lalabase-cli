@@ -992,8 +992,9 @@ func TestSwitchingSectionsRemembersAndCancels(t *testing.T) {
 	}
 }
 
-// The seventh preview in a minute waits for the budget; moving on cancels
-// it without a request.
+// Ten previews in a minute all arrive at once: the previews' budget is
+// their own (queue.PreviewBudget), not the six of the other background
+// work.
 func TestPreviewsAreNotHeldByTheBackgroundBudget(t *testing.T) {
 	// Owner's report (2026-10-29): browsing a list showed "Loading…" for
 	// up to a minute once six tickets had been previewed, since previews
@@ -1006,13 +1007,9 @@ func TestPreviewsAreNotHeldByTheBackgroundBudget(t *testing.T) {
 		if i > 0 {
 			h.press("down")
 		}
-		// The harness's queue runs on the real clock: a preview held by a
-		// budget would arrive only when the minute rolls on.
-		start := time.Now()
-		h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
-		if waited := time.Since(start); waited > 5*time.Second {
-			t.Fatalf("preview %d waited %v for a budget", i+1, waited)
-		}
+		// Within the harness's wall: the queue runs on the real clock, so a
+		// preview held by a budget would arrive only when the minute rolls.
+		h.driveWithin(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
 		if a.detail == nil || !a.detail.known || a.detail.id != a.tickets.selected {
 			t.Fatalf("preview %d did not arrive: %+v", i+1, a.detail)
 		}
@@ -2094,5 +2091,25 @@ func TestALoadingPreviewNamesItsTicket(t *testing.T) {
 	}
 	if got := c.Notice.String(); got != "Loading…" {
 		t.Fatalf("notice %q", got)
+	}
+}
+
+// Only while it loads: a first load that failed shows no row's title
+// beside its error.
+func TestAFailedFirstLoadNamesNoTicket(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	h.press("down")
+	row := a.tickets.rows[1]
+	h.f.setTicket(func(string, string, api.TicketOptions) transport.Answer {
+		return transport.Answer{Class: transport.Refused, Message: "refused", Status: 200, Sent: true}
+	})
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if a.detail == nil || a.detail.known || a.detail.loading {
+		t.Fatalf("not a failed first load: %+v", a.detail)
+	}
+	if got := h.m.screen().Object.Text.String(); strings.Contains(got, row.Title) {
+		t.Fatalf("the failed load named the ticket: %q", got)
 	}
 }

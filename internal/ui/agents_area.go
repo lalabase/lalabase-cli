@@ -184,7 +184,7 @@ func (a *app) viewTitle(ticket string) (text string, flight uint64, ok bool) {
 // requestTitles reads, once each, the titles of the agents' tickets the
 // session does not hold: from the memory cache when it has the ticket,
 // else from the server through the gateway as idle work, after every
-// preview and refresh and within half the background budget (queue.Idle). The disk
+// preview and within half the background budget (queue.Idle). The disk
 // cache is asked beside (C1e), in batches that never push out a read
 // waiting for it (diskRoom); a title it holds cancels the server's read
 // while that still waits (titleFromDisk). The next batch follows with the

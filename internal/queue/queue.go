@@ -12,20 +12,20 @@
 //   - a job is retried at most once: a read on any temporary failure, a write
 //     only when the server cannot have acted on it (a 429, or nothing was
 //     sent). A retry runs the same job, so it carries the same idempotency key;
-//   - background work starts at most BackgroundBudget times per rolling
-//     BudgetWindow, retries counted (C1 design: refreshes and their retries
-//     at most six per minute). Previews (the ticket the cursor rests on)
-//     go before it and have a budget of their own, PreviewBudget per
-//     window: browsing is the commonest thing a person does, and a shared
-//     six a minute left the pane loading for up to a minute. What is held
-//     waits for its window to roll on; the person's actions are never
-//     counted or held, and a background read a person joins starts as
-//     theirs;
+//   - previews (the ticket the cursor rests on, and the one reload of a
+//     cached ticket shown) start at most PreviewBudget times per rolling
+//     BudgetWindow, retries counted: browsing is the commonest thing a
+//     person does, and the six a minute it shared with the rest left the
+//     pane loading for up to a minute. Other background work starts at
+//     most BackgroundBudget times per window, counted apart (C1 design;
+//     today only the idle work below uses it). What is held waits for its
+//     window to roll on; the person's actions are never counted or held,
+//     and a background read a person joins starts as theirs;
 //   - idle work (C9b: the titles of the agents' tickets) is background work
-//     below the background: it starts only while no background job waits
-//     and fewer than IdleShare of the background budget's starts are in
-//     the window, so it never spends the budget's other half, which stays
-//     the refreshes'. A read a preview or a person joins starts as theirs;
+//     below the background: it starts only while no preview that may start
+//     and no background job waits, and fewer than IdleShare of the
+//     background budget's starts are in the window. A read a preview or a
+//     person joins starts as theirs;
 //   - the queue's own goroutines (a shared read, the wake-up after a pause)
 //     run under one lifetime (WithLifetime, internal/worker). It ends them;
 //     a panic in them is recovered there and becomes its fatal error, and
@@ -54,7 +54,8 @@ const (
 	// Preview: the ticket the cursor rests on, background work with a
 	// budget of its own (PreviewBudget), before the other background work.
 	Preview
-	// Background: a refresh.
+	// Background: other background work, with BackgroundBudget; no
+	// caller sends it today but through idle work, whose window it is.
 	Background
 	// Idle: work nobody looks at yet (C9b), after every background job and
 	// within IdleShare of the budget. It stays the last priority: highest
@@ -129,8 +130,11 @@ const (
 	BackgroundBudget = 6
 	BudgetWindow     = time.Minute
 	// PreviewBudget is the number of preview starts in one BudgetWindow,
-	// counted apart from BackgroundBudget. With it and the person's actions
-	// the client stays below the server's 60 requests a minute per token.
+	// counted apart from BackgroundBudget. The server allows 60 requests a
+	// minute per token: the previews take at most half, the rest is the
+	// person's actions and the Claude Code agents the client started with
+	// the same token, which the client does not count. A 429 pauses
+	// everything, the person's actions too.
 	PreviewBudget = 30
 	// IdleShare is the part of the budget idle work may spend in a window.
 	IdleShare = BackgroundBudget / 2

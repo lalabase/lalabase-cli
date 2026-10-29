@@ -81,3 +81,24 @@ func TestAPreviewGoesBeforeOtherBackgroundWork(t *testing.T) {
 	preview.release <- ok()
 	waitStarted(t, refresh)
 }
+
+// A granted preview whose caller left before it ran gives its start back
+// to the previews' window, a background grant to the background's (review
+// of #44). The race between a grant and a cancel cannot be set up from
+// outside, so unstart is asked directly.
+func TestAnAbandonedGrantGivesItsStartToItsWindow(t *testing.T) {
+	q := New(WithClock(newClock()))
+	now := time.Now()
+	preview := &ticket{prio: Preview, preview: true, started: now}
+	background := &ticket{prio: Background, started: now.Add(time.Second)}
+	q.previewStarts = []time.Time{preview.started}
+	q.starts = []time.Time{background.started}
+	q.unstart(preview)
+	if len(q.previewStarts) != 0 || len(q.starts) != 1 {
+		t.Fatalf("after the preview: previews %v, background %v", q.previewStarts, q.starts)
+	}
+	q.unstart(background)
+	if len(q.starts) != 0 {
+		t.Fatalf("after the background job: %v", q.starts)
+	}
+}

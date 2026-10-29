@@ -8,9 +8,10 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/transport"
 )
 
-// C1c: background work (previews, refreshes, their retries) starts at most
-// BackgroundBudget times per rolling BudgetWindow; the person's actions
-// are not counted and not held.
+// C1c: background work starts at most BackgroundBudget times per rolling
+// BudgetWindow, retries counted; the person's actions are not counted and
+// not held. Previews have a window of their own since #44
+// (preview_test.go).
 
 // spend starts n background jobs one after the other, a second apart on
 // the clock, and lets each one finish at once.
