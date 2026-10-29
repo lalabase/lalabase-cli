@@ -17,7 +17,10 @@
 //   - <agent id>.state.json, written by `lalabase hook` (Hook): the state,
 //     the time it changed, Claude's latest session id, the pid and its start
 //     time; replaced whole (a temporary file in the directory, synced,
-//     renamed), so a reader sees the old state or the new one;
+//     renamed), so a reader sees the old state or the new one. The client
+//     writes one state itself, lost, for an agent that never got past
+//     starting (MarkLost, C9c), under the hook's lock and only while
+//     there is no state: a later hook replaces it;
 //   - <agent id>.lock, the hook's lock: hooks of one agent may overlap (a
 //     Stop and the tools of a background agent), and a read, change and
 //     write back would otherwise lose one of them;
@@ -25,7 +28,7 @@
 //     exclusively) after the person opened the agent: it is seen. The
 //     hook never reads or writes it.
 //
-// Each file has one writer. The title of a ticket is never in them: the
+// Each file but the state has one writer. The title of a ticket is never in them: the
 // interface takes it from the session (the cache, or a read of the
 // ticket).
 //
