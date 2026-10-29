@@ -328,3 +328,42 @@ func TestAMissingCommentIsARefusalOnBothWays(t *testing.T) {
 		t.Fatalf("another comment: %v %q", r.Answer.Class, r.Answer.Message)
 	}
 }
+
+// REST reads a ticket by its id alone: a ticket moved to another project
+// (the core keeps its id) answers from there. Under a key of the old
+// project it is not found, as the tools say in their project's scope, so
+// every variant leaves the cache; another ticket answered is still a
+// contradiction (review round 2 of #48, finding 1).
+func TestOverRESTATicketMovedToAnotherProjectIsNotFoundHere(t *testing.T) {
+	const handbuch = "00000000-0000-4000-8000-000000000033"
+	f := setupRESTReads(t, map[string]string{"ticket": "show_paged"}, allREST)
+	f.srv.edit = asPage
+	moved := result(t, run(f.gw.Read(context.Background(), f.scope.Begin(Detail, detailKey(f.ns, handbuch, login, true), queue.User)))).(TicketResult)
+	if moved.Answer.Class != transport.NotFound || moved.Record.ID != "" || !moved.Answer.Sent {
+		t.Fatalf("moved: %v %q", moved.Answer.Class, moved.Answer.Message)
+	}
+	store := cache.NewStore()
+	if d, ok := f.scope.Receive(store, moved, time.Now()); !ok || d != cache.Remove {
+		t.Fatalf("filed as %v %v", d, ok)
+	}
+	// The expansion of its description too.
+	whole := detailKey(f.ns, handbuch, login, true)
+	whole.FullText = true
+	w := result(t, run(f.gw.Read(context.Background(), f.scope.Begin(Expansion, whole, queue.User)))).(TicketResult)
+	if w.Answer.Class != transport.NotFound {
+		t.Fatalf("moved, whole: %v", w.Answer.Class)
+	}
+	// Another ticket of another project answered is no move: still a
+	// contradiction.
+	other := result(t, run(f.gw.Read(context.Background(), f.scope.Begin(Detail, detailKey(f.ns, handbuch, "00000000-0000-4000-8000-000000000042", true), queue.User)))).(TicketResult)
+	if other.Answer.Class != transport.Protocol {
+		t.Fatalf("another ticket: %v %q", other.Answer.Class, other.Answer.Message)
+	}
+	// Over the tools a ticket of another project answered is the server's
+	// contradiction: they look it up in the project asked.
+	f = setupRESTReads(t, map[string]string{"get_ticket": "page_newest"}, Routes{})
+	tools := result(t, run(f.gw.Read(context.Background(), f.scope.Begin(Detail, detailKey(f.ns, handbuch, login, false), queue.User)))).(TicketResult)
+	if tools.Answer.Class != transport.Protocol {
+		t.Fatalf("tools: %v %q", tools.Answer.Class, tools.Answer.Message)
+	}
+}

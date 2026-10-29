@@ -244,7 +244,10 @@ func (g *Gateway) Detail(ctx context.Context, t Ticket) tea.Cmd {
 	case t.Way == features.REST:
 		send = func(shared context.Context) transport.Answer { return g.src.TicketRESTAnswer(shared, id, options) }
 		build = func(ans transport.Answer) TicketResult {
-			return aTicket(t, func() (api.Ticket, transport.Answer) { return api.DecodeTicketREST(ans, options) })
+			return aTicket(t, func() (api.Ticket, transport.Answer) {
+				record, ans := api.DecodeTicketREST(ans, options)
+				return movedAway(t.Key, record, ans)
+			})
 		}
 	default:
 		send = func(shared context.Context) transport.Answer { return g.src.TicketAnswer(shared, project, id, options) }
@@ -264,6 +267,20 @@ func (g *Gateway) Detail(ctx context.Context, t Ticket) tea.Cmd {
 		r.Flight = flight
 		return r
 	})
+}
+
+// movedAway: REST reads a ticket by its id alone, and a ticket moved to
+// another project (the core keeps its id and gives it a new number there)
+// answers from its new project. Under a key of its old project it is not
+// found, as the tools answer in that project's scope: every variant of it
+// leaves the cache. Another ticket answered stays a contradiction
+// (CheckDetail). One comment's answer names no project; a move between a
+// page and the comment read whole is found by the next read of the page.
+func movedAway(k cache.Key, t api.Ticket, ans transport.Answer) (api.Ticket, transport.Answer) {
+	if ans.OK() && t.ID == k.Ticket && t.Project.ID != "" && t.Project.ID != k.Project {
+		return api.Ticket{}, transport.Answer{Class: transport.NotFound, Status: ans.Status, Message: "ticket: moved to another project", Sent: ans.Sent}
+	}
+	return t, ans
 }
 
 // aTicket is the result of a decoded ticket, checked against the question

@@ -599,3 +599,99 @@ func TestATypedMarkerIsTheTextsOwnOverREST(t *testing.T) {
 	h.drive(h.press("e"))
 	mustNotContain(t, h.paneText(), "Text shortened by server")
 }
+
+// A ticket moved to another project (the core keeps its id, gives it a
+// new number there) is gone from the old project's view on both ways:
+// the tools answer "not found" in their project's scope, REST answers the
+// ticket from its new project. The pane says so, the ticket leaves the
+// cache, x is not offered (review round 2 of #48, finding 1).
+func TestATicketMovedToAnotherProjectIsGoneOnBothWays(t *testing.T) {
+	moved := ticketID(website, 3)
+	for name, h := range map[string]*harness{"tools": newHarness(t), "rest": newRESTHarness(t)} {
+		t.Run(name, func(t *testing.T) {
+			h.withLauncher()
+			h.openTickets(website)
+			h.openTicket(3)
+			if d := h.m.app.detail; d == nil || !d.known || d.record.ID != moved {
+				t.Fatalf("not open: %+v", d)
+			}
+			key := h.m.app.detail.key
+			h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+				if id == moved && project == website {
+					return transport.Answer{Class: transport.NotFound, Message: "No ticket found for " + id + ".", Status: 200, Sent: true}
+				}
+				return h.d.defaultTicket(project, id, o)
+			})
+			h.f.setRESTTicket(func(id string, o api.TicketOptions) transport.Answer {
+				ans := h.d.defaultRESTTicket(id, o)
+				if id == moved {
+					var body map[string]any
+					_ = json.Unmarshal(ans.Payload, &body)
+					data := body["data"].(map[string]any)
+					data["project"] = map[string]any{"id": handbuch, "name": "Handbuch"}
+					data["number"] = 4
+					ans.Payload, _ = json.Marshal(body)
+				}
+				return ans
+			})
+			h.drive(h.press("R"))
+			d := h.m.app.detail
+			if d.known || d.record.ID != "" || h.m.objectColumn().Notice.String() != "Not found or no longer accessible." {
+				t.Fatalf("after the move: known %v, record %q, notice %q", d.known, d.record.ID, h.m.objectColumn().Notice.String())
+			}
+			if _, ok := h.m.app.store.Get(key); ok {
+				t.Fatal("the old project's entry stays")
+			}
+			if h.offers(Launch) {
+				t.Fatal("x is offered on a ticket that left the project")
+			}
+		})
+	}
+}
+
+// A page of a ticket that does not come for a while (503) keeps what is
+// shown, possibly stale, on REST as on the tools; R reads it (review round
+// 2 of #48, finding 3).
+func TestAPageThatDidNotComeOverRESTIsPossiblyStale(t *testing.T) {
+	h := newRESTHarness(t)
+	h.openSix()
+	h.drive(h.press("tab"))
+	h.f.setRESTTicket(func(id string, o api.TicketOptions) transport.Answer {
+		if o.PostsPage == 2 {
+			return failing(transport.Temporary, 503)
+		}
+		return h.d.defaultRESTTicket(id, o)
+	})
+	h.drive(h.press("]"))
+	mustContain(t, h.paneText(), "page 2 of 2", "This page did not load. R retry.")
+	if got := h.m.objectColumn().Notice.String(); got != "Possibly stale" {
+		t.Fatalf("notice %q", got)
+	}
+	h.f.setRESTTicket(h.d.defaultRESTTicket)
+	h.drive(h.press("R"))
+	mustContain(t, h.paneText(), "page 2 of 2", "Six comment 5")
+	if got := h.m.objectColumn().Notice.String(); got != "" {
+		t.Fatalf("notice after R %q", got)
+	}
+}
+
+// Over the tools a text read whole can still be cut by the server (at
+// 100,000 characters): that is the server's cut, said so, its marker not
+// shown (review round 2 of #48, finding 2).
+func TestOverTheToolsAWholeTextTheServerCutSaysSo(t *testing.T) {
+	h := newHarness(t)
+	whole := endingIn(100_000, "cut here by the server") + api.TruncationMarker
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		if o.FullText {
+			var record map[string]any
+			_ = json.Unmarshal(h.d.defaultTicket(project, id, o).Payload, &record)
+			record["description_text"] = whole
+			return objectAnswer(record)
+		}
+		return h.d.defaultTicket(project, id, o)
+	})
+	h.openSix()
+	h.drive(h.press("e"))
+	mustContain(t, h.paneText(), "Description · whole text", "cut here by the server", "Text shortened by server")
+	mustNotContain(t, h.paneText(), "[truncated]", "Text shortened for this view")
+}

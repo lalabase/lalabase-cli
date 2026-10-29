@@ -224,7 +224,9 @@ navigation again.
   one ending with "Text shortened for this view", and `e` reads it whole
   as above, the description as the page again (REST has no `full_text`),
   the comment on its own route (`/api/v1/tickets/:ticket_id/posts/:id`);
-  read whole, the pane shows 100,000 characters of it. REST cuts no text,
+  read whole, the pane shows 100,000 characters of it. REST reads a ticket
+  by its id alone: one moved to another project answers from there, and is
+  gone from the old project's view as the tools say it is. REST cuts no text,
   so a text read over REST that ends in the tools' marker was written so
   and shows as it is (a page the cache kept from the tools is read as
   theirs until REST's answer replaces it). The pane builds its
@@ -597,8 +599,11 @@ navigation again.
   page only; without `list_notifications` the inbox is off and the counts
   are unknown ("?"); without `list_tickets` there are no tickets entries;
   without its `q` there is no search; without `get_ticket` the list opens
-  nothing. A counter is unknown until a read observed it, and a newer read
-  wins whatever order the answers arrive in.
+  nothing. Since K1 the ticket view's features also come from `/me`'s
+  capabilities (see "The start"): with R1's, the list, the ticket, its
+  pages and `e` work over REST whatever the tool schemas say. A counter is
+  unknown until a read observed it, and a newer read wins whatever order
+  the answers arrive in.
 * **The cache** shows a page, a list or a ticket seen before at once,
   marked "Cached", and reloads it exactly once (a ticket's reload after the
   pause, as background work). Every option of a request is part of its key:
