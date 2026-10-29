@@ -41,7 +41,8 @@ type restError struct {
 
 // readRESTError reads the API's error body. "error" is read on its own, as
 // before R0, so a body whose other fields are of another type is placed by
-// it as it was. code and reason count only beside a non-empty "error": a
+// it as it was; code and reason are read each on its own too. They count
+// only beside a non-empty "error": a
 // proxy's body that happens to carry a "code" is not the API's answer.
 func readRESTError(body []byte) restError {
 	var e restError
@@ -52,12 +53,19 @@ func readRESTError(body []byte) restError {
 		return e
 	}
 	e.Error = old.Error
-	var machine struct {
-		Code   string `json:"code"`
+	// Each field on its own: a reason of another type does not take the
+	// code with it.
+	var code struct {
+		Code string `json:"code"`
+	}
+	if json.Unmarshal(body, &code) == nil {
+		e.Code = code.Code
+	}
+	var reason struct {
 		Reason string `json:"reason"`
 	}
-	if json.Unmarshal(body, &machine) == nil {
-		e.Code, e.Reason = machine.Code, machine.Reason
+	if json.Unmarshal(body, &reason) == nil {
+		e.Reason = reason.Reason
 	}
 	return e
 }

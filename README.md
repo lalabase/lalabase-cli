@@ -875,10 +875,13 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   (`code`), which alone places it: `invalid_input`, `read_only`,
   `forbidden` (no access), `not_found`, `refused` (with its `reason`) and
   `unauthorized`; a code the client does not know is a refusal. It counts
-  only in the API's own form (a JSON object with `error` and `code`): a
+  only in the API's own form (a JSON object with a string `error` and a
+  string `code`; `error` alone still places it as before when `code` is
+  of another type): a
   proxy's 404 drops nothing from the cache. The two codes that drop a
   record count only with their own status (`not_found` with 404,
-  `forbidden` with 403); beside another status they are a refusal. A 401, a 429, a 5xx and a
+  `forbidden` with 403); beside another status they are a refusal without
+  a reason. A 401, a 429, a 5xx and a
   redirect are placed by their status alone, as before. A server before R0
   (no `code`) is placed as it was: a 403 or 404 by its `error`, a 422 as
   an invalid input, any other client error as a protocol error.

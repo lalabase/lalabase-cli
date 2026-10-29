@@ -13,7 +13,8 @@ organisations: the Agents area, `A`, the seen mark, #36); the order of
 C9b's titles (#37), the C9 review's readability and duplication passes
 (#38, #39) and C9c's groundwork (#40); C9c-2 (`d`, the cleanup, #41) and
 the booked time (#42); C9c-3 (`x` jumps to an agent's pane or starts it
-again, a starting agent without its pane is lost, #43); K0 (the REST
+again, a starting agent without its pane is lost, #43), the preview
+budget (#44), tmux sessions for the agents as a prototype (#45) and a PTY test that dropped a signal (#46); K0 (the REST
 ground: classes from `code`, REST writes, capabilities from `/me`; no
 feature switched, #47) is this branch.
 

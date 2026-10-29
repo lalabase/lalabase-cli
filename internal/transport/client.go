@@ -393,12 +393,14 @@ func (c *Client) classifyREST(status int, header http.Header, body []byte, write
 		return Answer{Class: Object, Status: status, Payload: body}
 	case e.Code != "" && status >= 400 && status < 500:
 		class, known := restCodeClasses[e.Code]
-		if want, ok := codeStatus[e.Code]; !known || ok && want != status {
-			class = Refused
-		}
 		ans := Answer{Class: class, Code: e.Code, Status: status, Message: string(body)}
-		if class == Refused {
-			ans.Reason = e.Reason
+		switch want, ok := codeStatus[e.Code]; {
+		case ok && want != status:
+			// A contradiction is a refusal of the client's making: the
+			// server's reason belongs to none it meant (as on MCP).
+			ans.Class = Refused
+		case !known, class == Refused:
+			ans.Class, ans.Reason = Refused, e.Reason
 		}
 		return ans
 	}

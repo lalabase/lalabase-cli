@@ -44,6 +44,13 @@ func TestTheCodeOfARestErrorDecidesItsClass(t *testing.T) {
 		{404, `{"error":"not_found","reason":5}`, NotFound, "", ""},
 		{403, `{"error":"forbidden","reason":["x"]}`, NoAccess, "", ""},
 		{404, `{"error":"not_found","code":{"a":1}}`, NotFound, "", ""},
+		// A reason of another type does not take the code with it; a
+		// code of another type leaves "error" to decide.
+		{409, `{"error":"stale_object","code":"refused","reason":{"k":1}}`, Refused, "refused", ""},
+		{403, `{"error":"forbidden","code":"read_only","reason":5}`, ReadOnly, "read_only", ""},
+		// A contradiction names no reason: the server's reason belongs to
+		// a refusal it meant, not to one the client made of it.
+		{400, `{"error":"x","code":"not_found","reason":"comment_not_found"}`, Refused, "not_found", ""},
 		// A reason names a refusal only.
 		{404, `{"error":"not_found","code":"not_found","reason":"x"}`, NotFound, "not_found", ""},
 		// Not the API's form: no "error" beside the code, or a field of
