@@ -23,8 +23,10 @@ const (
 	// DefaultTimeout bounds one request, as bin/lala did.
 	DefaultTimeout = 30 * time.Second
 	// DefaultMaxBody bounds what is read of one answer. The largest answer the
-	// server sends is a ticket with its capped comments and attachments, far
-	// below this; a server sending more is broken or hostile.
+	// server sends is a page of a ticket: through the tools with its texts
+	// capped, far below this; over REST (K1) with every text whole, the
+	// attachments' extracted text too, which a page of large documents can
+	// bring near it. Past it the answer is a protocol error, never cut.
 	DefaultMaxBody = 8 << 20
 	// defaultRetryPause is the wait after a 429 that names no window.
 	defaultRetryPause = 5 * time.Second

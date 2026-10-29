@@ -16,7 +16,9 @@ the booked time (#42); C9c-3 (`x` jumps to an agent's pane or starts it
 again, a starting agent without its pane is lost, #43), the preview
 budget (#44), tmux sessions for the agents as a prototype (#45) and a PTY test that dropped a signal (#46); K0 (the REST
 ground: classes from `code`, REST writes, capabilities from `/me`; no
-feature switched, #47) is this branch.
+feature switched, #47); K1 (the ticket list and the ticket view over REST
+when `/me` lists the core's R1 capabilities, the tools otherwise) is this
+branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
@@ -39,19 +41,19 @@ on a Mac before every merge, by running the tests here.
 |---|---|
 | `cmd/lalabase` | commands; everything a command reads or writes goes through `Env` (tests pass their own) |
 | `internal/transport` | REST `/api/v1` and MCP `/api/mcp`; every answer becomes one `Answer` with one `Class` (a REST error by its `code` since K0); REST writes with an `Idempotency-Key` (`Write`) |
-| `internal/api` | one adapter per tool or REST reader, each with a `Spec` (`Newer`: fields a newer server sends, since K0); the generic REST write (`write`) |
-| `internal/features` | which features a server has, from `tools/list` and input schemas, and since K0 the REST capabilities of `/api/v1/me` (REST way first, MCP the fallback) |
+| `internal/api` | one adapter per tool or REST reader, each with a `Spec` (`Newer`: fields a newer server sends, since K0); the generic REST write (`write`); since K1 the REST readers of the ticket view, each spec the tool's fields (under `data`), what they file in the tool's form |
+| `internal/features` | which features a server has, from `tools/list` and input schemas, and since K0 the REST capabilities of `/api/v1/me` (REST way first, MCP the fallback); since K1 the ticket view's five features name theirs |
 | `internal/cache` | the decisions on an answer, from its class alone, the memory store they act on, and the journal of its changes the disk replays |
 | `internal/diskcache` | the disk cache (C1e): one directory per profile, one lock per run, a replay of the journal, every file checked before it is an entry |
 | `internal/privatefs` | the one threat model of the client's private files (the config, its lock, the disk cache, the launch files, the agents' files): owners, modes, the directory chain, macOS access lists, locks; the exclusive create and the bounded directory walk they share |
 | `internal/queue` | the one queue every request goes through |
-| `internal/gateway` | reads from the queue to the interface: one typed message per waiter, `Scope`, which checks a result before it is cached, and the one write path (`Write`), which confirms a success only from the answer |
+| `internal/gateway` | reads from the queue to the interface: one typed message per waiter, `Scope`, which checks a result before it is cached and (K1) stamps each ticket with its read's way (`Routes`), and the one write path (`Write`), which confirms a success only from the answer |
 | `internal/worker` | the supervisor: the only place a goroutine is started, its panics become one fatal error |
 | `internal/ui` | the root Bubble Tea model: owns every piece of state, issues reads through the gateway, builds the screen; `view/` renders it and knows nothing else |
 | `internal/present` | the display values the views take: opaque, cleaned once, a cast cannot forge one |
 | `internal/uitext` | every text of the interface, in English, in one place |
 | `internal/terminal` | the UTF-8 locale check before raw mode |
-| `internal/inboxfixture` | the loopback stand-in for a server, built from the contract copy; `tools/inbox-fixture` serves it for a person |
+| `internal/inboxfixture` | the loopback stand-in for a server, built from the contract copy, the ticket view on both ways (K1: REST by default, `BeforeR1` the tools); `tools/inbox-fixture` serves it for a person |
 | `internal/profile` | server plus token; the config file, checked through `internal/privatefs` |
 | `internal/safefile` | reading files the client does not control |
 | `internal/claudecfg` | Lalabase entries in Claude Code's configuration, for `auth import` alone (the launch reads none of it since C7b) |
