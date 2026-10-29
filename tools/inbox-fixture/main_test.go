@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -67,7 +68,7 @@ func TestTheToolServesBothWays(t *testing.T) {
 		if !strings.Contains(out.String(), c.line) {
 			t.Errorf("%s: output %q", name, out.String())
 		}
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/me", nil)
 		req.Header.Set("Authorization", "Bearer "+inboxfixture.Token)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
