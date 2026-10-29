@@ -276,8 +276,8 @@ func TestAPreviewIsReadAfterThePauseWhenTheObjectPaneIsVisible(t *testing.T) {
 		t.Fatalf("detail %+v", a.detail)
 	}
 	for _, w := range a.waiters {
-		if w.ticket.Area == gateway.Detail && w.ticket.Priority != queue.Background {
-			t.Fatalf("the preview is not background work: %+v", w.ticket)
+		if w.ticket.Area == gateway.Detail && w.ticket.Priority != queue.Preview {
+			t.Fatalf("the preview is not preview work: %+v", w.ticket)
 		}
 	}
 	if got := h.m.screen().Object.Notice.String(); got != "Loading…" {
@@ -994,41 +994,37 @@ func TestSwitchingSectionsRemembersAndCancels(t *testing.T) {
 
 // The seventh preview in a minute waits for the budget; moving on cancels
 // it without a request.
-func TestTheSeventhPreviewWaitsForTheBudgetAndMovingOnCancelsIt(t *testing.T) {
+func TestPreviewsAreNotHeldByTheBackgroundBudget(t *testing.T) {
+	// Owner's report (2026-10-29): browsing a list showed "Loading…" for
+	// up to a minute once six tickets had been previewed, since previews
+	// shared the background budget of six a minute. They have their own
+	// (queue.PreviewBudget); its bound is tested in the queue.
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
-	for i := range 6 {
+	for i := range queue.BackgroundBudget + 4 {
 		if i > 0 {
 			h.press("down")
 		}
+		// The harness's queue runs on the real clock: a preview held by a
+		// budget would arrive only when the minute rolls on.
+		start := time.Now()
 		h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+		if waited := time.Since(start); waited > 5*time.Second {
+			t.Fatalf("preview %d waited %v for a budget", i+1, waited)
+		}
+		if a.detail == nil || !a.detail.known || a.detail.id != a.tickets.selected {
+			t.Fatalf("preview %d did not arrive: %+v", i+1, a.detail)
+		}
 	}
-	if len(h.f.detailReads()) != 6 {
-		t.Fatalf("%d reads", len(h.f.detailReads()))
+	if got := len(h.f.detailReads()); got != queue.BackgroundBudget+4 {
+		t.Fatalf("%d reads", got)
 	}
+	// The person is not held either: Enter on the next row reads at once.
 	h.press("down")
-	held := h.background(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})[0])
-	time.Sleep(100 * time.Millisecond)
-	if len(h.f.detailReads()) != 6 {
-		t.Fatal("the seventh preview was sent")
-	}
-	if !a.detail.loading || h.m.screen().Object.Notice.String() != "Loading…" {
-		t.Fatalf("the held preview: %+v", a.detail)
-	}
-	h.press("down")
-	r := h.receive(held).(gateway.TicketResult)
-	if r.Answer.Class != transport.Canceled {
-		t.Fatalf("%v", r.Answer.Class)
-	}
-	h.feed(r)
-	if len(h.f.detailReads()) != 6 {
-		t.Fatal("the canceled preview was sent")
-	}
-	// The person is not held: Enter reads at once.
 	h.drive(h.press("enter"))
-	if len(h.f.detailReads()) != 7 || a.detail == nil || !a.detail.known {
-		t.Fatalf("%d reads, detail %+v", len(h.f.detailReads()), a.detail)
+	if got := len(h.f.detailReads()); got != queue.BackgroundBudget+5 || a.detail == nil || !a.detail.known {
+		t.Fatalf("%d reads, detail %+v", got, a.detail)
 	}
 }
 
@@ -2074,5 +2070,29 @@ func TestAWakeUpWhileTheReloadIsOutAddsNoWaiter(t *testing.T) {
 	h.feed(h.receive(reload))
 	if len(h.f.detailReads()) != 3 || a.detail.cached || !a.detail.holds() {
 		t.Fatalf("after the reload: %d reads, detail %+v", len(h.f.detailReads()), a.detail)
+	}
+}
+
+// While a ticket loads for the first time, the pane names it from the row
+// the cursor is on, not "No item opened" (owner's report, 2026-10-29).
+func TestALoadingPreviewNamesItsTicket(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	h.press("down")
+	row := a.tickets.rows[1]
+	gate := make(chan struct{})
+	h.f.gate, h.f.gateTicket = gate, row.ID
+	defer close(gate)
+	h.feed(gateway.Due{Session: a.session, Token: a.previewToken})
+	if a.detail == nil || a.detail.known || !a.detail.loading {
+		t.Fatalf("not loading: %+v", a.detail)
+	}
+	c := h.m.screen().Object
+	if got := c.Text.String(); got != "#"+itoa(row.Number)+" "+row.Title {
+		t.Fatalf("pane %q", got)
+	}
+	if got := c.Notice.String(); got != "Loading…" {
+		t.Fatalf("notice %q", got)
 	}
 }

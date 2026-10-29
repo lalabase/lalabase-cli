@@ -13,15 +13,19 @@
 //     only when the server cannot have acted on it (a 429, or nothing was
 //     sent). A retry runs the same job, so it carries the same idempotency key;
 //   - background work starts at most BackgroundBudget times per rolling
-//     BudgetWindow, retries counted (C1 design: previews, refreshes and their
-//     retries at most six per minute). What is held waits for the window to
-//     roll on; the person's actions are never counted or held, and a
-//     background read a person joins starts as theirs;
+//     BudgetWindow, retries counted (C1 design: refreshes and their retries
+//     at most six per minute). Previews (the ticket the cursor rests on)
+//     go before it and have a budget of their own, PreviewBudget per
+//     window: browsing is the commonest thing a person does, and a shared
+//     six a minute left the pane loading for up to a minute. What is held
+//     waits for its window to roll on; the person's actions are never
+//     counted or held, and a background read a person joins starts as
+//     theirs;
 //   - idle work (C9b: the titles of the agents' tickets) is background work
 //     below the background: it starts only while no background job waits
-//     and fewer than IdleShare starts are in the window, so it never spends
-//     the budget's other half, which stays the previews'. A read a preview
-//     or a person joins starts as theirs;
+//     and fewer than IdleShare of the background budget's starts are in
+//     the window, so it never spends the budget's other half, which stays
+//     the refreshes'. A read a preview or a person joins starts as theirs;
 //   - the queue's own goroutines (a shared read, the wake-up after a pause)
 //     run under one lifetime (WithLifetime, internal/worker). It ends them;
 //     a panic in them is recovered there and becomes its fatal error, and
@@ -47,7 +51,10 @@ type Priority int
 const (
 	// User: an action of the person (opening, writing).
 	User Priority = iota
-	// Background: a refresh or a preview.
+	// Preview: the ticket the cursor rests on, background work with a
+	// budget of its own (PreviewBudget), before the other background work.
+	Preview
+	// Background: a refresh.
 	Background
 	// Idle: work nobody looks at yet (C9b), after every background job and
 	// within IdleShare of the budget. It stays the last priority: highest
@@ -121,6 +128,10 @@ const (
 	// BudgetWindow, a retry being a start of its own.
 	BackgroundBudget = 6
 	BudgetWindow     = time.Minute
+	// PreviewBudget is the number of preview starts in one BudgetWindow,
+	// counted apart from BackgroundBudget. With it and the person's actions
+	// the client stays below the server's 60 requests a minute per token.
+	PreviewBudget = 30
 	// IdleShare is the part of the budget idle work may spend in a window.
 	IdleShare = BackgroundBudget / 2
 )
@@ -144,6 +155,9 @@ type Queue struct {
 	// for, so one wake-up serves it.
 	starts    []time.Time
 	budgetFor time.Time
+	// previewStarts and previewFor are the same for the previews' budget.
+	previewStarts []time.Time
+	previewFor    time.Time
 }
 
 // New returns an empty queue.
@@ -165,8 +179,10 @@ type ticket struct {
 	granted    bool
 	background bool // holds a background place
 	// started is the moment the budget counted this grant; zero for a
-	// person's grant. A grant abandoned before it ran gives it back.
+	// person's grant. A grant abandoned before it ran gives it back, to
+	// the previews' window when preview is set, else to the background's.
 	started time.Time
+	preview bool
 }
 
 // flight is a read shared by its callers. Its priority follows the callers
@@ -518,9 +534,13 @@ func (q *Queue) unstart(t *ticket) {
 	if t.started.IsZero() {
 		return
 	}
-	for i, at := range q.starts {
+	window := &q.starts
+	if t.preview {
+		window = &q.previewStarts
+	}
+	for i, at := range *window {
 		if at.Equal(t.started) {
-			q.starts = append(q.starts[:i], q.starts[i+1:]...)
+			*window = append((*window)[:i], (*window)[i+1:]...)
 			break
 		}
 	}
@@ -530,11 +550,15 @@ func (q *Queue) unstart(t *ticket) {
 // startsInWindow is the number of background and idle starts in the
 // window that ends now, after the starts that fell out of it are
 // forgotten. Called with q.mu held.
-func (q *Queue) startsInWindow(now time.Time) int {
-	for len(q.starts) > 0 && !now.Before(q.starts[0].Add(BudgetWindow)) {
-		q.starts = q.starts[1:]
+func (q *Queue) startsInWindow(now time.Time) int { return inWindow(&q.starts, now) }
+
+// inWindow forgets the starts of window that fell out of it by now and
+// counts the rest.
+func inWindow(window *[]time.Time, now time.Time) int {
+	for len(*window) > 0 && !now.Before((*window)[0].Add(BudgetWindow)) {
+		*window = (*window)[1:]
 	}
-	return len(q.starts)
+	return len(*window)
 }
 
 // budgetFree says whether a background start is within the budget now.
@@ -543,17 +567,22 @@ func (q *Queue) budgetFree(now time.Time) bool {
 	return q.startsInWindow(now) < BackgroundBudget
 }
 
-// waitForBudget wakes dispatch when the oldest start falls out of the
-// window; one timer per window end. Called with q.mu held.
-func (q *Queue) waitForBudget(now time.Time) {
-	if len(q.starts) == 0 {
+// waitForBudget wakes dispatch when the oldest background start falls out
+// of the window; one timer per window end. Called with q.mu held.
+func (q *Queue) waitForBudget(now time.Time) { q.waitForWindow(now, q.starts, &q.budgetFor) }
+
+// waitForWindow wakes dispatch when the oldest start of window falls out
+// of it; marker is the window end a timer waits for, so one wake-up serves
+// it. Called with q.mu held.
+func (q *Queue) waitForWindow(now time.Time, window []time.Time, marker *time.Time) {
+	if len(window) == 0 {
 		return
 	}
-	until := q.starts[0].Add(BudgetWindow)
-	if q.budgetFor.Equal(until) {
+	until := window[0].Add(BudgetWindow)
+	if marker.Equal(until) {
 		return
 	}
-	q.budgetFor = until
+	*marker = until
 	wake := q.clock.After(until.Sub(now))
 	q.life.Start("queue: budget", func(ctx context.Context) {
 		select {
@@ -563,8 +592,8 @@ func (q *Queue) waitForBudget(now time.Time) {
 		}
 		q.mu.Lock()
 		defer q.mu.Unlock()
-		if q.budgetFor.Equal(until) {
-			q.budgetFor = time.Time{}
+		if marker.Equal(until) {
+			*marker = time.Time{}
 		}
 		q.dispatch()
 	})
@@ -638,17 +667,25 @@ func (q *Queue) dispatch() {
 			t.background = true
 			q.bgRunning++
 			t.started = now
-			q.starts = append(q.starts, now)
+			t.preview = t.prio == Preview
+			if t.preview {
+				q.previewStarts = append(q.previewStarts, now)
+			} else {
+				q.starts = append(q.starts, now)
+			}
 		}
 		t.granted = true
 		close(t.ready)
 	}
 }
 
-// next is the wait to grant next, or nil: the first of the person's, else the
-// first background wait if a background place is free and the budget has
-// a start left, else the first idle wait while the window holds fewer than
-// IdleShare starts; without one, the wait goes on until the window rolls.
+// next is the wait to grant next, or nil: the first of the person's, else,
+// if a background place is free, the first preview while the previews'
+// budget has a start left, else the first background wait if the
+// background budget has one, else the first idle wait while the window
+// holds fewer than IdleShare starts; without one, the wait goes on until
+// its window rolls. A held preview holds no other background work: the
+// two budgets are apart.
 func (q *Queue) next(now time.Time) *ticket {
 	for _, t := range q.waiting {
 		if t.prio == User {
@@ -657,6 +694,15 @@ func (q *Queue) next(now time.Time) *ticket {
 	}
 	if q.bgRunning >= backgroundSlots {
 		return nil
+	}
+	for _, t := range q.waiting {
+		if t.prio == Preview {
+			if inWindow(&q.previewStarts, now) < PreviewBudget {
+				return t
+			}
+			q.waitForWindow(now, q.previewStarts, &q.previewFor)
+			break
+		}
 	}
 	for _, t := range q.waiting {
 		if t.prio == Background {

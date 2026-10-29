@@ -523,7 +523,7 @@ func (m Model) due(msg gateway.Due) (Model, tea.Cmd) {
 	}
 	d := a.ensureDetail(v.project, v.selected)
 	d.loading = true
-	return m, a.issue(gateway.Detail, d.key, forDetail, queue.Background)
+	return m, a.issue(gateway.Detail, d.key, forDetail, queue.Preview)
 }
 
 // openTicket is Enter on a ticket row: the ticket is opened, the focus
