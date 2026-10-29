@@ -524,8 +524,12 @@ navigation again.
     it starts afresh with a new session id and the prompt. Once a hook of
     the new agent came (in iTerm, seen by the next read; without iTerm,
     when `claude` ended here) the old agent's files go, decided under its
-    lock as `d` decides; until then the ticket shows the new agent, and
-    `x` jumps to its pane. A pane alone is no proof: `claude --resume`
+    lock as `d` decides; until then the ticket (its row, head and meta
+    bar) shows the new agent, and `x` jumps to its pane, while the agents'
+    area, the organisation's glyph and the header's counts still list the
+    old one beside it (`x` there does nothing, `d` removes it). A read that
+    failed, or that began before the new agent was recorded, does not end
+    that wait. A pane alone is no proof: `claude --resume`
     finds a conversation only in the folder it ran in (a project without
     a folder entry starts in the folder `lalabase` was started in), and
     not once Claude Code cleaned its transcript up. A start that opened

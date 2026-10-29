@@ -77,11 +77,11 @@ type agentsState struct {
 	// status line until a read succeeds.
 	tooMany bool
 	// replacing are the agents x starts again, by id, with the new
-	// agent once its pane opened ("" while the launch runs), until the
+	// agent once its pane opened (replacement), until the
 	// settlement answered or the new agent left (C9c): x does not start
 	// one twice. settling are the settlements out, with what their
 	// answer's notice needs.
-	replacing map[string]string
+	replacing map[string]replacement
 	settling  map[agents.After]settling
 }
 
@@ -132,7 +132,11 @@ func (a *app) receiveAgents(s agents.Snapshot) tea.Cmd {
 	}
 	// A new agent's title, if the session lacks it, is read once; a
 	// start again whose new agent had its first hook replaces the old.
-	titles := tea.Batch(a.requestTitles(), a.settleReplaced())
+	titles := a.requestTitles()
+	if s.Err == nil {
+		// A failed read lists none: it tells nothing of a new agent.
+		titles = tea.Batch(titles, a.settleReplaced(s.Ref))
+	}
 	if a.agents.again {
 		a.agents.again = false
 		return tea.Batch(titles, a.readAgents())

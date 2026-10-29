@@ -501,6 +501,7 @@ func (m Model) closeAgents() (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.focus = m.agentsFrom
+	m.app.leaveAgentsList()
 	if a := m.app; m.focus == view.Object && a.detail == nil && (a.active == nil || a.active.opened == "") {
 		m.focus = view.List
 	}
@@ -526,8 +527,10 @@ func (m Model) openAgent() (Model, tea.Cmd) {
 		return m, nil
 	}
 	var cmds []tea.Cmd
-	// A problem told of an agent stands until the next open or d.
+	// A problem told of an agent stands until the next open or d; one of
+	// x in the list goes with the list.
 	a.clearAgentsNotice()
+	a.leaveAgentsList()
 	a.highlight, a.highlightSection = ag.Organisation, sectionTickets
 	if v := a.tickets; v != nil && v.org == ag.Organisation && v.project == ag.Project && v.index(ag.Ticket) >= 0 {
 		v.selected = ag.Ticket

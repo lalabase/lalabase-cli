@@ -536,3 +536,144 @@ func TestASettlementOutIsNotAskedTwice(t *testing.T) {
 		t.Fatalf("settled %+v", got)
 	}
 }
+
+// startedAgain sets up a start again of the ended agent at #6 whose pane
+// opened; the new agent is still starting. It returns the old agent and
+// the new one as a read lists it.
+func startedAgain(t *testing.T, h *harness, f *fakeWatcher) (old, started agents.Agent) {
+	t.Helper()
+	old = paned(h, agents.Ended)
+	started = old
+	started.ID, started.State, started.Since, started.Resumable = newAgent, agents.Starting, h.now, false
+	f.set(old)
+	return old, started
+}
+
+// Review round 2 of #43: a read that failed lists no agent, but says
+// nothing of the new one: the wait for its first hook goes on.
+func TestAFailedReadDoesNotEndTheWait(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	f := h.withWatcher()
+	old, started := startedAgain(t, h, f)
+	h.openSix()
+	h.drive(h.press("x"))
+	f.mu.Lock()
+	f.err = errors.New("directory refused")
+	f.mu.Unlock()
+	h.due()
+	f.mu.Lock()
+	f.err = nil
+	f.mu.Unlock()
+	started.State, started.Resumable = agents.WaitingForYou, true
+	f.set(old, started)
+	h.due()
+	if got := f.settlements(); len(got) != 1 || got[0] != (agents.After{Agent: newAgent, Replaces: old.ID, Opened: true}) {
+		t.Fatalf("settled %+v", got)
+	}
+}
+
+// Review round 2 of #43: a read issued before the new agent's record was
+// written does not list it; that is no sign it left, and the wait goes
+// on.
+func TestAReadFromBeforeTheRecordDoesNotEndTheWait(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	f := h.withWatcher()
+	old, started := startedAgain(t, h, f)
+	h.openSix()
+	a := h.m.app
+	before := messages(t, a.agentsDue(a.agents.until)) // out while the launch runs
+	h.drive(h.press("x"))
+	f.set(old, started)
+	next := h.feed(before...) // its answer after the launch's
+	if h.offers(Launch) {
+		t.Fatal("the wait ended: x offered on the old agent")
+	}
+	h.drive(next...)
+	started.State, started.Resumable = agents.WaitingForYou, true
+	f.set(old, started)
+	h.due()
+	if got := f.settlements(); len(got) != 1 || got[0].Replaces != old.ID {
+		t.Fatalf("settled %+v", got)
+	}
+}
+
+// A new agent lost after its hooks (its process gone) did start: the old
+// one goes. One lost without a hook did not: the wait ends, the old one
+// stays and may be started again.
+func TestALostNewAgentAndTheWait(t *testing.T) {
+	for _, c := range []struct {
+		resumable bool
+		settled   bool
+	}{{true, true}, {false, false}} {
+		h := newHarness(t)
+		l := h.withLauncher()
+		l.recorded = newAgent
+		f := h.withWatcher()
+		old, started := startedAgain(t, h, f)
+		h.openSix()
+		h.drive(h.press("x"))
+		started.State, started.Resumable = agents.Lost, c.resumable
+		f.set(old, started)
+		h.due()
+		if got := len(f.settlements()) == 1; got != c.settled {
+			t.Fatalf("resumable %v: settled %+v", c.resumable, f.settlements())
+		}
+		if !c.settled {
+			h.due()
+			if _, out := h.m.app.agents.replacing[old.ID]; out || len(f.settlements()) != 0 {
+				t.Fatalf("the wait goes on: %+v", h.m.app.agents.replacing)
+			}
+		}
+	}
+}
+
+// Review round 2 of #43: a problem of x in the agents' list goes when the
+// list is left: it does not come back when the list opens again, nor
+// stand in the pane of the agent's ticket.
+func TestAProblemOfTheListGoesWithIt(t *testing.T) {
+	for _, leave := range []string{"esc", "enter"} {
+		h := newHarness(t)
+		l := h.withLauncher()
+		l.again = launch.NoPermission
+		h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now))
+		h.start()
+		h.drive(h.press("A"))
+		h.drive(h.press("x"))
+		h.drive(h.press(leave))
+		if got := h.status(); strings.Contains(got, "macOS") {
+			t.Fatalf("%s: status %q", leave, got)
+		}
+		h.drive(h.press("A"))
+		if got := h.status(); strings.Contains(got, "macOS") {
+			t.Fatalf("%s: back in the list %q", leave, got)
+		}
+	}
+}
+
+// The answer of x in the list is newer than a notice of d told while it
+// ran: it shows.
+func TestTheAnswerOfXInTheListOutranksAnOlderNotice(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	ended := agentIn(1, orgA, 6, agents.Ended, h.now)
+	other := agentIn(2, orgA, 7, agents.Ended, h.now.Add(time.Second))
+	f := h.withWatcher(ended, other)
+	f.removeErr = errors.New("disk gone")
+	h.start()
+	h.drive(h.press("A"))
+	cmd := h.press("x") // on #6
+	h.drive(h.press("down"))
+	h.drive(h.press("d")) // #7 fails
+	if got := h.status(); !strings.Contains(got, "disk gone") {
+		t.Fatalf("status %q", got)
+	}
+	h.drive(cmd)
+	if got := h.status(); got != "Claude Code started again beside #6" {
+		t.Fatalf("status %q", got)
+	}
+}

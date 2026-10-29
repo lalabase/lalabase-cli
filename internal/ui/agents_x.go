@@ -127,9 +127,9 @@ func (m Model) pressX() (Model, tea.Cmd) {
 		again.Session = x.agent.Session
 	}
 	if a.agents.replacing == nil {
-		a.agents.replacing = map[string]string{}
+		a.agents.replacing = map[string]replacement{}
 	}
-	a.agents.replacing[x.agent.ID] = ""
+	a.agents.replacing[x.agent.ID] = replacement{}
 	a.launch.notice, a.launch.tone = uitext.Fill(uitext.StartingAgain, x.ticket.Number), present.NoticeWaiting
 	return m, tea.Batch(a.deps.Launcher.Again(a.launch.ref, x.ticket, again), a.readAgents())
 }
@@ -152,7 +152,9 @@ func (a *app) settleAfter(d launch.Done) tea.Cmd {
 	case d.Agent != "" && (d.Kind == launch.Ended || d.Kind == launch.EndedWithError):
 		after = agents.After{Agent: d.Agent, Replaces: d.Replaces}
 	case d.Agent != "" && d.Replaces != "" && d.Kind == launch.Opened && a.deps.Agents != nil:
-		a.agents.replacing[d.Replaces] = d.Agent
+		// A read out now may have been issued before the new agent's
+		// record was written: only one issued after may end the wait.
+		a.agents.replacing[d.Replaces] = replacement{next: d.Agent, after: a.agents.ref}
 		return nil
 	}
 	if after.Agent == "" || a.deps.Agents == nil {
@@ -174,32 +176,52 @@ func (a *app) settleAgents(after agents.After, number int, jump bool) tea.Cmd {
 	return a.deps.Agents.Settle(after, a.now())
 }
 
+// leaveAgentsList takes the notice of x in the agents' list away as the
+// list closes (review round 2 of #43): it belongs there, and a problem has
+// no deadline that would end it. The answer of an x still running then
+// belongs to its ticket, as one pressed there.
+func (a *app) leaveAgentsList() {
+	if a.launch.everywhere {
+		a.launch.notice, a.launch.until, a.launch.everywhere = present.Inline{}, time.Time{}, false
+	}
+}
+
+// replacement is a start again of an agent: the new agent once its pane
+// opened ("" while the launch runs), and the newest read issued then:
+// only a read issued after it has surely seen the new agent's record.
+type replacement struct {
+	next  string
+	after uint64
+}
+
 // replacedBy is the agent the start again that made id replaces, "" for
 // none.
 func (a *app) replacedBy(id string) string {
-	for old, next := range a.agents.replacing {
-		if next != "" && next == id {
+	for old, r := range a.agents.replacing {
+		if r.next != "" && r.next == id {
 			return old
 		}
 	}
 	return ""
 }
 
-// settleReplaced looks at each start again whose pane opened, after a
-// read: once a hook of the new agent came, the old agent goes; a new
-// agent that left without one (d, a lost mark, another client) ends the
-// wait, and the old agent stays and may be started again.
-func (a *app) settleReplaced() tea.Cmd {
+// settleReplaced looks at each start again whose pane opened, after the
+// read ref that succeeded: once a hook of the new agent came, the old
+// agent goes; a new agent that left without one (d, a lost mark, another
+// client) ends the wait, and the old agent stays and may be started
+// again. Only a read issued after the pane opened can tell that it left
+// (review round 2 of #43): an earlier one may not have seen its record.
+func (a *app) settleReplaced(ref uint64) tea.Cmd {
 	var cmds []tea.Cmd
-	for old, next := range a.agents.replacing {
-		if next == "" {
+	for old, r := range a.agents.replacing {
+		if r.next == "" {
 			continue
 		}
-		ag, ok := a.listed(next)
+		ag, ok := a.listed(r.next)
 		switch {
 		case ok && ag.Resumable:
-			cmds = append(cmds, a.settleAgents(agents.After{Agent: next, Replaces: old, Opened: true}, ag.Number, false))
-		case !ok || ag.State == agents.Lost:
+			cmds = append(cmds, a.settleAgents(agents.After{Agent: r.next, Replaces: old, Opened: true}, ag.Number, false))
+		case ref > r.after && (!ok || ag.State == agents.Lost):
 			delete(a.agents.replacing, old)
 		}
 	}
@@ -220,11 +242,11 @@ func (a *app) listed(id string) (agents.Agent, bool) {
 // listed: the ticket's head, row and meta bar show the new agent, so x
 // there acts on it.
 func (a *app) replaced(ag agents.Agent) bool {
-	next, ok := a.agents.replacing[ag.ID]
-	if !ok || next == "" {
+	r, ok := a.agents.replacing[ag.ID]
+	if !ok || r.next == "" {
 		return false
 	}
-	_, listed := a.listed(next)
+	_, listed := a.listed(r.next)
 	return listed
 }
 
