@@ -74,6 +74,20 @@ func sortedReads(reads []string, n int) []string {
 
 // markRequests are the write attempts, one line each: the notification,
 // whether a key came along, and the status.
+// requestLines are the fixture's requests, one line each, for a failure's
+// message: the tool or path, the arguments that name a page, the status.
+func requestLines(f *inboxfixture.Fixture) []string {
+	var out []string
+	for _, r := range f.Requests() {
+		what := r.Path
+		if r.Tool != "" {
+			what = r.Tool
+		}
+		out = append(out, fmt.Sprintf("%s %s org=%v page=%v id=%v -> %d", r.Method, what, r.Args["organisation_id"], r.Args["page"], r.Args["notification_id"], r.Status))
+	}
+	return out
+}
+
 func markRequests(f *inboxfixture.Fixture) []string {
 	var out []string
 	for _, r := range f.Requests() {
@@ -462,7 +476,19 @@ func TestPTYMarkReadThenANetworkError(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.rowGone(t, 80, "#1 Benachrichtigun")
-	c.act(t, "]", 80, "Could not reach the server")
+	// On the CI this step failed now and then (2026-10-26 to 10-28), each
+	// time with page 1 shown, no notice and "] next page" offered; it never
+	// failed locally, also not 40 runs under -race on two cores, and a
+	// slow reload after the write did not make it fail. A failure prints
+	// what reached the server beside the screen, to tell whether ] sent
+	// its read at all.
+	if err := c.send("]"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.until(`after "]"`, readyLimit, func() bool { return c.screenShows(80, "Could not reach the server") }); err != nil {
+		t.Fatalf("%v: waiting for the failed page 2\n%s\nrequests:\n%s", err,
+			strings.Join(renderScreen(c.bytes(), 24, 80), "\n"), strings.Join(requestLines(f), "\n"))
+	}
 	c.act(t, "R", 80, "#27 Benachrichtigung", "page 2 of 2")
 	if err := c.send("q"); err != nil {
 		t.Fatal(err)
