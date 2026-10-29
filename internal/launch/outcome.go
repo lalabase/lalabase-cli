@@ -36,6 +36,8 @@ const (
 	ITermFailed
 	// Canceled: the session ended before the launch ran.
 	Canceled
+	// TmuxFailed: tmux could not start the agent's session (prototype).
+	TmuxFailed
 	// Jumped: iTerm selected the agent's pane (C9c).
 	Jumped
 	// PaneGone: the jump found the agent's pane in no window or tab of

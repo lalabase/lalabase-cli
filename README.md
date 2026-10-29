@@ -286,6 +286,13 @@ navigation again.
     Elsewhere the interface gives the
     terminal to `claude` (from the `PATH`, no shell, the same arguments, no
     script) and comes back when it ends.
+    **tmux prototype:** with tmux on the client's `PATH` in iTerm,
+    tracked agents run in detached sessions on the `lalabase` tmux socket.
+    One viewer pane follows the active agent of the ticket shown and
+    closes when focus leaves the ticket and agents area; the agent keeps
+    running. A restart resumes the conversation in a new tmux session;
+    the old agent record stays until the new agent's first hook confirms
+    it started, as with a direct iTerm launch.
   * **Which folder.** `[profiles.<name>.folders]` in `config.toml` maps a
     project id to an absolute path or one under `~/`; without an entry,
     the folder `lalabase` was started in. The folder must exist; a path

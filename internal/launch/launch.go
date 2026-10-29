@@ -66,8 +66,13 @@ type Launcher struct {
 	// launch runs claude in this terminal.
 	session  string
 	deadline time.Duration
+	// tmux is the path of tmux when agents run in tmux sessions
+	// (prototype, tmux.go): in iTerm, with tmux on the PATH; "" otherwise.
+	tmux   string
+	viewer viewer
 	// The outside world, replaced in tests.
 	osascript   func(ctx context.Context, script string, args []string) (stdout, stderr string, err error)
+	runTmux     func(ctx context.Context, args []string) (stdout, stderr string, err error)
 	lookPath    func(string) (string, error)
 	execProcess func(*exec.Cmd, tea.ExecCallback) tea.Cmd
 	stat        func(string) (os.FileInfo, error)
@@ -91,6 +96,14 @@ func New(cfg Config) *Launcher {
 	}
 	if iTermPossible && cfg.TermProgram == "iTerm.app" && cfg.Multiplexer == "" {
 		l.session = iTermSession(cfg.SessionID)
+	}
+	if l.session != "" {
+		if path, err := l.lookPath("tmux"); err == nil && filepath.IsAbs(path) && passable(path) {
+			l.tmux = path
+		}
+	}
+	l.runTmux = func(ctx context.Context, args []string) (string, string, error) {
+		return runChild(ctx, l.tmux, "", args)
 	}
 	return l
 }
@@ -233,11 +246,26 @@ func (l *Launcher) launch(ref uint64, t Ticket, a Again) tea.Msg {
 			return d
 		})
 	}
-	if _, err := dir.Write(launchdir.Script, script(folder, args), 0o700); err != nil {
+	scriptPath, err := dir.Write(launchdir.Script, script(folder, args), 0o700)
+	if err != nil {
 		return done(NoFiles, err.Error())
 	}
 	ctx, cancel := context.WithTimeout(l.cfg.Supervisor.Context(), l.deadline)
 	defer cancel()
+	if l.tmux != "" && agent != "" {
+		// Prototype: the agent runs in a tmux session of its own; the
+		// viewer shows it while its ticket is shown (View).
+		d := done(l.startInTmux(ctx, agent, folder, scriptPath), "")
+		if d.Kind == Opened || d.Kind == NoAnswer {
+			if why := l.record(t, agent, tr, ""); why != "" {
+				untracked = why
+			} else {
+				d.Agent = agent
+			}
+			d.Untracked = untracked
+		}
+		return d
+	}
 	stdout, stderr, err := l.osascript(ctx, appleScript, osascriptArgs(l.session, line))
 	d := done(classify(ctx, stderr, err), "")
 	// The agent is recorded once a pane opened, or may still open; a

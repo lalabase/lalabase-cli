@@ -234,6 +234,8 @@ const (
 	LaunchSessionGone
 	LaunchNoAnswer
 	LaunchFailed
+	// Prototype: tmux could not start the agent's session.
+	LaunchTmuxFailed
 	// C9a: a launch whose agent's state cannot be shown.
 	LaunchUntracked
 	// C9a: the agent's line in the ticket's head, its states' words and
@@ -422,7 +424,8 @@ var english = map[ID]string{
 	AgentApproval:       "waiting for approval", AgentWaiting: "waiting for you", AgentLost: "lost",
 	AgentWorking: "working", AgentStarting: "starting", AgentEnded: "ended",
 	AgeSeconds: "%d s", AgeMinutes: "%d min", AgeHours: "%d h", AgeDays: "%d d",
-	LaunchFailed: "iTerm could not open a pane",
+	LaunchFailed:     "iTerm could not open a pane",
+	LaunchTmuxFailed: "tmux could not start Claude Code",
 	// L2: the path in the second line, its places and their details.
 	PathStep: " › ", PathDetail: " · ",
 	// The mark after the name of the token's own person in a comment.
