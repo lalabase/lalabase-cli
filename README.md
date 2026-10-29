@@ -553,7 +553,9 @@ navigation again.
     meta bar. The status line says switching to the agent, switched, its
     pane not found, no pane known, starting it again, started again, an
     agent lost with its pane, a start again that did not begin (the old
-    agent stays), or that the agents could not be updated and why. While
+    agent stays), or that the agents could not be updated and why; what
+    `x` in the agents' list did is told there and goes when the list
+    closes (an answer that comes after belongs to the ticket). While
     a jump or a start again runs, a second `x` does nothing, and an agent
     whose start again is being settled is not started again twice.
 * **A comment that is gone.** When the server answers a comment read whole

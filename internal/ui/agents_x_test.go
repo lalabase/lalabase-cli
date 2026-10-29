@@ -677,3 +677,40 @@ func TestTheAnswerOfXInTheListOutranksAnOlderNotice(t *testing.T) {
 		t.Fatalf("status %q", got)
 	}
 }
+
+// Review round 3 of #43: the answer of an x pressed in the list that
+// comes after the list closed belongs to its ticket: it shows there, as
+// any notice of the ticket in the pane.
+func TestTheAnswerAfterLeavingTheListBelongsToTheTicket(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.jumpKind = launch.PaneGone
+	h.withWatcher(paned(h, agents.Working))
+	h.openSix()
+	h.drive(h.press("A"))
+	cmd := h.press("x")
+	h.drive(h.press("esc"))
+	h.drive(cmd)
+	if h.m.focus != view.Object {
+		t.Fatalf("focus %v", h.m.focus)
+	}
+	if got := h.status(); got != "The pane of the agent of #6 was not found; it was closed" {
+		t.Fatalf("at the ticket: %q", got)
+	}
+}
+
+// Review round 3 of #43: leaving the list takes only its own notice; a
+// problem of x pressed in the ticket's pane stays there.
+func TestLeavingTheListKeepsTheTicketsNotice(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.again = launch.NoPermission
+	h.withWatcher(paned(h, agents.Ended))
+	h.openSix()
+	h.drive(h.press("x"))
+	h.drive(h.press("A"))
+	h.drive(h.press("esc"))
+	if got := h.status(); !strings.HasPrefix(got, "macOS does not let") {
+		t.Fatalf("status %q", got)
+	}
+}
