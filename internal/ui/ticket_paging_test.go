@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -729,22 +730,20 @@ func TestThePersonsReadsDoNotWaitForTheBackgroundBudget(t *testing.T) {
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
-	for i := range 6 {
-		if i > 0 {
-			h.press("down")
-		}
-		h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
-	}
+	// Both budgets spent, as by a minute of browsing and reloads.
+	h.spendBudgets()
 	h.press("down") // #7
 	a.tickets.selected = ticketID(website, 6)
-	h.drive(h.press("enter"))
-	h.drive(h.press("e"))
+	// Within the harness's wall: a read held by a budget would wait for
+	// the minute to roll on.
+	h.driveWithin(h.press("enter"))
+	h.driveWithin(h.press("e"))
 	h.press("esc")
 	h.press("tab")
-	h.drive(h.press("]"))
-	h.drive(h.press("o"))
-	if n := len(h.f.detailReads()); n != 10 {
-		t.Fatalf("%d reads, want 6 previews and 4 of the person's", n)
+	h.driveWithin(h.press("]"))
+	h.driveWithin(h.press("o"))
+	if n := len(h.f.detailReads()); n != 4 {
+		t.Fatalf("%d reads, want the person's 4", n)
 	}
 }
 
@@ -1100,6 +1099,23 @@ func TestR2TheReloadAfterAMissingCommentIsSentAfterIt(t *testing.T) {
 // driveWithin runs commands on supervised goroutines, each answer within
 // the harness's wall time: a read held by the background budget (a
 // minute) fails the test instead of passing late.
+// spendBudgets fills the queue's windows: the previews' and the other
+// background work's, with jobs that end at once. Since previews have a
+// budget of their own, a few previews no longer spend anything a person's
+// read could wait for (review of #44).
+func (h *harness) spendBudgets() {
+	h.t.Helper()
+	quick := func(context.Context) transport.Answer {
+		return transport.Answer{Class: transport.Object, Payload: []byte("{}"), Status: 200, Sent: true}
+	}
+	for range queue.PreviewBudget {
+		h.q.Do(context.Background(), queue.Job{Priority: queue.Preview, Run: quick})
+	}
+	for range queue.BackgroundBudget {
+		h.q.Do(context.Background(), queue.Job{Priority: queue.Background, Run: quick})
+	}
+}
+
 func (h *harness) driveWithin(cmds ...tea.Cmd) {
 	h.t.Helper()
 	for len(cmds) > 0 {
@@ -1127,12 +1143,8 @@ func TestR2NoReadOfTheTicketWaitsForTheBudget(t *testing.T) {
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
-	for i := range 6 {
-		if i > 0 {
-			h.press("down")
-		}
-		h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
-	}
+	// Both budgets spent, as by a minute of browsing and reloads.
+	h.spendBudgets()
 	h.press("down")
 	a.tickets.selected = ticketID(website, 6)
 	h.driveWithin(h.press("enter"))

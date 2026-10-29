@@ -26,6 +26,10 @@ type Agent struct {
 	Since time.Time
 	// Seen: the person opened the agent from the client once (C9b).
 	Seen bool
+	// Resumable: a hook recorded the session, so Session names a
+	// conversation claude --resume finds (C9c). Before the first hook the
+	// launch's id may never have been used (Esc on the trust dialog).
+	Resumable bool
 }
 
 // Read reads the agents in dir: every launch record that passes its
@@ -72,8 +76,7 @@ func readAgent(dir, id string, procs Procs) (Agent, bool) {
 	if err := readOwn(path, &r); err != nil || r.Format != FormatVersion || r.Agent != id {
 		return Agent{}, false
 	}
-	l := Launch{Agent: r.Agent, Organisation: r.Organisation, Project: r.Project, Ticket: r.Ticket,
-		Number: r.Number, Session: r.Session, Pane: r.Pane, At: r.At}
+	l := r.launch()
 	if !l.valid() {
 		return Agent{}, false
 	}
@@ -88,6 +91,10 @@ func readAgent(dir, id string, procs Procs) (Agent, bool) {
 	if s.Session != "" {
 		a.Session = s.Session
 	}
+	// A hook ran in the session: the one of its input, else the one
+	// before, else the launch's. Of the states only the client's own lost
+	// mark (MarkLost) comes without one.
+	a.Resumable = a.State != Lost
 	if a.State != Ended && s.PID > 0 && procs != nil {
 		start, alive, err := procs.Start(s.PID)
 		if err == nil && (!alive || start != s.Start) {

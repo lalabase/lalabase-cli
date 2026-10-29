@@ -29,14 +29,62 @@ type fakeLauncher struct {
 	mu    sync.Mutex
 	calls []launchCall
 	kind  launch.Kind
+	// C9c: the jumps and starts again asked for, what they answer, the
+	// agent a start records, and whether the launcher runs without iTerm.
+	jumps           []jumpCall
+	restarts        []againCall
+	jumpKind, again launch.Kind
+	recorded        string
+	noITerm         bool
+}
+
+type jumpCall struct {
+	ticket      launch.Ticket
+	agent, pane string
+}
+
+type againCall struct {
+	ticket launch.Ticket
+	again  launch.Again
 }
 
 func (f *fakeLauncher) Launch(ref uint64, t launch.Ticket) tea.Cmd {
 	f.mu.Lock()
 	f.calls = append(f.calls, launchCall{ref, t})
-	kind := f.kind
+	kind, agent := f.kind, f.recorded
 	f.mu.Unlock()
-	return func() tea.Msg { return launch.Done{Ref: ref, Ticket: t, Kind: kind} }
+	return func() tea.Msg {
+		return launch.Done{Ref: ref, Ticket: t, Kind: kind, Action: launch.StartAction, Agent: agent}
+	}
+}
+
+func (f *fakeLauncher) Jump(ref uint64, t launch.Ticket, agent, pane string) tea.Cmd {
+	f.mu.Lock()
+	f.jumps = append(f.jumps, jumpCall{t, agent, pane})
+	kind := f.jumpKind
+	f.mu.Unlock()
+	return func() tea.Msg {
+		return launch.Done{Ref: ref, Ticket: t, Kind: kind, Action: launch.JumpAction, Agent: agent}
+	}
+}
+
+func (f *fakeLauncher) Again(ref uint64, t launch.Ticket, a launch.Again) tea.Cmd {
+	f.mu.Lock()
+	f.restarts = append(f.restarts, againCall{t, a})
+	kind, agent := f.again, f.recorded
+	f.mu.Unlock()
+	if kind != launch.Opened && kind != launch.Ended && kind != launch.EndedWithError && kind != launch.NoAnswer {
+		agent = ""
+	}
+	return func() tea.Msg {
+		return launch.Done{Ref: ref, Ticket: t, Kind: kind, Action: launch.AgainAction, Agent: agent, Replaces: a.Agent}
+	}
+}
+
+func (f *fakeLauncher) Jumps() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return !f.noITerm
 }
 
 func (f *fakeLauncher) launched() []launchCall {
@@ -46,7 +94,7 @@ func (f *fakeLauncher) launched() []launchCall {
 }
 
 func (h *harness) withLauncher() *fakeLauncher {
-	f := &fakeLauncher{kind: launch.Opened}
+	f := &fakeLauncher{kind: launch.Opened, jumpKind: launch.Jumped, again: launch.Opened}
 	h.m.app.deps.Launcher = f
 	return f
 }

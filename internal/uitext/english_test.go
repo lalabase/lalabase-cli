@@ -11,7 +11,7 @@ func TestCatalogueUsesTheSameBoundary(t *testing.T) {
 			t.Fatalf("missing catalogue entry %d", id)
 		}
 	}
-	if Inline(ID(255)).String() != "" || Body(ID(255)).String() != "" {
+	if Inline(count).String() != "" || Body(count).String() != "" {
 		t.Fatal("unknown catalogue ID is not empty")
 	}
 	// A developer mislabelling foreign text still cannot bypass cleaning.

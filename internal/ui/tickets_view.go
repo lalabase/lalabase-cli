@@ -164,6 +164,14 @@ func (m Model) detailColumn() present.Column {
 	}
 	if !d.known {
 		c.Text = uitext.Body(uitext.NoItem)
+		if v := a.tickets; v != nil && d.loading {
+			// Loading for the first time: the row the ticket was taken
+			// from names it meanwhile, under the notice "Loading…".
+			if i := v.index(d.id); i >= 0 {
+				r := v.rows[i]
+				c.Text = present.NewBody(uitext.Fill(uitext.TicketNumber, r.Number).String() + " " + textOr(r.Title, uitext.UntitledTicket))
+			}
+		}
 		return c
 	}
 	// The facts stand in the bar where the pane has room for it, else in

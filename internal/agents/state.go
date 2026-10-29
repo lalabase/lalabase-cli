@@ -26,11 +26,13 @@ const (
 // Urgent says whether s is more urgent than t.
 func (s State) Urgent(t State) bool { return s < t }
 
-// stateNames are the states a state file holds: the hook's four. Starting
-// and Lost are the reader's alone.
+// stateNames are the states a state file holds: the hook's four, and lost,
+// which the client alone writes (MarkLost). Starting is the reader's
+// alone, and so is a lost process.
 var stateNames = map[State]string{
 	WaitingForApproval: "approval",
 	WaitingForYou:      "waiting",
+	Lost:               "lost",
 	Working:            "working",
 	Ended:              "ended",
 }
@@ -55,6 +57,12 @@ type launchRecord struct {
 	Session      string    `json:"session"`
 	Pane         string    `json:"pane"`
 	At           time.Time `json:"at"`
+}
+
+// launch is the record's address, to be checked (Launch.valid).
+func (r launchRecord) launch() Launch {
+	return Launch{Agent: r.Agent, Organisation: r.Organisation, Project: r.Project, Ticket: r.Ticket,
+		Number: r.Number, Session: r.Session, Pane: r.Pane, At: r.At}
 }
 
 // stateRecord is <agent id>.state.json. Start is the process's start time

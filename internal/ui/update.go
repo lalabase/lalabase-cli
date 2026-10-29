@@ -98,6 +98,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, cmd
 	case agents.Removed:
 		return m.receiveRemoved(msg)
+	case agents.Settled:
+		return m, m.receiveSettled(msg)
 	case agents.Marked:
 		if m.app != nil {
 			m.app.receiveMarked(msg)
@@ -268,7 +270,7 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 	case MarkRead:
 		return m.markRead()
 	case Launch:
-		return m.launchClaude()
+		return m.pressX()
 	case OpenAgents:
 		if m.focus == view.Agents {
 			return m.closeAgents()

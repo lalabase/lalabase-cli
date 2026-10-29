@@ -25,7 +25,9 @@ shows it with a glyph in the ticket list and a line in the ticket's head.
 Since C9b it shows every agent of the profile across the organisations: an
 Agents area under the organisations, a glyph at each organisation, a
 summary in the header, and `A` to reach them. Since C9c `d` removes an
-agent whose session is over, and every start cleans up old ones.
+agent whose session is over, and every start cleans up old ones; `x` on a
+ticket with an agent jumps to the agent's pane, or starts it again once
+its session is over.
 
 ## Setting up
 
@@ -166,7 +168,8 @@ navigation again.
   screen of their own; `↑`/`↓` choose one, `Enter` opens its ticket, `Esc`
   or `A` again go back. (`a` is not this key: it is kept for "assign to
   me".) `d` removes an agent that ended or is lost, or has been starting
-  for over an hour (C9c), in the agents or in its ticket's pane. The help
+  for over an hour (C9c), in the agents or in its ticket's pane; `x` there
+  jumps to the agent's pane or starts it again (C9c, below). The help
   line names exactly
   the keys that act, on as many lines as it takes.
 * **The mouse wheel** scrolls the object pane (a ticket, the details of a
@@ -179,10 +182,11 @@ navigation again.
   (Option in iTerm2, Fn in Terminal.app).
 * **The ticket pane.** When the cursor rests on a ticket row for 300 ms and
   the object pane is on the screen (three columns and two columns always,
-  one column with the pane focused), the ticket is read as a preview: background work, at
-  most six background starts per rolling minute (retries counted), held
-  until the window rolls on when the budget is spent, canceled when the
-  cursor moves on. `Enter` opens the ticket as the person's read and joins
+  one column with the pane focused), the ticket is read as a preview: background work
+  before every other, with a budget of its own of 30 starts per rolling
+  minute (retries counted), held until the window rolls on when that is
+  spent, canceled when the cursor moves on. While it loads for the first
+  time the pane names the ticket from its row under "Loading…". `Enter` opens the ticket as the person's read and joins
   a pending preview: one request, both get the whole ticket. The pane shows
   the head, the description (cut by the server at 8,000 characters), the
   comments newest first (25 a page, with the number of readable comments
@@ -277,9 +281,18 @@ navigation again.
     `exec claude --mcp-config '<dir>/m' --strict-mcp-config --session-id '<uuid>' --settings '<dir>/s' -n 'lalabase #<n>' '<prompt>'`,
     every value single-quoted; `claude` comes from the `PATH` the pane's
     shell exports (an alias or a shell function of that name is not used).
-    Every press opens a new split. Elsewhere the interface gives the
+    Every press on a ticket without an agent opens a new split (since C9c
+    `x` on a ticket with an agent acts on that agent instead, below).
+    Elsewhere the interface gives the
     terminal to `claude` (from the `PATH`, no shell, the same arguments, no
     script) and comes back when it ends.
+    **tmux prototype:** with tmux on the client's `PATH` in iTerm,
+    tracked agents run in detached sessions on the `lalabase` tmux socket.
+    One viewer pane follows the active agent of the ticket shown and
+    closes when focus leaves the ticket and agents area; the agent keeps
+    running. A restart resumes the conversation in a new tmux session;
+    the old agent record stays until the new agent's first hook confirms
+    it started, as with a direct iTerm launch.
   * **Which folder.** `[profiles.<name>.folders]` in `config.toml` maps a
     project id to an absolute path or one under `~/`; without an entry,
     the folder `lalabase` was started in. The folder must exist; a path
@@ -371,8 +384,8 @@ navigation again.
     hook under the lock `<id>.lock`) and, once you opened the agent from
     the client, `<id>.seen` (C9b, below). They are kept like the config
     (`internal/privatefs`); the hook never makes the directory. An agent
-    stays until it is removed (a later slice); the launch directory's day
-    and the disk cache do not touch them.
+    stays until `d` or the cleanup removes it (C9c); the launch
+    directory's day and the disk cache do not touch them.
   * **The states**, in order of urgency (of several agents at a ticket the
     most urgent shows):
 
@@ -380,7 +393,7 @@ navigation again.
     |---|---|---|---|
     | waiting for approval | `!` | magenta, bold | `PermissionRequest` or `Notification` with `notification_type: "permission_prompt"` |
     | waiting for you | `⣿` | magenta | `Stop`, the question tool's request, or `SessionStart` after `/clear`, `/resume` or `/branch` (no `Stop` follows them) |
-    | lost | `✕` | red | the pid is gone, or now has another start time |
+    | lost | `✕` | red | the pid is gone, or now has another start time; or, written by the client, an agent that never got past starting lost its pane, or its `claude` ended here before any hook (C9c) |
     | working | braille spinner | cyan | `SessionStart` (a start, as `x`'s), `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop` with a background task running |
     | starting | `⠂` | cyan, faint | no hook yet (the folder's trust dialog comes first) |
     | ended | `✓` | green, faint | `SessionEnd`, but for `/clear`, `/resume` and `/branch` |
@@ -423,9 +436,9 @@ navigation again.
     ticket's title come from the session (the directory, the ticket in the
     pane, the list shown, the cache). A title the session lacks is read
     once per ticket through the usual way (`get_ticket`), as idle work:
-    after every waiting preview, and with at most half of the background
-    budget, so the previews keep at least the other half (a title read
-    that runs holds the background place while it runs); the disk cache
+    after every waiting preview, and with at most three of the six
+    background starts a minute (a title read that runs holds the
+    background place while it runs); the disk cache
     is asked beside it,
     and a title found there cancels the server's read while it still
     waits;
@@ -490,6 +503,69 @@ navigation again.
     directory with more says so in the status line instead of showing no
     agent, and the cleanup, which visits up to 65536, brings it below at
     the next start.
+* **Back to an agent (C9c).** `x` on a ticket with an agent acts on the
+  agent the head shows, the most urgent at the ticket; in the agents' list
+  on the one under the cursor.
+  * **Jump.** An agent that works, waits or starts: iTerm selects its
+    pane, found by the unique id the launch script returned, in every
+    window and tab; it selects the pane's tab, then the pane, then the
+    window, in this order (the window first breaks the script's
+    references, the pane before its tab leaves the tab's old pane in
+    front). The script is a constant run with `osascript -`, the pane's
+    id, checked as a UUID, its one argument. What came of it is read from
+    the error's number alone, since iTerm's texts are localised: the
+    script's own 4201 says the pane is gone; a starting agent is then lost
+    (below), one with a state keeps it. Without iTerm (or inside tmux, GNU
+    screen or zellij), or for an agent whose pane is not known (a launch
+    iTerm did not answer in time), there is no pane to select: `x` says
+    so in the status line, and neither the help nor the head offers it.
+    `select` does not bring iTerm to the front when another app is.
+  * **Start again.** An agent that ended or is lost starts again as a new
+    agent, with a launch directory of its own (a new `m` and `s`) and a
+    launch record of its own (a record is never replaced): its `claude`
+    resumes the session the old agent's hooks recorded last,
+    `claude --mcp-config '<dir>/m' --strict-mcp-config --resume '<session id>' --settings '<dir>/s' -n 'lalabase #<n>'`,
+    without the prompt, the conversation being there. That is the newest
+    session id, never the launch's after a `/clear`, which would bring back
+    the conversation before the clear. An agent whose hooks never recorded
+    a session (lost before its first hook) has no conversation to resume:
+    it starts afresh with a new session id and the prompt. Once a hook of
+    the new agent came (in iTerm, seen by the next read; without iTerm,
+    when `claude` ended here) the old agent's files go, decided under its
+    lock as `d` decides; until then the ticket (its row, head and meta
+    bar) shows the new agent, and `x` jumps to its pane, while the agents'
+    area, the organisation's glyph and the header's counts still list the
+    old one beside it (`x` there does nothing, `d` removes it). A read that
+    failed, or that began before the new agent was recorded, does not end
+    that wait. A pane alone is no proof: `claude --resume`
+    finds a conversation only in the folder it ran in (a project without
+    a folder entry starts in the folder `lalabase` was started in), and
+    not once Claude Code cleaned its transcript up. A start that opened
+    nothing leaves the old agent; one whose `claude` ended here before
+    any hook, or whose pane the jump finds gone before its first hook,
+    also takes the new agent's files, and the old one may be started
+    again. Should the client quit before the first hook, both agents stay
+    and `d` removes the old one.
+    The new session's server has a new name (`lalabase_c7_<8 hex>` of the
+    new launch directory): calls earlier in the conversation name the old
+    one.
+  * **Lost before its first hook.** A starting agent has no state and no
+    pid. The client writes the state `lost` itself, under the agent's lock
+    and only while no hook has written one: when the jump finds a starting
+    agent's pane gone, and when `claude` ran here and ended before any hook
+    (`Esc` on the folder's trust dialog). A hook that comes after replaces
+    it like every state. A client from before C9c reads it as starting.
+  * **On the screen.** The ticket's head names the keys that act on its
+    agent, `⠹ Agent working · for 4 min · x jump to it` or
+    `✓ Agent ended · for 4 min · x start again · d remove`, and so does the
+    meta bar. The status line says switching to the agent, switched, its
+    pane not found, no pane known, starting it again, started again, an
+    agent lost with its pane, a start again that did not begin (the old
+    agent stays), or that the agents could not be updated and why; what
+    `x` in the agents' list did is told there and goes when the list
+    closes (an answer that comes after belongs to the ticket). While
+    a jump or a start again runs, a second `x` does nothing, and an agent
+    whose start again is being settled is not started again twice.
 * **A comment that is gone.** When the server answers a comment read whole
   with "not found" (it was deleted or made private), its cached text goes
   and is hidden at once, the ticket stays and says "Comment unavailable",
@@ -835,15 +911,20 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   broke off, was too large or the caller left; a window not in the future
   pauses 5 seconds. A job is
   retried at most once: a read on a temporary failure, a write only after a
-  429 or when nothing was sent. Background work (previews, their reloads,
-  their retries) starts at most six times per rolling minute; what is held
-  waits for the window to roll on, the person's actions are never counted
-  or held, and a held background read a person joins starts as theirs.
-  Idle work (C9b: the titles of the agents' tickets) waits behind every
-  background job and starts only while fewer than three starts are in the
-  window, so at least the other half of the budget stays the previews'
-  (one that runs holds the background place meanwhile); a preview
-  or a person joining an idle read lifts it. A
+  429 or when nothing was sent. Previews (and the one reload of a cached
+  ticket shown) start at most 30 times per rolling minute and go before
+  other background work, which is counted apart, at most six times. The
+  server allows 60 requests a minute per token: the previews take at most
+  half, the rest is your own actions and the Claude Code agents started
+  with the same token, which the client does not count; a 429 pauses
+  everything, your actions too. What is held waits for its window to roll
+  on, the person's actions are never counted or held, and a held
+  background read a person joins starts as theirs. Idle work (C9b: the
+  titles of the agents' tickets) waits behind every preview that may
+  start and every background job, and starts only while fewer than three
+  of the six background starts are in the window (one that runs holds the
+  background place meanwhile); a preview or a person joining an idle read
+  lifts it. A
   shared request belongs to the program's
   lifetime, not to its first caller: it is canceled when its last caller
   leaves or the program stops its work (on quitting, or after a fatal error).

@@ -114,23 +114,84 @@ func New(cfg Config) *Launcher {
 // comes when iTerm answered or the deadline passed; otherwise it is
 // Bubble Tea's exec of claude, and the Done follows when claude ended.
 func (l *Launcher) Launch(ref uint64, t Ticket) tea.Cmd {
+	return l.command(ref, t, StartAction, func() tea.Msg { return l.launch(ref, t, Again{}) })
+}
+
+// Again is the agent a start again replaces (C9c): its id, and Claude's
+// latest session id when a hook recorded one (agents.Agent.Session with
+// Resumable). Without one the session never began (Esc on the trust
+// dialog) and there is no conversation to resume: the start is a fresh
+// one with a new session id.
+type Again struct {
+	Agent, Session string
+}
+
+// Again is the command of a start again for the agent a replaces, at its
+// ticket t (F9): a new agent with a launch of its own, which resumes a's
+// latest session, never its launch's id after a /clear. The old agent's
+// files are not touched: the interface removes it once the new one went
+// through (agents.Settle), so a start that fails leaves it.
+func (l *Launcher) Again(ref uint64, t Ticket, a Again) tea.Cmd {
+	return l.command(ref, t, AgainAction, func() tea.Msg { return l.launch(ref, t, a) })
+}
+
+// Jump is the command that selects the pane of the agent at t (F8); its
+// message is a Done with the action JumpAction, under the supervisor like
+// Launch.
+func (l *Launcher) Jump(ref uint64, t Ticket, agent, pane string) tea.Cmd {
+	return l.command(ref, t, JumpAction, func() tea.Msg { return l.jump(ref, t, agent, pane) })
+}
+
+// Jumps says whether a jump can find a pane: the client runs in iTerm.
+func (l *Launcher) Jumps() bool { return l.session != "" }
+
+// command runs do under the supervisor as the command of one action.
+func (l *Launcher) command(ref uint64, t Ticket, action Action, do func() tea.Msg) tea.Cmd {
 	sup := l.cfg.Supervisor
 	return func() tea.Msg {
-		msg, ok := worker.Run(sup, "launch", func() tea.Msg { return l.launch(ref, t) })
+		msg, ok := worker.Run(sup, "launch", do)
 		if !ok {
 			if sup.Err() != nil {
 				return worker.Fatal{}
 			}
 			// Not run: the session ended before this command came.
-			return Done{Ref: ref, Ticket: t, Kind: Canceled}
+			return Done{Ref: ref, Ticket: t, Kind: Canceled, Action: action}
 		}
 		return msg
 	}
 }
 
-func (l *Launcher) launch(ref uint64, t Ticket) tea.Msg {
-	done := func(k Kind, detail string) Done { return Done{Ref: ref, Ticket: t, Kind: k, Detail: detail} }
-	if !checkTicket(t) {
+// jump asks iTerm to select the pane; NoPane without iTerm or without a
+// pane id of its form. The outcome is read from the error's number alone
+// (classify): 4201, the script's own, is a pane closed.
+func (l *Launcher) jump(ref uint64, t Ticket, agent, pane string) Done {
+	d := Done{Ref: ref, Ticket: t, Action: JumpAction, Agent: agent, Kind: NoPane}
+	if l.session == "" || !agents.ForeignID(pane) {
+		return d
+	}
+	ctx, cancel := context.WithTimeout(l.cfg.Supervisor.Context(), l.deadline)
+	defer cancel()
+	_, stderr, err := l.osascript(ctx, jumpScript, []string{"-", pane})
+	switch d.Kind = classify(ctx, stderr, err); d.Kind {
+	case Opened:
+		d.Kind = Jumped
+	case SessionGone:
+		d.Kind = PaneGone
+	}
+	return d
+}
+
+// launch starts claude for t: a first start, or a start again of the
+// agent a names (a.Agent set).
+func (l *Launcher) launch(ref uint64, t Ticket, a Again) tea.Msg {
+	action := StartAction
+	if a.Agent != "" {
+		action = AgainAction
+	}
+	done := func(k Kind, detail string) Done {
+		return Done{Ref: ref, Ticket: t, Kind: k, Detail: detail, Action: action, Replaces: a.Agent}
+	}
+	if !checkTicket(t) || !resumable(a.Session) {
 		return done(NotHandedOver, "")
 	}
 	folder, kind, detail := l.folder(t.Project)
@@ -166,19 +227,22 @@ func (l *Launcher) launch(ref uint64, t Ticket) tea.Msg {
 	if err != nil {
 		return done(NoFiles, err.Error())
 	}
-	tr, agent, untracked, err := l.track(t, dir)
+	tr, agent, untracked, err := l.track(t, dir, a.Session)
 	if err != nil {
 		return done(NoFiles, err.Error())
 	}
 	args := claudeArgs(t, server, mcp, tr)
 	if l.session == "" {
 		// Recorded before claude runs: the interface waits until it ends.
+		recorded := ""
 		if why := l.record(t, agent, tr, ""); why != "" {
 			untracked = why
+		} else {
+			recorded = agent
 		}
 		return l.here(claude, folder, args, func(k Kind, detail string) Done {
 			d := done(k, detail)
-			d.Untracked = untracked
+			d.Untracked, d.Agent = untracked, recorded
 			return d
 		})
 	}
@@ -195,6 +259,8 @@ func (l *Launcher) launch(ref uint64, t Ticket) tea.Msg {
 		if d.Kind == Opened || d.Kind == NoAnswer {
 			if why := l.record(t, agent, tr, ""); why != "" {
 				untracked = why
+			} else {
+				d.Agent = agent
 			}
 			d.Untracked = untracked
 		}
@@ -211,49 +277,69 @@ func (l *Launcher) launch(ref uint64, t Ticket) tea.Msg {
 		}
 		if why := l.record(t, agent, tr, pane); why != "" {
 			untracked = why
+		} else {
+			d.Agent = agent
 		}
 		d.Untracked = untracked
 	}
 	return d
 }
 
+// resumable: a session to resume is "" (a fresh start) or a UUID in the
+// lower case the client's records take (agents.Launch): one in capitals
+// would resume, but its new agent could not be recorded (review round 1
+// of #43).
+func resumable(session string) bool {
+	return session == "" || agents.ForeignID(session) && session == strings.ToLower(session)
+}
+
 // track prepares the hooks of a new agent (C9a): its id and the session
 // id, the agents directory made and checked, and the settings file in the
-// launch directory. A launch it cannot track goes on without hooks, as
-// before C9a, and why says what stopped it; err is a failure to write the
-// launch directory, which stops the launch.
-func (l *Launcher) track(t Ticket, dir launchdir.Dir) (tr tracking, agent, why string, err error) {
+// launch directory. resume is the session a start again resumes (C9c):
+// it is the new agent's session, with or without hooks. A launch it
+// cannot track goes on without hooks, as before C9a, and why says what
+// stopped it; err is a failure to write the launch directory, which stops
+// the launch.
+func (l *Launcher) track(t Ticket, dir launchdir.Dir, resume string) (tr tracking, agent, why string, err error) {
+	tr = tracking{session: resume, resume: resume != ""}
 	exe, agentsDir := l.cfg.Executable, l.cfg.Agents
 	switch {
 	case exe == "" || agentsDir == "":
-		return tracking{}, "", "the program or the cache directory is unknown", nil
+		return tr, "", "the program or the cache directory is unknown", nil
 	case !filepath.IsAbs(exe) || !passable(exe):
-		return tracking{}, "", "the program's path cannot be put into a hook: " + exe, nil
+		return tr, "", "the program's path cannot be put into a hook: " + exe, nil
 	case !filepath.IsAbs(agentsDir) || !passable(agentsDir):
-		return tracking{}, "", "the agents' directory cannot be put into a hook: " + agentsDir, nil
+		return tr, "", "the agents' directory cannot be put into a hook: " + agentsDir, nil
 	case !agents.ForeignID(t.Org):
-		return tracking{}, "", "the ticket's organisation is unknown", nil
+		return tr, "", "the ticket's organisation is unknown", nil
 	}
-	agent, session, why := l.newAgent()
+	agent, session, why := l.newAgent(!tr.resume)
 	if why != "" {
-		return tracking{}, "", why, nil
+		return tr, "", why, nil
+	}
+	if !tr.resume {
+		tr.session = session
 	}
 	path, err := dir.Write(launchdir.Settings, settings(exe, agentsDir, agent), 0o600)
 	if err != nil {
 		return tracking{}, "", "", err
 	}
-	return tracking{session: session, settings: path}, agent, "", nil
+	tr.settings = path
+	return tr, agent, "", nil
 }
 
-// newAgent makes the agents directory ready and draws the agent's id and
-// the session's; why says what failed.
-func (l *Launcher) newAgent() (agent, session, why string) {
+// newAgent makes the agents directory ready and draws the agent's id and,
+// for a new session, the session's; why says what failed.
+func (l *Launcher) newAgent(withSession bool) (agent, session, why string) {
 	if err := l.prepare(l.cfg.Agents); err != nil {
 		return "", "", err.Error()
 	}
 	agent, err := l.newID()
 	if err != nil {
 		return "", "", err.Error()
+	}
+	if !withSession {
+		return agent, "", ""
 	}
 	session, err = l.newID()
 	if err != nil {

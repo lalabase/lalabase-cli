@@ -440,8 +440,9 @@ func (a *app) moveAgent(delta int) {
 }
 
 // agentsBindings are the keys of the agents' list: the cursor, Enter on
-// an agent whose ticket can open, R while a title's read failed, Esc
-// back (and A, which the help does not name twice).
+// an agent whose ticket can open, x on the agent (C9c), d on one whose
+// session is over, R while a title's read failed, Esc back (and A, which
+// the help does not name twice).
 func (m Model) agentsBindings() []binding {
 	a := m.app
 	var out []binding
@@ -451,6 +452,7 @@ func (m Model) agentsBindings() []binding {
 	if ag, ok := a.agentUnderCursor(); ok && a.canOpenAgent(ag) {
 		out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenTicketHelp})
 	}
+	out = append(out, m.xBinding()...)
 	if _, ok := m.removeTarget(); ok {
 		out = append(out, binding{RemoveAgent, uitext.RemoveAgentKey, uitext.RemoveAgentHelp})
 	}
@@ -499,6 +501,7 @@ func (m Model) closeAgents() (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.focus = m.agentsFrom
+	m.app.leaveAgentsList()
 	if a := m.app; m.focus == view.Object && a.detail == nil && (a.active == nil || a.active.opened == "") {
 		m.focus = view.List
 	}
@@ -524,8 +527,10 @@ func (m Model) openAgent() (Model, tea.Cmd) {
 		return m, nil
 	}
 	var cmds []tea.Cmd
-	// A problem told of an agent stands until the next open or d.
+	// A problem told of an agent stands until the next open or d; one of
+	// x in the list goes with the list.
 	a.clearAgentsNotice()
+	a.leaveAgentsList()
 	a.highlight, a.highlightSection = ag.Organisation, sectionTickets
 	if v := a.tickets; v != nil && v.org == ag.Organisation && v.project == ag.Project && v.index(ag.Ticket) >= 0 {
 		v.selected = ag.Ticket
