@@ -67,7 +67,7 @@ func (m Model) xNow() (xTarget, bool) {
 	default:
 		return xTarget{}, false
 	}
-	if a.agents.replacing[ag.ID] {
+	if _, out := a.agents.replacing[ag.ID]; out {
 		return xTarget{}, false
 	}
 	return xTarget{kind: a.xFor(ag), ticket: agentAddress(ag), agent: ag}, true
@@ -127,37 +127,105 @@ func (m Model) pressX() (Model, tea.Cmd) {
 		again.Session = x.agent.Session
 	}
 	if a.agents.replacing == nil {
-		a.agents.replacing = map[string]bool{}
+		a.agents.replacing = map[string]string{}
 	}
-	a.agents.replacing[x.agent.ID] = true
+	a.agents.replacing[x.agent.ID] = ""
 	a.launch.notice, a.launch.tone = uitext.Fill(uitext.StartingAgain, x.ticket.Number), present.NoticeWaiting
 	return m, tea.Batch(a.deps.Launcher.Again(a.launch.ref, x.ticket, again), a.readAgents())
 }
 
 // settleAfter is the settlement a launch's answer asks for (agents.Settle),
 // nil for none: a jump that found the pane gone; an agent that ran here
-// (its end may have come before any hook); a start again whose pane
-// opened. A start again that went no further keeps the old agent, which x
-// may start again.
+// (its end may have come before any hook). A start again whose pane
+// opened waits for the new agent's first hook (settleReplaced): claude
+// may not have found the conversation (resumed in another folder, its
+// transcript gone), and then the old agent is all that is left of it. A
+// start again that went no further keeps the old agent, which x may start
+// again.
 func (a *app) settleAfter(d launch.Done) tea.Cmd {
 	var after agents.After
 	switch {
 	case d.Action == launch.JumpAction && d.Kind == launch.PaneGone:
-		after = agents.After{Agent: d.Agent}
+		// A start again's agent whose pane went before its first hook:
+		// the start failed, and it gives way to the agent it replaces.
+		after = agents.After{Agent: d.Agent, Replaces: a.replacedBy(d.Agent)}
 	case d.Agent != "" && (d.Kind == launch.Ended || d.Kind == launch.EndedWithError):
 		after = agents.After{Agent: d.Agent, Replaces: d.Replaces}
-	case d.Agent != "" && d.Replaces != "" && d.Kind == launch.Opened:
-		after = agents.After{Agent: d.Agent, Replaces: d.Replaces, Opened: true}
+	case d.Agent != "" && d.Replaces != "" && d.Kind == launch.Opened && a.deps.Agents != nil:
+		a.agents.replacing[d.Replaces] = d.Agent
+		return nil
 	}
 	if after.Agent == "" || a.deps.Agents == nil {
 		delete(a.agents.replacing, d.Replaces)
 		return nil
 	}
+	return a.settleAgents(after, d.Ticket.Number, d.Action == launch.JumpAction)
+}
+
+// settleAgents issues the settlement after, unless it is out already.
+func (a *app) settleAgents(after agents.After, number int, jump bool) tea.Cmd {
+	if _, out := a.agents.settling[after]; out {
+		return nil
+	}
 	if a.agents.settling == nil {
 		a.agents.settling = map[agents.After]settling{}
 	}
-	a.agents.settling[after] = settling{number: d.Ticket.Number, jump: d.Action == launch.JumpAction}
+	a.agents.settling[after] = settling{number: number, jump: jump}
 	return a.deps.Agents.Settle(after, a.now())
+}
+
+// replacedBy is the agent the start again that made id replaces, "" for
+// none.
+func (a *app) replacedBy(id string) string {
+	for old, next := range a.agents.replacing {
+		if next != "" && next == id {
+			return old
+		}
+	}
+	return ""
+}
+
+// settleReplaced looks at each start again whose pane opened, after a
+// read: once a hook of the new agent came, the old agent goes; a new
+// agent that left without one (d, a lost mark, another client) ends the
+// wait, and the old agent stays and may be started again.
+func (a *app) settleReplaced() tea.Cmd {
+	var cmds []tea.Cmd
+	for old, next := range a.agents.replacing {
+		if next == "" {
+			continue
+		}
+		ag, ok := a.listed(next)
+		switch {
+		case ok && ag.Resumable:
+			cmds = append(cmds, a.settleAgents(agents.After{Agent: next, Replaces: old, Opened: true}, ag.Number, false))
+		case !ok || ag.State == agents.Lost:
+			delete(a.agents.replacing, old)
+		}
+	}
+	return tea.Batch(cmds...)
+}
+
+// listed is the agent id of the newest read.
+func (a *app) listed(id string) (agents.Agent, bool) {
+	for _, ag := range a.agents.list {
+		if ag.ID == id {
+			return ag, true
+		}
+	}
+	return agents.Agent{}, false
+}
+
+// replaced says whether ag gives way to a start again of it that is
+// listed: the ticket's head, row and meta bar show the new agent, so x
+// there acts on it.
+func (a *app) replaced(ag agents.Agent) bool {
+	next, ok := a.agents.replacing[ag.ID]
+	if !ok || next == "" {
+		return false
+	}
+	_, listed := a.listed(next)
+	return listed
 }
 
 // settling is what the model keeps of a settlement that is out: the

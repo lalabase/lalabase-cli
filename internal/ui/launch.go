@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/launch"
 	"github.com/gboyke/lalabase-cli/internal/present"
+	"github.com/gboyke/lalabase-cli/internal/ui/view"
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
@@ -116,7 +117,7 @@ func (m Model) launchDone(d launch.Done) tea.Cmd {
 	if a.launch.tone == present.Plain && a.launch.notice.String() != "" {
 		cmd = a.launchHint()
 	}
-	if a.launchShown() {
+	if a.launchShown(m.focus == view.Agents) {
 		// Decide after the final tone and deadline: a plain hint needs
 		// its deadline, and an opened launch may have a tracking error.
 		a.clearAgentsNotice()
@@ -146,14 +147,16 @@ func launchTone(k launch.Kind) present.Style {
 	return present.NoticeProblem
 }
 
-// launchShown: the pane shows the ticket the notice is about, or x was
-// pressed in the agents' list, and a hint's deadline has not come by the
-// model's clock.
-func (a *app) launchShown() bool {
+// launchShown: the notice's place is shown (the pane shows the ticket the
+// notice is about, or x was pressed in the agents' list and that is open:
+// inAgents), and a hint's deadline has not come by the model's clock. A
+// problem of the list stands there only (review round 1 of #43): it has
+// no deadline, and outside the list nothing would take it away.
+func (a *app) launchShown(inAgents bool) bool {
 	if a.launch.tone == present.Plain && !a.launch.until.After(a.now()) {
 		return false
 	}
-	shown := a.launch.everywhere || a.detail != nil && a.detail.id == a.launch.ticket
+	shown := a.launch.everywhere && inAgents || !a.launch.everywhere && a.detail != nil && a.detail.id == a.launch.ticket
 	return a.launch.notice.String() != "" && shown
 }
 

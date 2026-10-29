@@ -178,7 +178,7 @@ func (l *Launcher) launch(ref uint64, t Ticket, a Again) tea.Msg {
 	done := func(k Kind, detail string) Done {
 		return Done{Ref: ref, Ticket: t, Kind: k, Detail: detail, Action: action, Replaces: a.Agent}
 	}
-	if !checkTicket(t) || (a.Session != "" && !agents.ForeignID(a.Session)) {
+	if !checkTicket(t) || !resumable(a.Session) {
 		return done(NotHandedOver, "")
 	}
 	folder, kind, detail := l.folder(t.Project)
@@ -255,6 +255,14 @@ func (l *Launcher) launch(ref uint64, t Ticket, a Again) tea.Msg {
 		d.Untracked = untracked
 	}
 	return d
+}
+
+// resumable: a session to resume is "" (a fresh start) or a UUID in the
+// lower case the client's records take (agents.Launch): one in capitals
+// would resume, but its new agent could not be recorded (review round 1
+// of #43).
+func resumable(session string) bool {
+	return session == "" || agents.ForeignID(session) && session == strings.ToLower(session)
 }
 
 // track prepares the hooks of a new agent (C9a): its id and the session

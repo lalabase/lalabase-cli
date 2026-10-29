@@ -8,6 +8,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/features"
 	"github.com/gboyke/lalabase-cli/internal/present"
+	"github.com/gboyke/lalabase-cli/internal/ui/view"
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
@@ -114,7 +115,7 @@ func (m Model) status() (present.Inline, present.Style) {
 		// Of the agents' notice and the launch's the newer shows: a
 		// launch's start and its answer clear the agents' notice.
 		return a.agents.notice, a.agents.tone
-	case a.launchShown():
+	case a.launchShown(m.focus == view.Agents):
 		return a.launch.notice, a.launch.tone
 	}
 	return present.Inline{}, present.Plain

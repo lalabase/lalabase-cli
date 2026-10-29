@@ -32,6 +32,8 @@ type fakeWatcher struct {
 	settled    []agents.After
 	settleLost bool
 	settleErr  error
+	// holdSettle: a settlement never answers (it is still out).
+	holdSettle bool
 }
 
 // Settle answers as agents.Settle would on the fake's agents: a lost
@@ -41,7 +43,7 @@ func (f *fakeWatcher) Settle(after agents.After, _ time.Time) tea.Cmd {
 	f.mu.Lock()
 	f.settled = append(f.settled, after)
 	lost, err := f.settleLost && !after.Opened, f.settleErr
-	if err == nil {
+	if err == nil && !f.holdSettle {
 		gone := after.Replaces
 		if lost && after.Replaces != "" {
 			gone = after.Agent
@@ -57,7 +59,11 @@ func (f *fakeWatcher) Settle(after agents.After, _ time.Time) tea.Cmd {
 		}
 		f.agents = kept
 	}
+	hold := f.holdSettle
 	f.mu.Unlock()
+	if hold {
+		return func() tea.Msg { return nil }
+	}
 	return func() tea.Msg { return agents.Settled{After: after, Lost: lost, Err: err} }
 }
 

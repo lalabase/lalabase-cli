@@ -237,7 +237,9 @@ func TestStartAgainHere(t *testing.T) {
 
 // A session id of another form never reaches a script or claude.
 func TestStartAgainRefusesASessionOfAnotherForm(t *testing.T) {
-	for _, s := range []string{"x", cleared + "' ; touch pwned '", cleared + "\n"} {
+	// Review round 1 of #43: one in capitals would pass here but not the
+	// new record's check, and the resumed session would run untracked.
+	for _, s := range []string{"x", cleared + "' ; touch pwned '", cleared + "\n", strings.ToUpper(cleared)} {
 		r := newRig(t, true, nil)
 		d, ok := r.again(shown, Again{Agent: oldAgent, Session: s}).(Done)
 		if !ok || d.Kind != NotHandedOver || d.Agent != "" {

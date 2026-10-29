@@ -521,11 +521,19 @@ navigation again.
     session id, never the launch's after a `/clear`, which would bring back
     the conversation before the clear. An agent whose hooks never recorded
     a session (lost before its first hook) has no conversation to resume:
-    it starts afresh with a new session id and the prompt. Once the new
-    pane opened (without iTerm: once `claude` ran here and a hook of it
-    came) the old agent's files go, decided under its lock as `d` decides;
-    a start that opened nothing leaves the old agent, and one whose
-    `claude` ended here before any hook also takes the new agent's files.
+    it starts afresh with a new session id and the prompt. Once a hook of
+    the new agent came (in iTerm, seen by the next read; without iTerm,
+    when `claude` ended here) the old agent's files go, decided under its
+    lock as `d` decides; until then the ticket shows the new agent, and
+    `x` jumps to its pane. A pane alone is no proof: `claude --resume`
+    finds a conversation only in the folder it ran in (a project without
+    a folder entry starts in the folder `lalabase` was started in), and
+    not once Claude Code cleaned its transcript up. A start that opened
+    nothing leaves the old agent; one whose `claude` ended here before
+    any hook, or whose pane the jump finds gone before its first hook,
+    also takes the new agent's files, and the old one may be started
+    again. Should the client quit before the first hook, both agents stay
+    and `d` removes the old one.
     The new session's server has a new name (`lalabase_c7_<8 hex>` of the
     new launch directory): calls earlier in the conversation name the old
     one.

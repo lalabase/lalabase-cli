@@ -63,8 +63,10 @@ func recorded(dir, id string) bool {
 // After is what became of a start the client made, for Settle: the agent
 // it is about (the new one, or the one whose pane the jump did not find),
 // the agent a start again replaces ("" for a first start or a jump), and
-// whether a pane opened for the new one (iTerm), so the start went
-// through whatever the agent's state is.
+// whether the start went through whatever the agent's state is: the
+// interface sets it once a hook of the new agent came after its pane
+// opened (a pane alone is no proof: claude --resume may have found no
+// conversation).
 type After struct {
 	Agent, Replaces string
 	Opened          bool

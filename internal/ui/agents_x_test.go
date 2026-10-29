@@ -182,25 +182,86 @@ func TestXStartsAnAgentWhoseSessionIsOverAgain(t *testing.T) {
 		if got := l.restarts; len(got) != 1 || got[0].again != (launch.Again{Agent: old.ID, Session: cleared}) || got[0].ticket != agentTicket(old) {
 			t.Fatalf("%v: again %+v", state, got)
 		}
-		if got := f.settlements(); len(got) != 1 || got[0] != (agents.After{Agent: newAgent, Replaces: old.ID, Opened: true}) {
-			t.Fatalf("%v: settled %+v", state, got)
-		}
 		if got := h.status(); got != "Claude Code started again beside #6" {
 			t.Fatalf("%v: status %q", state, got)
 		}
-		// The old agent left at once; the new one comes with the next read.
+		// Review round 1 of #43: the pane opened, but claude may not have
+		// found the conversation (another folder, a transcript gone): the
+		// old agent stays until a hook of the new one came.
+		h.due()
+		if got := f.settlements(); len(got) != 0 {
+			t.Fatalf("%v: settled before a hook %+v", state, got)
+		}
+		if line, _ := h.headLine(); !strings.Contains(line, "starting") || !strings.HasSuffix(line, "x jump to it") {
+			t.Fatalf("%v: head %q, want the new agent's", state, line)
+		}
+		if h.m.focus == view.Object && !strings.Contains(helpText(h.m), "jump to agent") {
+			t.Fatalf("%v: help %q", state, helpText(h.m))
+		}
+		// Its first hook: the old agent goes.
+		started.State, started.Resumable = agents.WaitingForYou, true
+		f.set(old, started)
+		h.due()
+		if got := f.settlements(); len(got) != 1 || got[0] != (agents.After{Agent: newAgent, Replaces: old.ID, Opened: true}) {
+			t.Fatalf("%v: settled %+v", state, got)
+		}
 		for _, ag := range h.m.app.agents.list {
 			if ag.ID == old.ID {
 				t.Fatalf("%v: the old agent stayed", state)
 			}
 		}
 		h.due()
-		if len(h.m.app.agents.list) != 1 || h.m.app.agents.list[0].ID != newAgent {
-			t.Fatalf("%v: agents %+v", state, h.m.app.agents.list)
+		if len(f.settlements()) != 1 || len(h.m.app.agents.list) != 1 || h.m.app.agents.list[0].ID != newAgent {
+			t.Fatalf("%v: agents %+v, settled %+v", state, h.m.app.agents.list, f.settlements())
 		}
-		if line, _ := h.headLine(); !strings.Contains(line, "starting") {
-			t.Fatalf("%v: head %q", state, line)
-		}
+	}
+}
+
+// Review round 1 of #43: the new agent's pane gone before its first hook
+// (claude --resume found nothing and the pane was closed): the start again
+// failed, the new agent goes and the old one stays, x offered on it again.
+func TestAStartAgainWhosePaneWentBeforeAHook(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	old := paned(h, agents.Ended)
+	f := h.withWatcher(old)
+	h.openSix()
+	started := old
+	started.ID, started.State, started.Since, started.Resumable = newAgent, agents.Starting, h.now, false
+	f.set(old, started)
+	h.drive(h.press("x"))
+	h.due()
+	l.jumpKind = launch.PaneGone
+	f.settleLost = true
+	h.drive(h.press("x")) // on the new, starting agent: the jump
+	if got := l.jumps; len(got) != 1 || got[0].agent != newAgent {
+		t.Fatalf("jumps %+v", got)
+	}
+	if got := f.settlements(); len(got) != 1 || got[0] != (agents.After{Agent: newAgent, Replaces: old.ID}) {
+		t.Fatalf("settled %+v", got)
+	}
+	if len(h.m.app.agents.list) != 1 || h.m.app.agents.list[0].ID != old.ID {
+		t.Fatalf("agents %+v", h.m.app.agents.list)
+	}
+	if !h.offers(Launch) || !strings.Contains(helpText(h.m), "start agent again") {
+		t.Fatalf("x not offered on the old agent: %q", helpText(h.m))
+	}
+}
+
+// A new agent that leaves without a hook (d, another client) ends the
+// wait: the old agent is offered again.
+func TestAStartAgainWhoseNewAgentWent(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	old := paned(h, agents.Ended)
+	f := h.withWatcher(old)
+	h.openSix()
+	h.drive(h.press("x"))
+	h.due() // the read has only the old agent: the new one is gone
+	if !h.offers(Launch) || len(f.settlements()) != 0 {
+		t.Fatalf("x offered %v, settled %+v", h.offers(Launch), f.settlements())
 	}
 }
 
@@ -267,6 +328,9 @@ func TestHereTheEndSettles(t *testing.T) {
 	if len(h.m.app.agents.list) != 1 || h.m.app.agents.list[0].ID != old.ID {
 		t.Fatalf("agents %+v", h.m.app.agents.list)
 	}
+	if !h.offers(Launch) {
+		t.Fatal("x is not offered on the old agent again")
+	}
 
 	h = newHarness(t)
 	l = h.withLauncher()
@@ -293,13 +357,63 @@ func TestHereTheEndSettles(t *testing.T) {
 func TestAFailedSettlementIsTold(t *testing.T) {
 	h := newHarness(t)
 	l := h.withLauncher()
-	l.recorded = newAgent
+	l.noITerm, l.again, l.recorded = true, launch.Ended, newAgent
 	f := h.withWatcher(paned(h, agents.Ended))
 	f.settleErr = errors.New("it is running again")
 	h.openSix()
 	h.drive(h.press("x"))
 	if got := h.status(); got != "The agents of #6 could not be updated: it is running again" {
 		t.Fatalf("status %q", got)
+	}
+	if !h.offers(Launch) {
+		t.Fatal("x is not offered on the old agent again")
+	}
+}
+
+// Review round 1 of #43: a problem of x in the agents' list stands while
+// the list is open; leaving it takes the problem along, it does not stand
+// on every screen without an end.
+func TestAProblemOfXInTheListStaysThere(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.again = launch.NoPermission
+	ended := agentIn(2, orgA, 7, agents.Ended, h.now)
+	h.withWatcher(ended)
+	h.start()
+	h.drive(h.press("A"))
+	h.drive(h.press("x"))
+	if got := h.status(); !strings.HasPrefix(got, "macOS does not let") {
+		t.Fatalf("status %q", got)
+	}
+	h.drive(h.press("esc"))
+	if got := h.status(); strings.Contains(got, "macOS") {
+		t.Fatalf("the list's problem stands outside it: %q", got)
+	}
+}
+
+// The cursor of the agents' list follows a start again to the new agent.
+func TestTheCursorFollowsTheStartAgain(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	old := paned(h, agents.Ended)
+	// A working agent first in the list: a cursor that lost its agent
+	// falls back to it.
+	other := agentIn(3, orgA, 8, agents.Working, h.now)
+	f := h.withWatcher(other, old)
+	h.start()
+	h.drive(h.press("A"))
+	h.drive(h.press("down"))
+	h.drive(h.press("x"))
+	started := old
+	// Ended after its hook: less urgent than the working one, so a cursor
+	// that fell back would not land on it.
+	started.ID, started.State, started.Resumable = newAgent, agents.Ended, true
+	f.set(other, old, started)
+	h.due()
+	h.due()
+	if ag, ok := h.m.app.agentUnderCursor(); !ok || ag.ID != newAgent {
+		t.Fatalf("cursor on %+v", ag)
 	}
 }
 
@@ -400,5 +514,25 @@ func TestTheMetaBarNamesTheKeys(t *testing.T) {
 				t.Fatalf("%v: a hint broken: %q", c.state, value)
 			}
 		}
+	}
+}
+
+// A settlement out is not asked for again by the reads that follow it.
+func TestASettlementOutIsNotAskedTwice(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	old := paned(h, agents.Ended)
+	f := h.withWatcher(old)
+	f.holdSettle = true
+	h.openSix()
+	h.drive(h.press("x"))
+	started := old
+	started.ID, started.State, started.Resumable = newAgent, agents.WaitingForYou, true
+	f.set(old, started)
+	h.due()
+	h.due()
+	if got := f.settlements(); len(got) != 1 {
+		t.Fatalf("settled %+v", got)
 	}
 }

@@ -76,10 +76,12 @@ type agentsState struct {
 	// files than a read takes (agents.ErrTooManyFiles), said in the
 	// status line until a read succeeds.
 	tooMany bool
-	// replacing are the agents x starts again, by id, until their
-	// settlement answered (C9c): x does not start one twice. settling
-	// are the settlements out, with what their answer's notice needs.
-	replacing map[string]bool
+	// replacing are the agents x starts again, by id, with the new
+	// agent once its pane opened ("" while the launch runs), until the
+	// settlement answered or the new agent left (C9c): x does not start
+	// one twice. settling are the settlements out, with what their
+	// answer's notice needs.
+	replacing map[string]string
 	settling  map[agents.After]settling
 }
 
@@ -128,8 +130,9 @@ func (a *app) receiveAgents(s agents.Snapshot) tea.Cmd {
 			break
 		}
 	}
-	// A new agent's title, if the session lacks it, is read once.
-	titles := a.requestTitles()
+	// A new agent's title, if the session lacks it, is read once; a
+	// start again whose new agent had its first hook replaces the old.
+	titles := tea.Batch(a.requestTitles(), a.settleReplaced())
 	if a.agents.again {
 		a.agents.again = false
 		return tea.Batch(titles, a.readAgents())
@@ -155,7 +158,7 @@ func (a *app) agentsDue(until time.Time) tea.Cmd {
 // agentAt is the most urgent agent at a ticket; ok is false when it has
 // none.
 func (a *app) agentAt(ticket string) (agents.Agent, bool) {
-	return a.mostUrgent(func(ag agents.Agent) bool { return ag.Ticket == ticket })
+	return a.mostUrgent(func(ag agents.Agent) bool { return ag.Ticket == ticket && !a.replaced(ag) })
 }
 
 // mostUrgent is the most urgent of the agents that match, of two equally

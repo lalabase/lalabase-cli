@@ -310,3 +310,40 @@ func TestTheWatcherSettles(t *testing.T) {
 		t.Fatalf("%#v", msg)
 	}
 }
+
+// Review round 1 of #43: an agent the reader finds lost (its pid gone)
+// after its hooks recorded a session is resumable: that is the crash or
+// the pane closed while it worked, whose conversation start again keeps.
+func TestALostProcessIsResumable(t *testing.T) {
+	dir := agentsDir(t)
+	if err := WriteLaunch(dir, launchOf(t0)); err != nil {
+		t.Fatal(err)
+	}
+	hook(t, dir, UserPromptSubmit, `{"session_id":"`+cleared+`"}`, live(4242, 7))
+	got, err := Read(dir, live(1, 1)) // 4242 is gone
+	if err != nil || len(got) != 1 {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if ag := got[0]; ag.State != Lost || !ag.Resumable || ag.Session != cleared {
+		t.Fatalf("%+v", ag)
+	}
+}
+
+// Review round 1 of #43: a launch record that fails its check is no agent
+// to mark: no state file is left beside it.
+func TestMarkLostWithABrokenRecord(t *testing.T) {
+	for name, record := range map[string]string{
+		"another agent":  `{"format":1,"agent":"` + agentNumbered(9) + `","organisation":"` + org + `","project":"` + project + `","ticket":"` + ticket + `","number":42,"session":"` + sessionID + `","pane":"","at":"2026-10-26T09:00:00Z"}`,
+		"another format": `{"format":2,"agent":"` + agentID + `","organisation":"` + org + `","project":"` + project + `","ticket":"` + ticket + `","number":42,"session":"` + sessionID + `","pane":"","at":"2026-10-26T09:00:00Z"}`,
+		"no number":      `{"format":1,"agent":"` + agentID + `","organisation":"` + org + `","project":"` + project + `","ticket":"` + ticket + `","number":0,"session":"` + sessionID + `","pane":"","at":"2026-10-26T09:00:00Z"}`,
+	} {
+		dir := agentsDir(t)
+		write(t, filepath.Join(dir, agentID+launchSuffix), record, 0o600)
+		if lost, err := MarkLost(dir, agentID, t0); err != nil || lost {
+			t.Fatalf("%s: %v, %v", name, lost, err)
+		}
+		if _, err := os.Lstat(filepath.Join(dir, agentID+stateSuffix)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%s: a state beside a broken record: %v", name, err)
+		}
+	}
+}
