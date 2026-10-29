@@ -3,6 +3,9 @@
 //
 //	go run ./tools/inbox-fixture -scenario normal -port 18089
 //
+// The ticket view takes REST, as on a server with the core's R1;
+// -before-r1 serves a server before it, read through the tools (K1).
+//
 // then, in another terminal, lalabase with a profile whose url is
 // http://127.0.0.1:18089 and whose token is the fixture's. It reads the
 // contract copy from the repository (internal/contract stays a package only
@@ -51,6 +54,7 @@ func run(args []string, stdout, stderr io.Writer, serve func(http.Handler, net.L
 	scenario := fs.String("scenario", string(inboxfixture.Normal), "one of "+scenarioList())
 	port := fs.Int("port", 18089, "the port on 127.0.0.1")
 	contractPath := fs.String("contract", "internal/contract/testdata/mcp_contract.json", "the contract copy")
+	beforeR1 := fs.Bool("before-r1", false, "a server before the core's R1: the client reads the ticket view through the tools")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -59,7 +63,12 @@ func run(args []string, stdout, stderr io.Writer, serve func(http.Handler, net.L
 		fmt.Fprintf(stderr, "inbox-fixture: cannot read the contract copy at %s: %v\n", *contractPath, err)
 		return 1
 	}
-	f, err := inboxfixture.New(inboxfixture.Scenario(*scenario), data)
+	var opts []inboxfixture.Option
+	way := "the ticket view over REST"
+	if *beforeR1 {
+		opts, way = append(opts, inboxfixture.BeforeR1()), "the ticket view over the tools (a server before R1)"
+	}
+	f, err := inboxfixture.New(inboxfixture.Scenario(*scenario), data, opts...)
 	if err != nil {
 		fmt.Fprintf(stderr, "inbox-fixture: %v\n", err)
 		return 2
@@ -70,7 +79,7 @@ func run(args []string, stdout, stderr io.Writer, serve func(http.Handler, net.L
 		return 1
 	}
 	defer func() { _ = ln.Close() }()
-	fmt.Fprintln(stdout, inboxfixture.Describe(inboxfixture.Scenario(*scenario), ln.Addr()))
+	fmt.Fprintln(stdout, inboxfixture.Describe(inboxfixture.Scenario(*scenario), ln.Addr())+", "+way)
 	if err := serve(f, ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintf(stderr, "inbox-fixture: %v\n", err)
 		return 1

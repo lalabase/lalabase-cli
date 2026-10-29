@@ -16,6 +16,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/cache"
+	"github.com/gboyke/lalabase-cli/internal/features"
 	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/worker"
@@ -30,12 +31,16 @@ type Doer interface {
 // Source sends the requests of the reads, undecoded; *api.API in the
 // program. Each has its decode in internal/api, run by every waiter. The
 // writes (C1f, C2) are decoded by the adapter: a write has one waiter and
-// is never shared.
+// is never shared. The reads of the ticket view come in two ways (K1):
+// the tools, and REST, which a ticket's Way picks.
 type Source interface {
 	NotificationsAnswer(ctx context.Context, q api.NotificationQuery) transport.Answer
 	ProjectsAnswer(ctx context.Context, organisationID string) transport.Answer
 	TicketsAnswer(ctx context.Context, q api.TicketQuery) transport.Answer
 	TicketAnswer(ctx context.Context, projectID, ticketID string, o api.TicketOptions) transport.Answer
+	TicketsRESTAnswer(ctx context.Context, q api.TicketQuery) transport.Answer
+	TicketRESTAnswer(ctx context.Context, ticketID string, o api.TicketOptions) transport.Answer
+	PostRESTAnswer(ctx context.Context, ticketID, postID string) transport.Answer
 	MarkNotificationRead(ctx context.Context, id, key string) (api.NotificationState, transport.Answer)
 	UpdateTicket(ctx context.Context, projectID, ticketID string, c api.TicketChange, key string) (api.TicketRow, transport.Answer)
 	PostComment(ctx context.Context, projectID, ticketID, body string, o api.CommentOptions, key string) (api.Comment, transport.Answer)
@@ -106,11 +111,15 @@ func (r TicketsResult) Header() Result {
 	return Result{Ticket: r.Ticket, Answer: r.Answer, Flight: r.Flight}
 }
 
-// TicketResult is one waiter's ticket, previewed or opened (C1c). Record is
-// empty unless Answer is an object.
+// TicketResult is one waiter's ticket, previewed or opened (C1c), or one
+// text of it read whole (C1d). Record is the ticket of a page or of the
+// description whole; Post is the one comment a key with Post reads, on
+// either way (K1), Record staying empty then. Both are empty unless Answer
+// is an object.
 type TicketResult struct {
 	Ticket
 	Record api.Ticket
+	Post   api.Post
 	Answer transport.Answer
 	Flight queue.Flight
 }
@@ -190,16 +199,20 @@ func (g *Gateway) Projects(ctx context.Context, t Ticket) tea.Cmd {
 }
 
 // Tickets reads the page of a project's tickets t names, with its search
-// (C1c).
+// (C1c), on the way of its ticket (K1).
 func (g *Gateway) Tickets(ctx context.Context, t Ticket) tea.Cmd {
 	if err := CheckTicketsTicket(t); err != nil {
 		return func() tea.Msg { return TicketsResult{Ticket: t, Answer: refusedTicket(err)} }
 	}
 	query := TicketsQuery(t.Key)
+	send, decode := g.src.TicketsAnswer, api.DecodeTickets
+	if t.Way == features.REST {
+		send, decode = g.src.TicketsRESTAnswer, api.DecodeTicketsREST
+	}
 	return shared(g, ctx, t, "gateway: tickets", func(shared context.Context) transport.Answer {
-		return g.src.TicketsAnswer(shared, query)
+		return send(shared, query)
 	}, func(ans transport.Answer, flight queue.Flight) TicketsResult {
-		page, ans := api.DecodeTickets(ans)
+		page, ans := decode(ans)
 		if ans.OK() {
 			if err := CheckTicketsPage(t.Key, page); err != nil {
 				page, ans = api.TicketPage{}, contradiction(ans, err)
@@ -210,24 +223,70 @@ func (g *Gateway) Tickets(ctx context.Context, t Ticket) tea.Cmd {
 }
 
 // Detail reads the ticket t names, with the options of its key: a page
-// (C1c, C1d) or one text whole (C1d). The preview and the open of one
-// ticket share the request; each decodes for itself.
+// (C1c, C1d) or one text whole (C1d), on the way of its ticket (K1). The
+// preview and the open of one ticket share the request; each decodes for
+// itself. What a waiter's answer carries to the cache has one form on both
+// ways: the ticket, or for one comment the comment.
 func (g *Gateway) Detail(ctx context.Context, t Ticket) tea.Cmd {
 	if err := CheckDetailTicket(t); err != nil {
 		return func() tea.Msg { return TicketResult{Ticket: t, Answer: refusedTicket(err)} }
 	}
 	project, id, options := t.Key.Project, t.Key.Ticket, DetailOptions(t.Key)
-	return shared(g, ctx, t, "gateway: ticket", func(shared context.Context) transport.Answer {
-		return g.src.TicketAnswer(shared, project, id, options)
-	}, func(ans transport.Answer, flight queue.Flight) TicketResult {
-		record, ans := api.DecodeTicket(ans, options)
-		if ans.OK() {
-			if err := CheckDetail(t.Key, record); err != nil {
-				record, ans = api.Ticket{}, contradiction(ans, err)
-			}
+	var send func(context.Context) transport.Answer
+	var build func(transport.Answer) TicketResult
+	switch {
+	case t.Way == features.REST && options.PostID != "":
+		send = func(shared context.Context) transport.Answer { return g.src.PostRESTAnswer(shared, id, options.PostID) }
+		build = func(ans transport.Answer) TicketResult {
+			post, ans := api.DecodePostREST(ans)
+			return onePost(t, post, ans)
 		}
-		return TicketResult{Ticket: t, Record: record, Answer: ans, Flight: flight}
+	case t.Way == features.REST:
+		send = func(shared context.Context) transport.Answer { return g.src.TicketRESTAnswer(shared, id, options) }
+		build = func(ans transport.Answer) TicketResult {
+			return aTicket(t, func() (api.Ticket, transport.Answer) { return api.DecodeTicketREST(ans, options) })
+		}
+	default:
+		send = func(shared context.Context) transport.Answer { return g.src.TicketAnswer(shared, project, id, options) }
+		build = func(ans transport.Answer) TicketResult {
+			r := aTicket(t, func() (api.Ticket, transport.Answer) { return api.DecodeTicket(ans, options) })
+			if options.PostID != "" && r.Answer.OK() {
+				// The tool brings the ticket with the one comment; the
+				// read is of the comment (CheckDetail made sure it is the
+				// one asked for).
+				r.Post, r.Record = r.Record.Posts[0], api.Ticket{}
+			}
+			return r
+		}
+	}
+	return shared(g, ctx, t, "gateway: ticket", send, func(ans transport.Answer, flight queue.Flight) TicketResult {
+		r := build(ans)
+		r.Flight = flight
+		return r
 	})
+}
+
+// aTicket is the result of a decoded ticket, checked against the question
+// its key asked.
+func aTicket(t Ticket, decode func() (api.Ticket, transport.Answer)) TicketResult {
+	record, ans := decode()
+	if ans.OK() {
+		if err := CheckDetail(t.Key, record); err != nil {
+			record, ans = api.Ticket{}, contradiction(ans, err)
+		}
+	}
+	return TicketResult{Ticket: t, Record: record, Answer: ans}
+}
+
+// onePost is the result of a decoded comment, checked against the one
+// comment its key asked for.
+func onePost(t Ticket, post api.Post, ans transport.Answer) TicketResult {
+	if ans.OK() {
+		if err := CheckPost(t.Key, post); err != nil {
+			post, ans = api.Post{}, contradiction(ans, err)
+		}
+	}
+	return TicketResult{Ticket: t, Post: post, Answer: ans}
 }
 
 // TimeResult is one waiter's booked time of a ticket (S6). Time is empty
@@ -545,6 +604,16 @@ func CheckDetail(k cache.Key, t api.Ticket) error {
 		return errors.New("ticket: a ticket of another project answered")
 	}
 	if k.Post != "" && (t.PostID != k.Post || len(t.Posts) != 1 || t.Posts[0].ID != k.Post) {
+		return errors.New("ticket: not the one comment asked for")
+	}
+	return nil
+}
+
+// CheckPost: the comment answered is the one the key asked for (K1). Over
+// REST the answer names no ticket: the route carries it, and a comment of
+// another ticket is not found there.
+func CheckPost(k cache.Key, p api.Post) error {
+	if k.Post == "" || p.ID != k.Post {
 		return errors.New("ticket: not the one comment asked for")
 	}
 	return nil

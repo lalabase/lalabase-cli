@@ -1,0 +1,54 @@
+{
+ "note": "The recorded GET /api/v1/me of the REST API 1.2.0 (core f21d59e33, the contract copy of K0, before R1), kept for the test that the ticket view stays on the tools on that server.",
+ "status": 200,
+ "body": {
+  "data": {
+   "user": {
+    "id": "00000000-0000-4000-8000-000000000011",
+    "email": "anna@example.com",
+    "display_name": "Anna Albers"
+   },
+   "token": {
+    "id": "00000000-0000-4000-8000-000000000081",
+    "name": "Vertrag write_token",
+    "prefix": "lalab_pat_Wr",
+    "all_organisations": false,
+    "read_only": false,
+    "expires_at": "2026-02-04T09:34:00Z",
+    "last_used_at": "2026-01-05T09:36:00Z"
+   },
+   "scoped_organisations": [
+    {
+     "id": "00000000-0000-4000-8000-000000000001",
+     "name": "Nordlicht GmbH",
+     "all_projects": true
+    }
+   ],
+   "api_version": "1.2.0",
+   "capabilities": [
+    "error_codes",
+    "idempotency",
+    "me.show",
+    "notifications.archive",
+    "notifications.list",
+    "notifications.mark_all_as_read",
+    "notifications.mark_as_read",
+    "organisations.list",
+    "people.list",
+    "people.show",
+    "posts.create",
+    "projects.list",
+    "projects.ticket_attribute_definitions",
+    "tickets.activities",
+    "tickets.attachments",
+    "tickets.create",
+    "tickets.list",
+    "tickets.show",
+    "tickets.update",
+    "time_sessions.create",
+    "time_sessions.list",
+    "time_sessions.open"
+   ]
+  }
+ }
+}

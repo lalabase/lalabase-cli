@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gboyke/lalabase-cli/internal/cache"
+	"github.com/gboyke/lalabase-cli/internal/features"
 	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 )
@@ -49,15 +50,19 @@ type Ticket struct {
 	Gens     Gens
 	Epoch    uint64 // of Key.Resource()
 	Priority queue.Priority
+	// Way is how the read reaches the server (K1): the scope's route for
+	// the key when the ticket was issued.
+	Way features.Way
 }
 
 // ShareKey is the key two waiters share a request under: the data, the
-// scope, the session and the resource's epoch. Waiter and selection
-// generation are not part of it, so a preview and an open of the same page
-// send one request. The scope is: the queue outlives a scope, and a new
-// scope starts its epochs at zero.
+// scope, the session, the resource's epoch and the way. Waiter and
+// selection generation are not part of it, so a preview and an open of the
+// same page send one request. The scope is: the queue outlives a scope,
+// and a new scope starts its epochs at zero. The way is: a request of one
+// way is no answer to a waiter of the other.
 func (t Ticket) ShareKey() string {
-	return t.Key.String() + "|" + strconv.FormatUint(t.Scope, 10) + "|" + strconv.FormatUint(t.Gens.Session, 10) + "|" + strconv.FormatUint(t.Epoch, 10)
+	return t.Key.String() + "|" + strconv.FormatUint(t.Scope, 10) + "|" + strconv.FormatUint(t.Gens.Session, 10) + "|" + strconv.FormatUint(t.Epoch, 10) + "|" + t.Way.String()
 }
 
 // scopes numbers the scopes of the process.
@@ -82,6 +87,8 @@ type Scope struct {
 	// older one.
 	removed map[cache.Key]queue.Flight
 	pending map[Waiter]Ticket
+	// routes are the ways of the ticket view's reads (Route).
+	routes Routes
 }
 
 // NewScope starts a session for a confirmed identity.
@@ -92,7 +99,7 @@ func NewScope(ns cache.Namespace) *Scope {
 // Begin issues a ticket for a new waiter.
 func (s *Scope) Begin(area Area, key cache.Key, prio queue.Priority) Ticket {
 	t := Ticket{Scope: s.id, Waiter: Waiter(waiters.Add(1)), Area: area, Key: key, Gens: Gens{Session: s.session, Area: s.area[area]},
-		Epoch: s.epochs[key.Resource()], Priority: prio}
+		Epoch: s.epochs[key.Resource()], Priority: prio, Way: s.routes.way(key)}
 	s.pending[t.Waiter] = t
 	return t
 }

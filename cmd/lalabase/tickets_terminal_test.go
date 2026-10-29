@@ -22,11 +22,41 @@ const (
 )
 
 // ticketRequests sorts the fixture's log: the projects reads, the ticket
-// list reads and the ticket reads, in order, and the position of the first
-// of them among all requests.
+// list reads and the ticket reads, in order, on either way (K1: the tools
+// or REST, whose log names the same arguments), and the position of the
+// first of them among all requests.
 type ticketRequests struct {
 	projects, lists, tickets []inboxfixture.Request
 	firstAt, inboxAt         int
+}
+
+// isListRead and isTicketRead: a read of the ticket view, on either way.
+func isListRead(r inboxfixture.Request) bool {
+	return r.Tool == "list_tickets" || r.Route == "tickets.list"
+}
+
+func isTicketRead(r inboxfixture.Request) bool {
+	return r.Tool == "get_ticket" || r.Route == "tickets.show" || r.Route == "posts.show"
+}
+
+// viewWay is the way every read of the ticket view took: "rest", "mcp", or
+// "mixed"; "" for none.
+func viewWay(f *inboxfixture.Fixture) string {
+	way := ""
+	for _, r := range f.Requests() {
+		if !isListRead(r) && !isTicketRead(r) {
+			continue
+		}
+		this := "mcp"
+		if r.Route != "" {
+			this = "rest"
+		}
+		if way != "" && way != this {
+			return "mixed"
+		}
+		way = this
+	}
+	return way
 }
 
 func sortTicketRequests(f *inboxfixture.Fixture) ticketRequests {
@@ -35,9 +65,9 @@ func sortTicketRequests(f *inboxfixture.Fixture) ticketRequests {
 		switch {
 		case r.Path == "/api/v1/projects":
 			out.projects = append(out.projects, r)
-		case r.Tool == "list_tickets":
+		case isListRead(r):
 			out.lists = append(out.lists, r)
-		case r.Tool == "get_ticket":
+		case isTicketRead(r):
 			out.tickets = append(out.tickets, r)
 		case r.Tool == "list_notifications":
 			if out.inboxAt < 0 {
@@ -176,6 +206,11 @@ func TestPTYTicketsFlow(t *testing.T) {
 			c.finish(t, 0)
 			if err := terminalOutputError(c.bytes()); err != nil {
 				t.Fatalf("%v\n%q", err, c.bytes())
+			}
+			// The contract's /me lists R1's capabilities: the ticket view
+			// went over REST alone (K1).
+			if way := viewWay(f); way != "rest" {
+				t.Fatalf("the ticket view went over %q", way)
 			}
 			reqs := sortTicketRequests(f)
 			if reqs.firstAt < 0 || reqs.inboxAt < 0 || reqs.firstAt < reqs.inboxAt {

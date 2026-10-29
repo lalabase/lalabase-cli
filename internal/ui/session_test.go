@@ -51,6 +51,10 @@ type recordedData struct {
 	sixComments int
 	// sixFiles is the number of attachments of ticket #6, 12 when zero.
 	sixFiles int
+	// capabilities are what the recorded /me lists (K1). me lists none: a
+	// session takes the tools unless a test gives it these
+	// (newRESTHarness).
+	capabilities []string
 }
 
 func recorded(t *testing.T) recordedData {
@@ -67,6 +71,7 @@ func recorded(t *testing.T) recordedData {
 		t.Fatal(err)
 	}
 	d.me = me.Data
+	d.capabilities, d.me.Capabilities = d.me.Capabilities, nil
 	var orgs struct {
 		Data []api.Ref `json:"data"`
 	}
@@ -222,6 +227,12 @@ type fakes struct {
 	gateTicket   string
 	// C1f: the write (mark_harness_test.go).
 	writes markFakes
+	// K1: the ticket view over REST (rest_harness_test.go); the gates hold
+	// these as they hold the tools' reads.
+	restTickets func(q api.TicketQuery) transport.Answer
+	restTicket  func(id string, o api.TicketOptions) transport.Answer
+	restPost    func(id, post string) transport.Answer
+	restReads   []restRead
 }
 
 func (f *fakes) Me(context.Context) (api.Me, transport.Answer) {
@@ -324,6 +335,8 @@ func defaultFakes(d recordedData) *fakes {
 	}
 	f.writes.read, f.writes.mark = map[string]bool{}, f.defaultMark
 	f.projects, f.tickets, f.ticket = d.defaultProjects, d.defaultTickets, d.defaultTicket
+	// The list has the tools' form over REST too.
+	f.restTickets, f.restTicket, f.restPost = d.defaultTickets, d.defaultRESTTicket, d.defaultRESTPost
 	return f
 }
 

@@ -126,9 +126,14 @@ const (
 type Request struct {
 	Method string
 	Path   string
-	RPC    string         // the JSON-RPC method, for /api/mcp
-	Tool   string         // the tool of a tools/call
-	Args   map[string]any // its arguments
+	RPC    string // the JSON-RPC method, for /api/mcp
+	Tool   string // the tool of a tools/call
+	// Route is the capability of a REST read of the ticket view (K1):
+	// tickets.list, tickets.show, tickets.by_number, posts.show.
+	Route string
+	// Args are the tool's arguments, or a REST read's path ids and query
+	// under the tools' names, numbers as numbers.
+	Args   map[string]any
 	Status int
 }
 
@@ -150,6 +155,10 @@ type Fixture struct {
 	// name, an argument as "tool:argument". A dropped tool is unknown to
 	// the server, a dropped argument is ignored by it.
 	dropped map[string]bool
+	// K1 (rest.go): whether /me lists R1's capabilities, and the
+	// permissions a REST ticket carries beside its data (the recorded ones).
+	r1          bool
+	permissions json.RawMessage
 	// C2a (writes.go): the people the fixture knows, by id, and the id of
 	// the person /me names.
 	people map[string]string
@@ -200,7 +209,7 @@ type contractFile struct {
 }
 
 // New builds the fixture of a scenario from the contract copy's bytes.
-func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
+func New(scenario Scenario, contractJSON []byte, opts ...Option) (*Fixture, error) {
 	if !slices.Contains(Scenarios(), scenario) {
 		return nil, fmt.Errorf("inbox fixture: unknown scenario %q", string(scenario))
 	}
@@ -278,6 +287,23 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 		}
 		f.me = unknown
 	}
+	// K1: the contract's /me lists R1's capabilities; a server before R0
+	// lists none.
+	f.r1 = true
+	if scenario == Older || scenario == S1Only || scenario == S2Only {
+		before, err := withoutCapabilities(f.me)
+		if err != nil {
+			return nil, err
+		}
+		f.me, f.r1 = before, false
+	}
+	var show struct {
+		Permissions json.RawMessage `json:"permissions"`
+	}
+	if err := json.Unmarshal(file.Contract.REST["ticket_view"]["show"].Response.Body, &show); err != nil || len(show.Permissions) == 0 {
+		return nil, errors.New("inbox fixture: the contract copy records no REST ticket")
+	}
+	f.permissions = show.Permissions
 	var orgs struct {
 		Data []map[string]any `json:"data"`
 	}
@@ -310,6 +336,11 @@ func New(scenario Scenario, contractJSON []byte) (*Fixture, error) {
 	}
 	if f.people, f.meID, err = recordedPeople(f.me, f.ticketRow, f.ticketTmpl); err != nil {
 		return nil, err
+	}
+	for _, opt := range opts {
+		if err := opt(f); err != nil {
+			return nil, err
+		}
 	}
 	return f, nil
 }
@@ -478,6 +509,8 @@ func (f *Fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(out)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects":
 		f.projects(w, r, req)
+	case r.Method == http.MethodGet && (strings.HasPrefix(r.URL.Path, "/api/v1/projects/") || strings.HasPrefix(r.URL.Path, "/api/v1/tickets/")):
+		f.rest(w, r, req)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/mcp":
 		f.rpc(w, r, req)
 	default:

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,6 +37,13 @@ const (
 // tools/list from the contract copy.
 func fakeServer(t *testing.T, displayName string) *httptest.Server {
 	t.Helper()
+	return fakeServerWith(t, displayName, nil)
+}
+
+// fakeServerWith is fakeServer whose /me lists capabilities (K1); nil
+// lists none, as a server before R0.
+func fakeServerWith(t *testing.T, displayName string, capabilities []string) *httptest.Server {
+	t.Helper()
 	file, err := contract.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -55,11 +63,15 @@ func fakeServer(t *testing.T, displayName string) *httptest.Server {
 			if token == oldToken {
 				delete(tokenInfo, "read_only")
 			}
-			body, _ := json.Marshal(map[string]any{"data": map[string]any{
+			data := map[string]any{
 				"user":                 map[string]any{"id": "u-1", "email": "anna@example.com", "display_name": displayName},
 				"token":                tokenInfo,
 				"scoped_organisations": []any{map[string]any{"id": "o-1", "name": "Nordlicht GmbH"}},
-			}})
+			}
+			if capabilities != nil {
+				data["api_version"], data["capabilities"] = "1.5.0", capabilities
+			}
+			body, _ := json.Marshal(map[string]any{"data": data})
 			_, _ = w.Write(body)
 		case "/api/mcp":
 			var req struct {
@@ -326,6 +338,53 @@ func TestStatusShowsBothProfilesAndWhatTheServerSupports(t *testing.T) {
 	}
 	if strings.Contains(out, writeToken) || strings.Contains(out, readToken) {
 		t.Fatalf("status shows a whole token:\n%s", out)
+	}
+}
+
+// K1: auth status reads /me's capabilities into the feature report, as
+// the interface's start does, and names each feature's way: the ticket
+// view over REST where /me lists R1's capabilities, the tools elsewhere.
+func TestStatusNamesTheWayEachFeatureTakes(t *testing.T) {
+	file, err := contract.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var me struct {
+		Data struct {
+			Capabilities []string `json:"capabilities"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(file.Contract.REST["GET /api/v1/me"]["ok"].Response.Body, &me); err != nil || len(me.Data.Capabilities) == 0 {
+		t.Fatalf("the recorded /me: %v", err)
+	}
+	view := []string{"tickets", "tickets_search", "ticket", "ticket_posts_paged", "ticket_full_text"}
+	for name, c := range map[string]struct {
+		capabilities []string
+		way          string
+	}{
+		"R1":        {me.Data.Capabilities, "rest"},
+		"before R1": {slices.DeleteFunc(slices.Clone(me.Data.Capabilities), func(c string) bool { return c == "tickets.paging" }), "mcp"},
+		"before R0": {nil, "mcp"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := fakeServerWith(t, "Anna Albers", c.capabilities)
+			h := newHarness(t)
+			saveProfiles(t, h, srv, readToken)
+			if code := h.run("", false, "--profile", "default", "auth", "status"); code != 0 {
+				t.Fatalf("exit %d: %s %s", code, h.out.String(), h.err.String())
+			}
+			lines := strings.Split(h.out.String(), "\n")
+			for _, f := range []string{"inbox", "mark_read", "comment", "booked_time"} {
+				if !slices.Contains(lines, "  on   "+f+" via mcp") {
+					t.Errorf("%s is not on via mcp:\n%s", f, h.out.String())
+				}
+			}
+			for _, f := range view {
+				if !slices.Contains(lines, "  on   "+f+" via "+c.way) {
+					t.Errorf("%s is not on via %s:\n%s", f, c.way, h.out.String())
+				}
+			}
+		})
 	}
 }
 

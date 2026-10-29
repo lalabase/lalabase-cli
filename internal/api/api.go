@@ -397,20 +397,35 @@ func uniqueIDs(what string, ids func(yield func(string) bool)) error {
 	return nil
 }
 
+// postFields are the fields of a comment the client relies on: of every
+// comment of a ticket's page, and of one comment read alone (K1).
+var postFields = []string{"id", "author?.id", "author?.name?", "body_text", "is_private", "created_at"}
+
+// under puts fields under a path: under("data", ["id"]) is ["data.id"].
+func under(path string, fields []string) []string {
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		out = append(out, path+"."+f)
+	}
+	return out
+}
+
 var TicketSpec = Spec{
 	Name: "get_ticket", Tool: "get_ticket",
 	Args:      []string{"project_id", "ticket_id", "number"},
 	Optional:  []string{"posts_page", "posts_per_page", "posts_order", "attachments_page", "full_text", "post_id"},
 	OneRecord: true,
-	Required: []string{
-		"id", "number", "title", "status?", "description_text?", "updated_at",
-		"assignees[].id", "assignees[].name", "creator?.id", "creator?.name?",
-		"project.id", "project.name",
-		"posts[].id", "posts[].author?.id", "posts[].author?.name?", "posts[].body_text", "posts[].is_private", "posts[].created_at",
+	Required: slices.Concat(
+		[]string{
+			"id", "number", "title", "status?", "description_text?", "updated_at",
+			"assignees[].id", "assignees[].name", "creator?.id", "creator?.name?",
+			"project.id", "project.name",
+		},
+		under("posts[]", postFields),
 		// attachments_truncated since the server lists attachments at all
 		// (core #701, with attachments_total): a missing one is not "complete".
-		"posts_total", "posts_truncated", "attachments[].filename", "attachments_total", "attachments_truncated",
-	},
+		[]string{"posts_total", "posts_truncated", "attachments[].filename", "attachments_total", "attachments_truncated"},
+	),
 }
 
 type Post struct {
@@ -590,6 +605,11 @@ func (a *API) TicketAnswer(ctx context.Context, projectID, ticketID string, o Ti
 // DecodeTicket checks an answer against the spec of its options and decodes
 // a new ticket from it, sharing nothing with an earlier decode, and turns
 // "not found" for one comment into the refusal CommentNotFound.
+//
+// For one comment (o.PostID) the answer it returns carries that comment
+// alone, cut out of the server's bytes: the form the client keeps one
+// comment in, whichever way read it (DecodePost reads it, K1). A ticket
+// without exactly one comment is no answer for one comment.
 func DecodeTicket(ans transport.Answer, o TicketOptions) (Ticket, transport.Answer) {
 	var t Ticket
 	ans = decode(ticketSpec(o), ans, &t)
@@ -599,7 +619,33 @@ func DecodeTicket(ans transport.Answer, o TicketOptions) (Ticket, transport.Answ
 	if !ans.OK() {
 		return Ticket{}, ans
 	}
+	if o.PostID != "" {
+		var raw struct {
+			Posts []json.RawMessage `json:"posts"`
+		}
+		if json.Unmarshal(ans.Payload, &raw) != nil || len(raw.Posts) != 1 {
+			return Ticket{}, protocol(ans, TicketSpec.Name+": not one comment for post_id", nil)
+		}
+		ans.Payload = raw.Posts[0]
+	}
 	return t, ans
+}
+
+// keptPostSpec is one comment as the client keeps it, whichever way read
+// it: the comment alone, with the fields of a comment of a ticket's page.
+var keptPostSpec = Spec{Name: "comment", Required: postFields}
+
+// DecodePost checks one comment in the form the client keeps it
+// (DecodeTicket for one comment, DecodePostREST) and decodes it, sharing
+// nothing with an earlier decode. An entry of another form (a ticket the
+// tool answered, kept before K1) is a protocol error: never read as a
+// comment, dropped by the caller.
+func DecodePost(ans transport.Answer) (Post, transport.Answer) {
+	var p Post
+	if ans = decode(keptPostSpec, ans, &p); !ans.OK() {
+		return Post{}, ans
+	}
+	return p, ans
 }
 
 // maxPostsPerPage is the page size the server caps at: asked for more, it
@@ -668,6 +714,223 @@ func CheckTicket(t Ticket, o TicketOptions) error {
 func (a *API) TicketByNumber(ctx context.Context, projectID string, number int) (Ticket, transport.Answer) {
 	var t Ticket
 	return t, a.call(ctx, TicketSpec, map[string]any{"project_id": projectID, "number": strconv.Itoa(number)}, &t)
+}
+
+// --- the ticket view over REST (K1, the core's R1) -----------------------------
+//
+// The same reads as the tools above, on the REST API: the list, a page of
+// a ticket, a ticket by its number, one comment. The core builds both
+// answers with one serializer and one set of pages (its D5), so each REST
+// spec is the tool's fields under data, and what a REST read files is the
+// tool's form: an entry reads the same whichever way brought it. REST has
+// every text whole; the tool cuts long ones.
+
+// TicketsRESTSpec is the ticket list over REST. Its body has the tool's
+// form, data and meta: the fields are the tool's.
+var TicketsRESTSpec = Spec{
+	Name: "GET /api/v1/projects/:project_id/tickets", Path: "/api/v1/projects/:project_id/tickets",
+	Required: TicketsSpec.Required,
+}
+
+// TicketRESTSpec is one ticket over REST: the tool's ticket under data,
+// the permissions beside it unread. The client asks it for a page alone
+// (TicketRESTAnswer): without one the counts are missing.
+var TicketRESTSpec = Spec{
+	Name: "GET /api/v1/tickets/:id", Path: "/api/v1/tickets/:id",
+	Required: under("data", TicketSpec.Required),
+}
+
+// TicketByNumberRESTSpec is a ticket by its number in a project, answered
+// as TicketRESTSpec.
+var TicketByNumberRESTSpec = Spec{
+	Name: "GET /api/v1/projects/:project_id/tickets/number/:number", Path: "/api/v1/projects/:project_id/tickets/number/:number",
+	Required: under("data", TicketSpec.Required),
+}
+
+// PostRESTSpec is one comment over REST, whole: the fields of a comment of
+// a ticket's page, under data.
+var PostRESTSpec = Spec{
+	Name: "GET /api/v1/tickets/:ticket_id/posts/:id", Path: "/api/v1/tickets/:ticket_id/posts/:id",
+	Required: under("data", postFields),
+}
+
+// ticketRESTSpec is a REST ticket spec with the fields the options rely on
+// (ticketSpec), under data.
+func ticketRESTSpec(spec Spec, o TicketOptions) Spec {
+	spec.Required = under("data", ticketSpec(o).Required)
+	return spec
+}
+
+// segment is an id as one segment of a REST path, escaped. Refused: an
+// empty id, a dot segment, and one with a slash or a backslash, which the
+// transport or a server would read as a separator, sending the read to
+// another route. Ids come from the server's answers.
+func segment(id string) (string, bool) {
+	if id == "" || id == "." || id == ".." || strings.ContainsAny(id, `/\`) {
+		return "", false
+	}
+	return url.PathEscape(id), true
+}
+
+// noSegment is the refusal of an id that is no path segment, before
+// anything is sent.
+func noSegment(spec Spec, what string) transport.Answer {
+	return transport.Answer{Class: transport.InvalidInput, Message: spec.Name + ": the " + what + " id is no path segment"}
+}
+
+// withQuery adds a query to a path, when there is one.
+func withQuery(path string, query url.Values) string {
+	if len(query) == 0 {
+		return path
+	}
+	return path + "?" + query.Encode()
+}
+
+// TicketsRESTAnswer sends the read of a ticket list over REST, the query of
+// TicketsAnswer, and returns the answer undecoded (DecodeTicketsREST).
+func (a *API) TicketsRESTAnswer(ctx context.Context, q TicketQuery) transport.Answer {
+	project, ok := segment(q.ProjectID)
+	if !ok {
+		return noSegment(TicketsRESTSpec, "project")
+	}
+	query := url.Values{}
+	if q.Q != "" {
+		query.Set("q", q.Q)
+	}
+	if q.Status != "" {
+		query.Set("status", q.Status)
+	}
+	if q.Page > 0 {
+		query.Set("page", strconv.Itoa(q.Page))
+	}
+	if q.PerPage > 0 {
+		query.Set("per_page", strconv.Itoa(q.PerPage))
+	}
+	return a.c.Get(ctx, withQuery("/api/v1/projects/"+project+"/tickets", query))
+}
+
+// DecodeTicketsREST checks an answer of TicketsRESTAnswer and decodes a new
+// page from it, as DecodeTickets does with the tool's: the payload stays
+// as it came, the tool's form.
+func DecodeTicketsREST(ans transport.Answer) (TicketPage, transport.Answer) {
+	var page TicketPage
+	if ans = decode(TicketsRESTSpec, ans, &page); !ans.OK() {
+		return TicketPage{}, ans
+	}
+	return page, ans
+}
+
+// restPage is the query of a ticket's page over REST. posts_page is always
+// sent, the first page when the options name none: GET /api/v1/tickets/:id
+// without any page answers every comment and none of the counts. FullText
+// is not sent: REST has the description whole.
+func restPage(o TicketOptions) url.Values {
+	query := url.Values{"posts_page": {strconv.Itoa(max(1, o.PostsPage))}}
+	if o.PostsPerPage > 0 {
+		query.Set("posts_per_page", strconv.Itoa(o.PostsPerPage))
+	}
+	if o.Newest {
+		query.Set("posts_order", "newest")
+	}
+	if o.AttachmentsPage > 0 {
+		query.Set("attachments_page", strconv.Itoa(o.AttachmentsPage))
+	}
+	return query
+}
+
+// TicketRESTAnswer sends the read of a ticket's page over REST and returns
+// the answer undecoded (DecodeTicketREST). One comment is a read of its
+// own (PostRESTAnswer); asked here, and a page below zero, it is refused
+// before anything is sent. The path carries the ticket's id alone; the
+// answer names its project, which the caller checks.
+func (a *API) TicketRESTAnswer(ctx context.Context, ticketID string, o TicketOptions) transport.Answer {
+	switch {
+	case o.PostID != "":
+		return transport.Answer{Class: transport.InvalidInput, Message: TicketRESTSpec.Name + ": one comment is read on its own route"}
+	case o.PostsPage < 0 || o.PostsPerPage < 0 || o.AttachmentsPage < 0:
+		return transport.Answer{Class: transport.InvalidInput, Message: TicketRESTSpec.Name + ": a page or page size below 0"}
+	}
+	id, ok := segment(ticketID)
+	if !ok {
+		return noSegment(TicketRESTSpec, "ticket")
+	}
+	return a.c.Get(ctx, withQuery("/api/v1/tickets/"+id, restPage(o)))
+}
+
+// DecodeTicketREST checks an answer of TicketRESTAnswer against the REST
+// spec of its options and decodes a new ticket from its data. The answer
+// it returns carries the data alone: the tool's form, which the client
+// keeps whichever way read it.
+func DecodeTicketREST(ans transport.Answer, o TicketOptions) (Ticket, transport.Answer) {
+	return decodeTicketREST(TicketRESTSpec, ans, o)
+}
+
+func decodeTicketREST(spec Spec, ans transport.Answer, o TicketOptions) (Ticket, transport.Answer) {
+	var body struct {
+		Data Ticket `json:"data"`
+	}
+	if ans = decode(ticketRESTSpec(spec, o), ans, &body); !ans.OK() {
+		return Ticket{}, ans
+	}
+	return body.Data, withData(ans)
+}
+
+// withData is an answer the spec accepted with its payload cut down to
+// its data, the server's own bytes.
+func withData(ans transport.Answer) transport.Answer {
+	var raw struct {
+		Data json.RawMessage `json:"data"`
+	}
+	// decode read the same payload into the same field: this cannot fail.
+	_ = json.Unmarshal(ans.Payload, &raw)
+	ans.Payload = raw.Data
+	return ans
+}
+
+// TicketByNumberREST reads a ticket by its number in a project over REST,
+// as TicketRESTAnswer reads one by its id: the first page of it.
+func (a *API) TicketByNumberREST(ctx context.Context, projectID string, number int) (Ticket, transport.Answer) {
+	if number < 1 {
+		return Ticket{}, transport.Answer{Class: transport.InvalidInput, Message: TicketByNumberRESTSpec.Name + ": a number below 1"}
+	}
+	project, ok := segment(projectID)
+	if !ok {
+		return Ticket{}, noSegment(TicketByNumberRESTSpec, "project")
+	}
+	path := "/api/v1/projects/" + project + "/tickets/number/" + strconv.Itoa(number)
+	return decodeTicketREST(TicketByNumberRESTSpec, a.c.Get(ctx, withQuery(path, restPage(TicketOptions{}))), TicketOptions{})
+}
+
+// PostRESTAnswer sends the read of one comment over REST, whole, and
+// returns the answer undecoded (DecodePostREST).
+func (a *API) PostRESTAnswer(ctx context.Context, ticketID, postID string) transport.Answer {
+	ticket, ok := segment(ticketID)
+	if !ok {
+		return noSegment(PostRESTSpec, "ticket")
+	}
+	post, ok := segment(postID)
+	if !ok {
+		return noSegment(PostRESTSpec, "comment")
+	}
+	return a.c.Get(ctx, "/api/v1/tickets/"+ticket+"/posts/"+post)
+}
+
+// DecodePostREST checks an answer of PostRESTAnswer and decodes the
+// comment. "Not found" is about the comment, not the ticket: the refusal
+// CommentNotFound, as DecodeTicket gives it for one comment. The answer it
+// returns carries the comment alone, the form DecodePost reads.
+func DecodePostREST(ans transport.Answer) (Post, transport.Answer) {
+	var body struct {
+		Data Post `json:"data"`
+	}
+	ans = decode(PostRESTSpec, ans, &body)
+	if ans.Class == transport.NotFound {
+		ans.Class, ans.Reason = transport.Refused, CommentNotFound
+	}
+	if !ans.OK() {
+		return Post{}, ans
+	}
+	return body.Data, withData(ans)
 }
 
 // --- update_ticket (server slice S2, MCP 0.10.0) --------------------------------

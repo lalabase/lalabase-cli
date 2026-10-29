@@ -375,11 +375,11 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 		title += " · " + uitext.Inline(uitext.WholeText).String()
 	}
 	heading(areaDescription, title)
-	text := r.DescriptionText
+	text, limit := r.DescriptionText, maxPageText
 	if whole {
-		text = e.text
+		text, limit = e.text, maxWholeText
 	}
-	t.body(bodyOr(text, uitext.NoDescription))
+	t.body(bodyOr(text, limit, uitext.NoDescription))
 	if e != nil && e.post == "" {
 		t.add(noteLine, expansionState(e)...)
 	}
@@ -421,10 +421,10 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 			// at once, the page's copy too, until Esc or the next page.
 			t.add(noteLine, uitext.Inline(uitext.CommentUnavailable).String())
 		case e != nil && e.post == p.ID && e.known:
-			t.body(bodyOr(e.text, uitext.NoText))
+			t.body(bodyOr(e.text, maxWholeText, uitext.NoText))
 			t.add(noteLine, expansionState(e)...)
 		default:
-			t.body(bodyOr(p.BodyText, uitext.NoText))
+			t.body(bodyOr(p.BodyText, maxPageText, uitext.NoText))
 			if e != nil && e.post == p.ID {
 				t.add(noteLine, expansionState(e)...)
 			}
@@ -445,12 +445,15 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 	return t
 }
 
-// body appends a foreign text indented, and the line that says the server
-// shortened it faint.
-func (t *ticketLines) body(text string, shortened bool) {
+// body appends a foreign text indented, and faint the line that says who
+// shortened it, if anybody did.
+func (t *ticketLines) body(text string, short shortening) {
 	t.add(bodyLine, text)
-	if shortened {
+	switch short {
+	case byServer:
 		t.add(noteLine, uitext.Inline(uitext.TextShortened).String())
+	case byView:
+		t.add(noteLine, uitext.Inline(uitext.TextCut).String())
 	}
 }
 
@@ -483,11 +486,62 @@ func pageState(d *detailView) string {
 	return uitext.Inline(uitext.PageNotLoaded).String()
 }
 
-// bodyOr is a foreign body without the server's marker of a shortened
-// text, and whether it was shortened; the fallback when nothing readable is
-// left of it.
-func bodyOr(raw string, fallback uitext.ID) (string, bool) {
+// The most of one text the pane shows (K1). The pane builds and wraps its
+// whole text on every frame, so a frame costs as much as the text is long.
+// The tools cut a text on the page at 8,000 characters and one read whole
+// at 100,000 (the core's get_ticket); REST cuts none, and a comment of a
+// megabyte would hold every key for a second. The pane cuts where the
+// tools cut, and a text it cut offers e as one the server cut does. The
+// record and the cache keep the text whole.
+const (
+	maxPageText  = 8_000
+	maxWholeText = 100_000
+)
+
+// shortening says who shortened a text the pane shows in part.
+type shortening uint8
+
+const (
+	notShortened shortening = iota
+	byServer                // the server's marker (the tools)
+	byView                  // the pane's own bound
+)
+
+// shown is a foreign text as the pane shows it within limit characters:
+// without the server's marker of a shortened text, cut at the limit, and
+// who shortened it. It reads no more of the text than the limit.
+func shown(raw string, limit int) (string, shortening) {
 	text, short := api.Shortened(raw)
+	if cut, ok := cutAt(text, limit); ok {
+		return cut, byView
+	}
+	if short {
+		return text, byServer
+	}
+	return text, notShortened
+}
+
+// cutAt is the first limit characters of a text, and whether it has more.
+func cutAt(text string, limit int) (string, bool) {
+	if len(text) <= limit {
+		// No more bytes than the limit: no more characters either.
+		return text, false
+	}
+	n := 0
+	for i := range text {
+		if n == limit {
+			return text[:i], true
+		}
+		n++
+	}
+	return text, false
+}
+
+// bodyOr is a foreign body as the pane shows it within limit characters
+// (shown), and who shortened it; the fallback when nothing readable is left
+// of it.
+func bodyOr(raw string, limit int, fallback uitext.ID) (string, shortening) {
+	text, short := shown(raw, limit)
 	if strings.TrimSpace(present.NewBody(text).String()) == "" {
 		text = uitext.Inline(fallback).String()
 	}

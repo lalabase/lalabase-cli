@@ -257,8 +257,9 @@ func (m Model) correctDetailPage() (Model, tea.Cmd) {
 // --- expansion ---------------------------------------------------------------
 
 // expandTarget names what e would read whole in the active section: the
-// description, or the selected comment; only a text the server shortened,
-// not one expanded or on its way already, with the capability on.
+// description, or the selected comment; only a text shortened on the page
+// (by the server, or by the pane's bound, K1), not one expanded or on its
+// way already, with the capability on.
 func (m Model) expandTarget() (post string, ok bool) {
 	a := m.app
 	d := a.detail
@@ -271,7 +272,7 @@ func (m Model) expandTarget() (post string, ok bool) {
 	held := func(post string) bool { return e != nil && e.post == post && (e.loading || e.known || e.unavailable) }
 	switch d.area {
 	case areaDescription:
-		if _, short := api.Shortened(d.record.DescriptionText); short && !held("") {
+		if _, short := shown(d.record.DescriptionText, maxPageText); short != notShortened && !held("") {
 			return "", true
 		}
 	case areaComments:
@@ -279,7 +280,7 @@ func (m Model) expandTarget() (post string, ok bool) {
 			return "", false
 		}
 		if p := d.selectedPost(); p != nil {
-			if _, short := api.Shortened(p.BodyText); short && !held(p.ID) {
+			if _, short := shown(p.BodyText, maxPageText); short != notShortened && !held(p.ID) {
 				return p.ID, true
 			}
 		}
@@ -318,28 +319,41 @@ func (m Model) expand() (Model, tea.Cmd) {
 }
 
 // cachedExpansion puts the memory entry of the expansion's key into it, if
-// there is one that still reads.
+// there is one that still reads: the ticket for the description, the
+// comment alone for one comment (the form both ways file, K1). An entry
+// that does not read, one comment kept as a ticket before K1 among them,
+// goes.
 func (a *app) cachedExpansion(e *expansion) (cache.Entry, bool) {
 	entry, ok := a.store.Get(e.key)
 	if !ok {
 		return cache.Entry{}, false
 	}
-	record, ans := api.DecodeTicket(transport.Answer{Class: transport.Object, Payload: entry.Payload, Status: 200, Sent: true}, gateway.DetailOptions(e.key))
+	kept := transport.Answer{Class: transport.Object, Payload: entry.Payload, Status: 200, Sent: true}
+	if e.post != "" {
+		post, ans := api.DecodePost(kept)
+		if !ans.OK() || gateway.CheckPost(e.key, post) != nil {
+			a.forget(e.key)
+			return cache.Entry{}, false
+		}
+		e.text = post.BodyText
+		return entry, true
+	}
+	record, ans := api.DecodeTicket(kept, gateway.DetailOptions(e.key))
 	if !ans.OK() || gateway.CheckDetail(e.key, record) != nil {
 		a.forget(e.key)
 		return cache.Entry{}, false
 	}
-	e.text = expandedText(record, e.post)
+	e.text = record.DescriptionText
 	return entry, true
 }
 
-// expandedText is the text an answer brings: the description, or the one
-// comment (gateway.CheckDetail made sure it is the one asked for).
-func expandedText(t api.Ticket, post string) string {
+// expandedText is the text a result brings: the description, or the one
+// comment (the gateway made sure it is the one asked for).
+func expandedText(r gateway.TicketResult, post string) string {
 	if post == "" {
-		return t.DescriptionText
+		return r.Record.DescriptionText
 	}
-	return t.Posts[0].BodyText
+	return r.Post.BodyText
 }
 
 // receiveExpansion applies the answer of an expansion: its text, a
@@ -350,9 +364,10 @@ func (m Model) receiveExpansion(r gateway.TicketResult) (Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	if dec == cache.Replace {
-		// The full text comes with the ticket: an accepted one is a read
-		// of its title too, whatever became of the pane meanwhile.
+	if dec == cache.Replace && r.Key.Post == "" {
+		// The description whole comes with the ticket: an accepted one is
+		// a read of its title too, whatever became of the pane meanwhile.
+		// One comment is a read of the comment alone (K1).
 		a.learnTitle(r.Key.Ticket, r.Record.Title, uint64(r.Flight))
 	}
 	d := a.detail
@@ -373,7 +388,7 @@ func (m Model) receiveExpansion(r gateway.TicketResult) (Model, tea.Cmd) {
 	}
 	switch {
 	case dec == cache.Replace:
-		e.text, e.unavailable = expandedText(r.Record, e.post), false
+		e.text, e.unavailable = expandedText(r, e.post), false
 		e.fresh(a.now())
 	case e.post != "" && r.Answer.Class == transport.Refused && r.Answer.Reason == api.CommentNotFound:
 		return m.commentMissing(r)
