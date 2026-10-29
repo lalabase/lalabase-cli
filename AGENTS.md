@@ -3,7 +3,7 @@
 Working notes for coding agents in this repository (Claude Code reads this
 file through `CLAUDE.md`). The README says what the
 program does; this file says how to change it without repeating mistakes the
-reviews of C0 already found. Status: 2026-10-12, main at C2a (#16: the
+reviews of C0 already found. Status: 2026-10-29, main at C2a (#16: the
 ground for the writes of C2, with its review findings in #21) plus the
 status colours (#18), the cursor bar (#19) and the scrollbar on free text
 (#23), C7 (Claude Code beside the ticket: `x`, `internal/launch`, project
@@ -11,8 +11,9 @@ folders per profile) and C7b (#33); C9a (the agents' state: hooks,
 `lalabase hook`, `internal/agents`, #34); C9b (the agents across the
 organisations: the Agents area, `A`, the seen mark, #36); the order of
 C9b's titles (#37), the C9 review's readability and duplication passes
-(#38, #39) and C9c's groundwork (#40); C9c-2 (`d`, the cleanup) is this
-branch.
+(#38, #39) and C9c's groundwork (#40); C9c-2 (`d`, the cleanup, #41) and
+the booked time (#42); C9c-3 (`x` jumps to an agent's pane or starts it
+again, a starting agent without its pane is lost) is this branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
@@ -51,9 +52,9 @@ on a Mac before every merge, by running the tests here.
 | `internal/profile` | server plus token; the config file, checked through `internal/privatefs` |
 | `internal/safefile` | reading files the client does not control |
 | `internal/claudecfg` | Lalabase entries in Claude Code's configuration, for `auth import` alone (the launch reads none of it since C7b) |
-| `internal/launch` | Claude Code beside the ticket (C7, C7b): the folder, the server file's bytes, the arguments, the launch script, the typed line, the AppleScript; the only package that starts a child process |
+| `internal/launch` | Claude Code beside the ticket (C7, C7b): the folder, the server file's bytes, the arguments, the launch script, the typed line, the AppleScripts; the jump to an agent's pane and the start again through `--resume` (C9c); the only package that starts a child process |
 | `internal/launchdir` | the launch files (C7b): one private directory per press beside the disk cache, its files created exclusively, old ones pruned |
-| `internal/agents` | the agents x started (C9a): their directory beside the launch files, the launch record, the state `lalabase hook` writes, the reading every 500 ms, lost processes, the seen mark the client alone writes (C9b), the removal of an agent's files and the cleanup at every start (C9c) |
+| `internal/agents` | the agents x started (C9a): their directory beside the launch files, the launch record, the state `lalabase hook` writes, the reading every 500 ms, lost processes, the seen mark the client alone writes (C9b), the removal of an agent's files and the cleanup at every start (C9c), the lost mark the client writes and the settling after a start (C9c-3) |
 | `internal/clean` | making foreign text safe for a terminal |
 | `internal/contract` | copy of the core's MCP contract; imported by tests only |
 | `internal/sourceguard` | tests over the repository's own files |
