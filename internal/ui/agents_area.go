@@ -440,8 +440,9 @@ func (a *app) moveAgent(delta int) {
 }
 
 // agentsBindings are the keys of the agents' list: the cursor, Enter on
-// an agent whose ticket can open, R while a title's read failed, Esc
-// back (and A, which the help does not name twice).
+// an agent whose ticket can open, x on the agent (C9c), d on one whose
+// session is over, R while a title's read failed, Esc back (and A, which
+// the help does not name twice).
 func (m Model) agentsBindings() []binding {
 	a := m.app
 	var out []binding
@@ -451,6 +452,7 @@ func (m Model) agentsBindings() []binding {
 	if ag, ok := a.agentUnderCursor(); ok && a.canOpenAgent(ag) {
 		out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenTicketHelp})
 	}
+	out = append(out, m.xBinding()...)
 	if _, ok := m.removeTarget(); ok {
 		out = append(out, binding{RemoveAgent, uitext.RemoveAgentKey, uitext.RemoveAgentHelp})
 	}

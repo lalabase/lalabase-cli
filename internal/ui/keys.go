@@ -441,9 +441,7 @@ func (m Model) ticketBindings() []binding {
 	if _, ok := m.expandTarget(); ok {
 		out = append(out, binding{Expand, uitext.ExpandKey, uitext.ExpandHelp})
 	}
-	if _, ok := m.launchTarget(); ok {
-		out = append(out, binding{Launch, uitext.LaunchKey, uitext.LaunchHelp})
-	}
+	out = append(out, m.xBinding()...)
 	if _, ok := m.removeTarget(); ok {
 		out = append(out, binding{RemoveAgent, uitext.RemoveAgentKey, uitext.RemoveAgentHelp})
 	}
@@ -499,9 +497,15 @@ func (m Model) allowed() map[Action]bool {
 	return set
 }
 
+// toHelp is the help line's entries of the bindings: all but those whose
+// help is uitext.Unlisted, which act without a promise in the help (x on
+// an agent with no pane to select says so in the status line, C9c).
 func toHelp(bindings []binding) []present.KeyHelp {
 	out := make([]present.KeyHelp, 0, len(bindings))
 	for _, b := range bindings {
+		if b.help == uitext.Unlisted {
+			continue
+		}
 		out = append(out, present.KeyHelp{Key: uitext.Inline(b.key), Help: uitext.Inline(b.help)})
 	}
 	return out

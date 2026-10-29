@@ -9,7 +9,8 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/present"
 )
 
-type ID uint8
+// ID names a text. uint16: the catalogue passed 255 texts with C9c.
+type ID uint16
 
 const (
 	App ID = iota
@@ -274,6 +275,26 @@ const (
 	// same in the head's line of facts.
 	BarBooked
 	MetaBooked
+	// C9c: x jumps to an agent's pane or starts it again; the hints of
+	// the ticket's head and what came of either.
+	JumpHelp
+	AgainHelp
+	AgentHintJump
+	AgentHintAgain
+	AgentHintRemove
+	Jumping
+	Jumped
+	JumpPaneGone
+	JumpNoPane
+	JumpFailed
+	StartingAgain
+	LaunchResumed
+	AgentLostPane
+	AgainNotStarted
+	AgentNotSettled
+	// Unlisted is the help of a key that acts but is not named in the
+	// help line (internal/ui drops it there).
+	Unlisted
 	count
 )
 
@@ -421,4 +442,18 @@ var english = map[ID]string{
 	AgentsTooMany:   "The agents' directory holds too many files to read; the next start cleans it up.",
 	// S6: the label of the time the person booked on the ticket.
 	BarBooked: "Booked by you", MetaBooked: "booked by you %s",
+	// C9c: x on an agent.
+	JumpHelp: "jump to agent", AgainHelp: "start agent again",
+	AgentHintJump: "x jump to it", AgentHintAgain: "x start again", AgentHintRemove: "d remove",
+	Jumping:         "Switching to the agent of #%d\u2026",
+	Jumped:          "Switched to the agent of #%d",
+	JumpPaneGone:    "The pane of the agent of #%d was not found; it was closed",
+	JumpNoPane:      "No pane of the agent of #%d is known in this terminal",
+	JumpFailed:      "iTerm did not switch to the agent's pane",
+	StartingAgain:   "Starting the agent of #%d again\u2026",
+	LaunchResumed:   "Claude Code started again beside #%d",
+	AgentLostPane:   "The agent of #%d is lost: its pane is gone",
+	AgainNotStarted: "Claude Code did not start again beside #%d; the agent stays",
+	AgentNotSettled: "The agents of #%d could not be updated: %s",
+	Unlisted:        "(not listed)",
 }

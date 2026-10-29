@@ -24,6 +24,9 @@ type AgentWatcher interface {
 	// Remove removes an agent's files if it is still removable at at, as
 	// its lock is held (C9c); its message is an agents.Removed.
 	Remove(id string, at time.Time) tea.Cmd
+	// Settle does what follows a start or a jump (agents.Settle, C9c);
+	// its message is an agents.Settled.
+	Settle(after agents.After, at time.Time) tea.Cmd
 }
 
 // agentsEvery is how often the agents' files are read while there is one,
@@ -73,6 +76,11 @@ type agentsState struct {
 	// files than a read takes (agents.ErrTooManyFiles), said in the
 	// status line until a read succeeds.
 	tooMany bool
+	// replacing are the agents x starts again, by id, until their
+	// settlement answered (C9c): x does not start one twice. settling
+	// are the settlements out, with what their answer's notice needs.
+	replacing map[string]bool
+	settling  map[agents.After]settling
 }
 
 // readAgents issues a read unless one is out or due already: one chain of
@@ -251,19 +259,49 @@ func (a *app) markAgent(row *present.Row, ticket string) {
 
 // agentHead is the line of the ticket's head for its most urgent agent:
 // its glyph in its tone, then its word and how long its state has lasted
-// by the model's clock. ok is false when the ticket has no agent.
+// by the model's clock, then the keys that act on it (C9c). ok is false
+// when the ticket has no agent.
 func (a *app) agentHead(ticket string) (glyph string, style present.Style, text string, ok bool) {
 	ag, ok := a.agentAt(ticket)
 	if !ok {
 		return "", present.Plain, "", false
 	}
 	l := a.look(ag.State)
-	return l.glyph, l.style, uitext.Fill(uitext.AgentLine, uitext.Inline(l.word).String(), age(a.now().Sub(ag.Since))).String(), true
+	line := uitext.Fill(uitext.AgentLine, uitext.Inline(l.word).String(), age(a.now().Sub(ag.Since))).String()
+	for _, hint := range a.agentHints(ag) {
+		line += " " + hint
+	}
+	return l.glyph, l.style, line, true
+}
+
+// agentHints are the keys that act on the ticket's agent, each after a
+// "· " (C9c): x jumps to the pane of one that runs, waits or starts, when
+// there is a pane to select; x starts one whose session is over again,
+// and d removes it. A key that does nothing here is not named.
+func (a *app) agentHints(ag agents.Agent) []string {
+	var hints []uitext.ID
+	if a.deps.Launcher != nil {
+		switch a.xFor(ag) {
+		case xJump:
+			hints = append(hints, uitext.AgentHintJump)
+		case xAgain:
+			hints = append(hints, uitext.AgentHintAgain)
+		}
+	}
+	if a.deps.Agents != nil && (ag.State == agents.Ended || ag.State == agents.Lost) {
+		hints = append(hints, uitext.AgentHintRemove)
+	}
+	out := make([]string, 0, len(hints))
+	for _, id := range hints {
+		out = append(out, uitext.Fill(uitext.AgentMeta, uitext.Inline(id).String()).String())
+	}
+	return out
 }
 
 // agentMeta are the meta bar's first lines for the ticket's most urgent
-// agent (C9b): a faint label, then its glyph in its tone, its word and how
-// long its state has lasted, then an empty line before the facts. A value
+// agent (C9b): a faint label, then its glyph in its tone, its word, how
+// long its state has lasted and the keys that act on it (C9c), then an
+// empty line before the facts. A value
 // too long for the bar is broken at its spaces, the lines after the first
 // under the word, so neither the state nor its age is cut. None without
 // an agent.
@@ -274,7 +312,7 @@ func (a *app) agentMeta(ticket string) []present.MetaLine {
 	}
 	l := a.look(ag.State)
 	out := []present.MetaLine{{Text: uitext.Inline(uitext.BarAgent), Style: present.Faint}}
-	for i, line := range barLines(uitext.Inline(l.word).String(), age(a.now().Sub(ag.Since)), view.MetaRoom-markCells) {
+	for i, line := range barLines(uitext.Inline(l.word).String(), age(a.now().Sub(ag.Since)), a.agentHints(ag), view.MetaRoom-markCells) {
 		if i == 0 {
 			out = append(out, present.MetaLine{Lead: present.NewInline(l.glyph), LeadStyle: l.style, Text: present.NewInline(line)})
 			continue
@@ -289,10 +327,11 @@ const markCells = 2
 
 // barLines breaks the agent's word and age at their spaces into lines of
 // at most width cells (the client's own ASCII text); the "· " before the
-// age stays with it. A word wider than the line stands alone and is cut
-// by the view.
-func barLines(word, age string, width int) []string {
+// age stays with it, and each key's hint stays whole (C9c). A word wider
+// than the line stands alone and is cut by the view.
+func barLines(word, age string, hints []string, width int) []string {
 	words := append(strings.Fields(word), uitext.Fill(uitext.AgentMeta, age).String())
+	words = append(words, hints...)
 	var out []string
 	line := ""
 	for _, w := range words {

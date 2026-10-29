@@ -180,7 +180,7 @@ func TestAReadFromBeforeTheRemovalDoesNotBringItBack(t *testing.T) {
 func TestTheNewestNoticeShows(t *testing.T) {
 	h := newHarness(t)
 	l := h.withLauncher()
-	l.kind = launch.NoClaude
+	l.kind, l.again = launch.NoClaude, launch.NoClaude // a first start, and x on the ended agent (C9c)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now))
 	h.openSix()
 	h.drive(h.press("x"))
@@ -222,7 +222,7 @@ func TestAProblemGoesWithItsAgent(t *testing.T) {
 func TestALaunchAnsweringAfterDShowsItsProblem(t *testing.T) {
 	h := newHarness(t)
 	l := h.withLauncher()
-	l.kind = launch.NoClaude
+	l.kind, l.again = launch.NoClaude, launch.NoClaude // a first start, and x on the ended agent (C9c)
 	f := h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now))
 	f.removeErr = errors.New("disk gone")
 	h.openSix()
@@ -246,7 +246,7 @@ func TestACompletedLaunchReplacesTheRemovalNotice(t *testing.T) {
 		untracked string
 		want      string
 	}{
-		{launch.Opened, "", "Claude Code opened beside #6"},
+		{launch.Opened, "", "Claude Code started again beside #6"},
 		{launch.Ended, "", "Claude Code ended; back at #6"},
 		{launch.Opened, "no id", "The state of Claude Code beside #6 cannot be shown: no id"},
 		{launch.Ended, "no id", "The state of Claude Code beside #6 cannot be shown: no id"},
@@ -257,14 +257,14 @@ func TestACompletedLaunchReplacesTheRemovalNotice(t *testing.T) {
 			f := h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now))
 			f.removeErr = errors.New("disk gone")
 			h.openSix()
-			_ = h.press("x")
-			call := l.launched()[0]
+			_ = h.press("x") // since C9c the ended agent's start again
+			call := l.restarts[0]
 			h.drive(h.press("d"))
 			if got := h.status(); !strings.Contains(got, "disk gone") {
 				t.Fatalf("no removal problem: %q", got)
 			}
 			h.drive(func() tea.Msg {
-				return launch.Done{Ref: call.ref, Ticket: call.ticket, Kind: c.kind, Untracked: c.untracked}
+				return launch.Done{Ref: h.m.app.launch.ref, Ticket: call.ticket, Kind: c.kind, Untracked: c.untracked, Action: launch.AgainAction}
 			})
 			if got := h.status(); got != c.want {
 				t.Fatalf("launch notice %q, want %q", got, c.want)
