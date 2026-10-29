@@ -328,8 +328,9 @@ func Hook(c HookCall) error {
 func step(event string, f facts, old stateRecord, now time.Time) stateRecord {
 	state, does := next(event, f)
 	pending := pendingAfter(event, f, old)
-	if does == keep && old.State != "" {
-		// A compaction keeps both the state and its pending requests.
+	if does == keep && old.State != "" && old.State != stateNames[Lost] {
+		// A compaction keeps both the state and its pending requests;
+		// not the client's lost mark, which a hook proves wrong.
 		state, _ = stateNamed(old.State)
 	}
 	if len(pending) > 0 {

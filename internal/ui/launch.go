@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/launch"
 	"github.com/gboyke/lalabase-cli/internal/present"
+	"github.com/gboyke/lalabase-cli/internal/ui/view"
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
@@ -14,19 +15,28 @@ import (
 // session one (launch.New); tests give a fake.
 type Launcher interface {
 	Launch(ref uint64, t launch.Ticket) tea.Cmd
+	// Jump selects the pane of an agent at t (C9c), Again starts an
+	// agent whose session is over again as a new one; their messages are
+	// launch.Done with the same ref. Jumps says whether a jump can find a
+	// pane at all (the client runs in iTerm).
+	Jump(ref uint64, t launch.Ticket, agent, pane string) tea.Cmd
+	Again(ref uint64, t launch.Ticket, a launch.Again) tea.Cmd
+	Jumps() bool
 }
 
 // launchState is the one launch at a time: its number, whether it runs, and
 // the notice of the newest one with the ticket it was for. A plain notice
 // is a hint (L2): it is shown until its deadline, a problem or a launch
-// running has none.
+// running has none. everywhere: x was pressed in the agents' list, where
+// no ticket is shown, so its notice shows wherever the person is (C9c).
 type launchState struct {
-	ref    uint64
-	busy   bool
-	ticket string
-	notice present.Inline
-	tone   present.Style
-	until  time.Time
+	ref        uint64
+	busy       bool
+	ticket     string
+	notice     present.Inline
+	tone       present.Style
+	until      time.Time
+	everywhere bool
 }
 
 // hintFor is how long a hint stands in the path's place.
@@ -65,21 +75,17 @@ func (a *app) detailOrg() string {
 	return ""
 }
 
-// launchClaude is x: one launch for the ticket shown, numbered; until its
-// answer, x does nothing.
-func (m Model) launchClaude() (Model, tea.Cmd) {
-	t, ok := m.launchTarget()
-	if !ok {
-		return m, nil
-	}
+// startClaude is x on a ticket without an agent: one launch for the
+// ticket shown, numbered; until its answer, x does nothing.
+func (m Model) startClaude(t launch.Ticket) tea.Cmd {
 	a := m.app
 	a.launch.ref++
-	a.launch.busy, a.launch.ticket = true, t.ID
+	a.launch.busy, a.launch.ticket, a.launch.everywhere = true, t.ID, false
 	a.launch.notice, a.launch.tone = uitext.Fill(uitext.Launching, t.Number), present.NoticeWaiting
 	a.clearAgentsNotice()
 	a.launch.until = time.Time{}
 	// While it runs, the agents are read: its record comes with its end.
-	return m, tea.Batch(a.deps.Launcher.Launch(a.launch.ref, t), a.readAgents())
+	return tea.Batch(a.deps.Launcher.Launch(a.launch.ref, t), a.readAgents())
 }
 
 // receiveLaunch takes the answer of the launch running and frees x; any
@@ -90,7 +96,7 @@ func (m Model) receiveLaunch(d launch.Done) tea.Cmd {
 	if a == nil || !a.launch.busy || d.Ref != a.launch.ref {
 		return nil
 	}
-	return tea.Batch(m.launchDone(d), a.readAgents())
+	return tea.Batch(m.launchDone(d), a.readAgents(), a.settleAfter(d))
 }
 
 // launchDone is receiveLaunch's notice: its text and tone, and a hint's
@@ -109,13 +115,9 @@ func (m Model) launchDone(d launch.Done) tea.Cmd {
 	// problem or a canceled launch has none.
 	var cmd tea.Cmd
 	if a.launch.tone == present.Plain && a.launch.notice.String() != "" {
-		now := a.now()
-		a.launch.until = now.Add(hintFor)
-		if a.deps.Events != nil {
-			cmd = a.deps.Events.Expiry(a.launch.until, now)
-		}
+		cmd = a.launchHint()
 	}
-	if a.launchShown() {
+	if a.launchShown(m.focus == view.Agents) {
 		// Decide after the final tone and deadline: a plain hint needs
 		// its deadline, and an opened launch may have a tracking error.
 		a.clearAgentsNotice()
@@ -123,24 +125,39 @@ func (m Model) launchDone(d launch.Done) tea.Cmd {
 	return cmd
 }
 
+// launchHint gives the launch's notice a hint's deadline, hintFor from
+// now by the model's clock; the Events wake the model when it has come.
+func (a *app) launchHint() tea.Cmd {
+	now := a.now()
+	a.launch.until = now.Add(hintFor)
+	if a.deps.Events == nil {
+		return nil
+	}
+	return a.deps.Events.Expiry(a.launch.until, now)
+}
+
 // launchTone is the notice's tone by the outcome: plain when Claude Code
-// opened or ended, a problem for every outcome that opened nothing or
-// ended in an error.
+// opened or ended, or the jump went or had nowhere to go, a problem for
+// every outcome that opened nothing or ended in an error.
 func launchTone(k launch.Kind) present.Style {
 	switch k {
-	case launch.Opened, launch.Ended, launch.Canceled:
+	case launch.Opened, launch.Ended, launch.Canceled, launch.Jumped, launch.NoPane:
 		return present.Plain
 	}
 	return present.NoticeProblem
 }
 
-// launchShown: the pane shows the ticket the notice is about, and a hint's
-// deadline has not come by the model's clock.
-func (a *app) launchShown() bool {
+// launchShown: the notice's place is shown (the pane shows the ticket the
+// notice is about, or x was pressed in the agents' list and that is open:
+// inAgents), and a hint's deadline has not come by the model's clock. A
+// problem of the list stands there only (review round 1 of #43): it has
+// no deadline, and outside the list nothing would take it away.
+func (a *app) launchShown(inAgents bool) bool {
 	if a.launch.tone == present.Plain && !a.launch.until.After(a.now()) {
 		return false
 	}
-	return a.launch.notice.String() != "" && a.detail != nil && a.detail.id == a.launch.ticket
+	shown := a.launch.everywhere && inAgents || !a.launch.everywhere && a.detail != nil && a.detail.id == a.launch.ticket
+	return a.launch.notice.String() != "" && shown
 }
 
 // launchTexts names the status text of each outcome: the texts of Opened
@@ -167,10 +184,34 @@ var withDetail = map[launch.Kind]bool{
 	launch.NoFiles: true,
 }
 
+// jumpTexts name the status text of a jump's outcomes (C9c), each with the
+// ticket's number but iTerm's refusal; any other is jumpFailed.
+var jumpTexts = map[launch.Kind]uitext.ID{
+	launch.Jumped:       uitext.Jumped,
+	launch.PaneGone:     uitext.JumpPaneGone,
+	launch.NoPane:       uitext.JumpNoPane,
+	launch.NoPermission: uitext.LaunchNoPermission,
+}
+
 // launchNotice is the status text of an outcome; nothing for a launch the
 // session's end canceled. The detail passes the cleaning of Fill: it may
 // name a path of the person's config.
 func launchNotice(d launch.Done) present.Inline {
+	if d.Action == launch.JumpAction {
+		id, ok := jumpTexts[d.Kind]
+		switch {
+		case d.Kind == launch.Canceled:
+			return present.Inline{}
+		case !ok:
+			return uitext.Inline(uitext.JumpFailed)
+		case d.Kind == launch.NoPermission:
+			return uitext.Inline(id)
+		}
+		return uitext.Fill(id, d.Ticket.Number)
+	}
+	if d.Action == launch.AgainAction && d.Kind == launch.Opened {
+		return uitext.Fill(uitext.LaunchResumed, d.Ticket.Number)
+	}
 	id, ok := launchTexts[d.Kind]
 	switch {
 	case !ok:

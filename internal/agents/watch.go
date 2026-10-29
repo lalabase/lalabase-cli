@@ -112,3 +112,30 @@ func withoutPath(err error) error {
 	}
 	return err
 }
+
+// Settled is the message of one Settle: what it was asked to settle,
+// whether the agent was marked lost, and why something is left undone
+// (nil when nothing is).
+type Settled struct {
+	After After
+	Lost  bool
+	Err   error
+}
+
+// Settle is the command that does what follows a start (Settle, C9c),
+// under the supervisor like Read, at the model's time at.
+func (w *Watcher) Settle(after After, at time.Time) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := worker.Run(w.sup, "agents: settle", func() tea.Msg {
+			lost, err := Settle(w.dir, after, at, w.procs)
+			return Settled{After: after, Lost: lost, Err: withoutPath(err)}
+		})
+		if !ok {
+			if w.sup.Err() != nil {
+				return worker.Fatal{}
+			}
+			return nil
+		}
+		return msg
+	}
+}

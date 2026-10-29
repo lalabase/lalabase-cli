@@ -76,12 +76,7 @@ func (m Model) receiveRemoved(r agents.Removed) (Model, tea.Cmd) {
 		a.agentsProblem(r.ID, uitext.Fill(uitext.AgentNotRemoved, number, r.Err.Error()))
 		return m, nil
 	}
-	if a.agents.gone == nil {
-		a.agents.gone = map[string]uint64{}
-	}
-	a.agents.gone[r.ID] = a.agents.ref
-	a.agents.list = withoutGone(a.agents.list, a.agents.gone, a.agents.ref)
-	delete(a.agents.seen, r.ID)
+	a.dropAgent(r.ID)
 	cmds := []tea.Cmd{a.agentsHint(uitext.Fill(uitext.AgentRemoved, number)), a.readAgents()}
 	if m.focus == view.Agents && len(a.agents.list) == 0 {
 		var back tea.Cmd
@@ -89,6 +84,17 @@ func (m Model) receiveRemoved(r agents.Removed) (Model, tea.Cmd) {
 		cmds = append(cmds, back)
 	}
 	return m, tea.Batch(cmds...)
+}
+
+// dropAgent takes the agent id, whose files went, out of the list at once;
+// a read that was out before may still bring it (gone).
+func (a *app) dropAgent(id string) {
+	if a.agents.gone == nil {
+		a.agents.gone = map[string]uint64{}
+	}
+	a.agents.gone[id] = a.agents.ref
+	a.agents.list = withoutGone(a.agents.list, a.agents.gone, a.agents.ref)
+	delete(a.agents.seen, id)
 }
 
 // receiveMarked takes a seen mark's answer: one not written says so; the

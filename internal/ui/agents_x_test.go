@@ -1,0 +1,716 @@
+package ui
+
+// C9c: x on a ticket with an agent jumps to the agent's pane while it
+// runs, waits or starts, and starts it again once its session is over;
+// in the agents' list it acts on the agent under the cursor (A3).
+
+import (
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gboyke/lalabase-cli/internal/agents"
+	"github.com/gboyke/lalabase-cli/internal/launch"
+	"github.com/gboyke/lalabase-cli/internal/ui/view"
+)
+
+const (
+	agentPane = "18C12925-0000-4000-8000-000000000001"
+	// newAgent is the agent a start again records.
+	newAgent = "0f8fad5b-d9cb-469f-a165-0000000000ff"
+	cleared  = "16fd2706-8baf-433b-82eb-8c7fada847da"
+)
+
+// paned is the agent at ticket #6 in state, with a pane.
+func paned(h *harness, state agents.State) agents.Agent {
+	ag := agentIn(1, orgA, 6, state, h.now.Add(-4*time.Minute))
+	ag.Pane = agentPane
+	ag.Session, ag.Resumable = cleared, true
+	return ag
+}
+
+// agentTicket is the launch's address of an agent's ticket.
+func agentTicket(ag agents.Agent) launch.Ticket {
+	return launch.Ticket{Org: ag.Organisation, Project: ag.Project, ID: ag.Ticket, Number: ag.Number}
+}
+
+func TestXJumpsToTheAgentThatRuns(t *testing.T) {
+	for _, state := range []agents.State{agents.Working, agents.WaitingForYou, agents.WaitingForApproval, agents.Starting} {
+		h := newHarness(t)
+		l := h.withLauncher()
+		ag := paned(h, state)
+		f := h.withWatcher(ag)
+		h.openSix()
+		h.m.width = 80 // the head's line, below the meta bar
+		if !h.offers(Launch) || !strings.Contains(helpText(h.m), "jump to agent") {
+			t.Fatalf("%v: x not offered as the jump: %q", state, helpText(h.m))
+		}
+		if line, _ := h.headLine(); !strings.HasSuffix(line, " · x jump to it") {
+			t.Fatalf("%v: head %q", state, line)
+		}
+		cmd := h.press("x")
+		if got := h.status(); got != "Switching to the agent of #6…" {
+			t.Fatalf("%v: status %q", state, got)
+		}
+		if h.offers(Launch) {
+			t.Fatalf("%v: x offered while the jump runs", state)
+		}
+		h.drive(cmd)
+		if got := l.jumps; len(got) != 1 || got[0].agent != ag.ID || got[0].pane != agentPane || got[0].ticket != agentTicket(ag) {
+			t.Fatalf("%v: jumps %+v", state, got)
+		}
+		if len(l.launched()) != 0 || len(l.restarts) != 0 || len(f.settlements()) != 0 {
+			t.Fatalf("%v: a start or a settlement beside the jump", state)
+		}
+		if got := h.status(); got != "Switched to the agent of #6" {
+			t.Fatalf("%v: status %q", state, got)
+		}
+	}
+}
+
+// Without iTerm, or without a pane the launch recorded, there is nothing
+// to jump to: x says so, but neither the help nor the head offers it.
+func TestXWithoutAPaneSaysSo(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		pane    string
+		noITerm bool
+	}{{"no pane", "", false}, {"no iTerm", agentPane, true}} {
+		h := newHarness(t)
+		l := h.withLauncher()
+		l.noITerm = c.noITerm
+		ag := paned(h, agents.Working)
+		ag.Pane = c.pane
+		h.withWatcher(ag)
+		h.openSix()
+		h.m.width = 80
+		if help := helpText(h.m); strings.Contains(help, "jump") || strings.Contains(help, "Claude Code beside") || strings.Contains(help, "not listed") {
+			t.Fatalf("%s: help %q", c.name, helpText(h.m))
+		}
+		if line, _ := h.headLine(); strings.Contains(line, "x ") {
+			t.Fatalf("%s: head %q", c.name, line)
+		}
+		h.drive(h.press("x"))
+		if len(l.jumps) != 0 || len(l.launched()) != 0 {
+			t.Fatalf("%s: jumped %+v, launched %+v", c.name, l.jumps, l.launched())
+		}
+		if got := h.status(); got != "No pane of the agent of #6 is known in this terminal" {
+			t.Fatalf("%s: status %q", c.name, got)
+		}
+	}
+}
+
+// The pane gone (4201): the agent is settled, which marks a starting one
+// lost; one with a state stays and the status says the pane was closed.
+func TestAJumpToAPaneThatIsGone(t *testing.T) {
+	for _, c := range []struct {
+		state agents.State
+		lost  bool
+		want  string
+	}{
+		{agents.Starting, true, "The agent of #6 is lost: its pane is gone"},
+		{agents.Working, false, "The pane of the agent of #6 was not found; it was closed"},
+	} {
+		h := newHarness(t)
+		l := h.withLauncher()
+		l.jumpKind = launch.PaneGone
+		ag := paned(h, c.state)
+		f := h.withWatcher(ag)
+		f.settleLost = c.lost
+		h.openSix()
+		h.drive(h.press("x"))
+		if got := f.settlements(); len(got) != 1 || got[0] != (agents.After{Agent: ag.ID}) {
+			t.Fatalf("%v: settled %+v", c.state, got)
+		}
+		if got := h.status(); got != c.want {
+			t.Fatalf("%v: status %q", c.state, got)
+		}
+	}
+}
+
+// Other outcomes of a jump are told, and settle nothing.
+func TestAJumpThatFails(t *testing.T) {
+	for kind, want := range map[launch.Kind]string{
+		launch.NoPermission: "macOS does not let this terminal control iTerm",
+		launch.ITermFailed:  "iTerm did not switch to the agent's pane",
+		launch.NoAnswer:     "iTerm did not switch to the agent's pane",
+		launch.NoPane:       "No pane of the agent of #6 is known in this terminal",
+	} {
+		h := newHarness(t)
+		l := h.withLauncher()
+		l.jumpKind = kind
+		f := h.withWatcher(paned(h, agents.Working))
+		h.openSix()
+		h.drive(h.press("x"))
+		if got := h.status(); !strings.HasPrefix(got, want) {
+			t.Fatalf("%v: status %q", kind, got)
+		}
+		if len(f.settlements()) != 0 {
+			t.Fatalf("%v: settled", kind)
+		}
+	}
+}
+
+// x on an agent whose session is over starts it again: the latest
+// session it recorded, a new agent; once the pane opened the old one is
+// settled away, and the head and the list show the new one.
+func TestXStartsAnAgentWhoseSessionIsOverAgain(t *testing.T) {
+	for _, state := range []agents.State{agents.Ended, agents.Lost} {
+		h := newHarness(t)
+		l := h.withLauncher()
+		l.recorded = newAgent
+		old := paned(h, state)
+		f := h.withWatcher(old)
+		h.openSix()
+		h.m.width = 80
+		if !h.offers(Launch) || !strings.Contains(helpText(h.m), "start agent again") {
+			t.Fatalf("%v: help %q", state, helpText(h.m))
+		}
+		if line, _ := h.headLine(); !strings.HasSuffix(line, " · x start again · d remove") {
+			t.Fatalf("%v: head %q", state, line)
+		}
+		cmd := h.press("x")
+		if got := h.status(); got != "Starting the agent of #6 again…" {
+			t.Fatalf("%v: status %q", state, got)
+		}
+		// The new agent as the launch records it, for the next read.
+		started := old
+		started.ID, started.State, started.Since, started.Pane, started.Resumable = newAgent, agents.Starting, h.now, agentPane, false
+		f.set(old, started)
+		h.drive(cmd)
+		if got := l.restarts; len(got) != 1 || got[0].again != (launch.Again{Agent: old.ID, Session: cleared}) || got[0].ticket != agentTicket(old) {
+			t.Fatalf("%v: again %+v", state, got)
+		}
+		if got := h.status(); got != "Claude Code started again beside #6" {
+			t.Fatalf("%v: status %q", state, got)
+		}
+		// Review round 1 of #43: the pane opened, but claude may not have
+		// found the conversation (another folder, a transcript gone): the
+		// old agent stays until a hook of the new one came.
+		h.due()
+		if got := f.settlements(); len(got) != 0 {
+			t.Fatalf("%v: settled before a hook %+v", state, got)
+		}
+		if line, _ := h.headLine(); !strings.Contains(line, "starting") || !strings.HasSuffix(line, "x jump to it") {
+			t.Fatalf("%v: head %q, want the new agent's", state, line)
+		}
+		if h.m.focus == view.Object && !strings.Contains(helpText(h.m), "jump to agent") {
+			t.Fatalf("%v: help %q", state, helpText(h.m))
+		}
+		// Its first hook: the old agent goes.
+		started.State, started.Resumable = agents.WaitingForYou, true
+		f.set(old, started)
+		h.due()
+		if got := f.settlements(); len(got) != 1 || got[0] != (agents.After{Agent: newAgent, Replaces: old.ID, Opened: true}) {
+			t.Fatalf("%v: settled %+v", state, got)
+		}
+		for _, ag := range h.m.app.agents.list {
+			if ag.ID == old.ID {
+				t.Fatalf("%v: the old agent stayed", state)
+			}
+		}
+		h.due()
+		if len(f.settlements()) != 1 || len(h.m.app.agents.list) != 1 || h.m.app.agents.list[0].ID != newAgent {
+			t.Fatalf("%v: agents %+v, settled %+v", state, h.m.app.agents.list, f.settlements())
+		}
+	}
+}
+
+// Review round 1 of #43: the new agent's pane gone before its first hook
+// (claude --resume found nothing and the pane was closed): the start again
+// failed, the new agent goes and the old one stays, x offered on it again.
+func TestAStartAgainWhosePaneWentBeforeAHook(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	old := paned(h, agents.Ended)
+	f := h.withWatcher(old)
+	h.openSix()
+	started := old
+	started.ID, started.State, started.Since, started.Resumable = newAgent, agents.Starting, h.now, false
+	f.set(old, started)
+	h.drive(h.press("x"))
+	h.due()
+	l.jumpKind = launch.PaneGone
+	f.settleLost = true
+	h.drive(h.press("x")) // on the new, starting agent: the jump
+	if got := l.jumps; len(got) != 1 || got[0].agent != newAgent {
+		t.Fatalf("jumps %+v", got)
+	}
+	if got := f.settlements(); len(got) != 1 || got[0] != (agents.After{Agent: newAgent, Replaces: old.ID}) {
+		t.Fatalf("settled %+v", got)
+	}
+	if len(h.m.app.agents.list) != 1 || h.m.app.agents.list[0].ID != old.ID {
+		t.Fatalf("agents %+v", h.m.app.agents.list)
+	}
+	if !h.offers(Launch) || !strings.Contains(helpText(h.m), "start agent again") {
+		t.Fatalf("x not offered on the old agent: %q", helpText(h.m))
+	}
+}
+
+// A new agent that leaves without a hook (d, another client) ends the
+// wait: the old agent is offered again.
+func TestAStartAgainWhoseNewAgentWent(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	old := paned(h, agents.Ended)
+	f := h.withWatcher(old)
+	h.openSix()
+	h.drive(h.press("x"))
+	h.due() // the read has only the old agent: the new one is gone
+	if !h.offers(Launch) || len(f.settlements()) != 0 {
+		t.Fatalf("x offered %v, settled %+v", h.offers(Launch), f.settlements())
+	}
+}
+
+// An agent whose hooks never recorded a session is started afresh: no
+// session to resume.
+func TestXStartsANeverStartedAgentAfresh(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	old := paned(h, agents.Lost)
+	old.Resumable = false
+	h.withWatcher(old)
+	h.openSix()
+	h.drive(h.press("x"))
+	if got := l.restarts; len(got) != 1 || got[0].again != (launch.Again{Agent: old.ID}) {
+		t.Fatalf("again %+v", got)
+	}
+}
+
+// A start again that opened nothing keeps the old agent and settles
+// nothing; x offers it again.
+func TestAFailedStartAgainKeepsTheOldAgent(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.again = launch.NoPermission
+	l.recorded = newAgent
+	old := paned(h, agents.Ended)
+	f := h.withWatcher(old)
+	h.openSix()
+	h.drive(h.press("x"))
+	if len(f.settlements()) != 0 || len(h.m.app.agents.list) != 1 {
+		t.Fatalf("settled %+v, agents %+v", f.settlements(), h.m.app.agents.list)
+	}
+	if !strings.HasPrefix(h.status(), "macOS does not let") {
+		t.Fatalf("status %q", h.status())
+	}
+	if !h.offers(Launch) {
+		t.Fatal("x is not offered on the old agent")
+	}
+}
+
+// Without iTerm claude runs here and the settlement follows its end: a
+// start again whose new agent got no hook did not start, the old one
+// stays; a first start whose agent got none is lost.
+func TestHereTheEndSettles(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.noITerm, l.again, l.recorded = true, launch.Ended, newAgent
+	old := paned(h, agents.Ended)
+	f := h.withWatcher(old)
+	f.settleLost = true
+	h.openSix()
+	cmd := h.press("x")
+	// A read saw the new agent before claude ended here.
+	started := old
+	started.ID, started.State, started.Pane = newAgent, agents.Starting, ""
+	h.m.app.agents.list = append(h.m.app.agents.list, started)
+	h.drive(cmd)
+	if got := f.settlements(); len(got) != 1 || got[0] != (agents.After{Agent: newAgent, Replaces: old.ID}) {
+		t.Fatalf("settled %+v", got)
+	}
+	if got := h.status(); got != "Claude Code did not start again beside #6; the agent stays" {
+		t.Fatalf("status %q", got)
+	}
+	if len(h.m.app.agents.list) != 1 || h.m.app.agents.list[0].ID != old.ID {
+		t.Fatalf("agents %+v", h.m.app.agents.list)
+	}
+	if !h.offers(Launch) {
+		t.Fatal("x is not offered on the old agent again")
+	}
+
+	h = newHarness(t)
+	l = h.withLauncher()
+	l.noITerm, l.kind, l.recorded = true, launch.Ended, newAgent
+	f = h.withWatcher()
+	h.openSix()
+	h.drive(h.press("x"))
+	if got := f.settlements(); len(got) != 1 || got[0] != (agents.After{Agent: newAgent}) {
+		t.Fatalf("a first start here settled %+v", got)
+	}
+	// One opened in iTerm settles nothing.
+	h = newHarness(t)
+	l = h.withLauncher()
+	l.recorded = newAgent
+	f = h.withWatcher()
+	h.openSix()
+	h.drive(h.press("x"))
+	if got := f.settlements(); len(got) != 0 {
+		t.Fatalf("an opened first start settled %+v", got)
+	}
+}
+
+// A settlement that fails is told as a problem.
+func TestAFailedSettlementIsTold(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.noITerm, l.again, l.recorded = true, launch.Ended, newAgent
+	f := h.withWatcher(paned(h, agents.Ended))
+	f.settleErr = errors.New("it is running again")
+	h.openSix()
+	h.drive(h.press("x"))
+	if got := h.status(); got != "The agents of #6 could not be updated: it is running again" {
+		t.Fatalf("status %q", got)
+	}
+	if !h.offers(Launch) {
+		t.Fatal("x is not offered on the old agent again")
+	}
+}
+
+// Review round 1 of #43: a problem of x in the agents' list stands while
+// the list is open; leaving it takes the problem along, it does not stand
+// on every screen without an end.
+func TestAProblemOfXInTheListStaysThere(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.again = launch.NoPermission
+	ended := agentIn(2, orgA, 7, agents.Ended, h.now)
+	h.withWatcher(ended)
+	h.start()
+	h.drive(h.press("A"))
+	h.drive(h.press("x"))
+	if got := h.status(); !strings.HasPrefix(got, "macOS does not let") {
+		t.Fatalf("status %q", got)
+	}
+	h.drive(h.press("esc"))
+	if got := h.status(); strings.Contains(got, "macOS") {
+		t.Fatalf("the list's problem stands outside it: %q", got)
+	}
+}
+
+// The cursor of the agents' list follows a start again to the new agent.
+func TestTheCursorFollowsTheStartAgain(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	old := paned(h, agents.Ended)
+	// A working agent first in the list: a cursor that lost its agent
+	// falls back to it.
+	other := agentIn(3, orgA, 8, agents.Working, h.now)
+	f := h.withWatcher(other, old)
+	h.start()
+	h.drive(h.press("A"))
+	h.drive(h.press("down"))
+	h.drive(h.press("x"))
+	started := old
+	// Ended after its hook: less urgent than the working one, so a cursor
+	// that fell back would not land on it.
+	started.ID, started.State, started.Resumable = newAgent, agents.Ended, true
+	f.set(other, old, started)
+	h.due()
+	h.due()
+	if ag, ok := h.m.app.agentUnderCursor(); !ok || ag.ID != newAgent {
+		t.Fatalf("cursor on %+v", ag)
+	}
+}
+
+// A3: in the agents' list x acts on the agent under the cursor, by the
+// same rules, and its notice shows there.
+func TestXInTheAgentsList(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	working := paned(h, agents.Working)
+	ended := agentIn(2, orgA, 7, agents.Ended, h.now)
+	ended.Session, ended.Resumable = cleared, true
+	h.withWatcher(working, ended)
+	h.start()
+	h.drive(h.press("A"))
+	if ag, _ := h.m.app.agentUnderCursor(); ag.ID != working.ID {
+		t.Fatalf("cursor on %+v", ag)
+	}
+	if !strings.Contains(helpText(h.m), "jump to agent") {
+		t.Fatalf("help %q", helpText(h.m))
+	}
+	h.drive(h.press("x"))
+	if len(l.jumps) != 1 || l.jumps[0].agent != working.ID {
+		t.Fatalf("jumps %+v", l.jumps)
+	}
+	if got := h.status(); got != "Switched to the agent of #6" {
+		t.Fatalf("status %q", got)
+	}
+	h.drive(h.press("down"))
+	if !strings.Contains(helpText(h.m), "start agent again") {
+		t.Fatalf("help %q", helpText(h.m))
+	}
+	h.drive(h.press("x"))
+	if len(l.restarts) != 1 || l.restarts[0].again.Agent != ended.ID || l.restarts[0].ticket != agentTicket(ended) {
+		t.Fatalf("restarts %+v", l.restarts)
+	}
+	if h.m.focus != view.Agents {
+		t.Fatalf("focus %v", h.m.focus)
+	}
+	if got := h.status(); got != "Claude Code started again beside #7" {
+		t.Fatalf("status %q", got)
+	}
+}
+
+// While the old agent's settlement is out it is not started again a
+// second time.
+func TestAnAgentBeingReplacedIsNotStartedAgainTwice(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	old := paned(h, agents.Lost)
+	h.withWatcher(old)
+	h.openSix()
+	done := messages(t, h.press("x"))
+	var settle []any
+	for _, msg := range done {
+		if d, ok := msg.(launch.Done); ok {
+			// Only the launch's answer; the settlement it asks for is
+			// held back.
+			_ = h.feed(d)
+			settle = append(settle, d)
+		}
+	}
+	if len(settle) != 1 {
+		t.Fatalf("messages %v", done)
+	}
+	if h.offers(Launch) {
+		t.Fatal("x offered on the agent being replaced")
+	}
+}
+
+// Where the meta bar stands the hints stand there, each whole.
+func TestTheMetaBarNamesTheKeys(t *testing.T) {
+	for _, c := range []struct {
+		state agents.State
+		want  string
+	}{
+		{agents.Working, "working · 4 min · x jump to it"},
+		{agents.Ended, "ended · 4 min · x start again · d remove"},
+	} {
+		h := newHarness(t)
+		h.withLauncher()
+		h.withWatcher(paned(h, c.state))
+		h.openSix()
+		h.m.width = 160
+		var value []string
+		for _, l := range h.m.objectColumn().Meta[1:] {
+			if l.Text.String() == "" {
+				break
+			}
+			value = append(value, strings.TrimSpace(l.Text.String()))
+		}
+		if got := strings.Join(value, " "); got != c.want {
+			t.Fatalf("%v: bar %q", c.state, got)
+		}
+		for _, line := range value {
+			if strings.HasSuffix(line, " x") || strings.HasSuffix(line, "·") {
+				t.Fatalf("%v: a hint broken: %q", c.state, value)
+			}
+		}
+	}
+}
+
+// A settlement out is not asked for again by the reads that follow it.
+func TestASettlementOutIsNotAskedTwice(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	old := paned(h, agents.Ended)
+	f := h.withWatcher(old)
+	f.holdSettle = true
+	h.openSix()
+	h.drive(h.press("x"))
+	started := old
+	started.ID, started.State, started.Resumable = newAgent, agents.WaitingForYou, true
+	f.set(old, started)
+	h.due()
+	h.due()
+	if got := f.settlements(); len(got) != 1 {
+		t.Fatalf("settled %+v", got)
+	}
+}
+
+// startedAgain sets up a start again of the ended agent at #6 whose pane
+// opened; the new agent is still starting. It returns the old agent and
+// the new one as a read lists it.
+func startedAgain(t *testing.T, h *harness, f *fakeWatcher) (old, started agents.Agent) {
+	t.Helper()
+	old = paned(h, agents.Ended)
+	started = old
+	started.ID, started.State, started.Since, started.Resumable = newAgent, agents.Starting, h.now, false
+	f.set(old)
+	return old, started
+}
+
+// Review round 2 of #43: a read that failed lists no agent, but says
+// nothing of the new one: the wait for its first hook goes on.
+func TestAFailedReadDoesNotEndTheWait(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	f := h.withWatcher()
+	old, started := startedAgain(t, h, f)
+	h.openSix()
+	h.drive(h.press("x"))
+	f.mu.Lock()
+	f.err = errors.New("directory refused")
+	f.mu.Unlock()
+	h.due()
+	f.mu.Lock()
+	f.err = nil
+	f.mu.Unlock()
+	started.State, started.Resumable = agents.WaitingForYou, true
+	f.set(old, started)
+	h.due()
+	if got := f.settlements(); len(got) != 1 || got[0] != (agents.After{Agent: newAgent, Replaces: old.ID, Opened: true}) {
+		t.Fatalf("settled %+v", got)
+	}
+}
+
+// Review round 2 of #43: a read issued before the new agent's record was
+// written does not list it; that is no sign it left, and the wait goes
+// on.
+func TestAReadFromBeforeTheRecordDoesNotEndTheWait(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	f := h.withWatcher()
+	old, started := startedAgain(t, h, f)
+	h.openSix()
+	a := h.m.app
+	before := messages(t, a.agentsDue(a.agents.until)) // out while the launch runs
+	h.drive(h.press("x"))
+	f.set(old, started)
+	next := h.feed(before...) // its answer after the launch's
+	if h.offers(Launch) {
+		t.Fatal("the wait ended: x offered on the old agent")
+	}
+	h.drive(next...)
+	started.State, started.Resumable = agents.WaitingForYou, true
+	f.set(old, started)
+	h.due()
+	if got := f.settlements(); len(got) != 1 || got[0].Replaces != old.ID {
+		t.Fatalf("settled %+v", got)
+	}
+}
+
+// A new agent lost after its hooks (its process gone) did start: the old
+// one goes. One lost without a hook did not: the wait ends, the old one
+// stays and may be started again.
+func TestALostNewAgentAndTheWait(t *testing.T) {
+	for _, c := range []struct {
+		resumable bool
+		settled   bool
+	}{{true, true}, {false, false}} {
+		h := newHarness(t)
+		l := h.withLauncher()
+		l.recorded = newAgent
+		f := h.withWatcher()
+		old, started := startedAgain(t, h, f)
+		h.openSix()
+		h.drive(h.press("x"))
+		started.State, started.Resumable = agents.Lost, c.resumable
+		f.set(old, started)
+		h.due()
+		if got := len(f.settlements()) == 1; got != c.settled {
+			t.Fatalf("resumable %v: settled %+v", c.resumable, f.settlements())
+		}
+		if !c.settled {
+			h.due()
+			if _, out := h.m.app.agents.replacing[old.ID]; out || len(f.settlements()) != 0 {
+				t.Fatalf("the wait goes on: %+v", h.m.app.agents.replacing)
+			}
+		}
+	}
+}
+
+// Review round 2 of #43: a problem of x in the agents' list goes when the
+// list is left: it does not come back when the list opens again, nor
+// stand in the pane of the agent's ticket.
+func TestAProblemOfTheListGoesWithIt(t *testing.T) {
+	for _, leave := range []string{"esc", "enter"} {
+		h := newHarness(t)
+		l := h.withLauncher()
+		l.again = launch.NoPermission
+		h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now))
+		h.start()
+		h.drive(h.press("A"))
+		h.drive(h.press("x"))
+		h.drive(h.press(leave))
+		if got := h.status(); strings.Contains(got, "macOS") {
+			t.Fatalf("%s: status %q", leave, got)
+		}
+		h.drive(h.press("A"))
+		if got := h.status(); strings.Contains(got, "macOS") {
+			t.Fatalf("%s: back in the list %q", leave, got)
+		}
+	}
+}
+
+// The answer of x in the list is newer than a notice of d told while it
+// ran: it shows.
+func TestTheAnswerOfXInTheListOutranksAnOlderNotice(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.recorded = newAgent
+	ended := agentIn(1, orgA, 6, agents.Ended, h.now)
+	other := agentIn(2, orgA, 7, agents.Ended, h.now.Add(time.Second))
+	f := h.withWatcher(ended, other)
+	f.removeErr = errors.New("disk gone")
+	h.start()
+	h.drive(h.press("A"))
+	cmd := h.press("x") // on #6
+	h.drive(h.press("down"))
+	h.drive(h.press("d")) // #7 fails
+	if got := h.status(); !strings.Contains(got, "disk gone") {
+		t.Fatalf("status %q", got)
+	}
+	h.drive(cmd)
+	if got := h.status(); got != "Claude Code started again beside #6" {
+		t.Fatalf("status %q", got)
+	}
+}
+
+// Review round 3 of #43: the answer of an x pressed in the list that
+// comes after the list closed belongs to its ticket: it shows there, as
+// any notice of the ticket in the pane.
+func TestTheAnswerAfterLeavingTheListBelongsToTheTicket(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.jumpKind = launch.PaneGone
+	h.withWatcher(paned(h, agents.Working))
+	h.openSix()
+	h.drive(h.press("A"))
+	cmd := h.press("x")
+	h.drive(h.press("esc"))
+	h.drive(cmd)
+	if h.m.focus != view.Object {
+		t.Fatalf("focus %v", h.m.focus)
+	}
+	if got := h.status(); got != "The pane of the agent of #6 was not found; it was closed" {
+		t.Fatalf("at the ticket: %q", got)
+	}
+}
+
+// Review round 3 of #43: leaving the list takes only its own notice; a
+// problem of x pressed in the ticket's pane stays there.
+func TestLeavingTheListKeepsTheTicketsNotice(t *testing.T) {
+	h := newHarness(t)
+	l := h.withLauncher()
+	l.again = launch.NoPermission
+	h.withWatcher(paned(h, agents.Ended))
+	h.openSix()
+	h.drive(h.press("x"))
+	h.drive(h.press("A"))
+	h.drive(h.press("esc"))
+	if got := h.status(); !strings.HasPrefix(got, "macOS does not let") {
+		t.Fatalf("status %q", got)
+	}
+}

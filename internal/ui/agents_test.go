@@ -27,6 +27,50 @@ type fakeWatcher struct {
 	// removed are the agents Remove was asked for (C9c).
 	seeErr, removeErr error
 	removed           []string
+	// settled are the settlements asked for (C9c); settleLost and
+	// settleErr what they answer.
+	settled    []agents.After
+	settleLost bool
+	settleErr  error
+	// holdSettle: a settlement never answers (it is still out).
+	holdSettle bool
+}
+
+// Settle answers as agents.Settle would on the fake's agents: a lost
+// mark turns the agent lost, or takes it when it replaced another; else
+// the replaced agent goes.
+func (f *fakeWatcher) Settle(after agents.After, _ time.Time) tea.Cmd {
+	f.mu.Lock()
+	f.settled = append(f.settled, after)
+	lost, err := f.settleLost && !after.Opened, f.settleErr
+	if err == nil && !f.holdSettle {
+		gone := after.Replaces
+		if lost && after.Replaces != "" {
+			gone = after.Agent
+		}
+		kept := f.agents[:0:0]
+		for _, ag := range f.agents {
+			if lost && ag.ID == after.Agent {
+				ag.State = agents.Lost
+			}
+			if ag.ID != gone {
+				kept = append(kept, ag)
+			}
+		}
+		f.agents = kept
+	}
+	hold := f.holdSettle
+	f.mu.Unlock()
+	if hold {
+		return func() tea.Msg { return nil }
+	}
+	return func() tea.Msg { return agents.Settled{After: after, Lost: lost, Err: err} }
+}
+
+func (f *fakeWatcher) settlements() []agents.After {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]agents.After(nil), f.settled...)
 }
 
 func (f *fakeWatcher) Remove(id string, _ time.Time) tea.Cmd {
