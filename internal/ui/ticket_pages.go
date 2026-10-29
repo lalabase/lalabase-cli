@@ -399,7 +399,7 @@ func (m Model) commentMissing(r gateway.TicketResult) (Model, tea.Cmd) {
 	e.text, e.status, e.unavailable = "", status{}, true
 	// The read that may remove the ticket is sent now: a read of the page
 	// that left before (its answer may predate the deletion, or it waits
-	// for the background budget as a preview) is canceled, and the new
+	// for the previews' budget) is canceled, and the new
 	// epoch keeps the queue from joining it (review round 2, finding 1).
 	a.cancelArea(gateway.Detail)
 	a.scope.Invalidate(d.key)

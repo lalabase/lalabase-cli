@@ -10,9 +10,10 @@ import (
 
 // C9b: idle work (the titles of the agents' tickets) is background work
 // below the background: it starts only while no background job waits, and
-// only while fewer than IdleShare starts are in the window, so the
-// previews keep at least the budget's other half; one running holds the
-// background place while it runs.
+// only while fewer than IdleShare starts are in the window, so other
+// background work keeps at least the budget's other half; one running
+// holds the background place while it runs. (Previews have a window of
+// their own since #44: preview_test.go.)
 
 // Of an idle and a background job waiting, the background one starts.
 func TestBackgroundGoesBeforeIdle(t *testing.T) {
@@ -34,7 +35,7 @@ func TestBackgroundGoesBeforeIdle(t *testing.T) {
 
 // Idle work takes a background place and counts against the budget, but
 // starts only while fewer than IdleShare starts are in the window: the
-// rest is the previews'.
+// rest is the other background work's.
 func TestIdleWorkLeavesTheBudgetsOtherHalf(t *testing.T) {
 	if IdleShare*2 != BackgroundBudget {
 		t.Fatalf("idle share %d of %d", IdleShare, BackgroundBudget)
@@ -54,7 +55,7 @@ func TestIdleWorkLeavesTheBudgetsOtherHalf(t *testing.T) {
 	held := newGate()
 	do(q, context.Background(), Job{Priority: Idle, Run: held.run})
 	notStarted(t, held)
-	// A preview finds the other half.
+	// Other background work finds the other half.
 	for range BackgroundBudget - IdleShare {
 		g := newGate()
 		r := do(q, context.Background(), Job{Priority: Background, Run: g.run})
@@ -63,7 +64,7 @@ func TestIdleWorkLeavesTheBudgetsOtherHalf(t *testing.T) {
 		answer(t, r)
 	}
 	notStarted(t, held)
-	// The window rolls past the idle starts and the previews' too.
+	// The window rolls past the idle starts and the others' too.
 	c.Advance(BudgetWindow)
 	waitStarted(t, held)
 }

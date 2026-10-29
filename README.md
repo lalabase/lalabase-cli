@@ -182,10 +182,11 @@ navigation again.
   (Option in iTerm2, Fn in Terminal.app).
 * **The ticket pane.** When the cursor rests on a ticket row for 300 ms and
   the object pane is on the screen (three columns and two columns always,
-  one column with the pane focused), the ticket is read as a preview: background work, at
-  most six background starts per rolling minute (retries counted), held
-  until the window rolls on when the budget is spent, canceled when the
-  cursor moves on. `Enter` opens the ticket as the person's read and joins
+  one column with the pane focused), the ticket is read as a preview: background work
+  before every other, with a budget of its own of 30 starts per rolling
+  minute (retries counted), held until the window rolls on when that is
+  spent, canceled when the cursor moves on. While it loads for the first
+  time the pane names the ticket from its row under "Loading…". `Enter` opens the ticket as the person's read and joins
   a pending preview: one request, both get the whole ticket. The pane shows
   the head, the description (cut by the server at 8,000 characters), the
   comments newest first (25 a page, with the number of readable comments
@@ -428,9 +429,9 @@ navigation again.
     ticket's title come from the session (the directory, the ticket in the
     pane, the list shown, the cache). A title the session lacks is read
     once per ticket through the usual way (`get_ticket`), as idle work:
-    after every waiting preview, and with at most half of the background
-    budget, so the previews keep at least the other half (a title read
-    that runs holds the background place while it runs); the disk cache
+    after every waiting preview, and with at most three of the six
+    background starts a minute (a title read that runs holds the
+    background place while it runs); the disk cache
     is asked beside it,
     and a title found there cancels the server's read while it still
     waits;
@@ -903,15 +904,20 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   broke off, was too large or the caller left; a window not in the future
   pauses 5 seconds. A job is
   retried at most once: a read on a temporary failure, a write only after a
-  429 or when nothing was sent. Background work (previews, their reloads,
-  their retries) starts at most six times per rolling minute; what is held
-  waits for the window to roll on, the person's actions are never counted
-  or held, and a held background read a person joins starts as theirs.
-  Idle work (C9b: the titles of the agents' tickets) waits behind every
-  background job and starts only while fewer than three starts are in the
-  window, so at least the other half of the budget stays the previews'
-  (one that runs holds the background place meanwhile); a preview
-  or a person joining an idle read lifts it. A
+  429 or when nothing was sent. Previews (and the one reload of a cached
+  ticket shown) start at most 30 times per rolling minute and go before
+  other background work, which is counted apart, at most six times. The
+  server allows 60 requests a minute per token: the previews take at most
+  half, the rest is your own actions and the Claude Code agents started
+  with the same token, which the client does not count; a 429 pauses
+  everything, your actions too. What is held waits for its window to roll
+  on, the person's actions are never counted or held, and a held
+  background read a person joins starts as theirs. Idle work (C9b: the
+  titles of the agents' tickets) waits behind every preview that may
+  start and every background job, and starts only while fewer than three
+  of the six background starts are in the window (one that runs holds the
+  background place meanwhile); a preview or a person joining an idle read
+  lifts it. A
   shared request belongs to the program's
   lifetime, not to its first caller: it is canceled when its last caller
   leaves or the program stops its work (on quitting, or after a fatal error).
