@@ -20,6 +20,9 @@ type Spec struct {
 	Tool string
 	// Path is the REST path; empty for a tool.
 	Path string
+	// Method is the method of a REST write (POST or PATCH); empty for a
+	// REST reader and a tool.
+	Method string
 	// Args are the arguments the adapter may send; the tool's input schema
 	// must declare every one of them.
 	Args []string
@@ -38,6 +41,12 @@ type Spec struct {
 	// null, but when it is there it must have an id. A field missing, null
 	// without "?", or an object or list in the wrong shape fails the answer.
 	Required []string
+	// Newer are fields a newer server sends and an older one lacks, as
+	// paths like Required: the field the last segment names may be
+	// absent; present, it follows the rules of Required (not null without
+	// "?", the right shape), and what leads to it must be there. The
+	// caller reads an absent one as "the server does not say".
+	Newer []string
 }
 
 // Specs are all adapters, for the compatibility test and feature detection.
@@ -49,20 +58,35 @@ var Specs = []Spec{
 // Missing returns the required paths the payload lacks, with list positions
 // filled in ("data[3].id"). An error means the payload is no JSON at all.
 func Missing(payload []byte, required []string) ([]string, error) {
+	return missingOf(payload, required, nil)
+}
+
+// Missing checks a payload against the spec's fields: the required ones,
+// and the newer ones where they are present.
+func (s Spec) Missing(payload []byte) ([]string, error) {
+	return missingOf(payload, s.Required, s.Newer)
+}
+
+func missingOf(payload []byte, required, newer []string) ([]string, error) {
 	var root any
 	if err := json.Unmarshal(payload, &root); err != nil {
 		return nil, fmt.Errorf("no JSON: %w", err)
 	}
-	var missing []string
+	var out []string
 	for _, path := range required {
-		missing = append(missing, walk(root, strings.Split(path, "."), "")...)
+		out = append(out, walk(root, strings.Split(path, "."), "", false)...)
 	}
-	return missing, nil
+	for _, path := range newer {
+		out = append(out, walk(root, strings.Split(path, "."), "", true)...)
+	}
+	return out, nil
 }
 
 // walk follows the remaining path segments from node and returns the paths
 // that are absent or null. at is the path walked so far, for the report.
-func walk(node any, segments []string, at string) []string {
+// lastMayBeAbsent: the field the last segment names may be absent (a newer
+// field).
+func walk(node any, segments []string, at string, lastMayBeAbsent bool) []string {
 	if len(segments) == 0 {
 		return nil
 	}
@@ -77,6 +101,9 @@ func walk(node any, segments []string, at string) []string {
 	}
 	value, present := obj[name]
 	if !present {
+		if lastMayBeAbsent && len(segments) == 1 {
+			return nil
+		}
 		return []string{join(at, seg)}
 	}
 	if value == nil {
@@ -90,7 +117,7 @@ func walk(node any, segments []string, at string) []string {
 		}
 	}
 	if !isList {
-		return walk(value, segments[1:], here)
+		return walk(value, segments[1:], here, lastMayBeAbsent)
 	}
 	list, ok := value.([]any)
 	if !ok {
@@ -103,7 +130,7 @@ func walk(node any, segments []string, at string) []string {
 			missing = append(missing, elementAt)
 			continue
 		}
-		missing = append(missing, walk(element, segments[1:], elementAt)...)
+		missing = append(missing, walk(element, segments[1:], elementAt, lastMayBeAbsent)...)
 	}
 	return missing
 }

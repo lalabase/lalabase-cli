@@ -13,7 +13,10 @@ organisations: the Agents area, `A`, the seen mark, #36); the order of
 C9b's titles (#37), the C9 review's readability and duplication passes
 (#38, #39) and C9c's groundwork (#40); C9c-2 (`d`, the cleanup, #41) and
 the booked time (#42); C9c-3 (`x` jumps to an agent's pane or starts it
-again, a starting agent without its pane is lost) is this branch.
+again, a starting agent without its pane is lost, #43), the preview
+budget (#44), tmux sessions for the agents as a prototype (#45) and a PTY test that dropped a signal (#46); K0 (the REST
+ground: classes from `code`, REST writes, capabilities from `/me`; no
+feature switched, #47) is this branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
@@ -35,9 +38,9 @@ on a Mac before every merge, by running the tests here.
 | Package | Job |
 |---|---|
 | `cmd/lalabase` | commands; everything a command reads or writes goes through `Env` (tests pass their own) |
-| `internal/transport` | REST `/api/v1` and MCP `/api/mcp`; every answer becomes one `Answer` with one `Class` |
-| `internal/api` | one adapter per tool or REST reader, each with a `Spec` |
-| `internal/features` | which features a server has, from `tools/list` and input schemas |
+| `internal/transport` | REST `/api/v1` and MCP `/api/mcp`; every answer becomes one `Answer` with one `Class` (a REST error by its `code` since K0); REST writes with an `Idempotency-Key` (`Write`) |
+| `internal/api` | one adapter per tool or REST reader, each with a `Spec` (`Newer`: fields a newer server sends, since K0); the generic REST write (`write`) |
+| `internal/features` | which features a server has, from `tools/list` and input schemas, and since K0 the REST capabilities of `/api/v1/me` (REST way first, MCP the fallback) |
 | `internal/cache` | the decisions on an answer, from its class alone, the memory store they act on, and the journal of its changes the disk replays |
 | `internal/diskcache` | the disk cache (C1e): one directory per profile, one lock per run, a replay of the journal, every file checked before it is an entry |
 | `internal/privatefs` | the one threat model of the client's private files (the config, its lock, the disk cache, the launch files, the agents' files): owners, modes, the directory chain, macOS access lists, locks; the exclusive create and the bounded directory walk they share |

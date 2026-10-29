@@ -4,6 +4,12 @@
 // shown and compared with the version the client was tested against, but it
 // never switches anything on or off: S1 extends existing tools, so a tool name
 // or a version number alone says nothing.
+//
+// Since K0 a feature may name the REST capabilities its REST way needs, as
+// GET /api/v1/me lists them (the core's R0). A server that lists them all
+// gets the REST way; any other, the MCP way, while both exist. A server
+// without capabilities (before R0) keeps every feature it had. K0 names
+// none in All: no feature switches yet.
 package features
 
 import (
@@ -17,8 +23,9 @@ import (
 
 // MinTestedServerVersion is the MCP surface the client was tested against:
 // the version of the contract copy in internal/contract, server slices S1,
-// S2, S2b and S6 included.
-const MinTestedServerVersion = "0.12.0"
+// S2, S2b and S6 included (0.13.0 adds the people tools, which the client
+// does not use).
+const MinTestedServerVersion = "0.13.0"
 
 // Feature is one thing the client offers, and what it needs from the server.
 type Feature struct {
@@ -31,6 +38,27 @@ type Feature struct {
 	// argument of a tool the contract had (ExtraArgs) or a tool of its own;
 	// empty for one the contract has had from the start.
 	Since string
+	// Capabilities are the REST capabilities its REST way needs, every
+	// one of them ("posts.create", "idempotency"); empty for a feature
+	// that has the MCP way alone.
+	Capabilities []string
+}
+
+// Way is how a feature that is on reaches the server.
+type Way int
+
+const (
+	// MCP: the feature's tool (Feature.Spec).
+	MCP Way = iota
+	// REST: the endpoints its capabilities name.
+	REST
+)
+
+func (w Way) String() string {
+	if w == REST {
+		return "rest"
+	}
+	return "mcp"
 }
 
 // All features, in the order the interface offers them.
@@ -59,6 +87,8 @@ type Report struct {
 	Server transport.ServerInfo
 	// Enabled says, per feature name, whether it is on.
 	Enabled map[string]bool
+	// Via says, per feature that is on, the way it takes.
+	Via map[string]Way
 	// Missing says, per feature that is off, what is missing
 	// ("tool post_comment", "list_tickets: argument q").
 	Missing map[string][]string
@@ -70,33 +100,32 @@ type Report struct {
 	BelowTested bool
 }
 
-// Detect checks every feature against the tools a server lists.
-func Detect(server transport.ServerInfo, tools []transport.Tool) Report {
+// Detect checks every feature against the tools a server lists and the
+// REST capabilities its /me names (nil for a server that names none).
+func Detect(server transport.ServerInfo, tools []transport.Tool, capabilities []string) Report {
+	return detect(All, server, tools, capabilities)
+}
+
+func detect(all []Feature, server transport.ServerInfo, tools []transport.Tool, capabilities []string) Report {
 	byName := map[string]transport.Tool{}
 	for _, tool := range tools {
 		byName[tool.Name] = tool
 	}
-	report := Report{Server: server, Enabled: map[string]bool{}, Missing: map[string][]string{}}
+	report := Report{Server: server, Enabled: map[string]bool{}, Via: map[string]Way{}, Missing: map[string][]string{}}
 	used := map[string]bool{}
-	for _, f := range All {
+	for _, f := range all {
 		used[f.Spec.Tool] = true
-		tool, ok := byName[f.Spec.Tool]
-		if !ok {
-			report.Missing[f.Name] = []string{"tool " + f.Spec.Tool}
+		restMissing := lacking(f.Capabilities, capabilities)
+		if len(f.Capabilities) > 0 && len(restMissing) == 0 {
+			report.Enabled[f.Name], report.Via[f.Name] = true, REST
 			continue
 		}
-		props := tool.Properties()
-		var missing []string
-		for _, arg := range append(slices.Clone(f.Spec.Args), f.ExtraArgs...) {
-			if _, ok := props[arg]; !ok {
-				missing = append(missing, f.Spec.Tool+": argument "+arg)
-			}
-		}
-		if len(missing) > 0 {
-			report.Missing[f.Name] = missing
+		missing := toolMissing(f, byName)
+		if len(missing) == 0 {
+			report.Enabled[f.Name], report.Via[f.Name] = true, MCP
 			continue
 		}
-		report.Enabled[f.Name] = true
+		report.Missing[f.Name] = append(missing, restMissing...)
 	}
 	for _, tool := range tools {
 		if !used[tool.Name] {
@@ -105,6 +134,34 @@ func Detect(server transport.ServerInfo, tools []transport.Tool) Report {
 	}
 	report.BelowTested = olderThan(server.Version, MinTestedServerVersion)
 	return report
+}
+
+// toolMissing says what the feature's MCP way lacks: its tool, or an
+// argument the tool's schema does not declare.
+func toolMissing(f Feature, byName map[string]transport.Tool) []string {
+	tool, ok := byName[f.Spec.Tool]
+	if !ok {
+		return []string{"tool " + f.Spec.Tool}
+	}
+	props := tool.Properties()
+	var missing []string
+	for _, arg := range append(slices.Clone(f.Spec.Args), f.ExtraArgs...) {
+		if _, ok := props[arg]; !ok {
+			missing = append(missing, f.Spec.Tool+": argument "+arg)
+		}
+	}
+	return missing
+}
+
+// lacking names the capabilities of need the server does not list.
+func lacking(need, listed []string) []string {
+	var out []string
+	for _, c := range need {
+		if !slices.Contains(listed, c) {
+			out = append(out, "capability "+c)
+		}
+	}
+	return out
 }
 
 // olderThan compares "major.minor.patch" versions; a pre-release suffix is
