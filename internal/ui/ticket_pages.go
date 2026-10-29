@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/cache"
+	"github.com/gboyke/lalabase-cli/internal/features"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/queue"
@@ -48,6 +49,8 @@ type expansion struct {
 	key  cache.Key
 	post string
 	text string
+	// uncut: the text came over REST, which cuts none (detailView.uncut).
+	uncut bool
 	status
 	// unavailable: the server said the comment is missing or hidden
 	// (api.CommentNotFound); its text is not shown any more.
@@ -272,7 +275,7 @@ func (m Model) expandTarget() (post string, ok bool) {
 	held := func(post string) bool { return e != nil && e.post == post && (e.loading || e.known || e.unavailable) }
 	switch d.area {
 	case areaDescription:
-		if _, short := shown(d.record.DescriptionText, maxPageText); short != notShortened && !held("") {
+		if _, short := shown(d.record.DescriptionText, maxPageText, d.uncut); short != notShortened && !held("") {
 			return "", true
 		}
 	case areaComments:
@@ -280,7 +283,7 @@ func (m Model) expandTarget() (post string, ok bool) {
 			return "", false
 		}
 		if p := d.selectedPost(); p != nil {
-			if _, short := shown(p.BodyText, maxPageText); short != notShortened && !held(p.ID) {
+			if _, short := shown(p.BodyText, maxPageText, d.uncut); short != notShortened && !held(p.ID) {
 				return p.ID, true
 			}
 		}
@@ -335,7 +338,7 @@ func (a *app) cachedExpansion(e *expansion) (cache.Entry, bool) {
 			a.forget(e.key)
 			return cache.Entry{}, false
 		}
-		e.text = post.BodyText
+		e.text, e.uncut = post.BodyText, false
 		return entry, true
 	}
 	record, ans := api.DecodeTicket(kept, gateway.DetailOptions(e.key))
@@ -343,7 +346,7 @@ func (a *app) cachedExpansion(e *expansion) (cache.Entry, bool) {
 		a.forget(e.key)
 		return cache.Entry{}, false
 	}
-	e.text = record.DescriptionText
+	e.text, e.uncut = record.DescriptionText, false
 	return entry, true
 }
 
@@ -388,7 +391,7 @@ func (m Model) receiveExpansion(r gateway.TicketResult) (Model, tea.Cmd) {
 	}
 	switch {
 	case dec == cache.Replace:
-		e.text, e.unavailable = expandedText(r, e.post), false
+		e.text, e.unavailable, e.uncut = expandedText(r, e.post), false, r.Way == features.REST
 		e.fresh(a.now())
 	case e.post != "" && r.Answer.Class == transport.Refused && r.Answer.Reason == api.CommentNotFound:
 		return m.commentMissing(r)

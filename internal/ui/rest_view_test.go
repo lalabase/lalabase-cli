@@ -105,8 +105,17 @@ func TestTheTicketViewShowsTheSameOnBothWays(t *testing.T) {
 		screens = append(screens, h.m.View().Content)
 		return screens, h.f.viewReads()
 	}
-	mcpScreens, mcpReads := run(newHarness(t))
-	restScreens, restReads := run(newRESTHarness(t))
+	tools, rest := newHarness(t), newRESTHarness(t)
+	mcpScreens, mcpReads := run(tools)
+	restScreens, restReads := run(rest)
+	// Each run took its own way, or the comparison says nothing (review
+	// round 1 of #48, finding 5).
+	if len(tools.f.restCalls()) != 0 || len(tools.f.ticketListReads()) == 0 || len(tools.f.detailReads()) == 0 {
+		t.Fatalf("the tools' run: %d REST reads, %d list and %d ticket reads", len(tools.f.restCalls()), len(tools.f.ticketListReads()), len(tools.f.detailReads()))
+	}
+	if len(rest.f.restCalls()) == 0 || len(rest.f.ticketListReads())+len(rest.f.detailReads()) != 0 {
+		t.Fatalf("the REST run: %d REST reads, %d list and %d ticket reads of the tools", len(rest.f.restCalls()), len(rest.f.ticketListReads()), len(rest.f.detailReads()))
+	}
 	if len(mcpScreens) != len(restScreens) {
 		t.Fatalf("%d and %d screens", len(mcpScreens), len(restScreens))
 	}
@@ -243,7 +252,7 @@ func TestALongWholeTextIsShownBoundedAndCleaned(t *testing.T) {
 // comment alone, read back as the expansion shows it.
 func TestOneCommentOverRESTIsReadOnItsRouteAndFiledAlone(t *testing.T) {
 	h := newRESTHarness(t)
-	long := "Six comment 30 " + strings.Repeat("goes on and on ", 1000) + "and ends here."
+	long := "Six comment 30 " + strings.Repeat("goes on and on ", 1000) + "THIRTY ENDS HERE."
 	h.f.setRESTPost(func(id, post string) transport.Answer {
 		ans := h.d.defaultRESTPost(id, post)
 		if post == sixPostID(30) {
@@ -271,8 +280,9 @@ func TestOneCommentOverRESTIsReadOnItsRouteAndFiledAlone(t *testing.T) {
 	if h.m.app.detail.post != sixPostID(30) || !h.offers(Expand) {
 		t.Fatalf("selected %q, e offered %v", h.m.app.detail.post, h.offers(Expand))
 	}
+	mustNotContain(t, h.paneText(), "THIRTY ENDS HERE.")
 	h.drive(h.press("e"))
-	mustContain(t, h.paneText(), "and ends here.")
+	mustContain(t, h.paneText(), "THIRTY ENDS HERE.")
 	key := h.m.app.detail.expansion.key
 	e, ok := h.m.app.store.Get(key)
 	if !ok {
@@ -487,4 +497,105 @@ func TestOneCommentReadWholeLeavesTheTitleAsItWas(t *testing.T) {
 			}
 		})
 	}
+}
+
+// endingIn is a text of n characters of words that ends in end, nowhere
+// else.
+func endingIn(n int, end string) string {
+	words := strings.Repeat("Words on a line of the terminal. ", n/33+1)
+	return words[:n-len(end)] + end
+}
+
+// withTexts makes the REST fakes answer ticket #1 with a description and a
+// newest comment of their own.
+func withTexts(h *harness, description, comment string) {
+	newest := "00000000-0000-4000-8000-000000000052"
+	h.f.setRESTTicket(func(id string, o api.TicketOptions) transport.Answer {
+		ans := h.d.defaultRESTTicket(id, o)
+		if id != login {
+			return ans
+		}
+		var body map[string]any
+		_ = json.Unmarshal(ans.Payload, &body)
+		data := body["data"].(map[string]any)
+		data["description_text"] = description
+		for _, p := range data["posts"].([]any) {
+			if p := p.(map[string]any); p["id"] == newest {
+				p["body_text"] = comment
+			}
+		}
+		ans.Payload, _ = json.Marshal(body)
+		return ans
+	})
+	h.f.setRESTPost(func(id, post string) transport.Answer {
+		ans := h.d.defaultRESTPost(id, post)
+		if id == login && post == newest {
+			var body map[string]any
+			_ = json.Unmarshal(ans.Payload, &body)
+			body["data"].(map[string]any)["body_text"] = comment
+			ans.Payload, _ = json.Marshal(body)
+		}
+		return ans
+	})
+}
+
+// A text read whole shows past the page's bound, up to its own: the
+// description and the comment end where they end (review round 1 of #48,
+// finding 1).
+func TestReadWholeShowsTheTextPastThePagesBound(t *testing.T) {
+	h := newRESTHarness(t)
+	withTexts(h, endingIn(20_000, "THE DESCRIPTION ENDS."), endingIn(20_000, "THE COMMENT ENDS."))
+	h.openTickets(website)
+	h.openTicket(1)
+	mustNotContain(t, h.paneText(), "THE DESCRIPTION ENDS.", "THE COMMENT ENDS.")
+	if n := strings.Count(h.paneText(), "Text shortened for this view"); n != 2 {
+		t.Fatalf("%d notes of the view's cut", n)
+	}
+	h.drive(h.press("e"))
+	mustContain(t, h.paneText(), "Description · whole text", "THE DESCRIPTION ENDS.")
+	mustNotContain(t, h.paneText(), "THE COMMENT ENDS.")
+	h.drive(h.press("esc"))
+	h.drive(h.press("tab"))
+	h.drive(h.press("e"))
+	mustContain(t, h.paneText(), "THE COMMENT ENDS.")
+	if n := strings.Count(h.paneText(), "Text shortened for this view"); n != 1 {
+		t.Fatalf("%d notes of the view's cut with the comment whole", n)
+	}
+}
+
+// REST cuts no text: a text that ends in the marker the tools append was
+// typed so, and it is shown as it is, without a note and without e. The
+// tools' way keeps the reading the client always had (review round 1 of
+// #48, finding 3).
+func TestATypedMarkerIsTheTextsOwnOverREST(t *testing.T) {
+	typed := "A pasted log, cut where it was cut" + api.TruncationMarker
+	h := newRESTHarness(t)
+	withTexts(h, typed, typed)
+	h.openTickets(website)
+	h.openTicket(1)
+	mustNotContain(t, h.paneText(), "Text shortened")
+	if n := strings.Count(h.paneText(), "[truncated]"); n != 2 {
+		t.Fatalf("the typed marker shows %d times:\n%s", n, h.paneText())
+	}
+	if h.offers(Expand) {
+		t.Fatal("e is offered on a whole description")
+	}
+	h.drive(h.press("tab"))
+	if h.offers(Expand) {
+		t.Fatal("e is offered on a whole comment")
+	}
+	// Read whole past the page's bound, the marker at the end is the
+	// text's own too.
+	long := endingIn(9000, "the end") + api.TruncationMarker
+	h = newRESTHarness(t)
+	withTexts(h, long, long)
+	h.openTickets(website)
+	h.openTicket(1)
+	h.drive(h.press("e"))
+	mustContain(t, h.paneText(), "Description · whole text", "the end")
+	mustNotContain(t, h.paneText(), "Text shortened by server")
+	h.drive(h.press("esc"))
+	h.drive(h.press("tab"))
+	h.drive(h.press("e"))
+	mustNotContain(t, h.paneText(), "Text shortened by server")
 }

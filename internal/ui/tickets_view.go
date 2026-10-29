@@ -375,11 +375,11 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 		title += " · " + uitext.Inline(uitext.WholeText).String()
 	}
 	heading(areaDescription, title)
-	text, limit := r.DescriptionText, maxPageText
+	text, limit, uncut := r.DescriptionText, maxPageText, d.uncut
 	if whole {
-		text, limit = e.text, maxWholeText
+		text, limit, uncut = e.text, maxWholeText, e.uncut
 	}
-	t.body(bodyOr(text, limit, uitext.NoDescription))
+	t.body(bodyOr(text, limit, uncut, uitext.NoDescription))
 	if e != nil && e.post == "" {
 		t.add(noteLine, expansionState(e)...)
 	}
@@ -421,10 +421,10 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 			// at once, the page's copy too, until Esc or the next page.
 			t.add(noteLine, uitext.Inline(uitext.CommentUnavailable).String())
 		case e != nil && e.post == p.ID && e.known:
-			t.body(bodyOr(e.text, maxWholeText, uitext.NoText))
+			t.body(bodyOr(e.text, maxWholeText, e.uncut, uitext.NoText))
 			t.add(noteLine, expansionState(e)...)
 		default:
-			t.body(bodyOr(p.BodyText, maxPageText, uitext.NoText))
+			t.body(bodyOr(p.BodyText, maxPageText, d.uncut, uitext.NoText))
 			if e != nil && e.post == p.ID {
 				t.add(noteLine, expansionState(e)...)
 			}
@@ -509,9 +509,14 @@ const (
 
 // shown is a foreign text as the pane shows it within limit characters:
 // without the server's marker of a shortened text, cut at the limit, and
-// who shortened it. It reads no more of the text than the limit.
-func shown(raw string, limit int) (string, shortening) {
-	text, short := api.Shortened(raw)
+// who shortened it. It reads no more of the text than the limit. uncut: the
+// text came over REST, which cuts none, so a marker at its end is its own
+// (review round 1 of #48).
+func shown(raw string, limit int, uncut bool) (string, shortening) {
+	text, short := raw, false
+	if !uncut {
+		text, short = api.Shortened(raw)
+	}
 	if cut, ok := cutAt(text, limit); ok {
 		return cut, byView
 	}
@@ -540,8 +545,8 @@ func cutAt(text string, limit int) (string, bool) {
 // bodyOr is a foreign body as the pane shows it within limit characters
 // (shown), and who shortened it; the fallback when nothing readable is left
 // of it.
-func bodyOr(raw string, limit int, fallback uitext.ID) (string, shortening) {
-	text, short := shown(raw, limit)
+func bodyOr(raw string, limit int, uncut bool, fallback uitext.ID) (string, shortening) {
+	text, short := shown(raw, limit, uncut)
 	if strings.TrimSpace(present.NewBody(text).String()) == "" {
 		text = uitext.Inline(fallback).String()
 	}

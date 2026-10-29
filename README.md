@@ -224,7 +224,10 @@ navigation again.
   one ending with "Text shortened for this view", and `e` reads it whole
   as above, the description as the page again (REST has no `full_text`),
   the comment on its own route (`/api/v1/tickets/:ticket_id/posts/:id`);
-  read whole, the pane shows 100,000 characters of it. The pane builds its
+  read whole, the pane shows 100,000 characters of it. REST cuts no text,
+  so a text read over REST that ends in the tools' marker was written so
+  and shows as it is (a page the cache kept from the tools is read as
+  theirs until REST's answer replaces it). The pane builds its
   whole text on every frame: a comment of a megabyte would hold every key
   for a second. Nothing is read by moving, previewing or switching
   sections: every page, order and expansion is the person's action, once
