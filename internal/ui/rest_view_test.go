@@ -14,6 +14,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/features"
+	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
@@ -694,4 +695,55 @@ func TestOverTheToolsAWholeTextTheServerCutSaysSo(t *testing.T) {
 	h.drive(h.press("e"))
 	mustContain(t, h.paneText(), "Description · whole text", "cut here by the server", "Text shortened by server")
 	mustNotContain(t, h.paneText(), "[truncated]", "Text shortened for this view")
+}
+
+// The title read of an agent's ticket that moved to another project is a
+// removal on both ways: the agent's row loses the title and R is offered,
+// even when the cache holds the ticket's old page by the time the answer
+// comes (a title read that failed otherwise falls back to the cache;
+// review round 3 of #48, finding 2).
+func TestAMovedTicketTakesItsAgentsTitleOnBothWays(t *testing.T) {
+	moved := ticketID(website, 6)
+	for name, h := range map[string]*harness{"tools": newHarness(t), "rest": newRESTHarness(t)} {
+		t.Run(name, func(t *testing.T) {
+			h.withWatcher()
+			h.start()
+			a := h.m.app
+			h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+				if id == moved && project == website {
+					return transport.Answer{Class: transport.NotFound, Message: "No ticket found for " + id + ".", Status: 200, Sent: true}
+				}
+				return h.d.defaultTicket(project, id, o)
+			})
+			h.f.setRESTTicket(func(id string, o api.TicketOptions) transport.Answer {
+				ans := h.d.defaultRESTTicket(id, o)
+				if id == moved {
+					var body map[string]any
+					_ = json.Unmarshal(ans.Payload, &body)
+					body["data"].(map[string]any)["project"] = map[string]any{"id": handbuch, "name": "Handbuch"}
+					ans.Payload, _ = json.Marshal(body)
+				}
+				return ans
+			})
+			ag := agentIn(1, orgA, 6, agents.Working, h.now)
+			a.agents.list = []agents.Agent{ag}
+			answers := messages(t, a.requestTitles()) // sent now, answered below
+			if len(answers) == 0 || a.titles[ag.Ticket] == nil || !a.titles[ag.Ticket].asked {
+				t.Fatal("no title read out")
+			}
+			// Meanwhile the cache got the ticket's old page.
+			key := a.detailKey(website, moved)
+			a.store.Apply(key, cache.Replace, ticketAnswer(h.d.ticketRecord(website, 6, gateway.DetailOptions(key))).Payload, h.now)
+			h.drive(h.feed(answers...)...)
+			if got := h.areaRow(6).Primary.String(); got != "#6" {
+				t.Fatalf("the moved ticket's title: %q", got)
+			}
+			if !a.titlesFailed() {
+				t.Fatal("R is not offered for the moved ticket's title")
+			}
+			if _, ok := a.store.Get(key); ok {
+				t.Fatal("the old page stays in the cache")
+			}
+		})
+	}
 }

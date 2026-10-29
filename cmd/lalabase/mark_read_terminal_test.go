@@ -483,7 +483,10 @@ func TestPTYMarkReadThenANetworkError(t *testing.T) {
 	// failed locally, also not 40 runs under -race on two cores, and a
 	// slow reload after the write did not make it fail. A failure prints
 	// what reached the server beside the screen, to tell whether ] sent
-	// its read at all.
+	// its read at all. It did not (the CI of #48): ] was pressed while
+	// the reload after the write was out, and the inbox turns no page
+	// while its page loads. The help offers ] only then: wait for it.
+	c.expect(t, "the reload after the write", 80, "] next page")
 	if err := c.send("]"); err != nil {
 		t.Fatal(err)
 	}

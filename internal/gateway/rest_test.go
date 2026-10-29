@@ -353,6 +353,17 @@ func TestOverRESTATicketMovedToAnotherProjectIsNotFoundHere(t *testing.T) {
 	if w.Answer.Class != transport.NotFound {
 		t.Fatalf("moved, whole: %v", w.Answer.Class)
 	}
+	// The asked ticket with no project id is no move but a broken answer:
+	// a protocol error, which drops nothing (review round 3 of #48).
+	f.srv.edit = func(route string, body map[string]any) {
+		asPage(route, body)
+		body["data"].(map[string]any)["project"] = map[string]any{"id": "", "name": "Website-Relaunch"}
+	}
+	blank := result(t, run(f.gw.Read(context.Background(), f.scope.Begin(Detail, detailKey(f.ns, website, login, true), queue.User)))).(TicketResult)
+	if blank.Answer.Class != transport.Protocol {
+		t.Fatalf("no project id: %v %q", blank.Answer.Class, blank.Answer.Message)
+	}
+	f.srv.edit = asPage
 	// Another ticket of another project answered is no move: still a
 	// contradiction.
 	other := result(t, run(f.gw.Read(context.Background(), f.scope.Begin(Detail, detailKey(f.ns, handbuch, "00000000-0000-4000-8000-000000000042", true), queue.User)))).(TicketResult)
