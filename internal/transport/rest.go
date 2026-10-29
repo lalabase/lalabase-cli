@@ -31,22 +31,43 @@ var restCodeClasses = func() map[string]Class {
 }()
 
 // restError is the API's error body: {"error": "...", "code": "...",
-// "reason": "..."}, code and reason since R0.
+// "reason": "..."}, code and reason since R0. Code is empty unless the body
+// carries both code and error as strings.
 type restError struct {
-	Error  string `json:"error"`
-	Code   string `json:"code"`
-	Reason string `json:"reason"`
+	Error  string
+	Code   string
+	Reason string
 }
 
-// readRESTError reads the API's error body. ok is false for anything else:
-// no JSON object, a field of another type, or no "error" (a proxy's body
-// that happens to carry a "code" is not the API's answer).
-func readRESTError(body []byte) (restError, bool) {
+// readRESTError reads the API's error body. "error" is read on its own, as
+// before R0, so a body whose other fields are of another type is placed by
+// it as it was. code and reason count only beside a non-empty "error": a
+// proxy's body that happens to carry a "code" is not the API's answer.
+func readRESTError(body []byte) restError {
 	var e restError
-	if json.Unmarshal(body, &e) != nil || e.Error == "" {
-		return restError{}, false
+	var old struct {
+		Error string `json:"error"`
 	}
-	return e, true
+	if json.Unmarshal(body, &old) != nil || old.Error == "" {
+		return e
+	}
+	e.Error = old.Error
+	var machine struct {
+		Code   string `json:"code"`
+		Reason string `json:"reason"`
+	}
+	if json.Unmarshal(body, &machine) == nil {
+		e.Code, e.Reason = machine.Code, machine.Reason
+	}
+	return e
+}
+
+// codeStatus names the status the codes that drop a record from the cache
+// come with. Beside another status such a code contradicts itself, and is
+// a refusal: nothing a server says unclearly drops a cached entry.
+var codeStatus = map[string]int{
+	"not_found": http.StatusNotFound,
+	"forbidden": http.StatusForbidden,
 }
 
 // Write sends one REST write: POST or PATCH under /api/, with body as its

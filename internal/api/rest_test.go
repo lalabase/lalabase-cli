@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/gboyke/lalabase-cli/internal/contract"
@@ -129,14 +130,18 @@ func TestAWriteIsCheckedBeforeSending(t *testing.T) {
 	c, _ := transport.New(srv.URL, "lalab_pat_test")
 	api := New(c)
 	var out createdPost
+	// The adapter refuses, not the transport behind it: the refusal
+	// names the adapter.
 	for _, key := range []string{"", "short", " \t\n", "key with spaces"} {
-		if ans := api.write(context.Background(), postSpec, "/api/v1/tickets/x/posts", postBody{}, key, &out); ans.Class != transport.InvalidInput || ans.Sent {
-			t.Errorf("key %q: got %v sent=%v", key, ans.Class, ans.Sent)
+		if ans := api.write(context.Background(), postSpec, "/api/v1/tickets/x/posts", postBody{}, key, &out); ans.Class != transport.InvalidInput || ans.Sent || !strings.HasPrefix(ans.Message, postSpec.Name+": ") {
+			t.Errorf("key %q: got %v sent=%v %q", key, ans.Class, ans.Sent, ans.Message)
 		}
 	}
-	for _, spec := range []Spec{MeSpec, CommentSpec, {Name: "PUT x", Path: "/api/v1/x", Method: http.MethodPut}} {
-		if ans := api.write(context.Background(), spec, "/api/v1/tickets/x/posts", postBody{}, "key-0001", &out); ans.Class != transport.InvalidInput || ans.Sent {
-			t.Errorf("%s: got %v sent=%v", spec.Name, ans.Class, ans.Sent)
+	toolWithMethod := CommentSpec
+	toolWithMethod.Method = http.MethodPost
+	for _, spec := range []Spec{MeSpec, CommentSpec, toolWithMethod, {Name: "PUT x", Path: "/api/v1/x", Method: http.MethodPut}} {
+		if ans := api.write(context.Background(), spec, "/api/v1/tickets/x/posts", postBody{}, "key-0001", &out); ans.Class != transport.InvalidInput || ans.Sent || !strings.HasPrefix(ans.Message, spec.Name+": ") {
+			t.Errorf("%s: got %v sent=%v %q", spec.Name, ans.Class, ans.Sent, ans.Message)
 		}
 	}
 	// A body that cannot be encoded.

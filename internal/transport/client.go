@@ -375,7 +375,7 @@ func (c *Client) classifyStatus(status int, header http.Header, body []byte) (An
 // does not know is a refusal. Without one (a server before R0) the status
 // and "error" decide as they did before.
 func (c *Client) classifyREST(status int, header http.Header, body []byte, write bool) Answer {
-	e, apiForm := readRESTError(body)
+	e := readRESTError(body)
 	if ans, ok := c.classifyStatus(status, header, body); !ok {
 		ans.Code = e.Code
 		return ans
@@ -385,10 +385,15 @@ func (c *Client) classifyREST(status int, header http.Header, body []byte, write
 		if !jsonValid(body) {
 			return Answer{Class: Protocol, Status: status, Message: "the answer is no JSON"}
 		}
+		// A write answers the object it wrote; anything else is no answer
+		// to place, even valid JSON.
+		if write && !bytes.HasPrefix(bytes.TrimSpace(body), []byte("{")) {
+			return Answer{Class: Protocol, Status: status, Message: "the answer is no JSON object"}
+		}
 		return Answer{Class: Object, Status: status, Payload: body}
-	case apiForm && e.Code != "" && status >= 400 && status < 500:
+	case e.Code != "" && status >= 400 && status < 500:
 		class, known := restCodeClasses[e.Code]
-		if !known {
+		if want, ok := codeStatus[e.Code]; !known || ok && want != status {
 			class = Refused
 		}
 		ans := Answer{Class: class, Code: e.Code, Status: status, Message: string(body)}

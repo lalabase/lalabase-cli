@@ -73,9 +73,11 @@ func (c Class) String() string {
 // Answer is one classified answer.
 type Answer struct {
 	Class Class
-	// Reason names a refusal (from the server's lalabase/reason), else empty.
+	// Reason names a refusal (from the server's lalabase/reason on MCP,
+	// "reason" of a REST error), else empty.
 	Reason string
-	// Code is the server's machine code as sent (lalabase/code), else empty.
+	// Code is the server's machine code as sent (lalabase/code on MCP,
+	// "code" of a REST error), else empty.
 	Code string
 	// Message is the server's text for anything but an object. Raw.
 	Message string

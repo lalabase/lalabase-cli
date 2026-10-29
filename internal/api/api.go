@@ -75,8 +75,11 @@ func checkKey(spec Spec, key string) (transport.Answer, bool) {
 }
 
 // write runs a REST write adapter (K0: no adapter of the interface uses it
-// yet). The key is checked first; the body is encoded once, so a retry of
-// the same job sends the same bytes, which the server's replay compares.
+// yet). The key is checked first. A retry of the queue runs the same job
+// again and encodes the same value again: encoding/json writes it the same
+// way every time (map keys sorted), so the server's replay, which compares
+// the request, sees the same bytes. The value must not change between the
+// two attempts.
 // path is spec.Path with its ids filled in. The answer is decoded like a
 // read's: a written object without a field the client relies on is a
 // protocol error that stays sent.

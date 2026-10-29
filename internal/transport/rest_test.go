@@ -32,6 +32,18 @@ func TestTheCodeOfARestErrorDecidesItsClass(t *testing.T) {
 		{403, `{"error":"forbidden","code":"read_only"}`, ReadOnly, "read_only", ""},
 		{409, `{"error":"stale_object","code":"refused","reason":"stale_object"}`, Refused, "refused", "stale_object"},
 		{403, `{"error":"forbidden","code":"unauthorized"}`, Unauthenticated, "unauthorized", ""},
+		// The two codes that make the cache drop a record count only with
+		// their own status: a not_found beside a 400, or a forbidden
+		// beside a 405, contradicts itself and is a refusal.
+		{400, `{"error":"x","code":"not_found"}`, Refused, "not_found", ""},
+		{405, `{"error":"x","code":"forbidden"}`, Refused, "forbidden", ""},
+		{403, `{"error":"x","code":"not_found"}`, Refused, "not_found", ""},
+		{404, `{"error":"x","code":"forbidden"}`, Refused, "forbidden", ""},
+		// A server before R0 is placed by "error" alone, whatever other
+		// fields of other types its body carries.
+		{404, `{"error":"not_found","reason":5}`, NotFound, "", ""},
+		{403, `{"error":"forbidden","reason":["x"]}`, NoAccess, "", ""},
+		{404, `{"error":"not_found","code":{"a":1}}`, NotFound, "", ""},
 		// A reason names a refusal only.
 		{404, `{"error":"not_found","code":"not_found","reason":"x"}`, NotFound, "not_found", ""},
 		// Not the API's form: no "error" beside the code, or a field of
@@ -39,7 +51,7 @@ func TestTheCodeOfARestErrorDecidesItsClass(t *testing.T) {
 		// 404 that is not the API's own answer drops nothing.
 		{404, `{"code":"not_found"}`, Protocol, "", ""},
 		{403, `{"code":"forbidden","message":"proxy"}`, Protocol, "", ""},
-		{404, `{"error":"not_found","code":404}`, Protocol, "", ""},
+		{404, `{"error":"not_found","code":404}`, NotFound, "", ""},
 		{404, `{"error":"not_found","code":""}`, NotFound, "", ""},
 		{404, `["not_found"]`, Protocol, "", ""},
 		{404, `<html>not found</html>`, Protocol, "", ""},
@@ -280,5 +292,54 @@ func TestAWriteIsNotSentAgainByTheHTTPClient(t *testing.T) {
 	defer mu.Unlock()
 	if requests != 2 {
 		t.Fatalf("the server read %d requests, want 2", requests)
+	}
+}
+
+// A success of a write is a JSON object; a 2xx other than 200 and 201
+// is no answer the client can place, whatever code its body names.
+func TestAWritesSuccessIsAnObject(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		body   string
+		class  Class
+	}{
+		{201, `[]`, Protocol},
+		{201, `"x"`, Protocol},
+		{200, `null`, Protocol},
+		{201, ` {"data":{}}`, Object},
+		{202, `{"error":"x","code":"not_found"}`, Protocol},
+		{204, `{"error":"x","code":"forbidden"}`, Protocol},
+	} {
+		srv := serve(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(tc.status)
+			_, _ = w.Write([]byte(tc.body))
+		})
+		if got := clientAt(t, srv.URL).Write(context.Background(), http.MethodPost, "/api/v1/x", json.RawMessage(`{}`), testKey); got.Class != tc.class {
+			t.Errorf("%d %s: got %v, want %v", tc.status, tc.body, got.Class, tc.class)
+		}
+	}
+}
+
+// A header of the request's own cannot replace the client's: the token,
+// the agent and the media types stay what the client set.
+func TestARequestsOwnHeadersCannotReplaceTheClients(t *testing.T) {
+	var got http.Header
+	srv := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Clone()
+		_, _ = w.Write([]byte(`{"data":{}}`))
+	})
+	c := clientAt(t, srv.URL, WithVersion("1.2.3"))
+	target, err := c.resolve("/api/v1/x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra := http.Header{"Authorization": {"Bearer other"}, "User-Agent": {"other"}, "Accept": {"text/html"}, "Content-Type": {"text/plain"}, "Idempotency-Key": {testKey}}
+	if _, _, _, ans, ok := c.sendWith(context.Background(), http.MethodPost, target, []byte(`{}`), extra); !ok {
+		t.Fatalf("%v %s", ans.Class, ans.Message)
+	}
+	for name, want := range map[string]string{"Authorization": "Bearer lalab_pat_test", "User-Agent": "lalabase/1.2.3", "Accept": "application/json", "Content-Type": "application/json", "Idempotency-Key": testKey} {
+		if v := got.Values(name); len(v) != 1 || v[0] != want {
+			t.Errorf("%s: %q, want %q", name, v, want)
+		}
 	}
 }

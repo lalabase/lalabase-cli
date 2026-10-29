@@ -876,7 +876,9 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   `forbidden` (no access), `not_found`, `refused` (with its `reason`) and
   `unauthorized`; a code the client does not know is a refusal. It counts
   only in the API's own form (a JSON object with `error` and `code`): a
-  proxy's 404 drops nothing from the cache. A 401, a 429, a 5xx and a
+  proxy's 404 drops nothing from the cache. The two codes that drop a
+  record count only with their own status (`not_found` with 404,
+  `forbidden` with 403); beside another status they are a refusal. A 401, a 429, a 5xx and a
   redirect are placed by their status alone, as before. A server before R0
   (no `code`) is placed as it was: a 403 or 404 by its `error`, a 422 as
   an invalid input, any other client error as a protocol error.
@@ -899,10 +901,11 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   A REST write (K0, no feature of the interface uses one yet) is a POST or
   PATCH under `/api/` with a JSON body and the key as its `Idempotency-Key`
   header; one with another method, no usable key or a body that is no JSON
-  object is refused before sending. The body is encoded once, so a retry
-  of the same job sends the same bytes, which the server's replay compares;
-  it answers a repeat with its first answer and another request under the
-  same key as an invalid input. A write leaves once per attempt: Go's HTTP
+  object is refused before sending, and its success is a JSON object
+  (200 or 201). A retry of the same job encodes the same value the same
+  way, so the server's replay, which compares the request, sees the same
+  bytes; it answers a repeat with its first answer and another request
+  under the same key as an invalid input. A write leaves once per attempt: Go's HTTP
   client, which would send a request with that header again by itself
   after a broken connection, is kept from it, and only the queue decides
   a retry.
