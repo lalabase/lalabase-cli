@@ -173,7 +173,7 @@ navigation again.
   `Esc` discards it (a blank search clears the filter), and `Enter` on a
   ticket opens it. `Esc` goes back one level, `R` refreshes what is shown
   (the directory and the counters in the chooser, the open page, the open
-  ticket), `PgUp`/`PgDn` (or `b`/space, for a keyboard without them)
+  ticket), `PgUp`/`PgDn` (or `u`/space, for a keyboard without them)
   move by a screen, `←`/`→` move the focus, `q`
   quits with 0, Ctrl-C and SIGINT with 130. While an agent exists, `A`
   opens the agents (C9b): in three columns and in two the focus moves into

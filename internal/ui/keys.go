@@ -118,8 +118,8 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: Up}
 	case "down":
 		return keyAction{Kind: Down}
-	case "pgup", "b":
-		// b and space as in less: a Mac keyboard has no PgUp or PgDn.
+	case "pgup", "u":
+		// u and space: a Mac keyboard has no PgUp or PgDn, and b books time.
 		return keyAction{Kind: PageUp}
 	case "pgdown", "space":
 		return keyAction{Kind: PageDown}
