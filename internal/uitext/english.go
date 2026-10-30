@@ -113,6 +113,7 @@ const (
 	RetryHelp
 	PageUpDownKey
 	ScrollHelp
+	PageScrollHelp
 	MoveHelp
 	CloseHelp
 	OrganisationsHelp
@@ -410,7 +411,7 @@ var english = map[ID]string{
 	LabelLastEvent: "Last event", StateUnread: "unread", StateRead: "read",
 	UpDownKey: "up/down", HighlightHelp: "highlight", SelectHelp: "select", OpenHelp: "open inbox", DetailsHelp: "details",
 	PageKey: "[/]", PageHelp: "page", PrevPageKey: "[", PrevPageHelp: "prev page", NextPageKey: "]", NextPageHelp: "next page", RefreshKey: "R", RefreshHelp: "refresh", RetryHelp: "retry",
-	PageUpDownKey: "u/space", ScrollHelp: "scroll", MoveHelp: "move", CloseHelp: "close",
+	PageUpDownKey: "u/space", ScrollHelp: "scroll", PageScrollHelp: "page", MoveHelp: "move", CloseHelp: "close",
 	OrganisationsHelp: "organisations", InboxHelp: "inbox",
 
 	Tickets: "Tickets", Projects: "Projects", Ticket: "Ticket",

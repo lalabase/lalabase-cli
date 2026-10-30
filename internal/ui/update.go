@@ -314,8 +314,9 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// move moves the cursor of the focused pane by rows; nothing is loaded by
-// it, except that a ticket's preview falls due after the pause.
+// move moves the cursor of the focused pane by rows, or scrolls the object
+// pane by lines where it has no selection to move; nothing is loaded by it,
+// except that a ticket's preview falls due after the pause.
 func (m Model) move(delta int) (Model, tea.Cmd) {
 	a := m.app
 	switch m.focus {
@@ -325,9 +326,11 @@ func (m Model) move(delta int) (Model, tea.Cmd) {
 		a.moveAgent(delta)
 	case view.Object:
 		switch d := a.detail; {
-		case d != nil && d.area == areaAttachments:
+		case !d.arrowsSelect():
+			m.scrollObject(m.geometry(), delta)
+		case d.area == areaAttachments:
 			return m.moveFile(delta), nil
-		case d != nil:
+		default:
 			return m.moveComment(delta), nil
 		}
 	case view.List:

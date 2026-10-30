@@ -131,6 +131,21 @@ func (m Model) nextArea() Model {
 	return m
 }
 
+// arrowsSelect says whether up and down choose among the comments or files
+// of the active section; with nothing to choose among they scroll the pane.
+func (d *detailView) arrowsSelect() bool {
+	if d == nil {
+		return false
+	}
+	switch d.area {
+	case areaComments:
+		return len(d.record.Posts) > 1 && !d.commentsLoading()
+	case areaAttachments:
+		return len(d.openable()) > 1
+	}
+	return false
+}
+
 // moveComment moves the selection among the comments of the page shown,
 // and keeps it in sight.
 func (m Model) moveComment(delta int) Model {

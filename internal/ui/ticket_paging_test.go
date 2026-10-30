@@ -1104,8 +1104,8 @@ func TestR1NoCommentSelectionWhileTheirPageLoads(t *testing.T) {
 	h.openSix()
 	h.press("tab")
 	h.press("]") // not run: the page is out
-	if h.m.allowed()[Up] {
-		t.Fatal("up/down offered while the comments load")
+	if strings.Contains(helpText(h.m), "up/down comment") {
+		t.Fatal("up/down offered for the comments while they load")
 	}
 	post := h.m.app.detail.post
 	h.press("down")
@@ -1274,8 +1274,8 @@ func TestR2OneCommentHasNoOrderAndNoSelection(t *testing.T) {
 	})
 	h.openSix()
 	h.press("tab")
-	if a := h.m.allowed(); a[Order] || a[Up] || a[Down] {
-		t.Fatalf("offered: order %v, up %v", a[Order], a[Up])
+	if help := helpText(h.m); h.m.allowed()[Order] || strings.Contains(help, "up/down comment") {
+		t.Fatalf("offered: order %v, help %q", h.m.allowed()[Order], help)
 	}
 }
 
