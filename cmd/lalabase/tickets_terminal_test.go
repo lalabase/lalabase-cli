@@ -332,3 +332,30 @@ func TestPTYTicketsOnAnOlderServer(t *testing.T) {
 		}
 	}
 }
+
+// The list grouped by status (C11) through a real terminal: g, a head's
+// fold, a group's own page, g back.
+func TestPTYTheGroupedList(t *testing.T) {
+	t.Parallel()
+	c, f := startInbox(t, inboxfixture.Statuses, 170)
+	openWebsite(t, c, 170)
+	c.act(t, "g", 170, "[grouped]", "\u25be in_progress", "> ")
+	c.act(t, keyUp, 170, "> \u25be in_progress")
+	c.act(t, keyEnter, 170, "> \u25b8 in_progress")
+	c.act(t, keyUp, 170, "> ")
+	c.act(t, "]", 170, "page 2 of 2", "#30 Ticket 30", "\u25b8 resolved", "\u25b8 closed", "1 more without a listed status")
+	c.act(t, "g", 170, "[chronological]", "#1 Login bricht ab")
+	if err := c.send("q"); err != nil {
+		t.Fatal(err)
+	}
+	c.finish(t, 0)
+	statuses := map[string]bool{}
+	for _, r := range sortTicketRequests(f).lists {
+		if s, ok := r.Args["status"].(string); ok {
+			statuses[s] = true
+		}
+	}
+	if len(statuses) != 5 {
+		t.Fatalf("the statuses read: %v", statuses)
+	}
+}

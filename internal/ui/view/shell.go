@@ -386,12 +386,29 @@ func paneLines(c present.Column, width, height int, focused bool, lines int, met
 	}
 	run := width - 2 // the border between the corners
 	out := make([]string, 0, height)
-	out = append(out, frameTop(c.Title.String(), run, border, title, method))
+	out = append(out, frameTop(titleOf(c, run, method), run, border, title, method))
 	left, right := border.Render(frameSide)+" ", " "+border.Render(frameSide)
 	for _, line := range contentOf(c, width-frameCells, height-frameLines, focused, lines, method) {
 		out = append(out, left+line+right)
 	}
 	return append(out, border.Render(frameBottomLeft+strings.Repeat(rule, run)+frameBottomRight))
+}
+
+// titleOf is the text in a frame's top border: the title and, where it
+// fits, the list's modes, else its active mode, else the title alone.
+func titleOf(c present.Column, run int, method ansi.Method) string {
+	title := c.Title.String()
+	if c.Switch == nil {
+		return title
+	}
+	key := c.Switch.Key.String()
+	for _, modes := range []string{c.Switch.Modes.String(), c.Switch.Active.String()} {
+		text := title + "  " + key + " " + modes
+		if method.StringWidth(text) <= run-3 {
+			return text
+		}
+	}
+	return title
 }
 
 // frameTop is the top border, run cells between its corners, with the
@@ -551,6 +568,9 @@ func row(r present.Row, width, trailingWidth int, cursor bool, bar barKind, twoL
 		primary, value = fit(marker+mark+primary+value, width, method), ""
 		marker, glyph, mark = "", "", ""
 	}
+	if r.Heading {
+		return headingRow(r, marker, width, bar, twoLines, method)
+	}
 	weight := present.Plain
 	switch {
 	case r.Active:
@@ -583,6 +603,31 @@ func row(r present.Row, width, trailingWidth int, cursor bool, bar barKind, twoL
 		return []string{first}
 	}
 	return []string{first, indent + styled(fit(r.Secondary.String(), max(0, width-len(indent)), method), present.Faint)}
+}
+
+// headingRow is the head of a group: its name in its tone, what is known of
+// it faint behind. Under the cursor it is a bar like any row.
+func headingRow(r present.Row, marker string, width int, bar barKind, twoLines bool, method ansi.Method) []string {
+	room := max(0, width-method.StringWidth(marker))
+	primary := fit(r.Primary.String(), room, method)
+	note := ""
+	if text := r.Note.String(); text != "" {
+		if left := room - method.StringWidth(primary) - 1; left > 0 {
+			note = " " + fit(text, left, method)
+		}
+	}
+	if bar != noBar {
+		lines := []string{barLine(marker+primary+note, width, true, bar, method)}
+		if twoLines {
+			lines = append(lines, barLine("", width, false, bar, method))
+		}
+		return lines
+	}
+	lines := []string{marker + styled(primary, r.HeadingStyle) + styled(note, present.Faint)}
+	if twoLines {
+		lines = append(lines, "")
+	}
+	return lines
 }
 
 // markCells is the width of an agent's column: the glyph and a space.

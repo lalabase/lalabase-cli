@@ -147,7 +147,7 @@ func (f *Fixture) restTickets(w http.ResponseWriter, r *http.Request, req Reques
 		restError(w, req, f, http.StatusNotFound, "not_found", "")
 		return
 	}
-	for _, name := range []string{"status", "assignee"} {
+	for _, name := range []string{"assignee"} {
 		if q.Has(name) {
 			restError(w, req, f, http.StatusUnprocessableEntity, "invalid_input", "the inbox fixture does not filter by "+name)
 			return
@@ -167,7 +167,7 @@ func (f *Fixture) restTickets(w http.ResponseWriter, r *http.Request, req Reques
 	if project == ProjectWebsite && page == 2 && f.scenarioOn(w, "W2", req) {
 		return
 	}
-	body := f.ticketPage(project, q.Get("q"), page, perPage)
+	body := f.ticketPage(project, q.Get("q"), q.Get("status"), page, perPage)
 	if !f.r1 {
 		delete(body["meta"].(map[string]any), "available_statuses")
 	}

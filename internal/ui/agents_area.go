@@ -174,8 +174,8 @@ func (a *app) viewTitle(ticket string) (text string, flight uint64, ok bool) {
 		text, flight, ok = d.record.Title, d.flight, true
 	}
 	if v := a.tickets; v != nil {
-		if i := v.index(ticket); i >= 0 && (!ok || v.flight > flight) {
-			text, flight, ok = v.rows[i].Title, v.flight, true
+		if r, at, found := v.find(ticket); found && (!ok || at > flight) {
+			text, flight, ok = r.Title, at, true
 		}
 	}
 	return text, flight, ok
@@ -545,8 +545,8 @@ func (m Model) openAgent() (Model, tea.Cmd) {
 	a.clearAgentsNotice()
 	a.leaveAgentsList()
 	a.highlight, a.highlightSection = ag.Organisation, sectionTickets
-	if v := a.tickets; v != nil && v.org == ag.Organisation && v.project == ag.Project && v.index(ag.Ticket) >= 0 {
-		v.selected = ag.Ticket
+	if v := a.tickets; v != nil && v.org == ag.Organisation && v.project == ag.Project && v.shows(ag.Ticket) {
+		v.selected, v.heading = ag.Ticket, ""
 		if d := a.detail; d != nil && d.id == ag.Ticket && v.opened == ag.Ticket {
 			// Already open: it keeps its place and selection, and is
 			// read again as on any open when it is not fresh.

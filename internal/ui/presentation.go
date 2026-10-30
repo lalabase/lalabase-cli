@@ -116,6 +116,8 @@ func (m Model) status() (present.Inline, present.Style) {
 		return uitext.Inline(a.diskStatus()), present.NoticeProblem
 	case a.agents.tooMany:
 		return uitext.Inline(uitext.AgentsTooMany), present.NoticeProblem
+	case a.groupNotice.until.After(a.now()):
+		return a.groupNotice.text, a.groupNotice.tone
 	case a.agentsNoticeShown():
 		// Of the agents' notice and the launch's the newer shows: a
 		// launch's start and its answer clear the agents' notice.
@@ -196,7 +198,8 @@ func (m Model) context() present.Inline {
 			if v.query != "" {
 				text += detail + uitext.Fill(uitext.SearchFor, v.query).String()
 			}
-			if v.known {
+			// Grouped, every group names its own pages.
+			if v.known && !v.isGrouped() {
 				text += detail + uitext.Fill(uitext.PageOf, v.page, lastPage(v.total, v.perPage)).String()
 			}
 		}

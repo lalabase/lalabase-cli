@@ -66,6 +66,16 @@ type Column struct {
 	// entry per line; nil for none. The view draws it only where the pane
 	// is wide enough (view.MetaFits), and it does not scroll.
 	Meta []MetaLine
+	// Switch stands in the frame's top border after the title: a key and
+	// the modes of the list (C11), or nothing.
+	Switch *ModeSwitch
+}
+
+// ModeSwitch is the key that switches a list's mode, the words of all modes
+// and the word of the active one alone, for a frame too narrow for all.
+// Modes names the active one by its text, not by a style alone.
+type ModeSwitch struct {
+	Key, Modes, Active Inline
 }
 
 // MetaLine is one line of the meta bar: a label or a value, in its style.
@@ -102,6 +112,11 @@ type Row struct {
 	Marked    bool
 	Mark      Inline
 	MarkStyle Style
+	// Heading: the entry heads a group of rows (C11). Primary is drawn in
+	// HeadingStyle, Note after it, faint.
+	Heading      bool
+	HeadingStyle Style
+	Note         Inline
 }
 
 // Style is how part of a line is drawn. Text stays readable on a terminal

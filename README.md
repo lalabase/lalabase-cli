@@ -192,9 +192,31 @@ navigation again.
   go back to where `A` was pressed. (`a` is not this key: it is kept for "assign to
   me".) `d` removes an agent that ended or is lost, or has been starting
   for over an hour (C9c), in the agents or in its ticket's pane; `x` there
-  jumps to the agent's pane or starts it again (C9c, below). The help
-  line names exactly
+  jumps to the agent's pane or starts it again (C9c, below). `g` on a
+  ticket list switches it between chronological and grouped by status
+  (C11, below). The help line names exactly
   the keys that act, on as many lines as it takes.
+* **The grouped ticket list (C11).** `g` on a project's list shows its
+  tickets by status, the statuses in the project's order, and `g` goes
+  back without a read; the frame's title says which mode is on, the active
+  one in brackets, for a project with statuses. Every group is a list of its
+  own: one read per status (the `status` filter of the list, on REST or
+  the tools), 25 rows a page, `[`/`]` turn the group the cursor is in and
+  no other, so opening costs one read per status beside the list's. A head
+  shows the status in its tone and the group's total; a status with no
+  tickets has none. A status that means done (`is_completed`, `is_closed`,
+  from the rows, never from its name) starts folded; `Enter` or `e` on a
+  head folds and opens. The cursor stands on heads and rows and stays on
+  its ticket through `g` when that ticket is shown; after the chronological
+  list was read again, `g` reads the groups again too, and a ticket that
+  moved between two groups stands once, where the newer read has it. `/` searches in every
+  group, `R` reads them all again, a group that fails says so in its head,
+  one that keeps old rows as "Possibly stale",
+  and leaves the others usable. Tickets without a status, or with one the
+  project no longer lists, can be found by no status: once every group has
+  landed, a faint last line counts them, and `g` shows them. A project
+  without statuses stays chronological with a short hint. The mode is not
+  kept: every project opens chronological.
 * **The mouse wheel** scrolls the object pane (a ticket, the details of a
   notification) by three lines when the pointer is over it, whether the
   pane has the focus or stands beside the list; like `PgUp`/`PgDn` it lets
@@ -944,7 +966,8 @@ version in `initialize`. Scenarios:
 comments, no expansion, no `update_ticket`, no `format`, no booked
 time), `s1-only` (a 0.9.0 server: no `update_ticket`, no `format`, no
 booked time), `s2-only` (a 0.10.0 server: no `format`, so a comment is
-HTML to it, no booked time), `temporary` (page 2 of the first organisation's inbox and of
+HTML to it, no booked time), `statuses` (Website-Relaunch's tickets in several statuses, one of them over
+a page, for the grouped list), `temporary` (page 2 of the first organisation's inbox and of
 Website-Relaunch's tickets fails twice, `R` succeeds; so does page 2 of
 ticket #6's comments), `429` (one short pause, on page 2 and on the first
 attempt of every write), `401` (the session expires, also on a preview of

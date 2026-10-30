@@ -128,3 +128,28 @@ func TestTheFramedPanesFillTheWidth(t *testing.T) {
 		}
 	}
 }
+
+// The modes of a list stand in the top border as far as they fit: all of
+// them, the active one, or the title alone; the line keeps its width.
+func TestTheTopBorderCarriesTheListsModesAsFarAsTheyFit(t *testing.T) {
+	c := present.Column{Title: present.NewInline("Tickets"), Switch: &present.ModeSwitch{
+		Key:    present.NewInline("g"),
+		Modes:  present.NewInline("grouped [chronological]"),
+		Active: present.NewInline("[chronological]"),
+	}}
+	for run, want := range map[int]string{
+		40: "Tickets  g grouped [chronological]",
+		37: "Tickets  g grouped [chronological]",
+		36: "Tickets  g [chronological]",
+		29: "Tickets  g [chronological]",
+		28: "Tickets",
+	} {
+		if got := titleOf(c, run, ansi.WcWidth); got != want {
+			t.Errorf("run %d: %q", run, got)
+		}
+	}
+	c.Switch = nil
+	if got := titleOf(c, 40, ansi.WcWidth); got != "Tickets" {
+		t.Errorf("no switch: %q", got)
+	}
+}

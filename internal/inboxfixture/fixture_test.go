@@ -143,8 +143,8 @@ func TestEverythingButTheReadsOfC1IsRefused(t *testing.T) {
 	if _, ans := a.Tickets(ctx, api.TicketQuery{ProjectID: "p"}); ans.Class != transport.NotFound {
 		t.Fatalf("tickets of an unknown project: %v", ans.Class)
 	}
-	if _, ans := a.Tickets(ctx, api.TicketQuery{ProjectID: ProjectWebsite, Status: "new"}); ans.Class != transport.Refused {
-		t.Fatalf("a status filter: %v", ans.Class)
+	if page, ans := a.Tickets(ctx, api.TicketQuery{ProjectID: ProjectWebsite, Status: "IN_PROGRESS"}); !ans.OK() || page.Meta.Total != 1 {
+		t.Fatalf("a status filter, without its case as the core: %v %d", ans.Class, page.Meta.Total)
 	}
 	if _, ans := a.TicketByNumber(ctx, ProjectWebsite, 1); ans.Class != transport.InvalidInput {
 		t.Fatalf("by number: %v", ans.Class)

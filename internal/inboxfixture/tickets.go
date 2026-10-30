@@ -155,6 +155,16 @@ func (f *Fixture) ticketRows(project string) []map[string]any {
 		if i%4 == 0 {
 			row["status"], row["status_functions"] = nil, []any{}
 		}
+		if f.scenario == Statuses && project == ProjectWebsite {
+			status := map[int]any{1: "in_progress", 2: "resolved", 3: "closed", 4: nil}[i]
+			if i > 4 {
+				status = "new"
+			}
+			row["status"], row["status_functions"] = status, []any{}
+			if key, ok := status.(string); ok {
+				row["status_functions"] = statusMeanings[key]
+			}
+		}
 		if e := f.editOf(row["id"].(string)); e != nil {
 			for k, v := range e.row {
 				row[k] = v
@@ -223,7 +233,7 @@ func (f *Fixture) tickets(w http.ResponseWriter, args map[string]any, reply func
 		reply(http.StatusOK, toolError("not_found", "Project not found or not accessible."), nil)
 		return
 	}
-	for _, name := range []string{"status", "assignee", "tag", "project"} {
+	for _, name := range []string{"assignee", "tag", "project"} {
 		if _, ok := args[name]; ok {
 			reply(http.StatusOK, toolError("refused", "the inbox fixture does not filter by "+name), nil)
 			return
@@ -238,13 +248,21 @@ func (f *Fixture) tickets(w http.ResponseWriter, args map[string]any, reply func
 		return
 	}
 	q, _ := args["q"].(string)
-	reply(http.StatusOK, toolObject(f.ticketPage(project, q, page, perPage)), nil)
+	status, _ := args["status"].(string)
+	reply(http.StatusOK, toolObject(f.ticketPage(project, q, status, page, perPage)), nil)
 }
 
 // ticketPage is a page of a project's tickets, those whose title holds the
-// search when there is one, in the tool's form (REST's too).
-func (f *Fixture) ticketPage(project, q string, page, perPage int) map[string]any {
+// search when there is one and with the status when one is asked for,
+// compared as the core compares it, in the tool's form (REST's too).
+func (f *Fixture) ticketPage(project, q, status string, page, perPage int) map[string]any {
 	rows := f.ticketRows(project)
+	if status != "" {
+		rows = slices.DeleteFunc(rows, func(row map[string]any) bool {
+			have, _ := row["status"].(string)
+			return !strings.EqualFold(have, status)
+		})
+	}
 	if q != "" {
 		rows = slices.DeleteFunc(rows, func(row map[string]any) bool {
 			title, _ := row["title"].(string)

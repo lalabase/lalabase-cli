@@ -291,7 +291,12 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		}
 		return m.switchOrder()
 	case Expand:
+		if m.onGroupHead() {
+			return m.foldGroup()
+		}
 		return m.expand()
+	case ToggleGroups:
+		return m.toggleGroups()
 	case MarkRead:
 		return m.markRead()
 	case Launch:
@@ -443,6 +448,9 @@ func (m Model) open() (Model, tea.Cmd) {
 				m.focus = view.Object
 			}
 		case a.tickets != nil:
+			if m.onGroupHead() {
+				return m.foldGroup()
+			}
 			return m.openTicket()
 		case a.projects != nil:
 			return m.openTickets(a.projects.selected)

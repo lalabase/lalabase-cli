@@ -69,6 +69,8 @@ const (
 	forTitle
 	// forTime: the time the person booked on the ticket in the pane (S6).
 	forTime
+	// forGroup: a page of one status of the ticket list (C11).
+	forGroup
 )
 
 // waiter is one consumer of a read in flight: its ticket, how to cancel it,
@@ -207,6 +209,9 @@ type app struct {
 	// one where its dialog cannot.
 	bookings    map[string]*bookOp
 	bookNotices []bookNotice
+	// groupNotice says why g did not group (C11); it stands as long as a
+	// hint.
+	groupNotice bookNotice
 
 	expired bool
 	pause   time.Time
@@ -248,7 +253,7 @@ func (a *app) reset() {
 	a.rememberedProject, a.rememberedTickets, a.previewToken = map[string]string{}, map[string]ticketPosition{}, 0
 	a.titles = map[string]*title{}
 	a.marks, a.origin = map[string]*markOp{}, nil
-	a.bookings, a.bookNotices = map[string]*bookOp{}, nil
+	a.bookings, a.bookNotices, a.groupNotice = map[string]*bookOp{}, nil, bookNotice{}
 	a.pause = time.Time{}
 }
 

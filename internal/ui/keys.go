@@ -63,6 +63,8 @@ const (
 	LineEnd
 	// K6: book time on the ticket in the pane.
 	BookTime
+	// C11: the ticket list chronological or grouped by status.
+	ToggleGroups
 )
 
 type keyAction struct {
@@ -133,6 +135,8 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: Search}
 	case "tab":
 		return keyAction{Kind: NextArea}
+	case "g":
+		return keyAction{Kind: ToggleGroups}
 	case "o":
 		return keyAction{Kind: Order}
 	case "e":
@@ -413,19 +417,26 @@ func (m Model) listBindings() []binding {
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.OrganisationsHelp})
 	case a.tickets != nil:
 		v := a.tickets
-		if len(v.rows) > 1 {
-			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
-		}
-		if v.selected != "" && a.ticketOn() {
-			out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenTicketHelp})
-		}
-		if !v.loading {
-			if v.page > 1 {
-				out = append(out, binding{PrevPage, uitext.PrevPageKey, uitext.PrevPageHelp})
+		if v.isGrouped() {
+			out = append(out, m.groupBindings(v)...)
+		} else {
+			if len(v.rows) > 1 {
+				out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
 			}
-			if v.known && v.page < lastPage(v.total, v.perPage) {
-				out = append(out, binding{NextPage, uitext.NextPageKey, uitext.NextPageHelp})
+			if v.selected != "" && a.ticketOn() {
+				out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenTicketHelp})
 			}
+			if !v.loading {
+				if v.page > 1 {
+					out = append(out, binding{PrevPage, uitext.PrevPageKey, uitext.PrevPageHelp})
+				}
+				if v.known && v.page < lastPage(v.total, v.perPage) {
+					out = append(out, binding{NextPage, uitext.NextPageKey, uitext.NextPageHelp})
+				}
+			}
+		}
+		if v.groupable() || v.known {
+			out = append(out, binding{ToggleGroups, uitext.GroupKey, uitext.GroupHelp})
 		}
 		if a.searchOn() {
 			out = append(out, binding{Search, uitext.SearchKey, uitext.SearchHelp})

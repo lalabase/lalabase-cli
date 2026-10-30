@@ -77,9 +77,12 @@ func (k Key) Namespace() Namespace { return k.ns }
 // Resource is the key without its page, its search and the options of one
 // record: what a write or a removal affects as a whole. For a ticket that
 // is the ticket in every variant it was read in; for a ticket list the
-// project, every search and page of it.
+// project, every search, status and page of it.
 func (k Key) Resource() Key {
 	k.Page, k.PerPage, k.Query = 0, 0, ""
+	if k.Project != "" {
+		k.Status = ""
+	}
 	k.PostsPage, k.PostsPerPage, k.Newest, k.AttachmentsPage, k.FullText, k.Post = 0, 0, false, 0, false, ""
 	return k
 }
