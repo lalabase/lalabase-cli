@@ -8,6 +8,7 @@ import (
 
 	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
+	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
 // factLine is the head's line of facts of ticket #1 as before L2.
@@ -68,7 +69,7 @@ func TestTheMetaBarFollowsTheTicketPanesWidth(t *testing.T) {
 			}
 			continue
 		}
-		if got := metaText(c); strings.Join(got, "|") != strings.Join(want, "|") {
+		if got := metaText(c); !strings.HasPrefix(strings.Join(got, "|")+"|", strings.Join(want, "|")+"|") {
 			t.Fatalf("width %d focus %d: meta %q, want %q", tc.width, tc.focus, got, want)
 		}
 		if strings.Contains(text, "created by") || strings.Contains(text, "in_progress") {
@@ -184,5 +185,47 @@ func TestAStatusWithoutAKnownFunctionIsPlainInTheBar(t *testing.T) {
 				t.Fatalf("functions %v: the status drawn %v, want plain", functions, l.Style)
 			}
 		}
+	}
+}
+
+// With the ticket in focus the bar ends in the keys that act on it, each as
+// the help names it; beside the list they do nothing, and none stands.
+func TestTheMetaBarNamesTheTicketsKeys(t *testing.T) {
+	t.Parallel()
+
+	keys := func(c present.Column) []string {
+		var out []string
+		for _, l := range c.Meta {
+			if l.Lead.String() != "" {
+				out = append(out, l.Lead.String()+" "+l.Text.String())
+			}
+		}
+		return out
+	}
+	h := newHarness(t)
+	h.showLogin()
+	h.m.app.deps.Launcher = &fakeLauncher{}
+	h.m.width = 160
+	if got := keys(h.m.detailColumn()); got != nil {
+		t.Fatalf("keys beside the list: %q", got)
+	}
+	h.m.focus = view.Object
+	c := h.m.detailColumn()
+	got := keys(c)
+	help := map[string]bool{}
+	for _, b := range h.m.bindings(false) {
+		help[uitext.Inline(b.key).String()+" "+uitext.Inline(b.help).String()] = true
+	}
+	if len(got) == 0 || !strings.HasPrefix(got[0], "x ") {
+		t.Fatalf("keys %q do not start with x", got)
+	}
+	for _, k := range got {
+		if !help[k] {
+			t.Errorf("%q is not in the help %v", k, help)
+		}
+	}
+	bar := metaText(c)
+	if at := len(bar) - len(got) - 1; at < 1 || bar[at] != "Actions" || bar[at-1] != "" {
+		t.Fatalf("no label before the keys: %q", bar)
 	}
 }

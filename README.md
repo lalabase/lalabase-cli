@@ -124,8 +124,11 @@ navigation again.
   in its tone, Project, People (the assignees, then the creator),
   Updated and, against a server with S6 (MCP 0.12.0, feature
   `booked_time`), Booked by you: the time you booked on the ticket, in
-  hours and minutes ("2:30"), the labels faint, a long name cut with "…";
-  the head then drops its line of facts and its agent's line. In a
+  hours and minutes ("2:30"), the labels faint, a long name cut with "…".
+  With the ticket in focus Actions ends the bar: the keys that act on it
+  now (`x`, `b`, `k`, `R`), each as the help names it, `x` here only while
+  the ticket has no agent, whose lines name it already. The
+  head then drops its line of facts and its agent's line. In a
   narrower pane they stay in one faint line under the title, the time last
   ("booked by you 2:30"). The time is read when a ticket opens, with
   `R` and after a booking, with the person's priority beside the ticket's
