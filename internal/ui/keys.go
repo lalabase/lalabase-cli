@@ -593,7 +593,7 @@ func (m Model) allowed() map[Action]bool {
 	if m.mode == TextEntry && !m.small() {
 		set[InsertText] = true
 	}
-	if m.dialog != nil && !m.dialog.locked() && !m.small() {
+	if m.dialog != nil && len(m.dialog.entries) > 0 && !m.dialog.locked() && !m.small() {
 		set[InsertText] = true
 	}
 	if set[Back] && m.focus == view.Agents {

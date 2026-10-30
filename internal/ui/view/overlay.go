@@ -36,6 +36,7 @@ type dialogShape struct {
 	width, inner                  int
 	label, entryWidth, entryLines int
 	help                          []string
+	text                          []string
 	errorLines                    int
 	spaced, labels, hints         bool
 	// from and to are the fields in sight.
@@ -63,6 +64,11 @@ func dialogShapeOf(d present.Dialog, g Geometry, method ansi.Method) dialogShape
 		s.errorLines = max(1, min(len(wrapBody(text, s.inner, method)), dialogErrorLines, room-1))
 	}
 	room -= s.errorLines
+	if text := d.Text.String(); text != "" {
+		s.text = wrapBody(text, s.inner, method)
+		s.text = s.text[:min(len(s.text), max(1, room-1))]
+		room -= len(s.text)
+	}
 	s.to = len(d.Fields)
 	if d.Large {
 		s.largeRows(d, room)
@@ -149,6 +155,7 @@ func dialogBox(d present.Dialog, g Geometry, method ansi.Method) []string {
 	if s.spaced {
 		rows = append(rows, "")
 	}
+	rows = append(rows, s.text...)
 	if d.Large {
 		rows = append(rows, s.largeField(d, method)...)
 	} else {

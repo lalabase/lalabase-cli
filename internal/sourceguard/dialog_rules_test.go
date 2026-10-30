@@ -22,8 +22,10 @@ var dialogOpeners = []string{"WithDialog", "openDialog", "openTicketDialog"}
 // b on a ticket, in book.go, through the one opener that takes the target
 // from the focused pane. A new one is a decision to take here, not a fix for
 // a red guard: a dialog is where a person writes to a server, and the file
-// that opens one owns what its send does.
-var dialogCallers = map[string]string{"internal/ui/book.go": "openTicketDialog"}
+// that opens one owns what its send does. d on a waiting agent asks in one
+// (owner, 2026-10-30): its target is the agent, not the focused pane, and it
+// writes to no server.
+var dialogCallers = map[string]string{"internal/ui/book.go": "openTicketDialog", "internal/ui/agents_remove.go": "openDialog"}
 
 // inspectDialogOpeners reports every use of a dialog opener in a production
 // file of the client (cmd/, internal/; the fixture tools under tools/ are no
@@ -142,6 +144,7 @@ func TestTheDialogGuardSeesAWayIn(t *testing.T) {
 		"tools/dialog-fixture/main.go":         `package main; func run() { ui.New(ui.WithDialog(spec)) }`,
 		dialogFile:                             `package ui; func WithDialog() Option { return func(m *Model) { *m = m.openDialog(spec) } }`,
 		"internal/ui/book.go":                  `package ui; func (m Model) pressB() Model { return m.openTicketDialog(DialogSpec{}) }`,
+		"internal/ui/agents_remove.go":         `package ui; func (m Model) endAgent() Model { return m.openDialog(DialogSpec{}) }`,
 		"internal/ui/startup.go":               `package ui; func (m *Model) expire() { m.mode, m.dialog = Navigate, nil }`,
 		"internal/ui/keys.go":                  `package ui; func route(mode Mode) bool { return mode == Dialog || mode == DialogLines }`,
 	} {

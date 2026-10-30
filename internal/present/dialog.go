@@ -6,7 +6,10 @@ package present
 // server's text, the entries what a person wrote, and each is an Inline, so
 // it was cleaned on its way in and cannot be forged.
 type Dialog struct {
-	Title  Inline
+	Title Inline
+	// Text is what the box says above its fields: a question has it and no
+	// field.
+	Text   Inline
 	Fields []DialogField
 	// Error is the line under the fields: what stopped the send, or what
 	// is going on; empty for none, and the line stays.
