@@ -456,9 +456,7 @@ func (m Model) agentsBindings() []binding {
 	if a.detail != nil && m.ticketBesideAgents() {
 		out = append(out, binding{Right, uitext.RightKey, uitext.IntoTicketHelp})
 	}
-	if _, ok := m.removeTarget(); ok {
-		out = append(out, binding{RemoveAgent, uitext.RemoveAgentKey, uitext.RemoveAgentHelp})
-	}
+	out = append(out, m.dBinding()...)
 	if m.canRefresh() {
 		out = append(out, binding{Refresh, uitext.RefreshKey, uitext.RetryHelp})
 	}

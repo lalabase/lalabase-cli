@@ -293,6 +293,8 @@ const (
 	// seen mark that could not be written.
 	RemoveAgentKey
 	RemoveAgentHelp
+	EndAgentHelp
+	AgentEndAsk
 	AgentRemoved
 	AgentNotRemoved
 	AgentNotSeen
@@ -308,6 +310,7 @@ const (
 	AgentHintJump
 	AgentHintAgain
 	AgentHintRemove
+	AgentHintEnd
 	Jumping
 	Jumped
 	JumpPaneGone
@@ -503,7 +506,8 @@ var english = map[ID]string{
 	Agents: "Agents", AgentsKey: "A", AgentsHelp: "agents",
 	BarAgent: "Agent", AgentMeta: "· %s",
 	// C9c: the key that removes an agent, and the notices of its result.
-	RemoveAgentKey: "d", RemoveAgentHelp: "remove agent",
+	RemoveAgentKey: "d", RemoveAgentHelp: "remove agent", EndAgentHelp: "end agent",
+	AgentEndAsk:     "Press d again to end agent #%d.",
 	AgentRemoved:    "Agent #%d removed.",
 	AgentNotRemoved: "Agent #%d could not be removed: %s",
 	AgentNotSeen:    "Agent #%d is seen for this run only: %s",
@@ -512,7 +516,7 @@ var english = map[ID]string{
 	BarBooked: "Booked by you", MetaBooked: "booked by you %s",
 	// C9c: x on an agent.
 	JumpHelp: "jump to agent", AgainHelp: "start agent again",
-	AgentHintJump: "x jump to it", AgentHintAgain: "x start again", AgentHintRemove: "d remove",
+	AgentHintJump: "x jump to it", AgentHintAgain: "x start again", AgentHintRemove: "d remove", AgentHintEnd: "d end",
 	Jumping:         "Switching to the agent of #%d\u2026",
 	Jumped:          "Switched to the agent of #%d",
 	JumpPaneGone:    "The pane of the agent of #%d was not found; it was closed",

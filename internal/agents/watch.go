@@ -99,6 +99,24 @@ func (w *Watcher) Remove(id string, at time.Time) tea.Cmd {
 	}
 }
 
+// End is the command that ends the agent id's session with kill and
+// removes its files (d on a waiting agent), under the supervisor like
+// Read; see End. Its message is a Removed.
+func (w *Watcher) End(id string, at time.Time, kill func(string) error) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := worker.Run(w.sup, "agents: end", func() tea.Msg {
+			return Removed{ID: id, Err: withoutPath(End(w.dir, id, at, w.procs, func() error { return kill(id) }))}
+		})
+		if !ok {
+			if w.sup.Err() != nil {
+				return worker.Fatal{}
+			}
+			return nil
+		}
+		return msg
+	}
+}
+
 // withoutPath is err for the status line: of a file operation the reason
 // alone (permission denied), not the file's path, which would push the
 // reason out of a narrow line; any other error as it is.

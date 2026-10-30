@@ -199,14 +199,14 @@ var launchImports = map[string]map[string][]string{
 // interfaceImports are the names the root controller may use of the
 // client's packages where a package offers more than the interface may
 // call (C9c): of internal/agents its types, states, messages and the
-// pure rule of what d may remove (Removable); After, the value that says
+// pure rules of what d may remove and end (Removable, Endable); After, the value that says
 // what a start's settlement is about, and Settled, its message (C9c-3).
 // Its files the interface reaches only through the watcher's commands,
 // under the supervisor; Remove, Prune, Read, MarkSeen, MarkLost or Settle
 // called from here would touch them on the interface's own goroutine.
 var interfaceImports = map[string]map[string][]string{
 	rootController: {
-		clientModule + "internal/agents": {"Agent", "State", "Ended", "Lost", "Working", "Starting", "WaitingForYou", "WaitingForApproval", "Snapshot", "Marked", "Removed", "Removable", "ErrTooManyFiles", "After", "Settled"},
+		clientModule + "internal/agents": {"Agent", "State", "Ended", "Lost", "Working", "Starting", "WaitingForYou", "WaitingForApproval", "Snapshot", "Marked", "Removed", "Removable", "Endable", "ErrTooManyFiles", "After", "Settled"},
 	},
 }
 

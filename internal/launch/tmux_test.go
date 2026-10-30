@@ -224,3 +224,44 @@ func TestViewTakesAnAgentsIDOnly(t *testing.T) {
 		}
 	}
 }
+
+// EndSession ends exactly the agent's session on the client's socket.
+func TestEndSessionKillsTheAgentsSession(t *testing.T) {
+	r := newRig(t, true, nil)
+	f := r.withTmux()
+	if !r.l.Ends() {
+		t.Fatal("with tmux it ends nothing")
+	}
+	if err := r.l.EndSession(agentID); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.commands(); !slices.Equal(got, []string{"kill-session -t =" + agentID}) {
+		t.Fatalf("commands %q", got)
+	}
+}
+
+// Only an agent's id reaches tmux, and a session that does not end says so.
+func TestEndSessionRefuses(t *testing.T) {
+	r := newRig(t, true, nil)
+	f := r.withTmux()
+	for _, bad := range []string{"x; rm -rf /", "=" + agentID, agentID + ":0", ""} {
+		if r.l.EndSession(bad) == nil {
+			t.Fatalf("%q passed", bad)
+		}
+	}
+	if got := f.commands(); len(got) != 0 {
+		t.Fatalf("commands %q", got)
+	}
+	f.fail = true
+	if r.l.EndSession(agentID) == nil {
+		t.Fatal("a failed kill-session passed")
+	}
+}
+
+func TestWithoutTmuxNothingEnds(t *testing.T) {
+	r := newRig(t, true, nil)
+	r.l.tmux = ""
+	if r.l.Ends() || r.l.EndSession(agentID) == nil {
+		t.Fatal("ended without tmux")
+	}
+}

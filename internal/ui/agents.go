@@ -24,6 +24,9 @@ type AgentWatcher interface {
 	// Remove removes an agent's files if it is still removable at at, as
 	// its lock is held (C9c); its message is an agents.Removed.
 	Remove(id string, at time.Time) tea.Cmd
+	// End ends a waiting agent's session with kill and removes its files
+	// (agents.End); its message is an agents.Removed too.
+	End(id string, at time.Time, kill func(string) error) tea.Cmd
 	// Settle does what follows a start or a jump (agents.Settle, C9c);
 	// its message is an agents.Settled.
 	Settle(after agents.After, at time.Time) tea.Cmd
@@ -65,6 +68,10 @@ type agentsState struct {
 	// removing are the agents d asked to remove whose answer is out, by
 	// id, with their number for the notice (C9c).
 	removing map[string]int
+	// armed is the agent a first d asked about, until armedUntil: a second
+	// d in that time ends it.
+	armed      string
+	armedUntil time.Time
 	// gone are the agents removed, by id, with the newest read issued
 	// when their files went: a read up to it may have seen them before,
 	// so its answer does not bring them back (receiveAgents).
@@ -301,6 +308,9 @@ func (a *app) agentHints(ag agents.Agent) []string {
 	}
 	if a.deps.Agents != nil && (ag.State == agents.Ended || ag.State == agents.Lost) {
 		hints = append(hints, uitext.AgentHintRemove)
+	}
+	if a.deps.Agents != nil && a.endable(ag) {
+		hints = append(hints, uitext.AgentHintEnd)
 	}
 	out := make([]string, 0, len(hints))
 	for _, id := range hints {
