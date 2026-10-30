@@ -24,9 +24,10 @@ import (
 // attachments (two pages); #6 (C1d) has a description and two comments the
 // server shortened, 30 comments and 12 attachments with metadata of every
 // kind; #8 (K1) a description and a newest comment longer than the tools'
-// cut and the client's pane; the rest carry the recorded two comments and
-// two attachments. The tools cut a long text as the core's get_ticket does;
-// REST (rest.go) sends every text whole. The scenarios act on Website's
+// cut and the client's pane; #9 (C12) a comment of every kind of files; the
+// rest carry the recorded two comments and two attachments, on #1 the first
+// comment with the recorded file. The tools cut a long text as the core's
+// get_ticket does; REST (rest.go) sends every text whole. The scenarios act on Website's
 // page 2 as they do on A's inbox page 2, (401) on a read of ticket #2,
 // (temporary) on page 2 of #6's comments and (vanished) on the newest
 // comments of #6 and #8 read whole.
@@ -67,6 +68,40 @@ func ticketByID(id string) (string, int) {
 	return "", 0
 }
 
+// recordedText is the text of a recorded tool answer.
+func recordedText(file contractFile, tool, name string) ([]byte, error) {
+	ex, ok := file.Contract.MCP.Calls[tool][name]
+	if !ok {
+		return nil, fmt.Errorf("inbox fixture: the contract copy records no %s", tool)
+	}
+	var body struct {
+		Result struct {
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(ex.Response.Body, &body); err != nil || len(body.Result.Content) == 0 {
+		return nil, fmt.Errorf("inbox fixture: the recorded %s has no text", tool)
+	}
+	return []byte(body.Result.Content[0].Text), nil
+}
+
+// recordedFilePost is the recorded comment with a file (core R7).
+func recordedFilePost(file contractFile) (map[string]any, error) {
+	text, err := recordedText(file, "comment_file", "page")
+	if err != nil {
+		return nil, err
+	}
+	var page struct {
+		Posts []map[string]any `json:"posts"`
+	}
+	if err := json.Unmarshal(text, &page); err != nil || len(page.Posts) != 1 {
+		return nil, errors.New("inbox fixture: the recorded comment_file has no comment")
+	}
+	return page.Posts[0], nil
+}
+
 // recordedTickets reads the recorded projects, the first recorded ticket
 // row and the recorded ticket.
 func recordedTickets(file contractFile) (projects []map[string]any, row, ticket map[string]any, err error) {
@@ -76,24 +111,7 @@ func recordedTickets(file contractFile) (projects []map[string]any, row, ticket 
 	if err := json.Unmarshal(file.Contract.REST["GET /api/v1/projects"]["ok_one_organisation"].Response.Body, &list); err != nil || len(list.Data) == 0 {
 		return nil, nil, nil, errors.New("inbox fixture: the contract copy records no projects")
 	}
-	text := func(tool, name string) ([]byte, error) {
-		ex, ok := file.Contract.MCP.Calls[tool][name]
-		if !ok {
-			return nil, fmt.Errorf("inbox fixture: the contract copy records no %s", tool)
-		}
-		var body struct {
-			Result struct {
-				Content []struct {
-					Text string `json:"text"`
-				} `json:"content"`
-			} `json:"result"`
-		}
-		if err := json.Unmarshal(ex.Response.Body, &body); err != nil || len(body.Result.Content) == 0 {
-			return nil, fmt.Errorf("inbox fixture: the recorded %s has no text", tool)
-		}
-		return []byte(body.Result.Content[0].Text), nil
-	}
-	rows, err := text("list_tickets", "ok")
+	rows, err := recordedText(file, "list_tickets", "ok")
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -103,7 +121,7 @@ func recordedTickets(file contractFile) (projects []map[string]any, row, ticket 
 	if err := json.Unmarshal(rows, &page); err != nil || len(page.Data) == 0 {
 		return nil, nil, nil, errors.New("inbox fixture: the recorded list_tickets has no row")
 	}
-	record, err := text("get_ticket", "ok")
+	record, err := recordedText(file, "get_ticket", "ok")
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -439,12 +457,60 @@ func sixAttachments() []any {
 	return out
 }
 
+// commentFileID is the document id of the i-th file under #9's comments.
+func commentFileID(i int) string { return fmt.Sprintf("00000000-0000-4000-8000-%012d", 900100+i) }
+
+// ninePosts are the comments of #9 (C12), oldest first, each a copy of the
+// recorded one: two files; a private comment's file; a count and no list,
+// as a server before R7 sends it; an empty list beside a count, whose file
+// lost its content.
+func (f *Fixture) ninePosts() []any {
+	recorded, _ := f.ticketTmpl["posts"].([]any)
+	file := func(i int, name, kind string, size int) any {
+		return map[string]any{"id": commentFileID(i), "filename": name, "content_type": kind, "byte_size": size}
+	}
+	comments := []map[string]any{
+		{"attachments": []any{file(1, "nine-shot.png", "image/png", 2048), file(2, "nine-trace.log", "text/plain", 512)}, "attachments_count": 2},
+		{"attachments": []any{file(3, "nine-private.pdf", "application/pdf", 4096)}, "attachments_count": 1, "is_private": true},
+		{"attachments_count": 2},
+		{"attachments": []any{}, "attachments_count": 1},
+	}
+	out := make([]any, 0, len(comments))
+	for i, comment := range comments {
+		p := copyMap(recorded[0].(map[string]any))
+		delete(p, "attachments")
+		p["id"], p["created_at"] = fmt.Sprintf("00000000-0000-4000-8000-%012d", 900000+i+1), fmt.Sprintf("2026-01-09T10:%02d:00Z", i)
+		body := fmt.Sprintf("Nine comment %d", i+1)
+		p["body_html"], p["body_text"] = body, body
+		for k, v := range comment {
+			p[k] = v
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// withoutFileLists are comments as a server before R7 sends them: the count
+// alone.
+func withoutFileLists(posts []any) []any {
+	out := make([]any, 0, len(posts))
+	for _, p := range posts {
+		post := copyMap(p.(map[string]any))
+		delete(post, "attachments")
+		out = append(out, post)
+	}
+	return out
+}
+
 // posts are the comments of ticket n, oldest first, with the comments the
 // writes added (C2a): whole, or as the tools send them on a page (#6's
 // and #8's long ones cut).
 func (f *Fixture) posts(project string, n int, whole bool) []any {
 	recorded, _ := f.ticketTmpl["posts"].([]any)
 	posts := slices.Clone(recorded)
+	if TicketID(project, n) == TicketLogin {
+		posts[0] = f.filePost
+	}
 	switch n {
 	case 2:
 		posts = []any{}
@@ -467,9 +533,14 @@ func (f *Fixture) posts(project string, n int, whole bool) []any {
 		}
 		long["id"], long["body_html"], long["body_text"] = EightPostID, body, body
 		posts[len(posts)-1] = long
+	case 9:
+		posts = f.ninePosts()
 	}
 	if e := f.editOf(TicketID(project, n)); e != nil {
 		posts = append(posts, e.posts...)
+	}
+	if !f.r1 {
+		return withoutFileLists(posts)
 	}
 	return posts
 }

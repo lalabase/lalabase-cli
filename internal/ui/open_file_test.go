@@ -54,7 +54,7 @@ func TestArrowsSelectAFileAndEnterOpensIt(t *testing.T) {
 	cmd := h.press("enter")
 	want := launch.Ticket{Org: orgA, Project: website, ID: ticketID(website, 6), Number: 6}
 	calls := f.opened()
-	if len(calls) != 1 || calls[0].ticket != want || calls[0].file != (launch.File{ID: fileID(2), Name: "six-02.txt"}) {
+	if len(calls) != 1 || calls[0].ticket != want || calls[0].file != (launch.File{Kind: launch.TicketFile, ID: fileID(2), Name: "six-02.txt"}) {
 		t.Fatalf("opened %+v", calls)
 	}
 	if got := h.status(); got != "Opening six-02.txt…" {

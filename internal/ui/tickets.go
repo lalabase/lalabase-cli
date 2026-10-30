@@ -162,6 +162,9 @@ type detailView struct {
 	// follow what the pane keeps in sight (C1d).
 	area ticketArea
 	post string
+	// postFile is the file of that comment the walk stands on (C12), by
+	// id, "" on the comment itself. post stays the comment: e reads it.
+	postFile string
 	// file is the id of the selected file (C10), "" for the page's first.
 	file   string
 	follow anchor

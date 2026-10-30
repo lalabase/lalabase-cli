@@ -8,6 +8,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/features"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
+	"github.com/gboyke/lalabase-cli/internal/launch"
 	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/transport"
@@ -32,8 +33,9 @@ const (
 )
 
 // anchor is what the pane keeps in sight: nothing (the person scrolled),
-// the heading of the active section, or the selected comment. The line is
-// found when the pane is built, so a resize keeps the place.
+// the heading of the active section, the selected comment or the selected
+// file. The line is found when the pane is built, so a resize keeps the
+// place.
 type anchor uint8
 
 const (
@@ -91,20 +93,25 @@ func (d *detailView) startAtHead() {
 	d.follow = anchorNone
 	d.area = areaDescription
 	d.post = ""
+	d.postFile = ""
 	d.file = ""
 }
 
 // settle follows a new record: the selected comment is kept by its id or
-// moves to the first one; an expanded comment no longer on the page
-// closes, a missing one's marker too (nothing stays open that the pane
-// does not show; review round 2).
+// moves to the first one, a file no longer on the page gives way to its
+// comment; an expanded comment no longer on the page closes, a missing
+// one's marker too (nothing stays open that the pane does not show; review
+// round 2).
 func (a *app) settle(d *detailView) {
 	posts := d.record.Posts
 	if !slices.ContainsFunc(posts, func(p api.Post) bool { return p.ID == d.post }) {
-		d.post = ""
+		d.post, d.postFile = "", ""
 		if len(posts) > 0 {
 			d.post = posts[0].ID
 		}
+	}
+	if _, ok := d.commentFile(); !ok {
+		d.postFile = ""
 	}
 	if e := d.expansion; e != nil && e.post != "" &&
 		!slices.ContainsFunc(posts, func(p api.Post) bool { return p.ID == e.post }) {
@@ -131,40 +138,117 @@ func (m Model) nextArea() Model {
 	return m
 }
 
-// moveComment moves the selection among the comments of the page shown,
-// and keeps it in sight.
+// stop is a place of the walk through the comments (C12): a comment, file
+// "", or one of its files.
+type stop struct{ post, file string }
+
+// stops are the places of the walk on the page shown, in the pane's order:
+// a comment, the files of it that can be opened, the next comment. Without
+// files they are the comments.
+func (d *detailView) stops() []stop {
+	var out []stop
+	for _, p := range d.record.Posts {
+		out = append(out, stop{post: p.ID})
+		for _, f := range d.commentFiles(p) {
+			out = append(out, stop{p.ID, *f.ID})
+		}
+	}
+	return out
+}
+
+// moveComment walks the selection through the comments of the page shown
+// and their files, and keeps it in sight.
 func (m Model) moveComment(delta int) Model {
 	d := m.app.detail
-	posts := d.record.Posts
-	if len(posts) == 0 {
+	stops := d.stops()
+	if len(stops) == 0 {
 		return m
 	}
-	at := max(0, slices.IndexFunc(posts, func(p api.Post) bool { return p.ID == d.post }))
-	d.post = posts[max(0, min(len(posts)-1, at+delta))].ID
-	d.follow = anchorPost
+	place := stop{post: d.post}
+	if f, ok := d.commentFile(); ok {
+		place.file = *f.ID
+	}
+	at := max(0, slices.Index(stops, place))
+	next := stops[max(0, min(len(stops)-1, at+delta))]
+	d.post, d.postFile, d.follow = next.post, next.file, anchorPost
+	if next.file != "" {
+		d.follow = anchorFile
+	}
 	return m
 }
 
-// openable are the files of the page shown that can be opened: those whose
-// id the server sent (C10). None while their page loads.
+// selectable are those of a list of files the selection can stop at: the
+// ones whose id the server sent (C10), each once.
+func selectable(files []api.Attachment) []api.Attachment {
+	seen := make(map[string]bool, len(files))
+	return slices.DeleteFunc(slices.Clone(files), func(f api.Attachment) bool {
+		if f.ID == nil || *f.ID == "" || seen[*f.ID] {
+			return true
+		}
+		seen[*f.ID] = true
+		return false
+	})
+}
+
+// openable are the files of the page shown that can be opened. None while
+// their page loads.
 func (d *detailView) openable() []api.Attachment {
 	if d.attachmentsLoading() {
 		return nil
 	}
-	return slices.DeleteFunc(slices.Clone(d.record.Attachments), func(f api.Attachment) bool {
-		return f.ID == nil || *f.ID == ""
-	})
+	return selectable(d.record.Attachments)
 }
 
-// selectedFile is the selected file, kept by its id; when it is not on the
-// page shown, the page's first. So a page turn and a refresh need no step
-// of their own, and a selection never names a file the pane does not show.
-func (d *detailView) selectedFile() (api.Attachment, bool) {
-	files := d.openable()
-	if len(files) == 0 {
+// hidden: the server said the comment is missing (commentMissing), and the
+// pane keeps nothing of it.
+func (d *detailView) hidden(post string) bool {
+	e := d.expansion
+	return e != nil && e.post == post && e.unavailable
+}
+
+// commentFiles are the files of a comment that can be opened.
+func (d *detailView) commentFiles(p api.Post) []api.Attachment {
+	if d.hidden(p.ID) {
+		return nil
+	}
+	return selectable(p.Attachments)
+}
+
+// commentFile is the file the walk stands on, from the record shown: none
+// on the comment itself, while the comments load, or when the file is no
+// longer there.
+func (d *detailView) commentFile() (api.Attachment, bool) {
+	p := d.selectedPost()
+	if p == nil || d.postFile == "" || d.commentsLoading() {
 		return api.Attachment{}, false
 	}
-	return files[max(0, d.fileIndex(files))], true
+	files := d.commentFiles(*p)
+	at := slices.IndexFunc(files, func(f api.Attachment) bool { return *f.ID == d.postFile })
+	if at < 0 {
+		return api.Attachment{}, false
+	}
+	return files[at], true
+}
+
+// selectedFile is the one answer to which file is selected, what the mark
+// shows and Enter opens: in the attachments the selected one, kept by its
+// id; when it is not on the page shown, the page's first. So a page turn
+// and a refresh need no step of their own, and a selection never names a
+// file the pane does not show. In the comments the one the walk stands on,
+// none on a comment. The kind is set here, by the section, never by data.
+func (d *detailView) selectedFile() (launch.File, bool) {
+	switch d.area {
+	case areaAttachments:
+		if files := d.openable(); len(files) > 0 {
+			f := files[max(0, d.fileIndex(files))]
+			return launch.File{Kind: launch.TicketFile, ID: *f.ID, Name: f.Filename}, true
+		}
+	case areaComments:
+		if f, ok := d.commentFile(); ok {
+			return launch.File{Kind: launch.CommentFile, ID: *f.ID, Name: f.Filename}, true
+		}
+	}
+	return launch.File{}, false
 }
 
 // fileIndex is the place of the selected file among files, or -1.
@@ -344,6 +428,11 @@ func (m Model) expand() (Model, tea.Cmd) {
 	a := m.app
 	d := a.detail
 	a.closeExpansion()
+	if d.follow == anchorFile {
+		// On a comment's file: the text opens above it, so the comment is
+		// what the pane has to show.
+		d.follow = anchorPost
+	}
 	k := d.key
 	if post == "" {
 		// The description with the options of the page asked (the one

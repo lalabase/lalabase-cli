@@ -521,8 +521,15 @@ func (m Model) ticketBindings() []binding {
 		return nil
 	}
 	out := []binding{{NextArea, uitext.TabKey, uitext.NextAreaHelp}}
-	if d.area == areaComments && len(d.record.Posts) > 1 && !d.commentsLoading() {
-		out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentHelp})
+	if d.area == areaComments && !d.commentsLoading() {
+		// The help says what the page has, not where the cursor stands: it
+		// does not change on every move.
+		switch stops := len(d.stops()); {
+		case stops > len(d.record.Posts):
+			out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentOrFileHelp})
+		case stops > 1:
+			out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentHelp})
+		}
 	}
 	if d.area == areaAttachments && len(d.openable()) > 1 {
 		out = append(out, binding{Up, uitext.UpDownKey, uitext.FileHelp})

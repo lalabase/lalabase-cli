@@ -27,9 +27,10 @@ import (
 // MinTestedServerVersion is the MCP surface the client was tested against:
 // the version of the contract copy in internal/contract, server slices S1,
 // S2, S2b and S6 included (0.13.0 adds the people tools, which the client
-// does not use, and 0.13.1 the bound of an idempotency key, far above this
-// client's keys).
-const MinTestedServerVersion = "0.13.1"
+// does not use, 0.13.1 the bound of an idempotency key, far above this
+// client's keys, and 0.14.0 the files of a comment, a field no feature
+// waits for).
+const MinTestedServerVersion = "0.14.0"
 
 // Feature is one thing the client offers, and what it needs from the server.
 type Feature struct {
