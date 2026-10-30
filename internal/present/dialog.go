@@ -19,6 +19,8 @@ type Dialog struct {
 	// Large is the size of one field of several lines, about 80 % of the
 	// screen; else one or a few fields of one line.
 	Large bool
+	// Danger says the send stops something: the box's frame is red.
+	Danger bool
 }
 
 // DialogField is one input field: its label, the lines of its entry in

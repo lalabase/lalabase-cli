@@ -168,6 +168,9 @@ func dialogBox(d present.Dialog, g Geometry, method ansi.Method) []string {
 	}
 	rows = append(rows, s.help...)
 	border := lipgloss.NewStyle().Bold(true).Foreground(focusColor)
+	if d.Danger {
+		border = border.Foreground(redColor)
+	}
 	run := s.width - 2
 	out := make([]string, 0, len(rows)+frameLines)
 	out = append(out, frameTop(d.Title.String(), run, border, border, method))

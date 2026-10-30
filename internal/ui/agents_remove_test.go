@@ -381,6 +381,9 @@ func TestDAsksInADialogAndEnterEndsAWaitingAgent(t *testing.T) {
 		if got := h.m.dialogScreen(); !strings.HasPrefix(got.Title.String(), "End agent \u00b7 #6") || !strings.Contains(got.Text.String(), "stops its Claude Code session") {
 			t.Fatalf("%v: %+v", state, got)
 		}
+		if !h.m.dialogScreen().Danger {
+			t.Fatalf("%v: the box does not warn", state)
+		}
 		h.drive(h.press("x"))
 		h.drive(h.press("d"))
 		if len(e.ended) != 0 {

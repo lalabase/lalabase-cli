@@ -48,7 +48,8 @@ type DialogField struct {
 // DialogSpec is a dialog as its user describes it. Action opens the box's
 // title ("Book time"), and SendHelp names the key that sends, "send" when
 // empty. Text is fixed text above the fields; with no field it is a question,
-// which Enter answers (ending an agent). Large is the size of one field of several lines; a small dialog
+// which Enter answers (ending an agent). Danger marks a send that stops
+// something: the box's frame is red. Large is the size of one field of several lines; a small dialog
 // has one or a few fields of one line. Send is called once per send, with
 // what the fields hold; what it returns runs as any command, and how it ended
 // must reach the dialog as a DialogOutcome with the submission's number: as
@@ -56,7 +57,7 @@ type DialogField struct {
 type DialogSpec struct {
 	Action, SendHelp, Text present.Inline
 	Target                 DialogTarget
-	Large                  bool
+	Large, Danger          bool
 	Fields                 []DialogField
 	Send                   func(Submission) tea.Cmd
 }
@@ -324,7 +325,7 @@ func (d *dialog) errorLine() (present.Inline, present.Style) {
 // dialogScreen is the dialog's display values, as the entries have them.
 func (m Model) dialogScreen() present.Dialog {
 	d := m.dialog
-	out := present.Dialog{Title: d.title, Text: d.spec.Text, Large: d.spec.Large}
+	out := present.Dialog{Title: d.title, Text: d.spec.Text, Large: d.spec.Large, Danger: d.spec.Danger}
 	out.Error, out.ErrorStyle = d.errorLine()
 	more := uitext.Inline(uitext.Ellipsis).String()
 	for i, e := range d.entries {
