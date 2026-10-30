@@ -17,8 +17,8 @@ import (
 //
 // On an agent that waits for the person, d ends its tmux session first
 // (owner, 2026-10-30): such an agent stays forever otherwise, nothing else
-// in the client ends it. This stops a process, so a first d asks and a
-// second one within hintFor acts. An agent at work is never ended.
+// in the client ends it. This stops a process, so a dialog asks first. An
+// agent at work is never ended.
 
 // removable: the agent's session is over or never began, by the one rule
 // the removal asks again under the agent's lock (agents.Removable).
@@ -96,34 +96,46 @@ func (m Model) dReach() (agents.Agent, bool) {
 }
 
 // removeAgent is d: the removal goes to the watcher; the agent stays
-// until its answer, so a removal that fails changes nothing on screen.
-func (m Model) removeAgent() tea.Cmd {
+// until its answer, so a removal that fails changes nothing on screen. On
+// a waiting agent it opens the question instead.
+func (m Model) removeAgent() (Model, tea.Cmd) {
 	ag, ok := m.removeTarget()
 	if !ok {
-		return m.endAgent()
+		return m.endAgent(), nil
 	}
 	a := m.app
 	a.markRemoving(ag)
-	return a.deps.Agents.Remove(ag.ID, a.now())
+	return m, a.deps.Agents.Remove(ag.ID, a.now())
 }
 
-// endAgent is d on a waiting agent: the first press asks, the second ends
-// it, by the watcher under the agent's lock.
-func (m Model) endAgent() tea.Cmd {
+// endAgent is d on a waiting agent: the dialog asks, Enter ends it. The
+// agent is taken here; the watcher decides again under its lock.
+func (m Model) endAgent() Model {
 	ag, ok := m.endTarget()
 	if !ok {
-		return nil
+		return m
 	}
 	a := m.app
-	now := a.now()
-	if a.agents.armed != ag.ID || !a.agents.armedUntil.After(now) {
-		a.agents.armed, a.agents.armedUntil = ag.ID, now.Add(hintFor)
-		return a.agentsHint(uitext.Fill(uitext.AgentEndAsk, ag.Number))
-	}
-	a.agents.armed = ""
+	title, _ := a.agentTitle(ag)
+	return m.openDialog(DialogSpec{
+		Action:   uitext.Inline(uitext.EndAgentAction),
+		SendHelp: uitext.Inline(uitext.EndAgentHelp),
+		Text:     uitext.Inline(uitext.EndAgentText),
+		Target:   DialogTarget{Project: ag.Project, Ticket: ag.Ticket, Number: ag.Number, Title: title},
+		Send:     func(s Submission) tea.Cmd { return a.sendEnd(s, ag) },
+	})
+}
+
+// sendEnd is Enter in that dialog. Its answer is an agents.Removed, which
+// receiveRemoved takes back to the dialog that sent it.
+func (a *app) sendEnd(s Submission, ag agents.Agent) tea.Cmd {
 	e, _ := a.ender()
 	a.markRemoving(ag)
-	return a.deps.Agents.End(ag.ID, now, e.EndSession)
+	if a.agents.ending == nil {
+		a.agents.ending = map[string]uint64{}
+	}
+	a.agents.ending[ag.ID] = s.Dialog
+	return a.deps.Agents.End(ag.ID, a.now(), e.EndSession)
 }
 
 // markRemoving notes that ag's removal goes out.
@@ -148,12 +160,24 @@ func (m Model) receiveRemoved(r agents.Removed) (Model, tea.Cmd) {
 		return m, nil
 	}
 	delete(a.agents.removing, r.ID)
+	asked, ending := a.agents.ending[r.ID]
+	delete(a.agents.ending, r.ID)
+	open := ending && m.dialog != nil && m.dialog.id == asked
 	if r.Err != nil {
-		a.agentsProblem(r.ID, uitext.Fill(uitext.AgentNotRemoved, number, r.Err.Error()))
+		text := uitext.Fill(uitext.AgentNotRemoved, number, r.Err.Error())
+		if open {
+			return m.receiveOutcome(DialogOutcome{Dialog: asked, Refusal: text})
+		}
+		a.agentsProblem(r.ID, text)
 		return m, nil
 	}
 	a.dropAgent(r.ID)
 	cmds := []tea.Cmd{a.agentsHint(uitext.Fill(uitext.AgentRemoved, number)), a.readAgents()}
+	if open {
+		var closed tea.Cmd
+		m, closed = m.receiveOutcome(DialogOutcome{Dialog: asked, Done: true})
+		cmds = append(cmds, closed)
+	}
 	if m.focus == view.Agents && len(a.agents.list) == 0 {
 		var back tea.Cmd
 		m, back = m.closeAgents()

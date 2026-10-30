@@ -618,3 +618,27 @@ func TestAround(t *testing.T) {
 		t.Errorf("around a grapheme wider than the box: %q, %q", before, after)
 	}
 }
+
+// A question is a box without a field: its text wrapped inside the frame, its
+// keys under it.
+func TestAQuestionShowsItsTextInTheBox(t *testing.T) {
+	t.Parallel()
+
+	d := present.Dialog{
+		Title: present.NewInline("End agent"),
+		Text:  present.NewInline("This stops its Claude Code session and removes the agent. The conversation stays with Claude Code."),
+		Help:  []present.KeyHelp{{Key: present.NewInline("enter"), Help: present.NewInline("end agent")}},
+	}
+	g := Geometry{Width: 80, Height: 24}
+	box := ansi.Strip(strings.Join(dialogBox(d, g, ansi.WcWidth), "\n"))
+	for _, want := range []string{"This stops", "the agent", "stays with", "end agent"} {
+		if !strings.Contains(box, want) {
+			t.Fatalf("no %q in\n%s", want, box)
+		}
+	}
+	for _, line := range dialogBox(d, g, ansi.WcWidth) {
+		if w := ansi.WcWidth.StringWidth(line); w != dialogWidth {
+			t.Fatalf("a line %d wide", w)
+		}
+	}
+}

@@ -192,7 +192,7 @@ navigation again.
   go back to where `A` was pressed. (`a` is not this key: it is kept for "assign to
   me".) `d` removes an agent that ended or is lost, or has been starting
   for over an hour (C9c), and on an agent that waits for you ends its tmux
-  session first, after a second `d`; in the agents or in its ticket's pane; `x` there
+  session first, after asking in a dialog; in the agents or in its ticket's pane; `x` there
   jumps to the agent's pane or starts it again (C9c, below). `g` on a
   ticket list switches it between chronological and grouped by status
   (C11, below). The help line names exactly
@@ -618,13 +618,12 @@ navigation again.
     (including a successful launch or a problem with its tracking).
   * **Ending a waiting agent.** In tmux an agent runs on with nobody
     looking, so one that waits for you (or for an approval) would stay
-    for good. `d` on it says `Press d again to end agent #6.`; a second
-    `d` while that notice stands ends its tmux session, and with it its
-    `claude`, and removes the agent. Its conversation stays with Claude
+    for good. `d` on it asks in a dialog; `Enter` ends its tmux session,
+    and with it its `claude`, and removes the agent, `Esc` leaves it. Its conversation stays with Claude
     Code. The decision is taken again under the agent's lock: one that
     works since then is not ended ("it is running again"), and a session
-    that cannot be ended keeps the agent ("it has no session to end"; an
-    agent outside tmux has none). An agent at work is never ended.
+    that cannot be ended keeps the agent and the dialog says why ("it has
+    no session to end"; an agent outside tmux has none). An agent at work is never ended.
   * **Cleaning up.** Every start of the interactive client cleans the
     agents' directory before its first read: an agent that ended, is lost
     or never got past starting goes 30 days after the last change of its
