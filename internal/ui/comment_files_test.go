@@ -754,6 +754,26 @@ func TestAnotherCommentTakesNoFileAlong(t *testing.T) {
 	h.at(30, "")
 }
 
+// A file that left its page hands the anchor to its comment; that holds in
+// the comments alone. In the attachments the comment selected in the other
+// section has nothing to do with the page that loads.
+func TestALoadingPageOfAttachmentsAnchorsNoComment(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.toFiles()
+	h.press("down")
+	cmd := h.press("]")
+	d := h.m.app.detail
+	if !d.attachmentsLoading() || d.follow != anchorFile {
+		t.Fatalf("loading %v, follow %v", d.attachmentsLoading(), d.follow)
+	}
+	if got := h.m.objectColumn().Offset; got != d.offset {
+		t.Fatalf("offset %d, the pane's own %d", got, d.offset)
+	}
+	h.drive(cmd)
+}
+
 func TestATicketOpenedAnewStandsOnNoFile(t *testing.T) {
 	t.Parallel()
 

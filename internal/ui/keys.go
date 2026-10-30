@@ -534,8 +534,8 @@ func (m Model) ticketBindings() []binding {
 	case d.area == areaAttachments:
 		out = append(out, binding{Up, uitext.UpDownKey, uitext.FileHelp})
 	case stops > len(d.record.Posts):
-		// The help says what the page has, not where the cursor stands: it
-		// does not change on every move.
+		// This entry says what the page has, not where the cursor stands: it
+		// stays the same on every move.
 		out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentOrFileHelp})
 	default:
 		out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentHelp})
