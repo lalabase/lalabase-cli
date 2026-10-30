@@ -47,17 +47,18 @@ type DialogField struct {
 
 // DialogSpec is a dialog as its user describes it. Action opens the box's
 // title ("Book time"), and SendHelp names the key that sends, "send" when
-// empty. Large is the size of one field of several lines; a small dialog
+// empty. Text is fixed text above the fields; with no field it is a question,
+// which Enter answers (ending an agent). Large is the size of one field of several lines; a small dialog
 // has one or a few fields of one line. Send is called once per send, with
 // what the fields hold; what it returns runs as any command, and how it ended
 // must reach the dialog as a DialogOutcome with the submission's number: as
 // the command's message, or through the model that received its result.
 type DialogSpec struct {
-	Action, SendHelp present.Inline
-	Target           DialogTarget
-	Large            bool
-	Fields           []DialogField
-	Send             func(Submission) tea.Cmd
+	Action, SendHelp, Text present.Inline
+	Target                 DialogTarget
+	Large                  bool
+	Fields                 []DialogField
+	Send                   func(Submission) tea.Cmd
 }
 
 // Submission is one send: the dialog's number, its target as it was taken,
@@ -105,13 +106,13 @@ func WithDialog(spec DialogSpec) Option {
 }
 
 // openDialog opens a dialog over the screen. A large one has one field, and
-// one without a field nothing to show.
+// one without a field or a text nothing to show.
 func (m Model) openDialog(spec DialogSpec) Model {
-	if len(spec.Fields) == 0 {
+	if len(spec.Fields) == 0 && spec.Text.String() == "" {
 		return m
 	}
 	m.mode = Dialog
-	if spec.Large {
+	if spec.Large && len(spec.Fields) > 0 {
 		m.mode = DialogLines
 		spec.Fields = spec.Fields[:1]
 	}
@@ -201,6 +202,9 @@ func (m Model) dialogBindings(small bool) []binding {
 		out = append(out, binding{NextField, uitext.TabKey, uitext.NextFieldHelp})
 	}
 	out = append(out, cancel, dialogInterrupt)
+	if len(d.entries) == 0 {
+		return out
+	}
 	kinds := []Action{Left, Right, LineStart, LineEnd, DeleteBack, DeleteForward}
 	if d.spec.Large {
 		kinds = append(kinds, Up, Down, PageUp, PageDown)
@@ -214,13 +218,18 @@ func (m Model) dialogBindings(small bool) []binding {
 // dialogKey is a key the bindings let through.
 func (m Model) dialogKey(action keyAction) (Model, tea.Cmd) {
 	d := m.dialog
-	e := d.entries[d.active]
 	d.cut = present.Inline{}
 	switch action.Kind {
 	case Cancel:
 		return m.closeDialog()
 	case Submit:
 		return m, d.send()
+	}
+	if len(d.entries) == 0 {
+		return m, nil
+	}
+	e := d.entries[d.active]
+	switch action.Kind {
 	case NextField:
 		d.active = (d.active + 1) % len(d.entries)
 	case InsertText:
@@ -315,7 +324,7 @@ func (d *dialog) errorLine() (present.Inline, present.Style) {
 // dialogScreen is the dialog's display values, as the entries have them.
 func (m Model) dialogScreen() present.Dialog {
 	d := m.dialog
-	out := present.Dialog{Title: d.title, Large: d.spec.Large}
+	out := present.Dialog{Title: d.title, Text: d.spec.Text, Large: d.spec.Large}
 	out.Error, out.ErrorStyle = d.errorLine()
 	more := uitext.Inline(uitext.Ellipsis).String()
 	for i, e := range d.entries {

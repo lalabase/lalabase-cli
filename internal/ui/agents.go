@@ -69,10 +69,9 @@ type agentsState struct {
 	// removing are the agents d asked to remove whose answer is out, by
 	// id, with their number for the notice (C9c).
 	removing map[string]int
-	// armed is the agent a first d asked about, until armedUntil: a second
-	// d in that time ends it.
-	armed      string
-	armedUntil time.Time
+	// ending are the agents a dialog sent to be ended, by id, with that
+	// dialog's number: their answer goes back to it while it is open.
+	ending map[string]uint64
 	// gone are the agents removed, by id, with the newest read issued
 	// when their files went: a read up to it may have seen them before,
 	// so its answer does not bring them back (receiveAgents).

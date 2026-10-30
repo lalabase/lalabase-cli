@@ -307,7 +307,7 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		}
 		return m.openAgents()
 	case RemoveAgent:
-		return m, m.removeAgent()
+		return m.removeAgent()
 	case BookTime:
 		return m.pressB(), nil
 	}

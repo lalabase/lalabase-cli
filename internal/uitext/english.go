@@ -298,7 +298,8 @@ const (
 	RemoveAgentKey
 	RemoveAgentHelp
 	EndAgentHelp
-	AgentEndAsk
+	EndAgentAction
+	EndAgentText
 	AgentRemoved
 	AgentNotRemoved
 	AgentNotSeen
@@ -513,7 +514,7 @@ var english = map[ID]string{
 	BarAgent: "Agent", AgentMeta: "· %s",
 	// C9c: the key that removes an agent, and the notices of its result.
 	RemoveAgentKey: "d", RemoveAgentHelp: "remove agent", EndAgentHelp: "end agent",
-	AgentEndAsk:     "Press d again to end agent #%d.",
+	EndAgentAction: "End agent", EndAgentText: "This stops its Claude Code session and removes the agent. The conversation stays with Claude Code.",
 	AgentRemoved:    "Agent #%d removed.",
 	AgentNotRemoved: "Agent #%d could not be removed: %s",
 	AgentNotSeen:    "Agent #%d is seen for this run only: %s",

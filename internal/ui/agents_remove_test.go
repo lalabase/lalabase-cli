@@ -360,9 +360,9 @@ func (h *harness) withEnder() *fakeEnder {
 	return f
 }
 
-// d on a waiting agent asks first; the second d ends its session and takes
-// it out of the list.
-func TestDEndsAWaitingAgentOnTheSecondPress(t *testing.T) {
+// d on a waiting agent asks in a dialog; Enter ends its session and takes it
+// out of the list, and the box closes.
+func TestDAsksInADialogAndEnterEndsAWaitingAgent(t *testing.T) {
 	t.Parallel()
 
 	for _, state := range []agents.State{agents.WaitingForYou, agents.WaitingForApproval} {
@@ -375,15 +375,26 @@ func TestDEndsAWaitingAgentOnTheSecondPress(t *testing.T) {
 			t.Fatalf("%v: d is not offered", state)
 		}
 		h.drive(h.press("d"))
-		if len(e.ended) != 0 || len(f.removals()) != 0 {
-			t.Fatalf("%v: the first d acted: %v", state, e.ended)
+		if h.m.dialog == nil || len(e.ended) != 0 || len(f.removals()) != 0 {
+			t.Fatalf("%v: dialog %v, ended %v", state, h.m.dialog, e.ended)
 		}
-		if got := h.status(); got != "Press d again to end agent #6." {
-			t.Fatalf("%v: status %q", state, got)
+		if got := h.m.dialogScreen(); !strings.HasPrefix(got.Title.String(), "End agent \u00b7 #6") || !strings.Contains(got.Text.String(), "stops its Claude Code session") {
+			t.Fatalf("%v: %+v", state, got)
 		}
+		h.drive(h.press("x"))
 		h.drive(h.press("d"))
+		if len(e.ended) != 0 {
+			t.Fatalf("%v: a letter ended it: %v", state, e.ended)
+		}
+		h.drive(h.press("enter"))
 		if id := agentIn(1, orgA, 6, state, h.now).ID; len(e.ended) != 1 || e.ended[0] != id {
 			t.Fatalf("%v: ended %v", state, e.ended)
+		}
+		if h.m.dialog != nil || h.m.mode != Navigate {
+			t.Fatalf("%v: the box stayed", state)
+		}
+		if got := h.status(); got != "Agent #6 removed." {
+			t.Fatalf("%v: status %q", state, got)
 		}
 		for _, r := range h.m.agentsColumn().Rows {
 			if strings.HasPrefix(r.Primary.String(), "#6") {
@@ -393,29 +404,26 @@ func TestDEndsAWaitingAgentOnTheSecondPress(t *testing.T) {
 	}
 }
 
-// The second d counts for the agent asked about alone, and only in time.
-func TestTheSecondDMustMatchTheAgentAndTheTime(t *testing.T) {
+// Esc leaves the agent as it was.
+func TestEscLeavesAWaitingAgentRunning(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.withWatcher(agentIn(1, orgA, 6, agents.WaitingForYou, h.now), agentIn(2, orgA, 7, agents.WaitingForYou, h.now))
+	h.withWatcher(agentIn(1, orgA, 6, agents.WaitingForYou, h.now))
 	e := h.withEnder()
 	h.start()
 	h.drive(h.press("A"))
 	h.drive(h.press("d"))
-	h.drive(h.press("down"))
-	h.drive(h.press("d"))
-	if len(e.ended) != 0 {
-		t.Fatalf("ended %v on a question about another agent", e.ended)
+	h.drive(h.press("esc"))
+	if h.m.dialog != nil || len(e.ended) != 0 || len(h.m.agentsColumn().Rows) != 1 {
+		t.Fatalf("dialog %v, ended %v", h.m.dialog, e.ended)
 	}
-	h.m.app.agents.armedUntil = h.m.app.now()
-	h.drive(h.press("d"))
-	if len(e.ended) != 0 {
-		t.Fatalf("ended %v after the question ran out", e.ended)
+	if h.m.focus != view.Agents {
+		t.Fatal("esc left the agents' list")
 	}
 }
 
-// A session that does not end keeps the agent and says why.
+// A session that does not end keeps the agent and says why in the box.
 func TestAWaitingAgentThatDoesNotEndStays(t *testing.T) {
 	t.Parallel()
 
@@ -426,9 +434,12 @@ func TestAWaitingAgentThatDoesNotEndStays(t *testing.T) {
 	h.start()
 	h.drive(h.press("A"))
 	h.drive(h.press("d"))
-	h.drive(h.press("d"))
-	if got := h.status(); got != "Agent #6 could not be removed: it has no session to end" {
-		t.Fatalf("status %q", got)
+	h.drive(h.press("enter"))
+	if h.m.dialog == nil {
+		t.Fatal("the box closed")
+	}
+	if got := h.m.dialogScreen().Error.String(); got != "Agent #6 could not be removed: it has no session to end" {
+		t.Fatalf("error %q", got)
 	}
 	if len(h.m.agentsColumn().Rows) != 1 {
 		t.Fatal("the agent left the list")
@@ -448,8 +459,7 @@ func TestDNeverEndsAnAgentAtWork(t *testing.T) {
 		t.Fatal("d offered")
 	}
 	h.drive(h.press("d"))
-	h.drive(h.press("d"))
-	if len(e.ended) != 0 {
-		t.Fatalf("ended %v", e.ended)
+	if h.m.dialog != nil || len(e.ended) != 0 {
+		t.Fatalf("dialog %v, ended %v", h.m.dialog, e.ended)
 	}
 }

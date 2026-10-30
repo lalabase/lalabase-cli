@@ -153,7 +153,8 @@ on a Mac before every merge, by running the tests here.
 * Terminal output is asserted on bytes; the terminal is tested through a real
   pseudo-terminal (`github.com/creack/pty`). The dialog's own tests and
   `tools/dialog-fixture` start with one (`ui.WithDialog`); the source guard
-  allows no opener in `cmd/` and `internal/` but `b` in `internal/ui/book.go`
+  allows no opener in `cmd/` and `internal/` but `b` in `internal/ui/book.go` and
+  `d` on a waiting agent in `internal/ui/agents_remove.go`
   (`dialogCallers`), and a new one is a decision taken there.
 * Ask "what change would this test miss?". A reviewer's mutation probes are
   run as given, not a selection of them.
