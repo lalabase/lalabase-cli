@@ -1,9 +1,9 @@
 {
   "header": {
     "regenerate": "RAILS_ENV=test bin/rails mcp:contract",
-    "core_commit": "c56a11b8820f9cb5f8d664fc9f0c433aedd30018",
+    "core_commit": "1a16f823f40cab62f11c3e5c929a6912bda0c95b",
     "core_dirty": true,
-    "contract_sha256": "463a72a9a78b957137b04184d6d5a5cc2c2a549412257495d5a72ae7ada865ac"
+    "contract_sha256": "80e07918e69c341f6079cc26d11f2144c73593178faa6cde0d6d616058c1f282"
   },
   "contract": {
     "mcp": {
@@ -3654,7 +3654,7 @@
                     "all_projects": true
                   }
                 ],
-                "api_version": "1.2.0",
+                "api_version": "1.5.0",
                 "capabilities": [
                   "error_codes",
                   "idempotency",
@@ -3667,14 +3667,19 @@
                   "people.list",
                   "people.show",
                   "posts.create",
+                  "posts.plain",
+                  "posts.show",
                   "projects.list",
                   "projects.ticket_attribute_definitions",
                   "tickets.activities",
                   "tickets.attachments",
+                  "tickets.by_number",
                   "tickets.create",
                   "tickets.list",
+                  "tickets.paging",
                   "tickets.show",
                   "tickets.update",
+                  "time_sessions.book",
                   "time_sessions.create",
                   "time_sessions.list",
                   "time_sessions.open"
@@ -3713,7 +3718,7 @@
                     "all_projects": true
                   }
                 ],
-                "api_version": "1.2.0",
+                "api_version": "1.5.0",
                 "capabilities": [
                   "error_codes",
                   "idempotency",
@@ -3726,14 +3731,19 @@
                   "people.list",
                   "people.show",
                   "posts.create",
+                  "posts.plain",
+                  "posts.show",
                   "projects.list",
                   "projects.ticket_attribute_definitions",
                   "tickets.activities",
                   "tickets.attachments",
+                  "tickets.by_number",
                   "tickets.create",
                   "tickets.list",
+                  "tickets.paging",
                   "tickets.show",
                   "tickets.update",
+                  "time_sessions.book",
                   "time_sessions.create",
                   "time_sessions.list",
                   "time_sessions.open"
@@ -4591,6 +4601,1194 @@
             "body": {
               "error": "not_found",
               "code": "not_found"
+            }
+          }
+        }
+      },
+      "ticket_view": {
+        "list": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/tickets?assignee=00000000-0000-4000-8000-000000000012"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000041",
+                  "number": 1,
+                  "title": "Login bricht ab",
+                  "status": "in_progress",
+                  "status_functions": [
+                    "is_in_progress"
+                  ],
+                  "ticket_type": "support",
+                  "parent_id": null,
+                  "assignees": [
+                    {
+                      "id": "00000000-0000-4000-8000-000000000011",
+                      "name": "Anna Albers"
+                    },
+                    {
+                      "id": "00000000-0000-4000-8000-000000000012",
+                      "name": "Ben Berger"
+                    },
+                    {
+                      "id": "00000000-0000-4000-8000-000000000013",
+                      "name": "Carla Conrad"
+                    }
+                  ],
+                  "creator": {
+                    "id": "00000000-0000-4000-8000-000000000011",
+                    "name": "Anna Albers"
+                  },
+                  "created_at": "2026-01-05T09:21:00Z",
+                  "updated_at": "2026-01-05T09:36:00Z"
+                }
+              ],
+              "meta": {
+                "page": 1,
+                "per_page": 25,
+                "total": 1,
+                "available_statuses": [
+                  "new",
+                  "in_progress",
+                  "resolved",
+                  "closed",
+                  "backlog"
+                ]
+              }
+            }
+          }
+        },
+        "show": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000042",
+                "number": 2,
+                "title": "Export als CSV und XLSX",
+                "status": "in_progress",
+                "status_functions": [
+                  "is_in_progress"
+                ],
+                "ticket_type": "support",
+                "parent_id": null,
+                "assignees": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000011",
+                    "name": "Anna Albers"
+                  }
+                ],
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000012",
+                  "name": "Ben Berger"
+                },
+                "created_at": "2026-01-05T09:22:00Z",
+                "updated_at": "2026-01-05T09:36:00Z",
+                "summary": null,
+                "description_html": "Spalten wie in der Liste.",
+                "description_text": "Spalten wie in der Liste.",
+                "custom_attributes": {
+                  "status": "in_progress",
+                  "priority": "normal"
+                },
+                "project": {
+                  "id": "00000000-0000-4000-8000-000000000031",
+                  "name": "Website-Relaunch"
+                },
+                "posts": []
+              },
+              "permissions": {
+                "is_account_admin": false,
+                "tickets": {
+                  "read": true,
+                  "write": true
+                },
+                "documents": {
+                  "read": false,
+                  "write": false
+                },
+                "posts": {
+                  "can_create": true,
+                  "can_update_own": true,
+                  "can_destroy_own": true
+                },
+                "time_sessions": {
+                  "can_view_own": true,
+                  "can_view_all": false,
+                  "can_create_own": true,
+                  "can_edit_own": true,
+                  "can_edit_all": false,
+                  "can_delete_own": true,
+                  "can_delete_all": false
+                },
+                "activities": {
+                  "read": true
+                }
+              }
+            }
+          }
+        },
+        "show_paged": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041?posts_per_page=1&posts_page=2&attachments_page=1"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000041",
+                "number": 1,
+                "title": "Login bricht ab",
+                "status": "in_progress",
+                "status_functions": [
+                  "is_in_progress"
+                ],
+                "ticket_type": "support",
+                "parent_id": null,
+                "assignees": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000011",
+                    "name": "Anna Albers"
+                  },
+                  {
+                    "id": "00000000-0000-4000-8000-000000000012",
+                    "name": "Ben Berger"
+                  },
+                  {
+                    "id": "00000000-0000-4000-8000-000000000013",
+                    "name": "Carla Conrad"
+                  }
+                ],
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "created_at": "2026-01-05T09:21:00Z",
+                "updated_at": "2026-01-05T09:36:00Z",
+                "summary": null,
+                "description_html": "Nach dem Absenden bleibt die Seite weiß.",
+                "description_text": "Nach dem Absenden bleibt die Seite weiß.",
+                "custom_attributes": {
+                  "status": "in_progress",
+                  "priority": "high"
+                },
+                "project": {
+                  "id": "00000000-0000-4000-8000-000000000031",
+                  "name": "Website-Relaunch"
+                },
+                "posts": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000052",
+                    "author": {
+                      "id": "00000000-0000-4000-8000-000000000011",
+                      "name": "Anna Albers"
+                    },
+                    "body_html": "Ich schaue es mir an.",
+                    "body_text": "Ich schaue es mir an.",
+                    "is_private": false,
+                    "attachments_count": 0,
+                    "created_at": "2026-01-05T09:26:00Z",
+                    "updated_at": "2026-01-05T09:26:00Z"
+                  }
+                ],
+                "posts_total": 7,
+                "posts_truncated": true,
+                "posts_page": 2,
+                "posts_per_page": 1,
+                "posts_pages": 7,
+                "posts_order": "oldest",
+                "attachments": [
+                  {
+                    "id": "<generated-id-8>",
+                    "filename": "test_document.pdf",
+                    "content_type": "application/pdf",
+                    "byte_size": 452,
+                    "text": null,
+                    "text_status": "unavailable"
+                  }
+                ],
+                "attachments_total": 1,
+                "attachments_truncated": false,
+                "attachments_page": 1,
+                "attachments_pages": 1
+              },
+              "permissions": {
+                "is_account_admin": false,
+                "tickets": {
+                  "read": true,
+                  "write": true
+                },
+                "documents": {
+                  "read": false,
+                  "write": false
+                },
+                "posts": {
+                  "can_create": true,
+                  "can_update_own": true,
+                  "can_destroy_own": true
+                },
+                "time_sessions": {
+                  "can_view_own": true,
+                  "can_view_all": false,
+                  "can_create_own": true,
+                  "can_edit_own": true,
+                  "can_edit_all": false,
+                  "can_delete_own": true,
+                  "can_delete_all": false
+                },
+                "activities": {
+                  "read": true
+                }
+              }
+            }
+          }
+        },
+        "show_invalid_paging": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041?posts_order=random"
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "invalid_input",
+              "code": "invalid_input",
+              "message": "invalid posts_order \"random\" (oldest or newest)"
+            }
+          }
+        },
+        "by_number": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/tickets/number/2"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000042",
+                "number": 2,
+                "title": "Export als CSV und XLSX",
+                "status": "in_progress",
+                "status_functions": [
+                  "is_in_progress"
+                ],
+                "ticket_type": "support",
+                "parent_id": null,
+                "assignees": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000011",
+                    "name": "Anna Albers"
+                  }
+                ],
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000012",
+                  "name": "Ben Berger"
+                },
+                "created_at": "2026-01-05T09:22:00Z",
+                "updated_at": "2026-01-05T09:36:00Z",
+                "summary": null,
+                "description_html": "Spalten wie in der Liste.",
+                "description_text": "Spalten wie in der Liste.",
+                "custom_attributes": {
+                  "status": "in_progress",
+                  "priority": "normal"
+                },
+                "project": {
+                  "id": "00000000-0000-4000-8000-000000000031",
+                  "name": "Website-Relaunch"
+                },
+                "posts": []
+              },
+              "permissions": {
+                "is_account_admin": false,
+                "tickets": {
+                  "read": true,
+                  "write": true
+                },
+                "documents": {
+                  "read": false,
+                  "write": false
+                },
+                "posts": {
+                  "can_create": true,
+                  "can_update_own": true,
+                  "can_destroy_own": true
+                },
+                "time_sessions": {
+                  "can_view_own": true,
+                  "can_view_all": false,
+                  "can_create_own": true,
+                  "can_edit_own": true,
+                  "can_edit_all": false,
+                  "can_delete_own": true,
+                  "can_delete_all": false
+                },
+                "activities": {
+                  "read": true
+                }
+              }
+            }
+          }
+        },
+        "by_number_not_found": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/tickets/number/999"
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "by_number_hidden": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000033/tickets/number/1"
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "post": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts/00000000-0000-4000-8000-000000000051"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000051",
+                "author": {
+                  "id": "00000000-0000-4000-8000-000000000012",
+                  "name": "Ben Berger"
+                },
+                "body_html": "Tritt nur in Safari auf.",
+                "body_text": "Tritt nur in Safari auf.",
+                "is_private": false,
+                "attachments_count": 1,
+                "created_at": "2026-01-05T09:25:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "post_not_found": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts/00000000-0000-4000-8000-000000000999"
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        }
+      },
+      "POST /api/v1/tickets/:ticket_id/time_sessions": {
+        "ok_minutes_text": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_string": "30"
+              }
+            }
+          },
+          "response": {
+            "status": 201,
+            "body": {
+              "data": {
+                "id": "<generated-id-9>",
+                "ticket_id": "00000000-0000-4000-8000-000000000041",
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "occurred_on": "2026-01-05T00:00:00Z",
+                "duration_minutes": 30,
+                "description": null,
+                "customer_description": null,
+                "billed": false,
+                "billed_at": null,
+                "created_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "ok_hours_text": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_string": "1:30",
+                "occurred_on": "2026-01-04",
+                "description": "Vertrag"
+              }
+            }
+          },
+          "response": {
+            "status": 201,
+            "body": {
+              "data": {
+                "id": "<generated-id-10>",
+                "ticket_id": "00000000-0000-4000-8000-000000000041",
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "occurred_on": "2026-01-04T00:00:00Z",
+                "duration_minutes": 90,
+                "description": "Vertrag",
+                "customer_description": null,
+                "billed": false,
+                "billed_at": null,
+                "created_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "ok_minutes": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_minutes": 45
+              }
+            }
+          },
+          "response": {
+            "status": 201,
+            "body": {
+              "data": {
+                "id": "<generated-id-11>",
+                "ticket_id": "00000000-0000-4000-8000-000000000041",
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "occurred_on": "2026-01-05T00:00:00Z",
+                "duration_minutes": 45,
+                "description": null,
+                "customer_description": null,
+                "billed": false,
+                "billed_at": null,
+                "created_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "invalid_input_no_duration": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/time_sessions",
+            "params": {
+              "time_session": {
+                "description": "x"
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Bitte geben Sie eine Dauer an (duration_string oder duration_minutes)."
+              ]
+            }
+          }
+        },
+        "invalid_input_both_durations": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_string": "30",
+                "duration_minutes": 30
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Bitte geben Sie die Dauer entweder als duration_string oder als duration_minutes an, nicht beides."
+              ]
+            }
+          }
+        },
+        "invalid_input_date": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_string": "30",
+                "occurred_on": "05.01.2026"
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Das Datum (occurred_on) ist kein ISO-8601-Datum und kein ISO-8601-Zeitstempel."
+              ]
+            }
+          }
+        },
+        "invalid_input_over_a_day": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_string": "24:01"
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Dauer darf höchstens 1440 Minuten (24 Stunden) betragen"
+              ]
+            }
+          }
+        },
+        "not_found": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000999/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_string": "30"
+              }
+            }
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "hidden": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000043/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_string": "30"
+              }
+            }
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "forbidden": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000044/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_string": "30"
+              }
+            }
+          },
+          "response": {
+            "status": 403,
+            "body": {
+              "error": "forbidden",
+              "code": "forbidden"
+            }
+          }
+        },
+        "read_only": {
+          "token": "read",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_string": "30"
+              }
+            }
+          },
+          "response": {
+            "status": 403,
+            "body": {
+              "error": "forbidden",
+              "code": "read_only"
+            }
+          }
+        },
+        "idempotency_first": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_string": "0:15",
+                "description": "Per REST, einmal."
+              }
+            },
+            "idempotency_key": "contract-rest-book-1"
+          },
+          "response": {
+            "status": 201,
+            "body": {
+              "data": {
+                "id": "<generated-id-12>",
+                "ticket_id": "00000000-0000-4000-8000-000000000041",
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "occurred_on": "2026-01-05T00:00:00Z",
+                "duration_minutes": 15,
+                "description": "Per REST, einmal.",
+                "customer_description": null,
+                "billed": false,
+                "billed_at": null,
+                "created_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "idempotency_replay": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_string": "0:15",
+                "description": "Per REST, einmal."
+              }
+            },
+            "idempotency_key": "contract-rest-book-1"
+          },
+          "response": {
+            "status": 201,
+            "body": {
+              "data": {
+                "id": "<generated-id-12>",
+                "ticket_id": "00000000-0000-4000-8000-000000000041",
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "occurred_on": "2026-01-05T00:00:00Z",
+                "duration_minutes": 15,
+                "description": "Per REST, einmal.",
+                "customer_description": null,
+                "billed": false,
+                "billed_at": null,
+                "created_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "idempotency_mismatch": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_string": "0:20"
+              }
+            },
+            "idempotency_key": "contract-rest-book-1"
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "idempotency_key_reused",
+              "code": "invalid_input",
+              "message": "idempotency_key already used with different parameters"
+            }
+          }
+        },
+        "invalid_input_minutes": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/time_sessions",
+            "params": {
+              "time_session": {
+                "duration_minutes": "1.5"
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Bitte geben Sie duration_minutes als ganze Zahl von Minuten an."
+              ]
+            }
+          }
+        }
+      },
+      "POST /api/v1/tickets/:ticket_id/posts": {
+        "html": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts",
+            "params": {
+              "post": {
+                "body": "<p>Ein <b>fetter</b> Satz &amp; mehr</p>"
+              }
+            }
+          },
+          "response": {
+            "status": 201,
+            "body": {
+              "data": {
+                "id": "<generated-id-13>",
+                "ticket_id": "00000000-0000-4000-8000-000000000041",
+                "author": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "body_html": "<p>Ein <b>fetter</b> Satz &amp; mehr</p>",
+                "body_text": "Ein fetter Satz & mehr",
+                "is_private": false,
+                "visible_to_user_id": null,
+                "created_at": "2026-01-05T09:36:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "html_named": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts",
+            "params": {
+              "post": {
+                "format": "html",
+                "body": "<p>Noch ein <i>Satz</i></p>"
+              }
+            }
+          },
+          "response": {
+            "status": 201,
+            "body": {
+              "data": {
+                "id": "<generated-id-14>",
+                "ticket_id": "00000000-0000-4000-8000-000000000041",
+                "author": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "body_html": "<p>Noch ein <i>Satz</i></p>",
+                "body_text": "Noch ein Satz",
+                "is_private": false,
+                "visible_to_user_id": null,
+                "created_at": "2026-01-05T09:36:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "html_empty": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts",
+            "params": {
+              "post": {
+                "body": ""
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Content darf nicht leer sein"
+              ]
+            }
+          }
+        },
+        "plain": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts",
+            "params": {
+              "post": {
+                "format": "plain",
+                "body": "Zeile 1\nZeile 2\n\nAbsatz <b>&"
+              }
+            }
+          },
+          "response": {
+            "status": 201,
+            "body": {
+              "data": {
+                "id": "<generated-id-15>",
+                "ticket_id": "00000000-0000-4000-8000-000000000041",
+                "author": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "body_html": "<p>Zeile 1<br>Zeile 2</p><p>Absatz &lt;b&gt;&amp;</p>",
+                "body_text": "Zeile 1\nZeile 2\n\nAbsatz <b>&",
+                "is_private": false,
+                "visible_to_user_id": null,
+                "created_at": "2026-01-05T09:36:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "plain_private": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts",
+            "params": {
+              "post": {
+                "format": "plain",
+                "is_private": true,
+                "body": "<privat>"
+              }
+            }
+          },
+          "response": {
+            "status": 201,
+            "body": {
+              "data": {
+                "id": "<generated-id-16>",
+                "ticket_id": "00000000-0000-4000-8000-000000000041",
+                "author": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "body_html": "<p>&lt;privat&gt;</p>",
+                "body_text": "<privat>",
+                "is_private": true,
+                "visible_to_user_id": "00000000-0000-4000-8000-000000000011",
+                "created_at": "2026-01-05T09:36:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "invalid_input_format": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts",
+            "params": {
+              "post": {
+                "format": "markdown",
+                "body": "x"
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Das Format (post[format]) muss html oder plain sein."
+              ]
+            }
+          }
+        },
+        "invalid_input_empty": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts",
+            "params": {
+              "post": {
+                "format": "plain",
+                "body": ""
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Bitte geben Sie einen Kommentartext (post[body]) an."
+              ]
+            }
+          }
+        },
+        "invalid_input_whitespace": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts",
+            "params": {
+              "post": {
+                "format": "plain",
+                "body": " \n "
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Bitte geben Sie einen Kommentartext (post[body]) an."
+              ]
+            }
+          }
+        },
+        "invalid_input_nul": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts",
+            "params": {
+              "post": {
+                "format": "plain",
+                "body": "a\u0000b"
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Ein Kommentar im Format plain (post[body]) darf keine NUL-Bytes enthalten."
+              ]
+            }
+          }
+        },
+        "not_found": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000999/posts",
+            "params": {
+              "post": {
+                "format": "plain",
+                "body": "Zeile 1\nZeile 2\n\nAbsatz <b>&"
+              }
+            }
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "hidden": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000043/posts",
+            "params": {
+              "post": {
+                "format": "plain",
+                "body": "Zeile 1\nZeile 2\n\nAbsatz <b>&"
+              }
+            }
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "forbidden": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000044/posts",
+            "params": {
+              "post": {
+                "format": "plain",
+                "body": "Zeile 1\nZeile 2\n\nAbsatz <b>&"
+              }
+            }
+          },
+          "response": {
+            "status": 403,
+            "body": {
+              "error": "forbidden",
+              "code": "forbidden"
+            }
+          }
+        },
+        "read_only": {
+          "token": "read",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts",
+            "params": {
+              "post": {
+                "format": "plain",
+                "body": "Zeile 1\nZeile 2\n\nAbsatz <b>&"
+              }
+            }
+          },
+          "response": {
+            "status": 403,
+            "body": {
+              "error": "forbidden",
+              "code": "read_only"
+            }
+          }
+        },
+        "idempotency_first": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts",
+            "params": {
+              "post": {
+                "format": "plain",
+                "body": "Per REST, einmal, als Text."
+              }
+            },
+            "idempotency_key": "contract-rest-comment-1"
+          },
+          "response": {
+            "status": 201,
+            "body": {
+              "data": {
+                "id": "<generated-id-17>",
+                "ticket_id": "00000000-0000-4000-8000-000000000041",
+                "author": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "body_html": "<p>Per REST, einmal, als Text.</p>",
+                "body_text": "Per REST, einmal, als Text.",
+                "is_private": false,
+                "visible_to_user_id": null,
+                "created_at": "2026-01-05T09:36:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "idempotency_replay": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts",
+            "params": {
+              "post": {
+                "format": "plain",
+                "body": "Per REST, einmal, als Text."
+              }
+            },
+            "idempotency_key": "contract-rest-comment-1"
+          },
+          "response": {
+            "status": 201,
+            "body": {
+              "data": {
+                "id": "<generated-id-17>",
+                "ticket_id": "00000000-0000-4000-8000-000000000041",
+                "author": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "body_html": "<p>Per REST, einmal, als Text.</p>",
+                "body_text": "Per REST, einmal, als Text.",
+                "is_private": false,
+                "visible_to_user_id": null,
+                "created_at": "2026-01-05T09:36:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "idempotency_mismatch": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/posts",
+            "params": {
+              "post": {
+                "format": "plain",
+                "body": "Anderer Text"
+              }
+            },
+            "idempotency_key": "contract-rest-comment-1"
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "idempotency_key_reused",
+              "code": "invalid_input",
+              "message": "idempotency_key already used with different parameters"
             }
           }
         }

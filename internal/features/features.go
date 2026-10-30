@@ -8,8 +8,9 @@
 // Since K0 a feature may name the REST capabilities its REST way needs, as
 // GET /api/v1/me lists them (the core's R0). A server that lists them all
 // gets the REST way; any other, the MCP way, while both exist. A server
-// without capabilities (before R0) keeps every feature it had. K0 names
-// none in All: no feature switches yet.
+// without capabilities (before R0) keeps every feature it had. K1 names
+// them for the ticket view (the core's R1); every other feature has the
+// MCP way alone.
 package features
 
 import (
@@ -61,18 +62,31 @@ func (w Way) String() string {
 	return "mcp"
 }
 
+// The REST capabilities of the ticket view (K1). tickets.list and
+// tickets.show came with the core's R0; tickets.paging is R1's, which
+// brought the list's meta.available_statuses and the ticket as a page: a
+// server with R0 alone keeps the tools, its list has no status catalogue
+// and its ticket no counts. A list and its search are one read, as are a
+// ticket and its pages: each pair needs the same. The texts whole need
+// one comment's route beside the pages.
+var (
+	listREST   = []string{"tickets.list", "tickets.paging"}
+	ticketREST = []string{"tickets.show", "tickets.paging"}
+	wholeREST  = []string{"tickets.show", "tickets.paging", "posts.show"}
+)
+
 // All features, in the order the interface offers them.
 var All = []Feature{
 	{Name: "inbox", Spec: api.NotificationsSpec},
 	{Name: "mark_read", Spec: api.MarkReadSpec},
-	{Name: "tickets", Spec: api.TicketsSpec},
-	{Name: "tickets_search", Spec: api.TicketsSpec, ExtraArgs: []string{"q"}},
-	{Name: "ticket", Spec: api.TicketSpec},
+	{Name: "tickets", Spec: api.TicketsSpec, Capabilities: listREST},
+	{Name: "tickets_search", Spec: api.TicketsSpec, ExtraArgs: []string{"q"}, Capabilities: listREST},
+	{Name: "ticket", Spec: api.TicketSpec, Capabilities: ticketREST},
 	{Name: "comment", Spec: api.CommentSpec},
 	{Name: "knowledge_search", Spec: api.KnowledgeSpec},
 	{Name: "inbox_by_organisation", Spec: api.NotificationsSpec, ExtraArgs: []string{"organisation_id"}, Since: "S1"},
-	{Name: "ticket_posts_paged", Spec: api.TicketSpec, ExtraArgs: []string{"posts_page", "posts_per_page", "posts_order", "attachments_page"}, Since: "S1"},
-	{Name: "ticket_full_text", Spec: api.TicketSpec, ExtraArgs: []string{"full_text", "post_id"}, Since: "S1"},
+	{Name: "ticket_posts_paged", Spec: api.TicketSpec, ExtraArgs: []string{"posts_page", "posts_per_page", "posts_order", "attachments_page"}, Since: "S1", Capabilities: ticketREST},
+	{Name: "ticket_full_text", Spec: api.TicketSpec, ExtraArgs: []string{"full_text", "post_id"}, Since: "S1", Capabilities: wholeREST},
 	// C2: the writes on a ticket. ticket_update needs the whole tool, every
 	// argument its spec declares (a server with half of it keeps it off);
 	// comment_plain needs format on top of the base feature comment.

@@ -167,6 +167,8 @@ const (
 	NewestFirst
 	OldestFirst
 	TextShortened
+	// K1: a text longer than the pane shows (REST sends every text whole).
+	TextCut
 	CommentUnavailable
 	LoadingWholeText
 	LoadingPage
@@ -378,7 +380,7 @@ var english = map[ID]string{
 	SearchKey: "/", SearchHelp: "search", CancelHelp: "cancel", BackspaceKey: "backspace", DeleteHelp: "delete",
 
 	Description: "Description", WholeText: "whole text", NewestFirst: "newest first", OldestFirst: "oldest first",
-	TextShortened: "Text shortened by server", CommentUnavailable: "Comment unavailable",
+	TextShortened: "Text shortened by server", TextCut: "Text shortened for this view", CommentUnavailable: "Comment unavailable",
 	LoadingWholeText: "Loading the whole text…", LoadingPage: "Loading this page…",
 	PageNotLoaded: "This page did not load. R retry.",
 	ActiveArea:    "» ", SelectedComment: "> ",

@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/cache"
+	"github.com/gboyke/lalabase-cli/internal/features"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/transport"
@@ -129,6 +130,10 @@ type detailView struct {
 	// differ while a page turn or a correction loads (C1d).
 	key, shown cache.Key
 	record     api.Ticket
+	// uncut: the record came over REST (K1), which cuts no text; a text
+	// that ends in the tools' marker was written so. A record from the
+	// cache may be the tools' and is read as theirs until it is replaced.
+	uncut bool
 	// booked is the person's time on the ticket (S6, time.go).
 	booked bookedTime
 	// flight is the request whose answer the record is, as the list's;
@@ -598,7 +603,7 @@ func (a *app) cachedPage(d *detailView, k cache.Key) (cache.Entry, bool) {
 		a.forget(k)
 		return cache.Entry{}, false
 	}
-	d.record, d.shown = record, k
+	d.record, d.shown, d.uncut = record, k, false
 	d.flight = a.filed[k]
 	a.settle(d)
 	return e, true
@@ -802,7 +807,7 @@ func (m Model) receiveDetail(r gateway.TicketResult) (Model, tea.Cmd) {
 	}
 	switch d {
 	case cache.Replace:
-		v.record, v.shown = r.Record, r.Key
+		v.record, v.shown, v.uncut = r.Record, r.Key, r.Way == features.REST
 		v.flight = uint64(r.Flight)
 		v.fresh(a.now())
 		a.settle(v)

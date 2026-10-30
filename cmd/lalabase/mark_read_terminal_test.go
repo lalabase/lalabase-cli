@@ -28,9 +28,9 @@ const markLimit = 40 * time.Second
 // one with pages and shortened texts.
 var row6 = fmt.Sprintf("00000000-0000-4000-8000-%012d", 100006)
 
-func startMark(t *testing.T, scenario inboxfixture.Scenario, width uint16, marker string) (*terminalProcess, *inboxfixture.Fixture) {
+func startMark(t *testing.T, scenario inboxfixture.Scenario, width uint16, marker string, opts ...inboxfixture.Option) (*terminalProcess, *inboxfixture.Fixture) {
 	t.Helper()
-	f, url := fixtureServer(t, scenario)
+	f, url := fixtureServer(t, scenario, opts...)
 	c := startTerminalWith(t, "mark-"+string(scenario), width, terminalOptions{url: url, marker: marker, limit: markLimit})
 	if err := c.ready(); err != nil {
 		t.Fatalf("%v\n%s", err, c.bytes())
@@ -140,9 +140,8 @@ func TestPTYMarkReadFlow(t *testing.T) {
 			c.act(t, "]", width, "page 2 of 2", "Six comment 5")
 			c.act(t, keyTab, width, "» Attachments · page 1 of 2", "six-01.txt")
 			c.act(t, "]", width, "Attachments · page 2 of 2", "six-12.txt")
-			c.act(t, keyTab, width, "» Description")
-			c.act(t, "e", width, "» Description · whole text", "esc collapse")
-			c.act(t, keyEsc, width, "esc notification")
+			// REST sends the description whole (K1): nothing to expand.
+			c.act(t, keyTab, width, "» Description", "rest.", "esc notification")
 			if got := markRequests(f); len(got) != 0 {
 				t.Fatalf("opening and paging wrote: %v", got)
 			}
@@ -195,16 +194,19 @@ func TestPTYMarkReadFlow(t *testing.T) {
 				t.Fatalf("reads after the write %v, want %v", got, want)
 			}
 			for _, r := range f.Requests()[before:] {
-				if r.Tool == "get_ticket" {
+				if isTicketRead(r) {
 					t.Fatalf("the write reloaded the ticket: %+v", r)
 				}
 			}
 			// The whole run: the start (/me, initialize, tools/list,
-			// /organisations, the counters), A's page 1, four reads of
-			// ticket #6 (the open, comments page 2, attachments page 2, the
-			// description whole), its booked time (S6, read with the open),
-			// the write, the two reloads.
-			if n := len(f.Requests()); n != 14 {
+			// /organisations, the counters), A's page 1, three reads of
+			// ticket #6 over REST (the open, comments page 2, attachments
+			// page 2), its booked time (S6, read with the open), the write,
+			// the two reloads.
+			if way := viewWay(f); way != "rest" {
+				t.Fatalf("the ticket went over %q", way)
+			}
+			if n := len(f.Requests()); n != 13 {
 				var lines []string
 				for _, r := range f.Requests() {
 					lines = append(lines, fmt.Sprintf("%s %s %s %v", r.Method, r.Path, r.Tool, r.Args))
@@ -365,7 +367,7 @@ func TestPTYRefusedMarksKeepTheTicket(t *testing.T) {
 func ticketReadsOf(f *inboxfixture.Fixture) []inboxfixture.Request {
 	var out []inboxfixture.Request
 	for _, r := range f.Requests() {
-		if r.Tool == "get_ticket" {
+		if isTicketRead(r) {
 			out = append(out, r)
 		}
 	}
@@ -481,7 +483,10 @@ func TestPTYMarkReadThenANetworkError(t *testing.T) {
 	// failed locally, also not 40 runs under -race on two cores, and a
 	// slow reload after the write did not make it fail. A failure prints
 	// what reached the server beside the screen, to tell whether ] sent
-	// its read at all.
+	// its read at all. It did not (the CI of #48): ] was pressed while
+	// the reload after the write was out, and the inbox turns no page
+	// while its page loads. The help offers ] only then: wait for it.
+	c.expect(t, "the reload after the write", 80, "] next page")
 	if err := c.send("]"); err != nil {
 		t.Fatal(err)
 	}

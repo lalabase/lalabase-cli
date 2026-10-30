@@ -47,6 +47,18 @@ func (inboxOnly) TicketAnswer(context.Context, string, string, api.TicketOptions
 	return transport.Answer{Class: transport.Refused, Message: "not in this test"}
 }
 
+func (inboxOnly) TicketsRESTAnswer(context.Context, api.TicketQuery) transport.Answer {
+	return transport.Answer{Class: transport.Refused, Message: "not in this test"}
+}
+
+func (inboxOnly) TicketRESTAnswer(context.Context, string, api.TicketOptions) transport.Answer {
+	return transport.Answer{Class: transport.Refused, Message: "not in this test"}
+}
+
+func (inboxOnly) PostRESTAnswer(context.Context, string, string) transport.Answer {
+	return transport.Answer{Class: transport.Refused, Message: "not in this test"}
+}
+
 func (inboxOnly) MarkNotificationRead(context.Context, string, string) (api.NotificationState, transport.Answer) {
 	return api.NotificationState{}, transport.Answer{Class: transport.Refused, Message: "not in this test"}
 }

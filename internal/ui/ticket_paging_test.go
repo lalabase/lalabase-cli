@@ -618,13 +618,12 @@ func TestAMissingCommentHidesItsTextAndReadsTheTicketOnce(t *testing.T) {
 		h.drive(h.m.app.issue(gateway.Expansion, key, forExpansion, queue.User))
 		mustContain(t, h.paneText(), "Comment unavailable")
 		// The older read's answer comes last, with the whole comment and a
-		// later flight.
-		whole := h.d.onePost(website, 6, sixPostID(30))
-		record, _ := api.DecodeTicket(whole, api.TicketOptions{PostID: sixPostID(30)})
+		// later flight, as the gateway builds it: the comment, filed alone.
+		record, whole := api.DecodeTicket(h.d.onePost(website, 6, sixPostID(30)), api.TicketOptions{PostID: sixPostID(30)})
 		if w := h.m.app.waiters[oldTicket.Waiter]; w == nil || !w.canceled {
 			t.Fatal("the older read of the expansion was not canceled")
 		}
-		h.feed(gateway.TicketResult{Ticket: oldTicket, Record: record, Answer: whole, Flight: 1 << 40})
+		h.feed(gateway.TicketResult{Ticket: oldTicket, Post: record.Posts[0], Answer: whole, Flight: 1 << 40})
 		if strings.Contains(h.paneText(), "begins and ends here") {
 			t.Fatal("the older answer brought the text back")
 		}
@@ -853,7 +852,8 @@ func TestHostileMetadataAndExpandedTextAreCleaned(t *testing.T) {
 	ans := h.d.onePost(website, 6, sixPostID(30))
 	record, _ := api.DecodeTicket(ans, api.TicketOptions{PostID: sixPostID(30)})
 	record.Posts[0].BodyText = "CACHED_START" + hostileText
-	a.store.Apply(key, cache.Replace, ticketAnswer(record).Payload, h.now)
+	// One comment is filed alone (K1).
+	a.store.Apply(key, cache.Replace, objectAnswer(record.Posts[0]).Payload, h.now)
 	h.press("e") // shown from the cache; its reload is not run
 	text := h.m.View().Content
 	assertViewSafe(t, text)
@@ -1358,7 +1358,8 @@ func TestR2ACachedEntryIsCheckedBeforeItIsShown(t *testing.T) {
 	h.press("tab")
 	key := a.detail.key
 	key.PostsPage, key.PostsPerPage, key.Newest, key.AttachmentsPage, key.Post = 0, 0, false, 0, sixPostID(30)
-	wrong := h.d.onePost(website, 6, sixPostID(29))
+	// Another comment, filed alone as one comment is (K1).
+	_, wrong := api.DecodeTicket(h.d.onePost(website, 6, sixPostID(29)), api.TicketOptions{PostID: sixPostID(29)})
 	a.store.Apply(key, cache.Replace, wrong.Payload, h.now)
 	h.press("e") // not run
 	if strings.Contains(h.paneText(), "Six comment 29 begins and ends here.") {

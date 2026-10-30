@@ -23,10 +23,13 @@ import (
 // comments or attachments), #3 has 30 comments (two pages), #4 has 12
 // attachments (two pages); #6 (C1d) has a description and two comments the
 // server shortened, 30 comments and 12 attachments with metadata of every
-// kind; the rest carry the recorded two comments and two attachments. The
-// scenarios act on Website's page 2 as they do on A's inbox page 2, (401)
-// on a read of ticket #2, (temporary) on page 2 of #6's comments and
-// (vanished) on #6's newest comment read whole.
+// kind; #8 (K1) a description and a newest comment longer than the tools'
+// cut and the client's pane; the rest carry the recorded two comments and
+// two attachments. The tools cut a long text as the core's get_ticket does;
+// REST (rest.go) sends every text whole. The scenarios act on Website's
+// page 2 as they do on A's inbox page 2, (401) on a read of ticket #2,
+// (temporary) on page 2 of #6's comments and (vanished) on the newest
+// comments of #6 and #8 read whole.
 
 const (
 	ProjectWebsite  = "00000000-0000-4000-8000-000000000031"
@@ -40,12 +43,28 @@ const (
 // ticketCounts is the number of tickets per project.
 var ticketCounts = map[string]int{ProjectWebsite: 30, ProjectIntern: 0, ProjectHandbuch: 3, ProjectArchiv: 5}
 
-// TicketID is the id of ticket number n of a project.
+// projectOrder numbers the projects, for their tickets' ids.
+var projectOrder = []string{ProjectWebsite, ProjectIntern, ProjectHandbuch, ProjectArchiv}
+
+// TicketID is the id of ticket number n of a project. Ids are unique across
+// projects, as the server's are: REST reads a ticket by its id alone.
 func TicketID(project string, n int) string {
 	if project == ProjectWebsite && n == 1 {
 		return TicketLogin
 	}
-	return fmt.Sprintf("00000000-0000-4000-8000-%012d", 500000+n)
+	return fmt.Sprintf("00000000-0000-4000-8000-%012d", 500000+1000*slices.Index(projectOrder, project)+n)
+}
+
+// ticketByID is the project and number of a ticket by its id; 0 for none.
+func ticketByID(id string) (string, int) {
+	for _, project := range projectOrder {
+		for n := 1; n <= ticketCounts[project]; n++ {
+			if TicketID(project, n) == id {
+				return project, n
+			}
+		}
+	}
+	return "", 0
 }
 
 // recordedTickets reads the recorded projects, the first recorded ticket
@@ -215,25 +234,32 @@ func (f *Fixture) tickets(w http.ResponseWriter, args map[string]any, reply func
 		reply(http.StatusOK, toolError("invalid_input", "page or per_page out of range"), nil)
 		return
 	}
+	if project == ProjectWebsite && page == 2 && f.scenarioOn(w, "W2", req) {
+		return
+	}
+	q, _ := args["q"].(string)
+	reply(http.StatusOK, toolObject(f.ticketPage(project, q, page, perPage)), nil)
+}
+
+// ticketPage is a page of a project's tickets, those whose title holds the
+// search when there is one, in the tool's form (REST's too).
+func (f *Fixture) ticketPage(project, q string, page, perPage int) map[string]any {
 	rows := f.ticketRows(project)
-	if q, _ := args["q"].(string); q != "" {
+	if q != "" {
 		rows = slices.DeleteFunc(rows, func(row map[string]any) bool {
 			title, _ := row["title"].(string)
 			return !strings.Contains(strings.ToLower(title), strings.ToLower(q))
 		})
-	}
-	if project == ProjectWebsite && page == 2 && f.scenarioOn(w, "W2", req) {
-		return
 	}
 	from := (page - 1) * perPage
 	data := []map[string]any{}
 	if from < len(rows) {
 		data = rows[from:min(len(rows), from+perPage)]
 	}
-	reply(http.StatusOK, toolObject(map[string]any{
+	return map[string]any{
 		"data": data,
 		"meta": map[string]any{"page": page, "per_page": perPage, "total": len(rows), "available_statuses": statusKeys},
-	}), nil)
+	}
 }
 
 func (f *Fixture) ticket(w http.ResponseWriter, args map[string]any, reply func(int, any, any), req Request) {
@@ -281,9 +307,11 @@ func (f *Fixture) ticket(w http.ResponseWriter, args map[string]any, reply func(
 	if number == 6 && postsPage == 2 && postID == "" && f.scenario == Temporary && f.scenarioOn(w, "T6P2", req) {
 		return
 	}
-	t := f.ticketRecord(project, number, postsPage, perPage, order == "newest", attachmentsPage)
-	if fullText && number == 6 {
-		t["description_html"], t["description_text"] = SixDescriptionWhole, SixDescriptionWhole
+	t := f.ticketRecord(project, number, postsPage, perPage, order == "newest", attachmentsPage, false)
+	if fullText {
+		if whole := wholeDescription(number); whole != "" {
+			t["description_html"], t["description_text"] = whole, whole
+		}
 	}
 	if postID != "" {
 		one, ok := f.onePost(project, number, postID, t)
@@ -303,6 +331,51 @@ const (
 	SixDescription      = "Description of six, the first part" + truncationMarker
 	SixDescriptionWhole = "Description of six, the first part and the whole rest."
 )
+
+// The long texts of ticket #8 (K1): longer than the tools' cut on the page
+// (toolsCut, the core's get_ticket) and the client's pane. Their ends say
+// whether a text arrived whole.
+const (
+	toolsCut   = 8000
+	EightEnd   = "The end of eight's description."
+	EightReply = "The end of eight's newest comment."
+)
+
+// EightPostID is the id of the newest comment of ticket #8, the long one.
+const EightPostID = "00000000-0000-4000-8000-000000900002"
+
+// eightText is a text of n characters of words with end at its end.
+func eightText(start, end string, n int) string {
+	words := strings.Repeat("Many words to read on the terminal, line after line. ", n/53+1)
+	return start + words[:n-len(start)-len(end)] + end
+}
+
+var (
+	eightDescription = eightText("Description of eight: ", EightEnd, 9000)
+	eightComment     = eightText("Comment of eight: ", EightReply, 9000)
+)
+
+// toolsText is a text as the tools send it on a page: cut after toolsCut
+// characters, with the marker.
+func toolsText(text string) string {
+	runes := []rune(text)
+	if len(runes) <= toolsCut {
+		return text
+	}
+	return string(runes[:toolsCut]) + truncationMarker
+}
+
+// wholeDescription is the description of ticket n whole where the tools
+// cut it (#6, #8), "" for the rest.
+func wholeDescription(n int) string {
+	switch n {
+	case 6:
+		return SixDescriptionWhole
+	case 8:
+		return eightDescription
+	}
+	return ""
+}
 
 // SixPostID is the id of comment i (1 the oldest) of ticket #6.
 func SixPostID(i int) string { return fmt.Sprintf("00000000-0000-4000-8000-%012d", 700000+i) }
@@ -345,26 +418,56 @@ func sixAttachments() []any {
 	return out
 }
 
+// posts are the comments of ticket n, oldest first, with the comments the
+// writes added (C2a): whole, or as the tools send them on a page (#6's
+// and #8's long ones cut).
+func (f *Fixture) posts(project string, n int, whole bool) []any {
+	recorded, _ := f.ticketTmpl["posts"].([]any)
+	posts := slices.Clone(recorded)
+	switch n {
+	case 2:
+		posts = []any{}
+	case 3:
+		posts = nil
+		for i := range 30 {
+			p := copyMap(recorded[0].(map[string]any))
+			p["id"] = fmt.Sprintf("00000000-0000-4000-8000-%012d", 600000+i)
+			p["body_html"], p["body_text"] = fmt.Sprintf("Comment %d", i+1), fmt.Sprintf("Comment %d", i+1)
+			p["created_at"] = fmt.Sprintf("2026-01-05T10:%02d:00Z", i)
+			posts = append(posts, p)
+		}
+	case 6:
+		posts = f.sixPosts(whole)
+	case 8:
+		long := copyMap(recorded[len(recorded)-1].(map[string]any))
+		body := eightComment
+		if !whole {
+			body = toolsText(body)
+		}
+		long["id"], long["body_html"], long["body_text"] = EightPostID, body, body
+		posts[len(posts)-1] = long
+	}
+	if e := f.editOf(TicketID(project, n)); e != nil {
+		posts = append(posts, e.posts...)
+	}
+	return posts
+}
+
+// vanished: in the scenario of that name the newest comments of #6 and #8
+// are hidden when read whole.
+func (f *Fixture) vanished(postID string) bool {
+	return f.scenario == Vanished && (postID == SixPostID(30) || postID == EightPostID)
+}
+
 // onePost is the answer to post_id, in the server's shape: the comment
 // whole, the count of readable comments beside it, the page of
 // attachments, no page of comments. false: the ticket has no such comment,
 // or (vanished) its newest one is hidden.
 func (f *Fixture) onePost(project string, n int, postID string, page map[string]any) (map[string]any, bool) {
-	var posts []any
-	if n == 6 {
-		posts = f.sixPosts(true)
-		if f.scenario == Vanished && postID == SixPostID(30) {
-			return nil, false
-		}
-	} else {
-		posts, _ = f.ticketTmpl["posts"].([]any)
-		if n == 2 {
-			posts = nil
-		}
+	if f.vanished(postID) {
+		return nil, false
 	}
-	if e := f.editOf(TicketID(project, n)); e != nil {
-		posts = append(slices.Clone(posts), e.posts...)
-	}
+	posts := f.posts(project, n, true)
 	for _, p := range posts {
 		if p.(map[string]any)["id"] != postID {
 			continue
@@ -390,8 +493,9 @@ func toolEmpty(text string) map[string]any {
 }
 
 // ticketRecord is ticket n of a project with the page asked for, in the
-// server's shape (the page fields always, as a 0.9.0 server sends them).
-func (f *Fixture) ticketRecord(project string, n, postsPage, perPage int, newest bool, attachmentsPage int) map[string]any {
+// server's shape (the page fields always, as a 0.9.0 server sends them):
+// its texts whole (REST) or as the tools cut them.
+func (f *Fixture) ticketRecord(project string, n, postsPage, perPage int, newest bool, attachmentsPage int, whole bool) map[string]any {
 	rows := f.ticketRows(project)
 	row := rows[n-1]
 	t := copyMap(f.ticketTmpl)
@@ -399,22 +503,12 @@ func (f *Fixture) ticketRecord(project string, n, postsPage, perPage int, newest
 		t[k] = row[k]
 	}
 	t["project"] = map[string]any{"id": project, "name": f.projectName(project)}
-	recordedPosts, _ := f.ticketTmpl["posts"].([]any)
-	posts := slices.Clone(recordedPosts)
+	posts := f.posts(project, n, whole)
 	attachments := []any{map[string]any{"filename": "design.pdf", "content_type": "application/pdf", "byte_size": 1024}, map[string]any{"filename": "screenshot.png", "content_type": "image/png", "byte_size": 2048}}
 	switch n {
 	case 2:
 		t["description_html"], t["description_text"], t["assignees"], t["creator"], t["status"], t["status_functions"] = "", "", []any{}, nil, nil, []any{}
-		posts, attachments = []any{}, []any{}
-	case 3:
-		posts = nil
-		for i := range 30 {
-			p := copyMap(recordedPosts[0].(map[string]any))
-			p["id"] = fmt.Sprintf("00000000-0000-4000-8000-%012d", 600000+i)
-			p["body_html"], p["body_text"] = fmt.Sprintf("Comment %d", i+1), fmt.Sprintf("Comment %d", i+1)
-			p["created_at"] = fmt.Sprintf("2026-01-05T10:%02d:00Z", i)
-			posts = append(posts, p)
-		}
+		attachments = []any{}
 	case 4:
 		attachments = nil
 		for i := range 12 {
@@ -422,10 +516,13 @@ func (f *Fixture) ticketRecord(project string, n, postsPage, perPage int, newest
 		}
 	case 6:
 		t["description_html"], t["description_text"] = SixDescription, SixDescription
-		posts, attachments = f.sixPosts(false), sixAttachments()
+		attachments = sixAttachments()
+	case 8:
+		cut := toolsText(eightDescription)
+		t["description_html"], t["description_text"] = cut, cut
 	}
-	if e := f.editOf(row["id"].(string)); e != nil {
-		posts = append(posts, e.posts...)
+	if text := wholeDescription(n); whole && text != "" {
+		t["description_html"], t["description_text"] = text, text
 	}
 	total, attachmentsTotal := len(posts), len(attachments)
 	if newest {

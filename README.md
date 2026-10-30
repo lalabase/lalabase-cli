@@ -27,7 +27,10 @@ Agents area under the organisations, a glyph at each organisation, a
 summary in the header, and `A` to reach them. Since C9c `d` removes an
 agent whose session is over, and every start cleans up old ones; `x` on a
 ticket with an agent jumps to the agent's pane, or starts it again once
-its session is over.
+its session is over. Since K1 the ticket list and the ticket are read over
+the core's REST API when its `/me` lists the capabilities of the core's R1,
+and through the MCP tools on an older server; the screen is the same
+either way.
 
 ## Setting up
 
@@ -35,7 +38,7 @@ its session is over.
 lalabase                       # open the terminal shell using the default profile
 lalabase auth import            # take a server and token from Claude Code into the profile "default"
 lalabase auth import --agent    # a read-only token for Claude Code into the profile "agent"
-lalabase auth status            # who the tokens belong to and what the server supports
+lalabase auth status            # who the tokens belong to and what the server supports, each feature's way
 ```
 
 `lalabase hook` is not for a person: the hooks of a session `x` started run
@@ -147,7 +150,11 @@ navigation again.
 * **The start** asks `/api/v1/me` first; only after that succeeds it reads
   the server's capabilities (`initialize`, `tools/list`), the organisations
   and the global unread page 1 for the counters: five requests in all,
-  none shared with anything else. A failed step shows its line and `R`
+  none shared with anything else. `/me` names the REST API's capabilities
+  since the core's R0: with those of R1 (`tickets.list` and
+  `tickets.show`, each with `tickets.paging`; `posts.show` for a text read
+  whole) the ticket list and the ticket are read over REST (K1), without
+  them through the tools; everything else stays on the tools. A failed step shows its line and `R`
   repeats that step alone (and what waited for it); a 401 anywhere ends
   the session for good ("Session expired. Restart lalabase.").
 * **Keys.** Nothing is loaded by moving the cursor: `↑`/`↓` highlight an
@@ -188,7 +195,8 @@ navigation again.
   spent, canceled when the cursor moves on. While it loads for the first
   time the pane names the ticket from its row under "Loading…". `Enter` opens the ticket as the person's read and joins
   a pending preview: one request, both get the whole ticket. The pane shows
-  the head, the description (cut by the server at 8,000 characters), the
+  the head, the description (cut at 8,000 characters: by the server over
+  the tools, by the pane itself over REST, which sends every text whole), the
   comments newest first (25 a page, with the number of readable comments
   the server counts) and the attachments (ten a page, each with its name,
   type, size and whether the server has its text; what the server did not
@@ -211,7 +219,19 @@ navigation again.
   expansion at a time; it is a read of its own and replaces no page; `Esc`
   closes it first, without a request, and a late answer does not open it
   again. A whole text can still be shortened by the server (100,000
-  characters). Nothing is read by moving, previewing or switching
+  characters). Over REST (K1) every text comes whole, and the pane shows
+  what the tools showed: 8,000 characters of a text on the page, a longer
+  one ending with "Text shortened for this view", and `e` reads it whole
+  as above, the description as the page again (REST has no `full_text`),
+  the comment on its own route (`/api/v1/tickets/:ticket_id/posts/:id`);
+  read whole, the pane shows 100,000 characters of it. REST reads a ticket
+  by its id alone: one moved to another project answers from there, and is
+  gone from the old project's view as the tools say it is. REST cuts no text,
+  so a text read over REST that ends in the tools' marker was written so
+  and shows as it is (a page the cache kept from the tools is read as
+  theirs until REST's answer replaces it). The pane builds its
+  whole text on every frame: a comment of a megabyte would hold every key
+  for a second. Nothing is read by moving, previewing or switching
   sections: every page, order and expansion is the person's action, once
   per key (a key pressed again while its read is out does nothing). A page
   shown before comes from the cache at once and is read once again; one
@@ -579,8 +599,11 @@ navigation again.
   page only; without `list_notifications` the inbox is off and the counts
   are unknown ("?"); without `list_tickets` there are no tickets entries;
   without its `q` there is no search; without `get_ticket` the list opens
-  nothing. A counter is unknown until a read observed it, and a newer read
-  wins whatever order the answers arrive in.
+  nothing. Since K1 the ticket view's features also come from `/me`'s
+  capabilities (see "The start"): with R1's, the list, the ticket, its
+  pages and `e` work over REST whatever the tool schemas say. A counter is
+  unknown until a read observed it, and a newer read wins whatever order
+  the answers arrive in.
 * **The cache** shows a page, a list or a ticket seen before at once,
   marked "Cached", and reloads it exactly once (a ticket's reload after the
   pause, as background work). Every option of a request is part of its key:
@@ -727,11 +750,21 @@ first, rows without a project, a ticket or an actor among them; the first
 organisation's four recorded projects (the second has none), 30 tickets in
 Website-Relaunch (two pages; #1 is the recorded ticket, #2 has nothing, #3
 has 30 comments, #4 twelve attachments, #6 everything C1d pages and
-expands), 3 in Handbuch, 5 in Archiv; the first organisation's rows name
+expands, #8 a description and a newest comment of 9,000 characters,
+longer than the pane shows), 3 in Handbuch, 5 in Archiv; the first organisation's rows name
 Website-Relaunch's tickets (row 6 names ticket #6), the second's name
 tickets the fixture does not have. It
 binds to 127.0.0.1 only, accepts one synthetic token (`inboxfixture.Token`)
-and refuses everything but the reads of C1 and the writes of C1f and C2:
+and refuses everything but the reads of C1 and the writes of C1f and C2.
+The ticket view is served on both ways (K1): its `/me` is the contract's,
+with R1's capabilities, so the client reads the list and the tickets over
+REST (`/api/v1/projects/:id/tickets`, `/api/v1/tickets/:id` with or
+without a page, by number, one comment), every text whole, the same
+tickets as the tools' answers; `-before-r1` (`inboxfixture.BeforeR1`)
+serves a server before R1, whose `/me` lists the capabilities of API
+1.2.0 and whose REST ticket answers lack the status catalogue and the
+pages, and the client takes the tools. The scenarios of older servers
+(`older`, `s1-only`, `s2-only`) list no capabilities at all. Writes:
 `mark_notification_read` (a marked row leaves the unread pages and the
 counts), `update_ticket` (one change per call, validated in the server's
 order with its texts and its trimming, ASCII and NUL as `String#strip`,
@@ -761,8 +794,9 @@ HTML to it, no booked time), `temporary` (page 2 of the first organisation's inb
 Website-Relaunch's tickets fails twice, `R` succeeds; so does page 2 of
 ticket #6's comments), `429` (one short pause, on page 2 and on the first
 attempt of every write), `401` (the session expires, also on a preview of
-ticket #2 and on a write), `vanished` (ticket #6's newest comment is still
-on its page, but read whole it is "not found"), `read-only` (the token may
+ticket #2 and on a write), `vanished` (the newest comments of tickets #6
+and #8 are still on their page, but read whole they are "not found", on
+either way), `read-only` (the token may
 not write), `unknown-write` (`/me` without `read_only`), `no-mark-read`
 (the tool is missing), `refusals` (marking the first organisation's row #2
 is refused as archived, #3 is not found, #4 is not allowed; on
@@ -794,8 +828,10 @@ rm -r "$fixture_dir"
 
 The PTY tests of `cmd/lalabase` run the same flow against the same handler
 at 80 and 120 columns, the whole C1 run included (start, organisation,
-inbox, details, the ticket a notification names, its pages and the
-expansion, `r`, back to the updated inbox), and the disk cache across two
+inbox, details, the ticket a notification names, its pages, `r`, back to
+the updated inbox), the ticket's pages on both ways (over the tools with
+the server's cuts and `e`, over REST with whole texts, #8 cut by the pane
+and read whole), and the disk cache across two
 runs on one home (`slow-reads`: the inbox and the ticket "Cached" while
 the reload is out, then fresh; `temporary`: "Cached, possibly stale" and
 `R`; `401`: the directory cleared and nothing refilled; an unusable
@@ -862,7 +898,7 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   Refresh it when the client adopts a newer server:
   `go run ./tools/update-contract -core <path to the core checkout> -ref origin/main`.
 * **Talking to the server** (`internal/transport`): REST readers under `/api/v1`
-  and MCP tools under `/api/mcp`. Every answer gets one class (object, not
+  (since K1 the ticket view's too) and MCP tools under `/api/mcp`. Every answer gets one class (object, not
   found, no access, read-only, refused, invalid input, unauthenticated,
   protocol, temporary, canceled); the cache (`internal/cache`) and the
   interface decide from the class, never from the server's wording. An older
@@ -931,8 +967,24 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   (`/api/v1/me` names `api_version` and `capabilities` since R0). A
   feature may name the REST capabilities its REST way needs; a server
   whose `/me` lists them all gets that way, any other the MCP way, so a
-  server without capabilities keeps every feature. No feature names one
-  yet: every feature takes the MCP way (K1 on switches them one by one). An answer to such a request must carry the fields it relies on
+  server without capabilities keeps every feature. Since K1 the five
+  features of the ticket view name theirs: the list and its search
+  `tickets.list` with `tickets.paging` (the status catalogue of the list
+  came with R1, `tickets.list` with R0), the ticket and its pages
+  `tickets.show` with `tickets.paging`, the texts whole `posts.show` too;
+  every other feature takes the MCP way. A REST reader's spec is its
+  tool's fields, under `data` for a ticket and one comment (the list has
+  the tool's form as it is), so one rule serves both ways, and what a read
+  files in the cache has the tool's form (a ticket's `data`; one comment
+  alone, whichever way read it): an entry reads the same after a server
+  moved to REST, and one comment the tools filed as a ticket before K1 is
+  dropped and read again. A ticket is always asked over REST for a page
+  (`posts_page`, the first when none is named): without one the core
+  answers every comment and none of the counts. An id the server gave is
+  refused before sending when it is no path segment. REST sends the
+  attachments' extracted text whole, which the client does not read: a
+  page of a ticket past the transport's bound of 8 MiB is a protocol
+  error, and the cache keeps answers up to 2 MiB. An answer to such a request must carry the fields it relies on
   (a page without `posts_pages` is a protocol error, not page 0 of 0). A
   missing or hidden comment asked for by `post_id` comes back as a refusal
   (`comment_not_found`), not as "not found": the cache would drop the ticket.
@@ -946,10 +998,17 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   429 or when nothing was sent. Previews (and the one reload of a cached
   ticket shown) start at most 30 times per rolling minute and go before
   other background work, which is counted apart, at most six times. The
-  server allows 60 requests a minute per token: the previews take at most
+  core allows 60 requests a minute per IP address under `/api/`
+  (`api/ip`, REST and MCP together), 60 per token on REST (`api_v1/token`)
+  and 60 per token on MCP (`api_mcp/token`): the previews take at most
   half, the rest is your own actions and the Claude Code agents started
-  with the same token, which the client does not count; a 429 pauses
-  everything, your actions too. What is held waits for its window to roll
+  with the same token on the same machine, which the client does not
+  count; a 429 pauses everything, your actions too. The ticket view costs
+  the same on both ways (K1): opening a project's list, opening a ticket,
+  a page on and back are one read each (the open also reads the booked
+  time, S6, through the tools); over REST the list's and the ticket's
+  count against the REST token's budget instead of the MCP one the agents
+  share, and against the address's as before. What is held waits for its window to roll
   on, the person's actions are never counted or held, and a held
   background read a person joins starts as theirs. Idle work (C9b: the
   titles of the agents' tickets) waits behind every preview that may

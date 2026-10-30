@@ -96,6 +96,9 @@ func (m Model) receiveStartup(r gateway.StartupResult) (Model, tea.Cmd) {
 	case stepTools:
 		report := features.Detect(a.server, r.Tools, a.me.Capabilities)
 		a.report = &report
+		// The ticket view's reads take the ways the report gives their
+		// features (K1), from the first read on.
+		a.scope.Route(gateway.RoutesOf(report))
 		// The titles of the agents' tickets wait for the ticket tool.
 		if !a.inboxOn() {
 			a.steps[stepCounters].state = unsupported

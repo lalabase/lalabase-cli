@@ -177,12 +177,13 @@ func (d recordedData) defaultProjects(org string) transport.Answer {
 }
 
 // ticketID is the id of ticket number n of a project: the recorded ticket
-// keeps its id.
+// keeps its id. Ids are unique across projects, as the server's are: REST
+// reads a ticket by its id alone (K1).
 func ticketID(project string, n int) string {
 	if project == website && n == 1 {
 		return login
 	}
-	return idOf(500000 + n)
+	return idOf(500000 + 1000*slices.Index([]string{website, intern, handbuch, archiv}, project) + n)
 }
 
 // ticketTitle is the title of ticket n of a project: #1 and #2 keep the

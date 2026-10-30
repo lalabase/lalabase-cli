@@ -87,6 +87,57 @@ var restCases = map[string]restExpected{
 	"GET /api/v1/organisations/:organisation_id/people/:id/not_found_project_token": {class: NotFound, code: "not_found", legacyClass: NotFound},
 	"GET /api/v1/organisations/:organisation_id/people/:id/invalid_input":           {class: InvalidInput, code: "invalid_input", legacyClass: Protocol},
 	"GET /api/v1/organisations/:organisation_id/people/:id/forbidden":               {class: NoAccess, code: "forbidden", legacyClass: NoAccess},
+
+	// The ticket view (core R1, read by K1): the list, a ticket plain and
+	// as a page, a refused paging option (checked before the ticket is
+	// looked up), a ticket by its number, one comment. A missing number
+	// and one in a project the token cannot read answer alike, as do a
+	// missing and a hidden comment.
+	"ticket_view/list":                {class: Object, legacyClass: Object},
+	"ticket_view/show":                {class: Object, legacyClass: Object},
+	"ticket_view/show_paged":          {class: Object, legacyClass: Object},
+	"ticket_view/show_invalid_paging": {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"ticket_view/by_number":           {class: Object, legacyClass: Object},
+	"ticket_view/by_number_not_found": {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"ticket_view/by_number_hidden":    {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"ticket_view/post":                {class: Object, legacyClass: Object},
+	"ticket_view/post_not_found":      {class: NotFound, code: "not_found", legacyClass: NotFound},
+
+	// A booking (core R6) and a comment (core R3a) over REST. Not sent by
+	// the client yet (K6, K3); classified so that adopting them starts
+	// from a decision. A read-only token was "no access" before the code.
+	"POST /api/v1/tickets/:ticket_id/time_sessions/ok_minutes_text":              {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/ok_hours_text":                {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/ok_minutes":                   {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/idempotency_first":            {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/idempotency_replay":           {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/idempotency_mismatch":         {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/invalid_input_both_durations": {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/invalid_input_date":           {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/invalid_input_minutes":        {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/invalid_input_no_duration":    {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/invalid_input_over_a_day":     {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/not_found":                    {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/hidden":                       {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/forbidden":                    {class: NoAccess, code: "forbidden", legacyClass: NoAccess},
+	"POST /api/v1/tickets/:ticket_id/time_sessions/read_only":                    {class: ReadOnly, code: "read_only", legacyClass: NoAccess},
+
+	"POST /api/v1/tickets/:ticket_id/posts/plain":                    {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:ticket_id/posts/plain_private":            {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:ticket_id/posts/html":                     {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:ticket_id/posts/html_named":               {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:ticket_id/posts/idempotency_first":        {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:ticket_id/posts/idempotency_replay":       {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:ticket_id/posts/idempotency_mismatch":     {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:ticket_id/posts/html_empty":               {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:ticket_id/posts/invalid_input_empty":      {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:ticket_id/posts/invalid_input_format":     {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:ticket_id/posts/invalid_input_nul":        {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:ticket_id/posts/invalid_input_whitespace": {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:ticket_id/posts/not_found":                {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"POST /api/v1/tickets/:ticket_id/posts/hidden":                   {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"POST /api/v1/tickets/:ticket_id/posts/forbidden":                {class: NoAccess, code: "forbidden", legacyClass: NoAccess},
+	"POST /api/v1/tickets/:ticket_id/posts/read_only":                {class: ReadOnly, code: "read_only", legacyClass: NoAccess},
 }
 
 // restRequest is a recorded REST request: GET without a method, a write

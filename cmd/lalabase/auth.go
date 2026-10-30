@@ -421,7 +421,9 @@ func statusOf(req *requests, p profile.Profile, mode profile.Mode, out io.Writer
 	fmt.Fprintln(out)
 	for _, f := range features.All {
 		if report.Enabled[f.Name] {
-			fmt.Fprintf(out, "  on   %s\n", f.Name)
+			// The way it takes (K1): REST when /me lists the
+			// capabilities the feature names, else the tools.
+			fmt.Fprintf(out, "  on   %s via %s\n", f.Name, report.Via[f.Name])
 		} else {
 			fmt.Fprintf(out, "  off  %s (missing %s)\n", f.Name, show(strings.Join(report.Missing[f.Name], ", ")))
 		}

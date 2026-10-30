@@ -31,9 +31,9 @@ const (
 	keyEsc   = "\x1b"
 )
 
-func fixtureServer(t *testing.T, scenario inboxfixture.Scenario) (*inboxfixture.Fixture, string) {
+func fixtureServer(t *testing.T, scenario inboxfixture.Scenario, opts ...inboxfixture.Option) (*inboxfixture.Fixture, string) {
 	t.Helper()
-	f, err := inboxfixture.New(scenario, contract.Raw())
+	f, err := inboxfixture.New(scenario, contract.Raw(), opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,9 +47,9 @@ func fixtureServer(t *testing.T, scenario inboxfixture.Scenario) (*inboxfixture.
 	return f, "http://" + ln.Addr().String()
 }
 
-func startInbox(t *testing.T, scenario inboxfixture.Scenario, width uint16) (*terminalProcess, *inboxfixture.Fixture) {
+func startInbox(t *testing.T, scenario inboxfixture.Scenario, width uint16, opts ...inboxfixture.Option) (*terminalProcess, *inboxfixture.Fixture) {
 	t.Helper()
-	f, url := fixtureServer(t, scenario)
+	f, url := fixtureServer(t, scenario, opts...)
 	c := startTerminalWith(t, "inbox-"+string(scenario), width, terminalOptions{url: url, marker: "Token can write: yes", limit: inboxLimit})
 	if err := c.ready(); err != nil {
 		t.Fatalf("%v\n%s", err, c.bytes())
