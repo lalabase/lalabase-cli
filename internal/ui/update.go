@@ -17,6 +17,7 @@ import (
 // sends what the step changed and the disk reads it issued, as one command.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	next, cmd := m.update(msg)
+	next.fitDialog()
 	if a := next.app; a != nil {
 		if flush := a.flushDisk(); flush != nil {
 			cmd = tea.Batch(cmd, flush)
@@ -132,6 +133,10 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyPressMsg:
 		return m.key(msg)
+	case tea.PasteMsg:
+		return m.paste(msg), nil
+	case DialogOutcome:
+		return m.receiveOutcome(msg)
 	case tea.MouseWheelMsg:
 		return m.wheel(msg), nil
 	}
@@ -175,6 +180,9 @@ func (m Model) key(key tea.KeyPressMsg) (Model, tea.Cmd) {
 	// included: what is not offered does nothing.
 	if !m.allowed()[action.Kind] {
 		return m, nil
+	}
+	if m.dialog != nil {
+		return m.dialogKey(action)
 	}
 	if m.app == nil {
 		return m.shellKey(action.Kind), nil
@@ -338,9 +346,10 @@ const wheelLines = 3
 
 // wheel scrolls the object pane by a turn of the wheel over its body,
 // wherever the focus is: the pane in sight is the one under the pointer.
-// Anywhere else, sideways or without a session, the wheel does nothing.
+// Anywhere else, sideways, behind a dialog or without a session, the wheel
+// does nothing.
 func (m Model) wheel(msg tea.MouseWheelMsg) Model {
-	if m.app == nil {
+	if m.app == nil || m.dialog != nil {
 		return m
 	}
 	g := m.geometry()

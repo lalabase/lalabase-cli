@@ -188,7 +188,9 @@ func (m *Model) expire() {
 		return
 	}
 	a.expired = true
-	m.mode = Navigate
+	// A dialog goes with the session: nothing of it is shown any more, the
+	// ticket in its title least of all.
+	m.mode, m.dialog = Navigate, nil
 	for i := range a.steps {
 		if a.steps[i].cancel != nil {
 			a.steps[i].cancel()

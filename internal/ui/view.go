@@ -6,7 +6,12 @@ import (
 )
 
 func (m Model) View() tea.View {
-	v := tea.NewView(view.Render(m.screen(), m.geometry(), m.focus, m.widthMethod))
+	g := m.geometry()
+	content := view.Render(m.screen(), g, m.focus, m.widthMethod)
+	if m.dialog != nil {
+		content = view.Overlay(content, m.dialogScreen(), g, m.widthMethod)
+	}
+	v := tea.NewView(content)
 	v.AltScreen = true
 	// The wheel scrolls the object pane. Buttons are reported with it, so
 	// the terminal selects text only with its modifier held (Option in

@@ -423,6 +423,9 @@ func TestTerminalChild(t *testing.T) {
 			return ui.Run(ctx, in, out, environment, ui.NewWithContent("SAFE_INLINE"+terminalHostile, "No data loaded\nSAFE_LIST"+terminalHostile, "SAFE_OBJECT"+terminalHostile), sup)
 		}
 	}
+	if strings.HasPrefix(scenario, "dialog-") {
+		env.runUI = dialogRunner(scenario)
+	}
 	if scenario == "environment" {
 		env.runUI = func(ctx context.Context, in io.Reader, out io.Writer, environment []string, sup *worker.Supervisor) error {
 			return ui.Run(ctx, in, out, environment, environmentModel{Model: ui.New()}, sup)

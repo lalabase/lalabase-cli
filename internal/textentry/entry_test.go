@@ -258,6 +258,20 @@ func TestWrappingAtSpacesAndInLongWords(t *testing.T) {
 	}
 }
 
+// The lines are the text: nothing is lost at a wrap, and only line breaks
+// are not drawn.
+func TestWrappingLosesNothing(t *testing.T) {
+	text := "Lorem ipsum  dolor\n\nsit " + family + world + " amet, " + strings.Repeat("x", 40) + " consectetur " + eAcute + eAcute + "\n"
+	// From the width of the widest grapheme on, draw cuts nothing.
+	for width := 8; width < 40; width++ {
+		e := sized(t, text, width, 100)
+		got := strings.Join(e.Lines(caret, ellipse), "")
+		if want := strings.ReplaceAll(text, "\n", ""); plain(got) != want {
+			t.Fatalf("width %d: %q, want %q", width, plain(got), want)
+		}
+	}
+}
+
 func TestTheCaretStandsWhereItIsInAWrappedText(t *testing.T) {
 	e := sized(t, "aaa bbb ccc", 9, 10)
 	e.Left()

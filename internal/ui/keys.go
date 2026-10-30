@@ -14,6 +14,11 @@ type Mode uint8
 const (
 	Navigate Mode = iota
 	TextEntry
+	// Dialog is a dialog of one-line fields (M1): every printable key is
+	// text, Enter sends. DialogLines is a dialog with a field of several
+	// lines: Enter is a line break, Ctrl-S sends.
+	Dialog
+	DialogLines
 )
 
 type Action uint8
@@ -50,6 +55,12 @@ const (
 	OpenAgents
 	// C9c: remove an ended or lost agent.
 	RemoveAgent
+	// M1: the keys of a dialog that no other mode has; it shares the
+	// caret's with the cursor's.
+	NextField
+	DeleteForward
+	LineStart
+	LineEnd
 )
 
 type keyAction struct {
@@ -60,11 +71,15 @@ type keyAction struct {
 // routeKey names what a key does in a mode. In navigation every key is one
 // action or nothing; in text entry every printable key is text, Enter
 // sends, Esc cancels, Backspace deletes, and Ctrl-C interrupts as
-// everywhere. A key never does both.
+// everywhere; a dialog has the keys of its fields (routeDialog). A key never
+// does both.
 func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 	name := key.String()
 	if name == "ctrl+c" {
 		return keyAction{Kind: Interrupt}
+	}
+	if mode == Dialog || mode == DialogLines {
+		return routeDialog(mode, key)
 	}
 	if mode == TextEntry {
 		switch name {
@@ -75,16 +90,13 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		case "backspace":
 			return keyAction{Kind: DeleteBack}
 		}
-		text := key.Text
-		if text == "" && key.Code <= unicode.MaxRune && unicode.IsPrint(key.Code) && key.Mod & ^tea.ModShift == 0 {
-			text = string(key.Code)
-		}
-		if text != "" && key.Mod & ^tea.ModShift == 0 {
-			for _, r := range text {
-				if !unicode.IsPrint(r) {
-					return keyAction{}
-				}
+		text := typed(key)
+		for _, r := range text {
+			if !unicode.IsPrint(r) {
+				return keyAction{}
 			}
+		}
+		if text != "" {
 			return keyAction{Kind: InsertText, Text: text}
 		}
 		return keyAction{}
@@ -134,6 +146,64 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 	return keyAction{}
 }
 
+// typed is the text a key writes: none with a modifier but Shift.
+func typed(key tea.KeyPressMsg) string {
+	if key.Mod & ^tea.ModShift != 0 {
+		return ""
+	}
+	if key.Text == "" && key.Code <= unicode.MaxRune && unicode.IsPrint(key.Code) {
+		return string(key.Code)
+	}
+	return key.Text
+}
+
+// routeDialog names what a key does in a dialog. Enter sends or breaks the
+// line, by the mode; what a key writes is text, whatever it says, and passes
+// the field's one filter (clean.Draft) with the rest, so no second check
+// stands here: a joined emoji arrives as one key and is kept.
+func routeDialog(mode Mode, key tea.KeyPressMsg) keyAction {
+	switch key.String() {
+	case "enter":
+		if mode == DialogLines {
+			return keyAction{Kind: InsertText, Text: "\n"}
+		}
+		return keyAction{Kind: Submit}
+	case "ctrl+s":
+		if mode == DialogLines {
+			return keyAction{Kind: Submit}
+		}
+		return keyAction{}
+	case "esc":
+		return keyAction{Kind: Cancel}
+	case "tab":
+		return keyAction{Kind: NextField}
+	case "backspace":
+		return keyAction{Kind: DeleteBack}
+	case "delete":
+		return keyAction{Kind: DeleteForward}
+	case "left":
+		return keyAction{Kind: Left}
+	case "right":
+		return keyAction{Kind: Right}
+	case "home":
+		return keyAction{Kind: LineStart}
+	case "end":
+		return keyAction{Kind: LineEnd}
+	case "up":
+		return keyAction{Kind: Up}
+	case "down":
+		return keyAction{Kind: Down}
+	case "pgup":
+		return keyAction{Kind: PageUp}
+	case "pgdown":
+		return keyAction{Kind: PageDown}
+	}
+	if text := typed(key); text != "" {
+		return keyAction{Kind: InsertText, Text: text}
+	}
+	return keyAction{}
+}
+
 // binding is one action that is active right now: what the key does, and
 // how the help names it. The dispatch and the help read the same list.
 type binding struct {
@@ -157,6 +227,10 @@ func (m Model) tooSmall() bool { return m.width < 24 || m.height < 8 }
 func (m Model) small() bool {
 	if m.tooSmall() {
 		return true
+	}
+	if m.dialog != nil {
+		// The box stands over the panes and asks nothing of them.
+		return false
 	}
 	g := layoutWith(m.width, m.height, len(view.HelpLines(toHelp(m.bindings(false)), m.width, m.widthMethod)), m.focus)
 	return m.focusedCapacity(g) < 1
@@ -204,6 +278,9 @@ func (m Model) actions() []binding { return m.bindings(m.small()) }
 // bindings are the actions of the state, with or without the room for
 // them (small).
 func (m Model) bindings(small bool) []binding {
+	if m.dialog != nil {
+		return m.dialogBindings(small)
+	}
 	if m.mode == TextEntry {
 		// The search line: q is text here, so quitting is not offered;
 		// deleting only while there is something to delete.
@@ -477,8 +554,8 @@ func (m Model) withoutIdleScroll(out []binding) []binding {
 }
 
 // allowed is the set of actions the bindings cover. While the search line
-// is open, and there is room for it, every printable key is text
-// (InsertText), which no binding names.
+// or a dialog is open, and there is room for it, every printable key is text
+// (InsertText), which no binding names; a dialog sending takes no text.
 func (m Model) allowed() map[Action]bool {
 	set := map[Action]bool{}
 	for _, b := range m.actions() {
@@ -488,6 +565,9 @@ func (m Model) allowed() map[Action]bool {
 		}
 	}
 	if m.mode == TextEntry && !m.small() {
+		set[InsertText] = true
+	}
+	if m.dialog != nil && !m.dialog.sending && !m.small() {
 		set[InsertText] = true
 	}
 	if set[Back] && m.focus == view.Agents {
@@ -511,5 +591,11 @@ func toHelp(bindings []binding) []present.KeyHelp {
 	return out
 }
 
-// help is the help line's content: the bindings, in order.
-func (m Model) help() []present.KeyHelp { return toHelp(m.actions()) }
+// help is the help line's content: the bindings, in order. A dialog's stand
+// in its box, and only what they leave out stands below it.
+func (m Model) help() []present.KeyHelp {
+	if m.dialog != nil && !m.small() {
+		return toHelp([]binding{dialogInterrupt})
+	}
+	return toHelp(m.actions())
+}

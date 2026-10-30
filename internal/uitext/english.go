@@ -296,6 +296,16 @@ const (
 	AgentLostPane
 	AgainNotStarted
 	AgentNotSettled
+	// M1: the dialog.
+	DialogTitle
+	DialogCaret
+	DialogSending
+	DialogRefused
+	DialogCut
+	SendKey
+	SendHelp
+	NextFieldHelp
+	NewLineHelp
 	// Unlisted is the help of a key that acts but is not named in the
 	// help line (internal/ui drops it there).
 	Unlisted
@@ -460,5 +470,10 @@ var english = map[ID]string{
 	AgentLostPane:   "The agent of #%d is lost: its pane is gone",
 	AgainNotStarted: "Claude Code did not start again beside #%d; the agent stays",
 	AgentNotSettled: "The agents of #%d could not be updated: %s",
-	Unlisted:        "(not listed)",
+	// M1: the box's title, the caret of the active field, what stands in
+	// the box's error line, and the keys of a field.
+	DialogTitle: "%s · #%d %s", DialogCaret: "\u258f",
+	DialogSending: "Sending\u2026", DialogRefused: "Not sent", DialogCut: "Cut at %d characters",
+	SendKey: "ctrl+s", SendHelp: "send", NextFieldHelp: "next field", NewLineHelp: "new line",
+	Unlisted: "(not listed)",
 }

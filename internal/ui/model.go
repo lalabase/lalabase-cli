@@ -30,6 +30,10 @@ type Model struct {
 	// app is the session: startup, organisations, counters and the inbox.
 	// nil for the shell alone (C1a, and the tests of the shell).
 	app *app
+	// dialog is the box over the screen, nil without one (M1); dialogs the
+	// number of the last one opened.
+	dialog  *dialog
+	dialogs uint64
 }
 
 // Option configures the root model at construction.
@@ -98,8 +102,8 @@ func New(opts ...Option) Model {
 }
 
 // NewWithContent uses the same display boundary as the built-in placeholder.
-func NewWithContent(organisation, list, object string) Model {
-	m := New()
+func NewWithContent(organisation, list, object string, opts ...Option) Model {
+	m := New(opts...)
 	m.shell = [3]string{organisation, list, object}
 	return m
 }
