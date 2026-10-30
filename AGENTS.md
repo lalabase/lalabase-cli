@@ -144,6 +144,9 @@ on a Mac before every merge, by running the tests here.
   holding the run.
 * A test that cannot set up its case skips locally but **fails on the CI**
   (`os.Getenv("CI")`): a skip there passes without testing anything.
+* A test goes into the file of its topic, never one named after a review
+  (`internal/sourceguard` refuses that). New tests join the file that holds
+  the behaviour they pin.
 * Tests in `internal/ui` and the `TestPTY` tests run in parallel: a new one
   there starts with `t.Parallel()`, unless it changes process state (a
   serial test finishes before any parallel one goes on).
