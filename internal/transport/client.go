@@ -193,6 +193,10 @@ func (c *Client) MCPAddress() string {
 	return u.String()
 }
 
+// Address is the server's base address as the client sends to it, checked
+// and normalised: the address of a file in the browser starts with it (C10).
+func (c *Client) Address() string { return c.base.String() }
+
 // resolve joins an API path to the base address. Only a plain path under
 // /api/ is accepted; anything that could leave the API (another host, a dot
 // segment) is refused before a request is made.

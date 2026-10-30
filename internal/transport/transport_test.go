@@ -518,6 +518,28 @@ func TestAResultOfNullIsAProtocolError(t *testing.T) {
 	}
 }
 
+// TestAddressIsTheCheckedBase: what a file's address is built from (C10) is
+// the base the transport sends to, not the profile's text.
+func TestAddressIsTheCheckedBase(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://app.example.com":      "https://app.example.com",
+		"https://app.example.com/":     "https://app.example.com",
+		"HTTPS://app.example.com/":     "https://app.example.com",
+		"https://app.example.com#":     "https://app.example.com",
+		"https://app.example.com/#":    "https://app.example.com",
+		"https://app.example.com/a b/": "https://app.example.com/a%20b",
+		"http://localhost:3000/base":   "http://localhost:3000/base",
+	} {
+		c, err := New(raw, "lalab_pat_x")
+		if err != nil {
+			t.Fatalf("%q: %v", raw, err)
+		}
+		if got := c.Address(); got != want {
+			t.Errorf("%q: %q, want %q", raw, got, want)
+		}
+	}
+}
+
 func TestMCPKeepsTheBasePath(t *testing.T) {
 	var path string
 	srv := serve(t, func(w http.ResponseWriter, r *http.Request) {

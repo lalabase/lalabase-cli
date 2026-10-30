@@ -241,7 +241,7 @@ func TestTheFocusedFieldShowsItself(t *testing.T) {
 	if _, params := cellsWith(box[2], 1, 22); !params[1] {
 		t.Errorf("the active label is not bold: %q", box[2])
 	}
-	if strings.Contains(box[4], "\x1b[1mNote") {
+	if strings.Contains(box[4], "\x1b[1;38;2;241;243;245mNote") {
 		t.Errorf("the other label is bold: %q", box[4])
 	}
 	if _, params := cellsWith(box[0], 34, 39); !params[1] {

@@ -31,8 +31,9 @@ func TestTheLaunchReadsTheCommandsEnvironment(t *testing.T) {
 	}
 	env := Env{Home: "/Users/anna", Cwd: "/Users/anna/dev", Executable: "/opt/lalabase/bin/lalabase", Getenv: func(k string) string { return vars[k] }}
 	p := profile.Profile{Name: "default", URL: "https://lalabase.com", Token: "lalab_pat_X", Folders: folders}
-	const mcp = "https://lalabase.com/api/mcp"
-	got := launchConfig(env, p, mcp, sup)
+	// The checked base, which is not the profile's text.
+	const server, mcp = "https://checked.example.com", "https://lalabase.com/api/mcp"
+	got := launchConfig(env, p, server, mcp, sup)
 	want := launch.Config{
 		Supervisor: sup, Home: "/Users/anna", Cwd: "/Users/anna/dev", MCP: mcp, Token: "lalab_pat_X", Folders: folders,
 		Files: "/Users/anna/.cache/lalabase/cli/default/l",
@@ -40,29 +41,36 @@ func TestTheLaunchReadsTheCommandsEnvironment(t *testing.T) {
 		// SHA-256 of "https://lalabase.com".
 		Agents: "/Users/anna/.cache/lalabase/cli/default/a/7e64fbe1cb7bbe56", Executable: "/opt/lalabase/bin/lalabase",
 		TermProgram: "iTerm.app", SessionID: "w0t1p2:FCB46015-2039-451D-82C2-59CE4353910D",
+		Server: server,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("config\n got %+v\nwant %+v", got, want)
 	}
+	// Over SSH a browser would open on a screen the person does not see.
+	vars["SSH_CONNECTION"] = "192.168.0.1 22 192.168.0.2 22"
+	if got := launchConfig(env, p, server, mcp, sup); !got.Remote {
+		t.Fatal("SSH_CONNECTION is not read")
+	}
+	delete(vars, "SSH_CONNECTION")
 	// XDG_CACHE_HOME moves the files with the disk cache; a profile name
 	// that cannot name a directory has none.
 	vars["XDG_CACHE_HOME"] = "/Users/anna/caches"
-	if got := launchConfig(env, p, mcp, sup); got.Files != "/Users/anna/caches/lalabase/cli/default/l" || got.Agents != "/Users/anna/caches/lalabase/cli/default/a/7e64fbe1cb7bbe56" {
+	if got := launchConfig(env, p, server, mcp, sup); got.Files != "/Users/anna/caches/lalabase/cli/default/l" || got.Agents != "/Users/anna/caches/lalabase/cli/default/a/7e64fbe1cb7bbe56" {
 		t.Errorf("files %q, agents %q", got.Files, got.Agents)
 	}
 	delete(vars, "XDG_CACHE_HOME")
-	if got := launchConfig(env, profile.Profile{Name: "../x"}, mcp, sup); got.Files != "" || got.Agents != "" {
+	if got := launchConfig(env, profile.Profile{Name: "../x"}, server, mcp, sup); got.Files != "" || got.Agents != "" {
 		t.Errorf("files %q, agents %q for a bad profile name", got.Files, got.Agents)
 	}
 	// Review round 6, F6: another terminal is passed on as it is.
 	vars["TERM_PROGRAM"] = "Apple_Terminal"
-	if got := launchConfig(env, p, mcp, sup); got.TermProgram != "Apple_Terminal" {
+	if got := launchConfig(env, p, server, mcp, sup); got.TermProgram != "Apple_Terminal" {
 		t.Errorf("terminal %q", got.TermProgram)
 	}
 	vars["TERM_PROGRAM"] = "iTerm.app"
 	for _, key := range []string{"TMUX", "STY", "ZELLIJ"} {
 		vars[key] = "1"
-		if got := launchConfig(env, p, mcp, sup); got.Multiplexer != key {
+		if got := launchConfig(env, p, server, mcp, sup); got.Multiplexer != key {
 			t.Errorf("%s: multiplexer %q", key, got.Multiplexer)
 		}
 		delete(vars, key)

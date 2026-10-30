@@ -17,5 +17,10 @@ func (m Model) View() tea.View {
 	// the terminal selects text only with its modifier held (Option in
 	// iTerm2, Fn in Terminal.app).
 	v.MouseMode = tea.MouseModeCellMotion
+	// Ground and text of the whole window, the terminal's padding included.
+	// Bubble Tea gives the terminal its own back at the end.
+	if m.painted {
+		v.BackgroundColor, v.ForegroundColor = view.GroundColor, view.TextColor
+	}
 	return v
 }

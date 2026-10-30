@@ -17,7 +17,8 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
-// deadline is how long iTerm has to split the session and type the line.
+// deadline is how long iTerm has to split the session and type the line,
+// and an opener to hand over a file's address.
 const deadline = 5 * time.Second
 
 // osascriptPath is macOS's own: not looked up on the PATH.
@@ -56,6 +57,11 @@ type Config struct {
 	// zellij (TMUX, STY, ZELLIJ): ITERM_SESSION_ID may then name the
 	// session the multiplexer was started in, not the one it shows in.
 	Multiplexer string
+	// Server is the profile's server, which a file's address starts with
+	// (C10). Remote is set when the client runs over SSH: a browser would
+	// open on a screen the person does not see.
+	Server string
+	Remote bool
 }
 
 // Launcher starts Claude Code beside a ticket, one launch per call of
@@ -81,6 +87,8 @@ type Launcher struct {
 	prepare     func(dir string) error
 	newID       func() (string, error)
 	writeLaunch func(dir string, l agents.Launch) error
+	opener      func() (string, bool)
+	runOpener   func(ctx context.Context, path string, args []string) error
 }
 
 // New returns a launcher. iTerm is used on macOS when TERM_PROGRAM says
@@ -105,6 +113,8 @@ func New(cfg Config) *Launcher {
 	l.runTmux = func(ctx context.Context, args []string) (string, string, error) {
 		return runChild(ctx, l.tmux, "", args)
 	}
+	l.opener = l.findOpener
+	l.runOpener = runOpener
 	return l
 }
 
@@ -142,6 +152,13 @@ func (l *Launcher) Jump(ref uint64, t Ticket, agent, pane string) tea.Cmd {
 	return l.command(ref, t, JumpAction, func() tea.Msg { return l.jump(ref, t, agent, pane) })
 }
 
+// OpenFile is the command that opens a file of the ticket t in the browser
+// (C10); its message is a Done with the action OpenFileAction, under the
+// supervisor like Launch.
+func (l *Launcher) OpenFile(ref uint64, t Ticket, f File) tea.Cmd {
+	return l.command(ref, t, OpenFileAction, func() tea.Msg { return l.openFile(ref, t, f) })
+}
+
 // Jumps says whether a jump can find a pane: the client runs in iTerm.
 func (l *Launcher) Jumps() bool { return l.session != "" }
 
@@ -177,6 +194,37 @@ func (l *Launcher) jump(ref uint64, t Ticket, agent, pane string) Done {
 		d.Kind = Jumped
 	case SessionGone:
 		d.Kind = PaneGone
+	}
+	return d
+}
+
+// openFile hands the file's address to the system's opener: one argument,
+// no shell, a deadline. What the browser then finds is the server's to
+// answer: this says only that the address was handed over.
+func (l *Launcher) openFile(ref uint64, t Ticket, f File) Done {
+	d := Done{Ref: ref, Ticket: t, Action: OpenFileAction, Detail: f.Name}
+	address, ok := fileAddress(l.cfg.Server, t.Org, f.ID)
+	if !ok {
+		d.Kind = NotHandedOver
+		return d
+	}
+	path, ok := l.opener()
+	if !ok || l.cfg.Remote {
+		d.Kind = NoOpener
+		return d
+	}
+	ctx, cancel := context.WithTimeout(l.cfg.Supervisor.Context(), l.deadline)
+	defer cancel()
+	err := l.runOpener(ctx, path, []string{address})
+	switch {
+	case err == nil:
+		d.Kind = FileOpened
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		d.Kind = NoAnswer
+	case ctx.Err() != nil:
+		d.Kind = Canceled
+	default:
+		d.Kind = OpenFailed
 	}
 	return d
 }
@@ -488,6 +536,13 @@ func runChild(ctx context.Context, path, script string, args []string) (stdout, 
 	c.WaitDelay = time.Second
 	err = c.Run()
 	return string(out.b), string(errOut.b), err
+}
+
+// runOpener runs the opener with nothing attached: what it says is nobody's,
+// and it may leave the browser behind, which must not inherit a pipe of ours
+// (runChild would wait for the pipe, and close it under the browser).
+func runOpener(ctx context.Context, path string, args []string) error {
+	return exec.CommandContext(ctx, path, args...).Run()
 }
 
 // capped keeps the first maxOutput bytes written to it.

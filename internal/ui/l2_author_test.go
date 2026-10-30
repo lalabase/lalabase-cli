@@ -69,15 +69,15 @@ func TestTheOwnAuthorIsBlueAndMarked(t *testing.T) {
 
 	h := newHarness(t)
 	h.openLogin()
-	if got := authorLine(h, "Anna Albers"); !strings.Contains(got, "\x1b[1;34mAnna Albers (you)\x1b[m") {
+	if got := authorLine(h, "Anna Albers"); !strings.Contains(got, "\x1b[1;38;2;121;194;250mAnna Albers (you)\x1b[m") {
 		t.Fatalf("own author: %q", got)
 	}
 	other := authorLine(h, "Ben Berger")
-	if !strings.Contains(other, "\x1b[1mBen Berger\x1b[m") || strings.Contains(other, "(you)") {
+	if !strings.Contains(other, "\x1b[1;38;2;191;148;228mBen Berger\x1b[m") || strings.Contains(other, "(you)") {
 		t.Fatalf("other author: %q", other)
 	}
 	// The name's own sequence is bold alone: a colour would join it
-	// ("\x1b[1;34m").
+	// ("\x1b[1;38;2;121;194;250m").
 	if strings.Contains(other, "34mBen Berger") {
 		t.Fatalf("other author drawn in a colour: %q", other)
 	}
@@ -99,7 +99,7 @@ func TestANameEndingInYouIsNoOwnAuthor(t *testing.T) {
 		}
 	}
 	line := authorLine(h, "Ben Berger")
-	if !strings.Contains(line, "\x1b[1mBen Berger (you)\x1b[m") || strings.Contains(line, "(you) (you)") || strings.Contains(line, "34mBen") {
+	if !strings.Contains(line, "\x1b[1;38;2;191;148;228mBen Berger (you)\x1b[m") || strings.Contains(line, "(you) (you)") || strings.Contains(line, "121;194;250mBen") {
 		t.Fatalf("foreign author: %q", line)
 	}
 }
@@ -117,7 +117,7 @@ func TestWithoutMeNobodyIsMarked(t *testing.T) {
 		if strings.Contains(ansi.Strip(h.m.View().Content), "(you)") {
 			t.Fatalf("%s: someone is marked", label)
 		}
-		if line := authorLine(h, "Anna Albers"); !strings.Contains(line, "\x1b[1mAnna Albers\x1b[m") {
+		if line := authorLine(h, "Anna Albers"); !strings.Contains(line, "\x1b[1;38;2;191;148;228mAnna Albers\x1b[m") {
 			t.Fatalf("%s: %q", label, line)
 		}
 	}

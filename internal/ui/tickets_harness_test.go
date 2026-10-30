@@ -496,13 +496,17 @@ func (d recordedData) sixPosts(whole bool) []api.Post {
 	return out
 }
 
+// fileID is the document id of the i-th file of a ticket.
+func fileID(i int) string { return fmt.Sprintf("00000000-0000-4000-8000-%012d", 800000+i) }
+
 func sixAttachments(n int) []api.Attachment {
 	if n == 0 {
 		n = 12
 	}
 	var out []api.Attachment
 	for i := 1; i <= n; i++ {
-		a := api.Attachment{Filename: fmt.Sprintf("six-%02d.txt", i)}
+		id := fileID(i)
+		a := api.Attachment{ID: &id, Filename: fmt.Sprintf("six-%02d.txt", i)}
 		if i%2 == 1 {
 			kind, status, size := "text/plain", "available", int64(i*1000)
 			a.ContentType, a.TextStatus, a.ByteSize = &kind, &status, &size

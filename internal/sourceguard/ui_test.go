@@ -91,6 +91,8 @@ var reachableImports = map[string][]string{
 	// Their writing names are refused below (Println, Fprint, Writer,
 	// WithoutCatchPanics).
 	"charm.land/bubbletea/v2": nil, "charm.land/lipgloss/v2": nil, "github.com/charmbracelet/x/ansi": nil,
+	// Constants of the terminal's colours; nothing in it writes here.
+	"github.com/charmbracelet/colorprofile": {"Ascii", "NoTTY"},
 }
 
 // fileSystemImports are what the packages that keep the client's files for
@@ -166,8 +168,9 @@ var fileSystemImports = map[string]map[string][]string{
 // may import beyond reachableImports, named one by one like
 // fileSystemImports. internal/launch is the client's one package that
 // starts a child process: osascript, which asks iTerm for a pane, tmux,
-// which runs an agent's session and its one viewer, and claude in this
-// terminal through Bubble Tea's exec. That is a decision
+// which runs an agent's session and its one viewer, claude in this
+// terminal through Bubble Tea's exec, and the opener of a file's address
+// (C10). That is a decision
 // about child processes, taken here, not a fix for a red guard: os/exec
 // copies a child's input and output on goroutines of its own, which end
 // with the child, and the launch runs under the supervisor. It may stat a

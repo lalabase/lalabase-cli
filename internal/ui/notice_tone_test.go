@@ -82,7 +82,7 @@ func TestAFailedLaunchIsDrawnInItsTone(t *testing.T) {
 	msg := h.press("x")().(launch.Done)
 	msg.Detail = "/home/anna/dev/website/relaunch-2026x"
 	h.feed(msg)
-	problem := "\x1b[1;31m" + notice + "\x1b[m"
+	problem := "\x1b[1;38;2;223;115;118m" + notice + "\x1b[m"
 	seen := map[int]bool{}
 	for _, width := range []int{len(notice), 200} {
 		h.m.width, h.m.height = width, 24
@@ -124,7 +124,7 @@ func TestAWrappedNoticeKeepsItsToneOnEveryLine(t *testing.T) {
 	}
 	lines := strings.Split(h.m.View().Content, "\n")
 	for i := 2; i < 2+g.NoticeHeight; i++ {
-		if !strings.HasPrefix(lines[i], "\x1b[1;31m") {
+		if !strings.HasPrefix(lines[i], "\x1b[1;38;2;223;115;118m") {
 			t.Fatalf("notice line %d is not drawn as a problem: %q", i-1, lines[i])
 		}
 	}

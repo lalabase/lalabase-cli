@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
@@ -52,6 +54,10 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			// selected ticket, if any, is due after the pause.
 			return m, m.selectionChanged()
 		}
+		return m, nil
+	case tea.ColorProfileMsg:
+		// NO_COLOR or no terminal: the window stays the terminal's own.
+		m.painted = msg.Profile != colorprofile.NoTTY && msg.Profile != colorprofile.Ascii
 		return m, nil
 	case tea.ModeReportMsg:
 		if msg.Mode == ansi.ModeUnicodeCore && (msg.Value == ansi.ModeReset || msg.Value == ansi.ModeSet || msg.Value == ansi.ModePermanentlySet) {
@@ -130,9 +136,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			if msg.Until.Equal(a.agents.noticeUntil) {
 				a.clearAgentsNotice()
 			}
-			if msg.Until.Equal(a.bookNotice.until) {
-				a.bookNotice = bookNotice{}
-			}
+			a.bookNotices = slices.DeleteFunc(a.bookNotices, func(n bookNotice) bool { return n.until.Equal(msg.Until) })
 			return m, a.agentsDue(msg.Until)
 		}
 		return m, nil
@@ -320,7 +324,10 @@ func (m Model) move(delta int) (Model, tea.Cmd) {
 	case view.Agents:
 		a.moveAgent(delta)
 	case view.Object:
-		if a.detail != nil {
+		switch d := a.detail; {
+		case d != nil && d.area == areaAttachments:
+			return m.moveFile(delta), nil
+		case d != nil:
 			return m.moveComment(delta), nil
 		}
 	case view.List:
@@ -447,6 +454,10 @@ func (m Model) open() (Model, tea.Cmd) {
 			return m.openTicket()
 		case a.projects != nil:
 			return m.openTickets(a.projects.selected)
+		}
+	case view.Object:
+		if t, f, ok := m.fileTarget(); ok {
+			return m, m.openFile(t, f)
 		}
 	}
 	return m, nil

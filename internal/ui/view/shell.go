@@ -83,7 +83,7 @@ func headerLine(s present.Screen, width int, method ansi.Method) string {
 		room := width - method.StringWidth(summary.plain()) - 1
 		if room >= method.StringWidth(least) {
 			left := fit(header, room, method)
-			return left + strings.Repeat(" ", width-method.StringWidth(left)-method.StringWidth(summary.plain())) + summary.render(width, method)
+			return branded(left) + strings.Repeat(" ", width-method.StringWidth(left)-method.StringWidth(summary.plain())) + summary.render(width, method)
 		}
 		if word {
 			word = false
@@ -91,7 +91,17 @@ func headerLine(s present.Screen, width int, method ansi.Method) string {
 		}
 		counts = counts[:len(counts)-1]
 	}
-	return fit(header, width, method)
+	return branded(fit(header, width, method))
+}
+
+// branded draws the app's name at the start of the header in its colour.
+func branded(header string) string {
+	app := uitext.Inline(uitext.App).String()
+	rest, ok := strings.CutPrefix(header, app)
+	if !ok {
+		return header
+	}
+	return lipgloss.NewStyle().Bold(true).Foreground(brandColor).Render(app) + rest
 }
 
 // summaryWordFrom is the width from which the summary starts with its
@@ -344,20 +354,16 @@ func paneOf(c present.Column, width, height int, focused bool, lines int, method
 		return nil
 	}
 	if focused {
-		// The focused pane stands on a ground a little lighter
-		// than the terminal's black.
+		// The focused pane stands on a ground a little lighter than the
+		// window's.
 		return onFocusGround(paneLines(c, width, height, focused, lines, method))
 	}
 	return paneLines(c, width, height, focused, lines, method)
 }
 
-// focusGround is the focused pane's background: 256-colour 234, a grey
-// just above black.
-const focusGround = "\x1b[48;5;234m"
-
 // onFocusGround puts every line on the focus ground: set at its start,
 // set again after every reset inside it (a styled word ends with one),
-// and given back to the terminal's own at its end.
+// and given back to the window's at its end.
 func onFocusGround(lines []string) []string {
 	for i, line := range lines {
 		line = strings.ReplaceAll(line, "\x1b[0m", "\x1b[m")
@@ -373,11 +379,10 @@ func paneLines(c present.Column, width, height int, focused bool, lines int, met
 	if width <= frameCells || height <= frameLines {
 		return contentOf(c, width, height, focused, lines, method)
 	}
-	border := lipgloss.NewStyle().Faint(true)
-	title := lipgloss.NewStyle()
+	border, title := quietLine, lipgloss.NewStyle()
 	if focused {
-		border = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Blue)
-		title = title.Bold(true)
+		border = lipgloss.NewStyle().Bold(true).Foreground(focusColor)
+		title = border
 	}
 	run := width - 2 // the border between the corners
 	out := make([]string, 0, height)
@@ -516,8 +521,7 @@ const (
 // (its value's tone faint with it), a value that asks for attention bold.
 // A bar (the cursor row) is drawn over the pane's whole width, both lines
 // of it: reversed in the focused pane, so the eye finds where the keys
-// act, on the terminal's grey (colour 8) elsewhere, so the place stays
-// seen beside it. Faint and a status's tone give way in it (faint on a
+// act, on the rest colour elsewhere, so the place stays seen beside it. Faint and a status's tone give way in it (faint on a
 // reversed ground is hard to read, and a tone would turn into a coloured
 // block), bold stays. The marker stays too: a terminal that draws no
 // attributes still shows the cursor.
@@ -630,12 +634,12 @@ func headingRow(r present.Row, marker string, width int, bar barKind, twoLines b
 const markCells = 2
 
 // barLine draws a line of a bar: padded to the width, every cell of it
-// reversed or on the grey ground, bold when strong.
+// reversed or on the rest colour, bold when strong.
 func barLine(text string, width int, strong bool, bar barKind, method ansi.Method) string {
 	text += strings.Repeat(" ", max(0, width-method.StringWidth(text)))
-	style := lipgloss.NewStyle().Reverse(true)
+	style := capStyle
 	if bar == restBar {
-		style = lipgloss.NewStyle().Background(lipgloss.BrightBlack)
+		style = lipgloss.NewStyle().Background(restColor).Foreground(brightColor)
 	}
 	return style.Bold(strong).Render(text)
 }
@@ -697,7 +701,7 @@ func scrollbar(body, total, offset int) []string {
 		if i >= start && i < start+length {
 			cells[i] = thumb
 		} else {
-			cells[i] = lipgloss.NewStyle().Faint(true).Render(track)
+			cells[i] = quietLine.Render(track)
 		}
 	}
 	return cells
@@ -765,7 +769,7 @@ func textArea(c present.Column, width int) int {
 // a bar longer than the body is cut, its last line marked.
 func besideMeta(text []string, meta []present.MetaLine, width, body int, method ansi.Method) []string {
 	room := MetaRoom
-	rule := " " + lipgloss.NewStyle().Faint(true).Render(metaRule) + " "
+	rule := " " + quietLine.Render(metaRule) + " "
 	lines := make([]string, body)
 	for i := range lines {
 		left := ""

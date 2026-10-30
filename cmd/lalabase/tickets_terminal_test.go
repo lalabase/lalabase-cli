@@ -143,6 +143,9 @@ func cursorUnder(lines []string, heading, section string) bool {
 // organisation, at most n presses.
 func (c *terminalProcess) moveTo(t *testing.T, key string, width uint16, heading, section string, n int) {
 	t.Helper()
+	// The start's marker comes before the organisations and the features:
+	// a key then finds one entry and does nothing, and n presses fall short.
+	c.expect(t, "the entry to move to", width, heading, section)
 	for range n {
 		if err := c.send(key); err != nil {
 			t.Fatal(err)

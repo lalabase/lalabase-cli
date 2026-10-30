@@ -205,10 +205,10 @@ type app struct {
 	nextOp uint64
 	origin *origin
 	// bookings are the bookings of time out or not cleared up, by ticket id,
-	// each the newest for its ticket (K6); bookNotice says what became of
+	// each the newest for its ticket (K6); bookNotices say what became of
 	// one where its dialog cannot.
-	bookings   map[string]*bookOp
-	bookNotice bookNotice
+	bookings    map[string]*bookOp
+	bookNotices []bookNotice
 	// groupNotice says why g did not group (C11); it stands as long as a
 	// hint.
 	groupNotice bookNotice
@@ -253,7 +253,7 @@ func (a *app) reset() {
 	a.rememberedProject, a.rememberedTickets, a.previewToken = map[string]string{}, map[string]ticketPosition{}, 0
 	a.titles = map[string]*title{}
 	a.marks, a.origin = map[string]*markOp{}, nil
-	a.bookings, a.bookNotice, a.groupNotice = map[string]*bookOp{}, bookNotice{}, bookNotice{}
+	a.bookings, a.bookNotices, a.groupNotice = map[string]*bookOp{}, nil, bookNotice{}
 	a.pause = time.Time{}
 }
 

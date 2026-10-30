@@ -3,7 +3,6 @@ package view
 import (
 	"strings"
 
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/present"
 )
@@ -44,7 +43,7 @@ func HelpLines(bindings []present.KeyHelp, width int, method ansi.Method) []stri
 			line = append(line, fit(label+description, width, method))
 			continue
 		}
-		line = append(line, lipgloss.NewStyle().Reverse(true).Render(label)+styled(description, present.Faint))
+		line = append(line, capStyle.Render(label)+styled(description, present.Faint))
 	}
 	flush()
 	return lines

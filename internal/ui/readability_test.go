@@ -45,7 +45,7 @@ func TestTheTicketIsDrawnInItsStyles(t *testing.T) {
 	for _, p := range d.record.Posts {
 		i := tl.posts[p.ID]
 		author := personOf(p.Author)
-		if st := tl.styles[i]; st.Lead != len(author) || st.LeadStyle != present.Strong || st.RestStyle != present.Faint || !strings.HasPrefix(tl.lines[i], author+"  ") {
+		if st := tl.styles[i]; st.Lead != len(author) || st.LeadStyle != present.Author || st.RestStyle != present.Faint || !strings.HasPrefix(tl.lines[i], author+"  ") {
 			t.Fatalf("the head %q: %+v", tl.lines[i], st)
 		}
 		if st := tl.styles[i+1]; st.Indent != 2 {

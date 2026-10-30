@@ -419,12 +419,15 @@ func (f *Fixture) sixPosts(whole bool) []any {
 	return out
 }
 
+// fileID is the document id of a ticket's i-th file.
+func fileID(i int) string { return fmt.Sprintf("00000000-0000-4000-8000-%012d", 800000+i) }
+
 // sixAttachments have metadata of every kind: odd ones all of it, even
 // ones none (an older server), the last one zero bytes.
 func sixAttachments() []any {
 	var out []any
 	for i := 1; i <= 12; i++ {
-		a := map[string]any{"id": fmt.Sprintf("00000000-0000-4000-8000-%012d", 800000+i), "filename": fmt.Sprintf("six-%02d.txt", i)}
+		a := map[string]any{"id": fileID(i), "filename": fmt.Sprintf("six-%02d.txt", i)}
 		if i%2 == 1 {
 			a["content_type"], a["byte_size"], a["text_status"], a["text"] = "text/plain", i*1000, "available", "text of the file"
 		}
@@ -522,7 +525,10 @@ func (f *Fixture) ticketRecord(project string, n, postsPage, perPage int, newest
 	}
 	t["project"] = map[string]any{"id": project, "name": f.projectName(project)}
 	posts := f.posts(project, n, whole)
-	attachments := []any{map[string]any{"filename": "design.pdf", "content_type": "application/pdf", "byte_size": 1024}, map[string]any{"filename": "screenshot.png", "content_type": "image/png", "byte_size": 2048}}
+	attachments := []any{
+		map[string]any{"id": fileID(1), "filename": "design.pdf", "content_type": "application/pdf", "byte_size": 1024},
+		map[string]any{"id": fileID(2), "filename": "screenshot.png", "content_type": "image/png", "byte_size": 2048},
+	}
 	switch n {
 	case 2:
 		t["description_html"], t["description_text"], t["assignees"], t["creator"], t["status"], t["status_functions"] = "", "", []any{}, nil, nil, []any{}
@@ -530,7 +536,7 @@ func (f *Fixture) ticketRecord(project string, n, postsPage, perPage int, newest
 	case 4:
 		attachments = nil
 		for i := range 12 {
-			attachments = append(attachments, map[string]any{"filename": fmt.Sprintf("file-%02d.txt", i+1), "content_type": "text/plain", "byte_size": 100})
+			attachments = append(attachments, map[string]any{"id": fileID(i + 1), "filename": fmt.Sprintf("file-%02d.txt", i+1), "content_type": "text/plain", "byte_size": 100})
 		}
 	case 6:
 		t["description_html"], t["description_text"] = SixDescription, SixDescription

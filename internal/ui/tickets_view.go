@@ -205,6 +205,10 @@ func (m Model) detailColumn() present.Column {
 		if at, ok := t.posts[d.post]; ok {
 			line = at
 		}
+	case anchorFile:
+		if f, ok := d.selectedFile(); ok {
+			line = t.files[*f.ID]
+		}
 	}
 	if line >= 0 {
 		c.Offset = m.wrappedLines(t, line, c.Meta)
@@ -269,6 +273,7 @@ type ticketLines struct {
 	styles []present.LineStyle
 	areas  [ticketAreas]int
 	posts  map[string]int
+	files  map[string]int
 }
 
 // add appends foreign or own text in one style: a body is cleaned once and
@@ -333,7 +338,7 @@ func (a *app) ownID() string {
 // but a description or a comment keeps its lines.
 func ticketText(d *detailView, c ticketContext) ticketLines {
 	r, paged, origin, when := d.record, c.paged, c.origin, c.when
-	t := ticketLines{posts: map[string]int{}}
+	t := ticketLines{posts: map[string]int{}, files: map[string]int{}}
 	// The head: the title, then one faint line of its facts, unless they
 	// stand in the meta bar, then the line of its agent, if it has one.
 	t.addLead(uitext.Fill(uitext.TicketNumber, r.Number).String()+" "+textOr(r.Title, uitext.UntitledTicket), present.Strong, "", present.Strong)
@@ -409,7 +414,7 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 		// below it. The token's own person (by the id alone, never the
 		// name) is blue and marked, so the mark stays without colour.
 		t.posts[p.ID] = len(t.lines)
-		author, tone := present.NewInline(personOf(p.Author)).String(), present.Strong
+		author, tone := present.NewInline(personOf(p.Author)).String(), present.Author
 		if c.me != "" && p.Author != nil && p.Author.ID == c.me {
 			author, tone = author+" "+uitext.Inline(uitext.You).String(), present.Own
 		}
@@ -443,8 +448,15 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 		t.add(noteLine, pageState(d))
 		return t
 	}
+	selected, chosen := d.selectedFile()
 	for _, f := range r.Attachments {
 		name, rest := attachmentLine(f)
+		if f.ID != nil {
+			t.files[*f.ID] = len(t.lines)
+			if chosen && d.area == areaAttachments && selected.ID != nil && *f.ID == *selected.ID {
+				name = uitext.Inline(uitext.SelectedComment).String() + name
+			}
+		}
 		t.addLead(name, present.Plain, rest, present.Faint)
 		t.styles[len(t.styles)-1].Indent = 2
 	}

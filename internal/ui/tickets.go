@@ -160,8 +160,10 @@ type detailView struct {
 	offset int
 	// area is the active section, post the selected comment (by id),
 	// follow what the pane keeps in sight (C1d).
-	area   ticketArea
-	post   string
+	area ticketArea
+	post string
+	// file is the id of the selected file (C10), "" for the page's first.
+	file   string
 	follow anchor
 	// corrected: the one page correction after a shrink was done; R and a
 	// page turn free it again.
@@ -263,13 +265,16 @@ func (a *app) cancelArea(area gateway.Area) {
 }
 
 // openProjects opens the tickets section of org: its projects, from the
-// cache at once when they are there, then one reload.
+// cache at once when they are there, then one reload. On the section already
+// open it leads back to the projects from a ticket list; Esc in the chooser
+// is the way back to that list.
 func (m Model) openProjects(org string) (Model, tea.Cmd) {
 	a := m.app
 	if !a.canOpen(org, sectionTickets) {
 		return m, nil
 	}
 	if a.projects != nil && a.projects.org == org {
+		a.leaveList()
 		m.focus = view.List
 		return m, nil
 	}

@@ -26,6 +26,9 @@ type Model struct {
 	intoTicket  bool
 	mode        Mode
 	widthMethod ansi.Method
+	// painted: the terminal takes colours, so the window gets the palette's
+	// ground and text (the first frame comes before the answer).
+	painted bool
 	// shell is the placeholder content (organisation, list, object), shown
 	// without a session; it becomes a screen at render time.
 	shell      [3]string

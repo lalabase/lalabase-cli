@@ -224,6 +224,9 @@ func TestPTYDiskCacheStaleWhenTheReloadFails(t *testing.T) {
 	f.ResetAttempts()
 	c = startDisk(t, inboxfixture.Temporary, width, url, home)
 	openInboxA(t, c, width)
+	// Page 1 shows from the disk at once; while its reload is out ] is not
+	// offered and a press does nothing.
+	c.expect(t, "the page key", width, "] next page")
 	c.act(t, "]", width, "#26 Benachrichtigung", "page 2 of 2")
 	c.expect(t, "the failed reload", width, "Cached, possibly stale", "#26 Benachrichtigung")
 	c.act(t, "R", width, "#26 Benachrichtigung", "page 2 of 2")
