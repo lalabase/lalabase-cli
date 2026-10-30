@@ -354,14 +354,20 @@ func (m Model) bindings(small bool) []binding {
 	if len(a.agents.list) > 0 && m.agentsFit() {
 		out = append(out, binding{OpenAgents, uitext.AgentsKey, uitext.AgentsHelp})
 	}
-	if m.canRefresh() {
-		help := uitext.RefreshHelp
-		if a.anyFailed() {
-			help = uitext.RetryHelp
-		}
-		out = append(out, binding{Refresh, uitext.RefreshKey, help})
-	}
+	out = append(out, m.refreshBinding()...)
 	return m.withoutIdleScroll(append(out, binding{Left, uitext.FocusKey, uitext.FocusHelp}))
+}
+
+// refreshBinding is R, when it would read anything.
+func (m Model) refreshBinding() []binding {
+	if !m.canRefresh() {
+		return nil
+	}
+	help := uitext.RefreshHelp
+	if m.app.anyFailed() {
+		help = uitext.RetryHelp
+	}
+	return []binding{{Refresh, uitext.RefreshKey, help}}
 }
 
 // shown: something is open in the list pane (an inbox or the tickets
@@ -528,8 +534,8 @@ func (m Model) ticketBindings() []binding {
 	case d.area == areaAttachments:
 		out = append(out, binding{Up, uitext.UpDownKey, uitext.FileHelp})
 	case stops > len(d.record.Posts):
-		// The help says what the page has, not where the cursor stands: it
-		// does not change on every move.
+		// This entry says what the page has, not where the cursor stands: it
+		// stays the same on every move.
 		out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentOrFileHelp})
 	default:
 		out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentHelp})
@@ -554,14 +560,22 @@ func (m Model) ticketBindings() []binding {
 		out = append(out, binding{Expand, uitext.ExpandKey, uitext.ExpandHelp})
 	}
 	out = append(out, m.xBinding()...)
+	out = append(out, m.writeBindings()...)
+	out = append(out, m.dBinding()...)
+	return append(out, binding{PageUp, uitext.PageUpDownKey, uitext.PageScrollHelp})
+}
+
+// writeBindings are the keys that write on the ticket in the pane, each
+// where it acts.
+func (m Model) writeBindings() []binding {
+	var out []binding
 	if _, ok := m.bookTarget(); ok {
 		out = append(out, binding{BookTime, uitext.BookKey, uitext.BookHelp})
 	}
 	if _, ok := m.commentTarget(); ok {
 		out = append(out, binding{AddComment, uitext.AddCommentKey, uitext.AddCommentHelp})
 	}
-	out = append(out, m.dBinding()...)
-	return append(out, binding{PageUp, uitext.PageUpDownKey, uitext.PageScrollHelp})
+	return out
 }
 
 // withoutIdleScroll drops the scroll bindings of the details when their text

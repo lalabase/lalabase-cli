@@ -308,6 +308,7 @@ const (
 	// S6: the meta bar's label of the person's time on a ticket, and the
 	// same in the head's line of facts.
 	BarBooked
+	BarKeys
 	MetaBooked
 	// C9c: x jumps to an agent's pane or starts it again; the hints of
 	// the ticket's head and what came of either.
@@ -535,7 +536,7 @@ var english = map[ID]string{
 	AgentNotSeen:    "Agent #%d is seen for this run only: %s",
 	AgentsTooMany:   "The agents' directory holds too many files to read; the next start cleans it up.",
 	// S6: the label of the time the person booked on the ticket.
-	BarBooked: "Booked by you", MetaBooked: "booked by you %s",
+	BarBooked: "Booked by you", BarKeys: "Actions", MetaBooked: "booked by you %s",
 	// C9c: x on an agent.
 	JumpHelp: "jump to agent", AgainHelp: "start agent again",
 	AgentHintJump: "x jump to it", AgentHintAgain: "x start again", AgentHintRemove: "d remove", AgentHintEnd: "d end",
