@@ -9,3 +9,10 @@ type Ticket struct {
 	Org, Project, ID string
 	Number           int
 }
+
+// File is a file of a ticket: its document's id as the server sent it, and
+// its name, which only the notice shows. The name is foreign and never
+// part of an address (fileAddress).
+type File struct {
+	ID, Name string
+}
