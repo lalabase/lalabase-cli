@@ -434,6 +434,52 @@ type Post struct {
 	BodyText  string `json:"body_text"`
 	IsPrivate bool   `json:"is_private"`
 	CreatedAt string `json:"created_at"`
+	// Attachments are the comment's files (core R7), each ID the comment
+	// document's; nil from a server that does not list them, which says
+	// how many there are in AttachmentsCount alone. An empty list is a
+	// list: it may stand beside a count above zero, of files whose content
+	// is gone.
+	Attachments      []Attachment `json:"attachments"`
+	AttachmentsCount int          `json:"attachments_count"`
+}
+
+// UnmarshalJSON reads what the spec names strictly and the files leniently,
+// as an attachment's metadata: neither is required, so what does not read
+// never refuses a ticket that is valid without it.
+func (p *Post) UnmarshalJSON(data []byte) error {
+	type fields Post // without this method
+	raw := struct {
+		*fields
+		Attachments      json.RawMessage `json:"attachments"`
+		AttachmentsCount json.RawMessage `json:"attachments_count"`
+	}{fields: new(fields)}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*p = Post(*raw.fields)
+	p.Attachments = postFiles(raw.Attachments)
+	// A count is a whole number, written as one, as a size is.
+	if n, err := strconv.Atoi(string(raw.AttachmentsCount)); err == nil && n >= 0 {
+		p.AttachmentsCount = n
+	}
+	return nil
+}
+
+// postFiles is a comment's list, nil for anything else: an entry that does
+// not read or has no name is left out.
+func postFiles(raw json.RawMessage) []Attachment {
+	var entries []json.RawMessage
+	if json.Unmarshal(raw, &entries) != nil || entries == nil {
+		return nil
+	}
+	files := make([]Attachment, 0, len(entries))
+	for _, entry := range entries {
+		var f Attachment
+		if json.Unmarshal(entry, &f) == nil && f.Filename != "" {
+			files = append(files, f)
+		}
+	}
+	return files
 }
 
 // Attachment is one file of a ticket. The file name is required; the
