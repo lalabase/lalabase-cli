@@ -83,20 +83,20 @@ func terminalOutputError(output string) error {
 				switch final {
 				case 'm':
 					// Reset, bold, faint and the end of both, reversed (the
-					// cursor bar, the key caps) and its end, the three tones
-					// of a status (green, yellow, cyan), red for a notice of
-					// a problem, blue for the focused pane's frame and the end
-					// of a colour, the grey ground of the cursor outside the
-					// focus and its end, and magenta, kept for an agent that
-					// waits for the person (C9), and the focused pane's ground
-					// (48;5;234, nothing else of 48): the view's own
-					// attributes. No other colour, no other attribute.
+					// cursor bar, the key caps) and its end, the end of a
+					// colour, and the palette at this terminal's 256 colours:
+					// the view's own attributes. No other colour, no other
+					// attribute.
 					for i := 0; i < len(values); i++ {
 						switch n := values[i]; n {
-						case 0, 1, 2, 7, 22, 27, 31, 32, 33, 34, 35, 36, 39, 49, 100:
-						case 48:
-							if i+2 >= len(values) || values[i+1] != 5 || values[i+2] != 234 {
-								reject("SGR 48 other than the focus ground")
+						case 0, 1, 2, 7, 22, 27, 31, 32, 33, 34, 35, 36, 39, 49:
+						case 38, 48:
+							allowed := palette256Text
+							if n == 48 {
+								allowed = palette256Grounds
+							}
+							if i+2 >= len(values) || values[i+1] != 5 || !allowed[values[i+2]] {
+								reject(fmt.Sprintf("SGR %d other than the palette's", n))
 							}
 							i += 2
 						default:
@@ -148,7 +148,15 @@ func terminalOutputError(output string) error {
 			}
 			reject("ESC")
 		},
-		HandleOsc: func(int, []byte) { reject("OSC") }, HandleDcs: func(ansi.Cmd, ansi.Params, []byte) { reject("DCS") },
+		HandleOsc: func(_ int, data []byte) {
+			// The window's ground and text (the palette's) and their reset.
+			switch string(data) {
+			case "10;#c4c7cd", "11;#0e1014", "110", "111":
+			default:
+				reject("OSC")
+			}
+		},
+		HandleDcs: func(ansi.Cmd, ansi.Params, []byte) { reject("DCS") },
 		HandleApc: func([]byte) { reject("APC") }, HandlePm: func([]byte) { reject("PM") }, HandleSos: func([]byte) { reject("SOS") },
 	})
 	p.Parse([]byte(output))
@@ -235,6 +243,13 @@ func TestTerminalOutputAllowsRendererGrammar(t *testing.T) {
 		}
 	}
 }
+
+// The palette (internal/ui/view/palette.go) at 256 colours: what text may
+// be drawn in, and the grounds of the focused pane and a bar out of focus.
+var (
+	palette256Text    = map[int]bool{60: true, 69: true, 111: true, 116: true, 140: true, 150: true, 174: true, 180: true, 253: true, 255: true}
+	palette256Grounds = map[int]bool{234: true, 238: true}
+)
 
 func TestTerminalOutputRejectsControlFamilies(t *testing.T) {
 	// Keep cases separate so an early UTF-8 error cannot mask a missing handler.

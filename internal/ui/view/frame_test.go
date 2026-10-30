@@ -61,7 +61,7 @@ func TestTheFocusedPanesFrameStandsOut(t *testing.T) {
 			t.Errorf("unfocused, line %d: the frame is not faint: %q", i, rest[i])
 		}
 	}
-	if !strings.Contains(focused[0], bold+"Tickets") || strings.Contains(rest[0], bold+"Tickets") {
+	if !strings.Contains(focused[0], focusBold+"Tickets") || strings.Contains(rest[0], focusBold+"Tickets") {
 		t.Fatalf("the titles: %q / %q", focused[0], rest[0])
 	}
 	if b, _ := cellsWith(focused[1], 34, 39); b[1] || b[2] {
@@ -114,7 +114,7 @@ func TestTheFramedPanesFillTheWidth(t *testing.T) {
 		if n := strings.Count(top, frameTopLeft); n != g.Columns {
 			t.Errorf("%d columns: %d frames in %q", g.Columns, n, top)
 		}
-		if n := strings.Count(body[0], "\x1b[1;34m"); n != 2 {
+		if n := strings.Count(body[0], "\x1b[1;38;2;107;154;238m"); n != 3 {
 			// the focused pane's border before and after its title
 			t.Errorf("%d columns: the blue border drawn %d times in %q", g.Columns, n, body[0])
 		}

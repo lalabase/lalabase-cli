@@ -132,16 +132,22 @@ navigation again.
   there, or against an older server there is no such line.
   Comments by the token's own
   person show the author as "Name (you)", blue and bold; every other author
-  is bold without colour. Only the user id from `/api/v1/me` decides, never
+  is bold and violet. Only the user id from `/api/v1/me` decides, never
   a name, and without colour the "(you)" still says it. The client never guesses a meaning from a status name, since every
   project names its statuses its own way; a status without a function, or
   from a server before the field, has no tone. The colours are the
-  terminal's own sixteen, so the theme picks the shade, and `NO_COLOR` turns
-  them off. Bold, faint and colour only weigh the text: a terminal without
-  them shows the same words. The cursor row of the focused pane is a bar,
+  client's own palette, the same on every terminal: while it runs the
+  window takes the palette's dark ground and pale text through the
+  terminal's own colours (OSC 10 and 11), and gets its own back at the end;
+  a terminal without those sequences keeps its ground under the palette's
+  pale text, so it wants a dark theme. A terminal with fewer colours gets the
+  nearest ones. `NO_COLOR` turns all of it off and leaves bold, faint and
+  reversed. Bold, faint and colour only weigh the text: a terminal without
+  them shows the same words. A terminal program cannot pick the font; the
+  palette was drawn for JetBrains Mono, set in the terminal's profile. The cursor row of the focused pane is a bar,
   reversed over the pane's width (both lines of a two-line entry), in which
   faint and a status's tone give way and bold stays; the other panes draw
-  their cursor row the same way on the terminal's grey (colour 8) instead of
+  their cursor row the same way on a grey ground instead of
   reversed. Both keep the marker `>`, so the cursor shows without any
   attribute. The help at the bottom draws each key as a key cap, reversed
   with a space either side, its description faint. Free text that is longer than its pane (a ticket,
@@ -168,7 +174,8 @@ navigation again.
   return the remembered page and row) `[`/`]` turn the server pages and
   `Enter` on a row shows its details from the row itself (no request). In
   the tickets `Enter` on a project opens its tickets (25 a page, `[`/`]`;
-  on a return the remembered page, row and search), `/` opens a one-line
+  on a return the remembered page, row and search; `Enter` on the section
+  in the chooser leads back to the projects), `/` opens a one-line
   search where every printable key is text, `Enter` sends it once and
   `Esc` discards it (a blank search clears the filter), and `Enter` on a
   ticket opens it. `Esc` goes back one level, `R` refreshes what is shown
@@ -472,8 +479,8 @@ navigation again.
 
     | State | Glyph | Tone | From |
     |---|---|---|---|
-    | waiting for approval | `!` | magenta, bold | `PermissionRequest` or `Notification` with `notification_type: "permission_prompt"` |
-    | waiting for you | `⣿` | magenta | `Stop`, the question tool's request, or `SessionStart` after `/clear`, `/resume` or `/branch` (no `Stop` follows them) |
+    | waiting for approval | `!` | violet, bold | `PermissionRequest` or `Notification` with `notification_type: "permission_prompt"` |
+    | waiting for you | `⣿` | violet | `Stop`, the question tool's request, or `SessionStart` after `/clear`, `/resume` or `/branch` (no `Stop` follows them) |
     | lost | `✕` | red | the pid is gone, or now has another start time; or, written by the client, an agent that never got past starting lost its pane, or its `claude` ended here before any hook (C9c) |
     | working | braille spinner | cyan | `SessionStart` (a start, as `x`'s), `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop` with a background task running |
     | starting | `⠂` | cyan, faint | no hook yet (the folder's trust dialog comes first) |

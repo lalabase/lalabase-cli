@@ -33,7 +33,7 @@ func TestRowsRenderMarkerValueAndSecondLine(t *testing.T) {
 	got := content(c, 24, 5, false, ansi.WcWidth)
 	want := []string{
 		"  All organisations   33",
-		"\x1b[1m> Nordlicht GmbH      30\x1b[0m",
+		"\x1b[1;38;2;241;243;245m> Nordlicht GmbH      30\x1b[m",
 		"  A very long organis… ?",
 		"                        ",
 		"                        ",

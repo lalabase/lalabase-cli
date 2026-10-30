@@ -69,7 +69,7 @@ func TestHelpWrapsInsteadOfDroppingBindings(t *testing.T) {
 		}
 	}
 	// The key cap is reversed, the description faint.
-	if got := HelpLines(bindings, 80, ansi.WcWidth)[0]; !strings.Contains(got, "\x1b[7m q \x1b[m"+faint) || !strings.Contains(got, faint+"quit") {
+	if got := HelpLines(bindings, 80, ansi.WcWidth)[0]; !strings.Contains(got, "\x1b[7;38;2;216;218;223m q \x1b[m"+faint) || !strings.Contains(got, faint+"quit") {
 		t.Fatalf("key caps: %q", got)
 	}
 	if HelpLines(nil, 80, ansi.WcWidth) != nil || HelpLines(bindings, 0, ansi.WcWidth) != nil {

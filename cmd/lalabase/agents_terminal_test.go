@@ -83,8 +83,8 @@ func TestPTYAgentsInTheListAndTheHead(t *testing.T) {
 				}
 				return
 			}
-			if !strings.Contains(out, "\x1b[35m⣿") {
-				t.Fatalf("the glyph is not magenta: %q", out)
+			if !strings.Contains(out, "\x1b[38;5;140m⣿") {
+				t.Fatalf("the glyph is not violet: %q", out)
 			}
 		})
 	}

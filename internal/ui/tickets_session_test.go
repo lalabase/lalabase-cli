@@ -985,10 +985,11 @@ func TestSwitchingSectionsRemembersAndCancels(t *testing.T) {
 	if h.m.focus != view.List {
 		t.Fatal("esc in the chooser did not return to the list")
 	}
-	// Opening the same section again from the chooser only focuses.
+	// Opening the same section again from the chooser leads back to its
+	// projects, without a request.
 	reads := len(h.f.projectReads())
-	if cmd := h.chooseTickets(orgA); cmd != nil || a.tickets == nil || h.m.focus != view.List || len(h.f.projectReads()) != reads {
-		t.Fatal("re-opening the open section reloaded")
+	if cmd := h.chooseTickets(orgA); cmd != nil || a.tickets != nil || a.projects == nil || h.m.focus != view.List || len(h.f.projectReads()) != reads {
+		t.Fatal("re-opening the open section reloaded or stayed in the tickets")
 	}
 }
 
@@ -2111,5 +2112,40 @@ func TestAFailedFirstLoadNamesNoTicket(t *testing.T) {
 	}
 	if got := h.m.screen().Object.Text.String(); strings.Contains(got, row.Title) {
 		t.Fatalf("the failed load named the ticket: %q", got)
+	}
+}
+
+// Left from the tickets goes to the chooser, and Enter on the section the
+// person is in leads back to its projects, with the ticket shown gone and
+// the project and its place remembered. Without tickets, Enter only moves
+// the focus, and Esc from the chooser still returns to the list as it was.
+func TestEnterOnTheOpenSectionGoesBackToItsProjects(t *testing.T) {
+	h := newHarness(t)
+	h.openTickets(website)
+	h.withoutBookedTime()
+	a := h.m.app
+	h.press("down")
+	selected := a.tickets.selected
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if a.detail == nil {
+		t.Fatal("no preview to close")
+	}
+	h.press("left")
+	h.press("esc")
+	if a.tickets == nil || h.m.focus != view.List {
+		t.Fatalf("esc from the chooser: tickets %v focus %d", a.tickets != nil, h.m.focus)
+	}
+	h.press("left")
+	h.press("enter")
+	if a.tickets != nil || a.detail != nil || a.projects == nil || a.projects.selected != website || h.m.focus != view.List {
+		t.Fatalf("after enter: tickets %v detail %v projects %+v focus %d", a.tickets != nil, a.detail != nil, a.projects, h.m.focus)
+	}
+	if got := a.rememberedTickets[website].selected; got != selected {
+		t.Fatalf("remembered row %q, want %q", got, selected)
+	}
+	h.press("left")
+	h.press("enter")
+	if a.projects == nil || h.m.focus != view.List {
+		t.Fatalf("enter on the projects: projects %v focus %d", a.projects != nil, h.m.focus)
 	}
 }

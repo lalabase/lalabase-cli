@@ -91,6 +91,8 @@ var reachableImports = map[string][]string{
 	// Their writing names are refused below (Println, Fprint, Writer,
 	// WithoutCatchPanics).
 	"charm.land/bubbletea/v2": nil, "charm.land/lipgloss/v2": nil, "github.com/charmbracelet/x/ansi": nil,
+	// Constants of the terminal's colours; nothing in it writes here.
+	"github.com/charmbracelet/colorprofile": {"Ascii", "NoTTY"},
 }
 
 // fileSystemImports are what the packages that keep the client's files for

@@ -102,10 +102,10 @@ func TestTheMetaBarStaysAndKeepsItsStyles(t *testing.T) {
 	if !strings.Contains(top[1], faint+"Status") {
 		t.Fatalf("the label is not faint: %q", top[1])
 	}
-	if !strings.Contains(top[2], "\x1b[33min progress") {
+	if !strings.Contains(top[2], "\x1b[38;2;223;193;132min progress") {
 		t.Fatalf("the status is not in its tone: %q", top[2])
 	}
-	if !strings.Contains(top[5], "Anna Albers") || strings.Contains(top[5], "\x1b[1mAnna") || strings.Contains(top[5], "\x1b[2mAnna") {
+	if !strings.Contains(top[5], "Anna Albers") || strings.Contains(top[5], "\x1b[1;38;2;241;243;245mAnna") || strings.Contains(top[5], "\x1b[2mAnna") {
 		t.Fatalf("the value is not plain: %q", top[5])
 	}
 	short := pane(c, 84, 6, true, ansi.WcWidth)
@@ -143,7 +143,7 @@ func TestTheMetaBarsRuleIsFaintAndAFullBarIsWhole(t *testing.T) {
 	c.Meta = c.Meta[:5] // Status, in progress, "", People, Anna Albers
 	lines := content(c, 80, len(c.Meta), true, ansi.WcWidth)
 	for i, line := range lines {
-		if !strings.Contains(line, faint+metaRule) {
+		if !strings.Contains(line, "\x1b[2;38;2;106;110;120m"+metaRule) {
 			t.Fatalf("line %d: the rule is not faint: %q", i, line)
 		}
 	}

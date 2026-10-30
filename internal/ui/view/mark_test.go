@@ -54,12 +54,12 @@ func TestEveryStatesGlyphInItsTone(t *testing.T) {
 		style present.Style
 		want  string
 	}{
-		{"!", present.AgentApproval, "\x1b[1;35m!\x1b[m"},
-		{"⣿", present.AgentWaiting, "\x1b[35m⣿\x1b[m"},
-		{"✕", present.AgentLost, "\x1b[31m✕\x1b[m"},
-		{"⠹", present.AgentWorking, "\x1b[36m⠹\x1b[m"},
-		{"⠂", present.AgentStarting, "\x1b[2;36m⠂\x1b[m"},
-		{"✓", present.AgentEnded, "\x1b[2;32m✓\x1b[m"},
+		{"!", present.AgentApproval, "\x1b[1;38;2;191;148;228m!\x1b[m"},
+		{"⣿", present.AgentWaiting, "\x1b[38;2;191;148;228m⣿\x1b[m"},
+		{"✕", present.AgentLost, "\x1b[38;2;223;115;118m✕\x1b[m"},
+		{"⠹", present.AgentWorking, "\x1b[38;2;117;197;213m⠹\x1b[m"},
+		{"⠂", present.AgentStarting, "\x1b[2;38;2;117;197;213m⠂\x1b[m"},
+		{"✓", present.AgentEnded, "\x1b[2;38;2;157;207;146m✓\x1b[m"},
 	} {
 		got := row(marked("#6 Login", c.glyph, c.style, false), 30, 4, false, noBar, false, ansi.WcWidth)[0]
 		if want := "  " + c.want + " #6 Login"; !strings.HasPrefix(got, want) {
@@ -71,7 +71,7 @@ func TestEveryStatesGlyphInItsTone(t *testing.T) {
 // In a quiet row (a done ticket) the text is faint, the glyph is not.
 func TestTheGlyphIsNotFaintInAQuietRow(t *testing.T) {
 	got := row(marked("#6 Login", "⣿", present.AgentWaiting, true), 30, 4, false, noBar, false, ansi.WcWidth)[0]
-	if !strings.HasPrefix(got, "  \x1b[35m⣿\x1b[m \x1b[2m#6 Login") {
+	if !strings.HasPrefix(got, "  \x1b[38;2;191;148;228m⣿\x1b[m \x1b[2m#6 Login") {
 		t.Fatalf("%q", got)
 	}
 }

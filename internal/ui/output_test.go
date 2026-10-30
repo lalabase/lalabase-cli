@@ -12,7 +12,7 @@ import (
 )
 
 // viewSGR are the SGR parameters the view writes itself.
-var viewSGR = map[int]bool{0: true, 1: true, 2: true, 7: true, 22: true, 32: true, 33: true, 34: true, 36: true, 39: true, 49: true, 100: true}
+var viewSGR = map[int]bool{0: true, 1: true, 2: true, 7: true, 22: true, 27: true, 39: true, 49: true}
 
 func TestShellBodyColumnsStayAligned(t *testing.T) {
 	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
@@ -36,7 +36,7 @@ func TestShellBodyColumnsStayAligned(t *testing.T) {
 					if len(lines) != height {
 						t.Fatalf("height %d: %d lines", height, len(lines))
 					}
-					if !strings.Contains(lines[2], "\x1b[1m") {
+					if !strings.Contains(lines[2], "\x1b[1;") {
 						t.Fatal("fixture omitted the styled focus title")
 					}
 					for row, line := range lines[2 : height-1] {
@@ -89,16 +89,16 @@ func assertViewSafe(t *testing.T, text string) {
 				forbidden("non-SGR CSI")
 				return
 			}
-			// The view's own attributes: reset, bold, faint, reversed
-			// (the cursor bar), the end of bold and faint, the three tones of a status (green, yellow,
-			// cyan) and their end, and the focused pane's ground (48;5;234)
-			// and its end. Foreign text brings none (it is cleaned).
+			// The view's own attributes: reset, bold, faint, reversed (the
+			// cursor bar), their ends, and the palette's colours as 24-bit
+			// values and their end. Foreign text brings none (it is
+			// cleaned).
 			for i := 0; i < len(params); i++ {
-				if params[i].Param(0) == 48 {
-					if i+2 >= len(params) || params[i+1].Param(0) != 5 || params[i+2].Param(0) != 234 {
-						forbidden("unexpected background")
+				if p := params[i].Param(0); p == 38 || p == 48 {
+					if i+4 >= len(params) || params[i+1].Param(0) != 2 {
+						forbidden("unexpected colour")
 					}
-					i += 2
+					i += 4
 					continue
 				}
 				if !viewSGR[params[i].Param(0)] {

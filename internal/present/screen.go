@@ -127,12 +127,13 @@ const (
 	NoticeProblem
 	NoticeWaiting
 	// Own is the token's own person among a ticket's comment authors
-	// (L2): everyone else is Strong. A text mark beside the name says the
+	// (L2), Author everyone else. A text mark beside the name says the
 	// same without colour.
 	Own
+	Author
 	// The tones of an agent's state (C9a), in its order of urgency:
 	// waiting for an approval, waiting for the person, lost, working,
-	// starting, ended. The two waits alone are magenta. A glyph and a
+	// starting, ended. The two waits alone share the authors' violet. A glyph and a
 	// word say the state; the tone only makes it seen.
 	AgentApproval
 	AgentWaiting

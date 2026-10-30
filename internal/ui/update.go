@@ -4,6 +4,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
@@ -52,6 +53,10 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			// selected ticket, if any, is due after the pause.
 			return m, m.selectionChanged()
 		}
+		return m, nil
+	case tea.ColorProfileMsg:
+		// NO_COLOR or no terminal: the window stays the terminal's own.
+		m.painted = msg.Profile != colorprofile.NoTTY && msg.Profile != colorprofile.Ascii
 		return m, nil
 	case tea.ModeReportMsg:
 		if msg.Mode == ansi.ModeUnicodeCore && (msg.Value == ansi.ModeReset || msg.Value == ansi.ModeSet || msg.Value == ansi.ModePermanentlySet) {
