@@ -17,6 +17,8 @@ func message(t *testing.T, cmd tea.Cmd) tea.Msg {
 }
 
 func TestTheFatalMessageQuits(t *testing.T) {
+	t.Parallel()
+
 	m := New()
 	m.width, m.height = 120, 24
 	next, cmd := step(t, m, worker.Fatal{})
@@ -31,6 +33,8 @@ func TestTheFatalMessageQuits(t *testing.T) {
 // The model learns of a fatal error through its supervisor, also when it
 // notices the ended lifetime first; a lifetime that just ended says nothing.
 func TestTheModelWatchesItsSupervisor(t *testing.T) {
+	t.Parallel()
+
 	if New().Init() != nil {
 		t.Fatal("a model without a supervisor watches something")
 	}

@@ -30,8 +30,12 @@ Read the section of the slice you work on before you start.
 ## Check before every push
 
 ```sh
-gofmt -l . && go vet ./... && go test -race -count=1 -timeout 10m ./... && golangci-lint run
+scripts/check
 ```
+
+While working use `scripts/check fast`: `go test -short` from Go's cache runs
+the packages a change reaches, without the pseudo-terminals, in seconds. Run
+the full check once, before the push, not after every edit.
 
 The CI runs the same plus a 20 s fuzz run of `internal/clean` and `go-licenses`
 (see README "Development"). The CI tests on Linux only: code behind
@@ -154,6 +158,9 @@ on a Mac before every merge, by running the tests here.
   holding the run.
 * A test that cannot set up its case skips locally but **fails on the CI**
   (`os.Getenv("CI")`): a skip there passes without testing anything.
+* Tests in `internal/ui` and the `TestPTY` tests run in parallel: a new one
+  there starts with `t.Parallel()`, unless it changes process state (a
+  serial test finishes before any parallel one goes on).
 * Terminal output is asserted on bytes; the terminal is tested through a real
   pseudo-terminal (`github.com/creack/pty`). The dialog's own tests and
   `tools/dialog-fixture` start with one (`ui.WithDialog`); the source guard

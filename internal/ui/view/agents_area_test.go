@@ -67,6 +67,8 @@ func bodyColumn(out string, from, width, top, height int) []string {
 }
 
 func TestTheAreaStandsUnderTheOrganisations(t *testing.T) {
+	t.Parallel()
+
 	g := geometryOf(120, 24) // body 21
 	out := Render(areaScreen(agentRows(2, false), -1), g, Navigation, ansi.WcWidth)
 	nav := bodyColumn(out, 0, 26, 2, g.BodyHeight)
@@ -93,6 +95,8 @@ func TestTheAreaStandsUnderTheOrganisations(t *testing.T) {
 
 // At most half the column high; beyond, it scrolls with its cursor.
 func TestTheAreaIsAtMostHalfTheColumnAndScrolls(t *testing.T) {
+	t.Parallel()
+
 	g := geometryOf(120, 24)
 	rows := agentRows(20, true)
 	c := areaScreen(rows, 17).Agents
@@ -124,6 +128,8 @@ func TestTheAreaIsAtMostHalfTheColumnAndScrolls(t *testing.T) {
 // beside the object pane; in one a screen of their own; no line is wider than the terminal in any layout, and every
 // line of the body is its width.
 func TestTheAgentsInTwoColumnsAndOne(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []int{60, 80, 100, 120, 160} {
 		g := geometryOf(width, 24)
 		for _, focus := range []Pane{Navigation, List, Object, Agents} {
@@ -167,6 +173,8 @@ func TestTheAgentsInTwoColumnsAndOne(t *testing.T) {
 // the few lines two agents need (a list's compact mode would drop the
 // organisation and leave the lines it was measured for empty).
 func TestTheAreasRowsKeepTheirSecondLine(t *testing.T) {
+	t.Parallel()
+
 	g := geometryOf(100, 24) // body 21, half 10
 	s := areaScreen(agentRows(2, true), -1)
 	if got := AgentsHeight(s.Chooser, s.Agents, g.BodyHeight, false); got != 6 {
@@ -201,6 +209,8 @@ func TestTheAreasRowsKeepTheirSecondLine(t *testing.T) {
 // Review of #36 on bdded98: in a low pane with a notice in the chooser,
 // the area leaves the chooser its frame, its notice and one entry.
 func TestTheAreaLeavesTheChooserAnEntry(t *testing.T) {
+	t.Parallel()
+
 	s := areaScreen(agentRows(2, false), -1)
 	s.Chooser.Notice = present.NewInline("Inbox is not supported.")
 	for height := 4; height <= 12; height++ {
@@ -224,6 +234,8 @@ func TestTheAreaLeavesTheChooserAnEntry(t *testing.T) {
 // in the list's place in two, alone in one. Its split was once worked out
 // in the interface apart from the drawing, and the two drifted.
 func TestFocusedCapacityIsWhatTheAgentsPaneDraws(t *testing.T) {
+	t.Parallel()
+
 	for _, size := range [][2]int{{60, 30}, {100, 30}, {130, 30}, {130, 14}, {100, 14}} {
 		g := geometryOf(size[0], size[1])
 		s := areaScreen(agentRows(20, true), 0)

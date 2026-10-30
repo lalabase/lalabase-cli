@@ -23,6 +23,8 @@ import (
 // and the word stay and no colour is drawn; with colour the glyph is
 // magenta.
 func TestPTYAgentsInTheListAndTheHead(t *testing.T) {
+	t.Parallel()
+
 	for _, noColor := range []bool{false, true} {
 		t.Run(fmt.Sprintf("NO_COLOR=%v", noColor), func(t *testing.T) {
 			_, url := fixtureServer(t, inboxfixture.Normal)

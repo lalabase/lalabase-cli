@@ -12,6 +12,8 @@ import (
 // R3: an organisation counted before, then left the directory and omitted
 // by a newer global snapshot, is unknown when the directory lists it again.
 func TestR3OmittedKnownOrganisationIsUnknownOnReturn(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	if !h.m.app.countOf(orgA).known {

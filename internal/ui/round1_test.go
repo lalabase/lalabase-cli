@@ -19,6 +19,8 @@ import (
 // from, and its answer must still arrive: the order of requests is kept
 // per key, so a newer answer for another page holds nothing back.
 func TestPagingBackJoinsThePendingGlobalRead(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
 		if q.Page == 2 {
@@ -90,6 +92,8 @@ func TestPagingBackJoinsThePendingGlobalRead(t *testing.T) {
 // of the key (the counters' refresh of the global page) clears the view of
 // the same key too: rows the server took away never stay on screen.
 func TestARemovalThroughAnotherConsumerClearsTheView(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(""))
@@ -125,6 +129,8 @@ func TestARemovalThroughAnotherConsumerClearsTheView(t *testing.T) {
 // Review round 1, finding 6: a canceled read of the global page holds back
 // neither the counters' refresh nor the opening of all organisations.
 func TestACanceledGlobalReadHoldsNothingBack(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	first := h.choose("")   // the global page, its read not yet run
@@ -145,6 +151,8 @@ func TestACanceledGlobalReadHoldsNothingBack(t *testing.T) {
 // Review round 1, finding 8: the fallbacks judge the cleaned text. A name
 // of invisible characters alone is no name.
 func TestFallbacksJudgeTheCleanedText(t *testing.T) {
+	t.Parallel()
+
 	invisible := "\u202e\u2066\u200b"
 	h := newHarness(t)
 	me := h.d.me
@@ -191,6 +199,8 @@ func TestFallbacksJudgeTheCleanedText(t *testing.T) {
 // Review round 1, finding 9: the frame never exceeds the terminal. Where
 // the help would leave no line for the body, only leaving is offered.
 func TestTheFrameNeverExceedsTheTerminal(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -223,6 +233,8 @@ func TestTheFrameNeverExceedsTheTerminal(t *testing.T) {
 // Review round 1, finding 10 and review 2, finding 6: the details scroll
 // only as far as there is text, and the help offers scrolling only then.
 func TestDetailScrollIsBoundedAndOfferedOnlyWhenNeeded(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
 		rows := h.d.rows(orgA, 1, 2)
@@ -270,6 +282,8 @@ func TestDetailScrollIsBoundedAndOfferedOnlyWhenNeeded(t *testing.T) {
 // Review 2, finding 6: the page keys are offered one by one, each where its
 // page exists.
 func TestThePageKeysAreOfferedOneByOne(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -292,6 +306,8 @@ func TestThePageKeysAreOfferedOneByOne(t *testing.T) {
 // name in the heading of its open inbox; only the entry for all is called
 // so.
 func TestADroppedOrganisationKeepsItsNameInTheHeading(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -312,6 +328,8 @@ func TestADroppedOrganisationKeepsItsNameInTheHeading(t *testing.T) {
 // A late result for a key whose cache holds a newer request's answer is
 // not filed over it; the view keeps the newer rows.
 func TestAnOlderRequestsAnswerIsNotFiledOverANewerOne(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	counters := h.startHolding()
 	old := messages(t, counters)[0] // the flight landed; the message waits
@@ -342,6 +360,8 @@ var _ = tea.Quit
 // take away what the newer request brought: the order kept per key does
 // not see two keys, a removal speaks for the whole resource.
 func TestAnOlderGlobalPageAnsweredAfterANewerOneChangesNothing(t *testing.T) {
+	t.Parallel()
+
 	page2 := func(h *harness) func(api.NotificationQuery) transport.Answer {
 		return func(q api.NotificationQuery) transport.Answer {
 			return pageAnswer(2, q.PerPage, 33, 33, h.d.rows(orgB, 101, 3), map[string]int{orgA: 30, orgB: 3})

@@ -12,6 +12,8 @@ import (
 // letters of two bytes is whole, a server's cut of it stays the server's,
 // and a cut never splits a character (review round 1 of #48, finding 2).
 func TestShownCutsAtTheBoundInCharacters(t *testing.T) {
+	t.Parallel()
+
 	const limit = 8
 	umlauts := strings.Repeat("ä", limit)
 	cases := []struct {

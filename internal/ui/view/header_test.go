@@ -28,6 +28,8 @@ func headerScreen(identity string, c []present.AgentCount) present.Screen {
 const fullSummary = "Agents ! 1 · ⣿ 2 · ✕ 1 · ⠹ 1 · ✓ 12"
 
 func TestTheSummaryStandsRightInTheHeader(t *testing.T) {
+	t.Parallel()
+
 	s := headerScreen("Ada Example | Token can write: yes", counts())
 	got := headerLine(s, 120, ansi.WcWidth)
 	plain := ansi.Strip(got)
@@ -59,6 +61,8 @@ func TestTheSummaryStandsRightInTheHeader(t *testing.T) {
 // Below 120 columns the word goes; a state without agents is never
 // listed (the model leaves it out).
 func TestBelow120ColumnsTheWordGoes(t *testing.T) {
+	t.Parallel()
+
 	s := headerScreen("Ada", counts())
 	if got := ansi.Strip(headerLine(s, 119, ansi.WcWidth)); !strings.HasSuffix(got, "! 1 · ⣿ 2 · ✕ 1 · ⠹ 1 · ✓ 12") || strings.Contains(got, "Agents") {
 		t.Fatalf("%q", got)
@@ -73,6 +77,8 @@ func TestBelow120ColumnsTheWordGoes(t *testing.T) {
 // app and the profile stay whole. The line is never wider than the
 // terminal, whatever the width.
 func TestANarrowHeaderGivesWayInOrder(t *testing.T) {
+	t.Parallel()
+
 	s := headerScreen("A rather long display name | Token can write: yes", counts())
 	for width := 1; width <= 200; width++ {
 		got := headerLine(s, width, ansi.WcWidth)

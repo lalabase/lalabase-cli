@@ -14,6 +14,8 @@ import (
 )
 
 func TestR2LiveObserved401BeforeResizeClearsScreenAndCache(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.events = gateway.NewEvents(h.live)
@@ -52,6 +54,8 @@ func TestR2LiveObserved401BeforeResizeClearsScreenAndCache(t *testing.T) {
 // Hold the mailbox's Wake until after the next input. The observation is
 // real; only delivery to the single-threaded model is deliberately delayed.
 func TestR2Observed401BeforeNonDataEventClearsScreenAndCache(t *testing.T) {
+	t.Parallel()
+
 	for _, event := range []string{"resize", "pause expiry", "q", "ctrl+c", "late startup", "unknown waiter"} {
 		t.Run(event, func(t *testing.T) {
 			h := newHarness(t)
@@ -119,6 +123,8 @@ func (m r2PanicModel) View() tea.View {
 }
 
 func TestR2GuardSeams(t *testing.T) {
+	t.Parallel()
+
 	for _, where := range []string{"init", "final view", "init command", "update command"} {
 		t.Run(where, func(t *testing.T) {
 			sup := worker.New(context.Background())
@@ -152,6 +158,8 @@ func TestR2GuardSeams(t *testing.T) {
 }
 
 func TestR2ExpireCancelsHeldInboxWaiter(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	gate := make(chan struct{})
@@ -174,6 +182,8 @@ func TestR2ExpireCancelsHeldInboxWaiter(t *testing.T) {
 }
 
 func TestR2Mailbox401OutranksOlderRemovalOrder(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	// A's first flight completes while its model message remains undelivered.
@@ -196,6 +206,8 @@ func TestR2Mailbox401OutranksOlderRemovalOrder(t *testing.T) {
 }
 
 func TestR2ForeignFatalCurrentlyQuitsWithoutOwnFailure(t *testing.T) {
+	t.Parallel()
+
 	other := worker.New(context.Background())
 	defer other.Stop(time.Second)
 	worker.Run(other, "other session", func() bool { panic("foreign") })
@@ -225,6 +237,8 @@ func (m r2FailDuringUpdate) Update(tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func TestR2FatalDuringUpdateIsDurableAndQuits(t *testing.T) {
+	t.Parallel()
+
 	sup := worker.New(context.Background())
 	defer sup.Stop(time.Second)
 	g := guarded{model: r2FailDuringUpdate{sup: sup}, sup: sup}

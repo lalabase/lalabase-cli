@@ -24,6 +24,8 @@ import (
 // it; the profile's allow_write cannot reach the decision. Would miss: nil
 // taken as false; a lock on the help alone.
 func TestMarkReadNeedsAnExplicitWritePermission(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name     string
 		readOnly *bool
@@ -106,6 +108,8 @@ func boolPtr(b bool) *bool { return &b }
 // section, whatever an inbox visit cached; Esc returns to the details.
 // Would miss: an origin taken from the ticket's cache entry.
 func TestTheTargetIsTheRowOrTheTicketOpenedFromIt(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
 		rows := slices2(h.d.rows(orgA, 1, 30), h.f.readIDs())
@@ -224,6 +228,8 @@ func slices2(rows []api.Notification, read map[string]bool) []api.Notification {
 // moved to B, the answer for A marks A. Would miss: the selection read when
 // the request is sent or when the result lands.
 func TestTheAnswerBelongsToTheOperationNotToTheSelection(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	// The fakes answer the success without carrying it out, so both rows
 	// stay on the page and the marks can be read off them.
@@ -286,6 +292,8 @@ func TestTheAnswerBelongsToTheOperationNotToTheSelection(t *testing.T) {
 // retry sends the same key, and there is only ever one operation for it.
 // Would miss: the lock set in the command; a retry with a new key.
 func TestASecondPressDoesNothingAndARetryKeepsTheKey(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -403,6 +411,8 @@ func (c *fakeClock) advance(d time.Duration) {
 // unknown, reloads; a refusal → no retry, no reload. Would miss: a write
 // sent again after Sent.
 func TestAWriteIsRetriedOnlyWhenTheServerCannotHaveActed(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name    string
 		answers []transport.Answer
@@ -552,6 +562,8 @@ func TestAWriteIsRetriedOnlyWhenTheServerCannotHaveActed(t *testing.T) {
 // unknown after them: absence from the unread page proves nothing. Would
 // miss: an empty unread page taken as a confirmation.
 func TestAnUnknownOutcomeReloadsAndStaysUnknown(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.openLinked(orgA, 0)
@@ -624,6 +636,8 @@ func TestAnUnknownOutcomeReloadsAndStaysUnknown(t *testing.T) {
 // until the server says, never counted down by the client. Would miss: an
 // epoch not moved; a variant left out.
 func TestOldReadsCannotBringBackWhatTheWriteChanged(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -714,6 +728,8 @@ func TestOldReadsCannotBringBackWhatTheWriteChanged(t *testing.T) {
 // refusal where the target is, and reload nothing. Would miss: the decision
 // taken with Read.
 func TestARefusedWriteNeverRemovesTheTicket(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name string
 		ans  transport.Answer
@@ -769,6 +785,8 @@ func TestARefusedWriteNeverRemovesTheTicket(t *testing.T) {
 // another row is open; a later success fills nothing. Would miss: the
 // operation of a left target sorted out before the 401 is seen.
 func TestA401OnAWriteEndsTheSessionWhateverIsSelected(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -823,6 +841,8 @@ func TestA401OnAWriteEndsTheSessionWhateverIsSelected(t *testing.T) {
 // session before the write's own result is handled, and the result then
 // changes nothing.
 func TestAn401ObservedOnAWriteExpiresBeforeItsResult(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -843,6 +863,8 @@ func TestAn401ObservedOnAWriteExpiresBeforeItsResult(t *testing.T) {
 // 10. Output: a hostile refusal text reaches the screen cleaned, in the
 // row, the details and the ticket's head; r in the search line is text.
 func TestHostileRefusalTextIsCleanedAndRInTheSearchLineIsText(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.openLinked(orgA, 0)
@@ -885,6 +907,8 @@ func TestHostileRefusalTextIsCleanedAndRInTheSearchLineIsText(t *testing.T) {
 // The ticket opened from a notification is the ticket of C1d: its
 // sections, pages, order and expansion work, and nothing of it marks.
 func TestTheTicketOpenedFromANotificationPagesLikeAnyOther(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	six := ticketID(website, 6)
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
@@ -961,6 +985,8 @@ func TestTheTicketOpenedFromANotificationPagesLikeAnyOther(t *testing.T) {
 // The outcome is shown where the target is, and the states are told apart:
 // running, confirmed, refused, unknown.
 func TestTheOutcomesAreToldApart(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -1007,6 +1033,8 @@ func TestTheOutcomesAreToldApart(t *testing.T) {
 // the new last page, and the ticket stays open and focused with its
 // outcome; Esc then lands in the list.
 func TestThePageCorrectionAfterAMarkKeepsTheTicket(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
 		rows := slices2(h.d.rows(orgA, 1, 26), h.f.readIDs())
@@ -1042,6 +1070,8 @@ func TestThePageCorrectionAfterAMarkKeepsTheTicket(t *testing.T) {
 // write out on the wire when a 401 on a read expires the session is
 // canceled, and its result fills nothing.
 func TestExpiryCancelsARunningWrite(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -1074,6 +1104,8 @@ func TestExpiryCancelsARunningWrite(t *testing.T) {
 // Review round 1, finding 2: without the ticket tool the details offer no
 // o, and o sends nothing.
 func TestOIsNotOfferedWithoutTheTicketTool(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	tools := withoutTool(h.d.tools, "get_ticket")
 	h.f.tools = func() ([]transport.Tool, transport.Answer) {
@@ -1098,6 +1130,8 @@ func TestOIsNotOfferedWithoutTheTicketTool(t *testing.T) {
 // the reads that clear it up and for nothing else. A later read of the
 // same inbox (R, say) neither hides r again nor says "refreshing".
 func TestTheLockAfterAnUnknownOutcomeHoldsForItsOwnReadsOnly(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.openLinked(orgA, 0)

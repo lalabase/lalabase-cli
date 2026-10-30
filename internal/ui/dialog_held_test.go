@@ -16,6 +16,8 @@ import (
 // Blanks are not empty: what they mean is the server's to say. Would miss:
 // the check on the active field alone.
 func TestARequiredFieldThatIsEmptySendsNothing(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	spec := oneLineSpec(&l)
 	spec.Fields[0].Required = true
@@ -52,6 +54,8 @@ func heldLine(text *string) func() (present.Inline, present.Style) {
 // nothing again: a second press of enter could book twice. Only the way out
 // acts. Would miss: a hold that frees enter, or takes text.
 func TestAHeldDialogSendsNothingAgain(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	m = typeInto(t, m, "30")
@@ -83,6 +87,8 @@ func TestAHeldDialogSendsNothingAgain(t *testing.T) {
 
 // An outcome of a dialog that is gone holds nothing.
 func TestAHeldOutcomeOfAnotherDialogChangesNothing(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	m, _ = step(t, m, press("enter"))

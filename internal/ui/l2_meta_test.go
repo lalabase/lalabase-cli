@@ -39,6 +39,8 @@ func metaText(c present.Column) []string {
 // head's line of facts is dropped then. 158 columns with the list in
 // focus are the first with room (inner 76), 157 the last without.
 func TestTheMetaBarFollowsTheTicketPanesWidth(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.showLogin()
 	want := []string{"Status", "in_progress", "", "Project", "Website-Relaunch", "", "People", "Anna Albers", "created by Anna Albers", "", "Updated", "5 Jan 09:26", "", "Booked by you", "2:30"}
@@ -101,6 +103,8 @@ func TestTheMetaBarFollowsTheTicketPanesWidth(t *testing.T) {
 // A ticket without assignees and without a creator still shows its people
 // as the head did; one with several assignees names each on a line.
 func TestTheMetaBarNamesEveryPerson(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.showLogin()
 	h.m.width = 160
@@ -121,6 +125,8 @@ func TestTheMetaBarNamesEveryPerson(t *testing.T) {
 // PgDn reaches the end of the ticket beside the bar: the pane measures the
 // text at the width it draws it.
 func TestPageDownReachesTheEndBesideTheMetaBar(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.m.width, h.m.height = 120, 24
@@ -142,6 +148,8 @@ func TestPageDownReachesTheEndBesideTheMetaBar(t *testing.T) {
 // measured at the text's width there, so a long description that wraps
 // into more lines beside the bar does not push the heading out.
 func TestTabKeepsTheHeadingInSightBesideTheMetaBar(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.m.width, h.m.height = 120, 24
@@ -164,6 +172,8 @@ func TestTabKeepsTheHeadingInSightBesideTheMetaBar(t *testing.T) {
 // older server, a new function) is a plain value in the bar, not faint
 // like the labels.
 func TestAStatusWithoutAKnownFunctionIsPlainInTheBar(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.showLogin()
 	h.m.width = 160

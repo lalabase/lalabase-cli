@@ -8,6 +8,8 @@ import (
 )
 
 func TestLayoutBreakpoints(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct{ width, columns, nav, list, object int }{
 		{79, 1, 0, 79, 0}, {80, 2, 0, 32, 48}, {119, 2, 0, 47, 72}, {120, 3, 26, 37, 57}, {160, 3, 26, 53, 81},
 	} {
@@ -26,6 +28,8 @@ func TestLayoutBreakpoints(t *testing.T) {
 }
 
 func TestCompactChooserReplacesList(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []int{79, 80, 119, 120} {
 		for _, focus := range []view.Pane{view.Navigation, view.List, view.Object} {
 			want := []view.Pane{view.Navigation, view.List, view.Object}
@@ -50,6 +54,8 @@ func TestCompactChooserReplacesList(t *testing.T) {
 }
 
 func TestLayoutSmallDimensions(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		w, h  int
 		small bool
@@ -67,6 +73,8 @@ func TestLayoutSmallDimensions(t *testing.T) {
 // With the object in focus the list keeps its width and the object gets
 // the navigation's: the list does not jump, the text gains the room.
 func TestTheObjectInFocusTakesTheNavigationsRoom(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []int{120, 160, 200} {
 		three, focused := layoutWith(width, 24, 1, view.List), layoutWith(width, 24, 1, view.Object)
 		if focused.Columns != 2 || focused.ListWidth != three.ListWidth || focused.ListWidth+focused.ObjectWidth != width {

@@ -92,6 +92,8 @@ func reversedCells(line string) int {
 // (both lines of a two-line entry) reversed, the marker kept, no other row
 // touched. Faint and a status's tone give way inside the bar; bold stays.
 func TestTheCursorRowOfTheFocusedPaneIsABar(t *testing.T) {
+	t.Parallel()
+
 	c := present.Column{Title: present.NewInline("Tickets"), Cursor: 1, Rows: []present.Row{
 		{Primary: present.NewInline("#1 Login"), Trailing: present.NewInline("open"), TrailingStyle: present.StatusOpen, Secondary: present.NewInline("Ben")},
 		{Primary: present.NewInline("#2 Catering"), Trailing: present.NewInline("in progress"), TrailingStyle: present.StatusActive, Secondary: present.NewInline("Kai"), Active: true},
@@ -137,6 +139,8 @@ func TestTheCursorRowOfTheFocusedPaneIsABar(t *testing.T) {
 // seen while the keys act elsewhere. The marker stays, bold stays, faint
 // and a tone give way as in the focused bar.
 func TestAnUnfocusedPaneDrawsItsCursorOnTheGreyGround(t *testing.T) {
+	t.Parallel()
+
 	c := present.Column{Title: present.NewInline("Tickets"), Cursor: 0, Rows: []present.Row{
 		{Primary: present.NewInline("#1 Login"), Trailing: present.NewInline("done"), TrailingStyle: present.StatusDone, Secondary: present.NewInline("Ben"), Active: true, Quiet: true},
 		{Primary: present.NewInline("#2 Catering"), Trailing: present.NewInline("open"), Secondary: present.NewInline("Kai")},
@@ -172,6 +176,8 @@ func TestAnUnfocusedPaneDrawsItsCursorOnTheGreyGround(t *testing.T) {
 // A bar is the pane's width also when its text does not fit (the marker
 // dropped, the text cut), in compact mode, and on a row without a value.
 func TestTheBarFillsThePaneInEveryLayout(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		c             present.Column
 		width, height int

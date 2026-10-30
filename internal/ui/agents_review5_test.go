@@ -14,6 +14,8 @@ import (
 // A ticket the server removes (not found, no access) takes its
 // remembered title with it: the row says #n again, and R reads it.
 func TestARemovedTicketForgetsItsTitle(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start()
@@ -40,6 +42,8 @@ func TestARemovedTicketForgetsItsTitle(t *testing.T) {
 // sent first (its answer held), the list after it, so the flights are the
 // real ones.
 func TestANewerTitleWinsOverAReadStillOut(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.start()
@@ -68,6 +72,8 @@ func TestANewerTitleWinsOverAReadStillOut(t *testing.T) {
 // chooser a row: its entries stay in sight, and the keys measure the
 // chooser as drawn.
 func TestTheAreaLeavesTheChooserARow(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start()

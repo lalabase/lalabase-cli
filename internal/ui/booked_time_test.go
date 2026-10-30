@@ -57,6 +57,8 @@ func (h *harness) metaText() string {
 // Opening a ticket reads the person's own time on it, once, and the meta
 // bar shows it in hours and minutes under its label.
 func TestAnOpenTicketShowsTheTimeBookedByYou(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	if got := h.f.bookedReads(); len(got) != 1 || got[0] != ticketID(website, 6) {
@@ -70,6 +72,8 @@ func TestAnOpenTicketShowsTheTimeBookedByYou(t *testing.T) {
 // A preview reads no time: only an opened ticket does, so moving through
 // the list costs no request more.
 func TestAPreviewReadsNoTime(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	h.drive(h.press("down"))
@@ -81,6 +85,8 @@ func TestAPreviewReadsNoTime(t *testing.T) {
 
 // R in the ticket reads the time again.
 func TestRReadsTheTimeAgain(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.f.mu.Lock()
@@ -99,6 +105,8 @@ func TestRReadsTheTimeAgain(t *testing.T) {
 // No access to the project's time, no such ticket, or a server without
 // the tool: no line, and nothing else changes.
 func TestNoTimeLineWithoutTheTime(t *testing.T) {
+	t.Parallel()
+
 	for name, answer := range map[string]transport.Answer{
 		"no access": {Class: transport.Refused, Message: "no access to the time sessions of this project", Status: 200, Sent: true},
 		"not found": {Class: transport.NotFound, Message: "No ticket found.", Status: 200, Sent: true},
@@ -125,6 +133,8 @@ func TestNoTimeLineWithoutTheTime(t *testing.T) {
 // The time of a ticket left meanwhile never reaches the pane: leaving the
 // ticket moves the Time area.
 func TestTheTimeOfATicketLeftDoesNotShow(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.mu.Lock()
 	h.f.booked = func(_, id string) transport.Answer {
@@ -175,6 +185,8 @@ func (h *harness) reopen(n int) {
 
 // The time read is the person's, as the open: no budget to wait for.
 func TestTheTimeIsReadWithThePersonsPriority(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	h.m.app.tickets.selected = ticketID(website, 6)
@@ -196,6 +208,8 @@ func TestTheTimeIsReadWithThePersonsPriority(t *testing.T) {
 // Review of #42: a time no longer readable goes from the line and from
 // the cache, so it does not come back at the next open.
 func TestARefusalTakesTheTimeFromTheCacheToo(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.setBooked(func(string, string) transport.Answer {
@@ -214,6 +228,8 @@ func TestARefusalTakesTheTimeFromTheCacheToo(t *testing.T) {
 // A time the cache holds shows at once at the next open, also when its
 // reload fails for a moment; one the cache holds of another ticket never.
 func TestTheCacheShowsTheTimeAtOnce(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix() // 2:30, cached
 	h.reopen(7)
@@ -239,6 +255,8 @@ func TestTheCacheShowsTheTimeAtOnce(t *testing.T) {
 // Leaving a ticket cancels its time read; and an answer of another
 // ticket's time, read meanwhile, does not show in this ticket's bar.
 func TestEachGuardOfTheTimesTicket(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -262,6 +280,8 @@ func TestEachGuardOfTheTimesTicket(t *testing.T) {
 // Review round 2 of #42: a time a run read shows in the next run from
 // the disk, also when its reload fails.
 func TestTheTimeComesBackFromTheDisk(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.openSix() // 2:30, on the disk once the journal is written

@@ -1015,9 +1015,8 @@ Go version: see `go.mod`.
 ## Development
 
 ```sh
-go vet ./...
-go test -race ./...
-golangci-lint run
+scripts/check fast   # while working: format, vet, go test -short (cached, no PTY)
+scripts/check        # before a push: format, vet, go test -race, lint
 go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,0BSD
 ```
 

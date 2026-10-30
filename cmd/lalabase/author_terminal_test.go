@@ -12,6 +12,8 @@ import (
 // mark "(you)" through a real terminal with NO_COLOR, where no colour is
 // drawn at all: the mark, not the blue, carries the meaning.
 func TestPTYOwnAuthorKeepsItsMarkWithoutColour(t *testing.T) {
+	t.Parallel()
+
 	_, url := fixtureServer(t, inboxfixture.Normal)
 	opts := terminalOptions{url: url, marker: "Token can write: yes", limit: inboxLimit, env: []string{"NO_COLOR=1"}}
 	c := startTerminalWith(t, "inbox-"+string(inboxfixture.Normal), 120, opts)

@@ -15,6 +15,8 @@ import (
 )
 
 func TestPTYReadinessRejectsIncompleteModes(t *testing.T) {
+	t.Parallel()
+
 	master, slave, err := pty.Open()
 	if err != nil {
 		t.Fatal(err)
