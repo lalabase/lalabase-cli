@@ -102,6 +102,74 @@ func TestTheWheelScrollsTheTicket(t *testing.T) {
 	}
 }
 
+// Up and down scroll the ticket by a line while the section has nothing to
+// choose among, stop at both ends where pgdown stops, and let the anchor go.
+func TestTheArrowsScrollTheTicket(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.openSix()
+	if help := helpText(h.m); !strings.Contains(help, "up/down scroll") || !strings.Contains(help, "u/space page") {
+		t.Fatalf("help: %q", help)
+	}
+	h.press("down")
+	h.press("down")
+	if got := h.m.app.detail.offset; got != 2 {
+		t.Fatalf("two down: offset %d", got)
+	}
+	if h.m.app.detail.follow != anchorNone {
+		t.Fatal("the anchor was kept")
+	}
+	h.press("up")
+	if got := h.m.app.detail.offset; got != 1 {
+		t.Fatalf("back up: offset %d", got)
+	}
+	end := h.untilStill(func() { h.press("pgdown") })
+	h.press("down")
+	if got := h.m.app.detail.offset; end == 0 || got != end {
+		t.Fatalf("past the end: offset %d, pgdown ends at %d", got, end)
+	}
+	h.m.app.detail.offset = 0
+	h.press("up")
+	if got := h.m.app.detail.offset; got != 0 {
+		t.Fatalf("past the top: offset %d", got)
+	}
+}
+
+// Where the section has several comments, up and down choose among them and
+// the page keys are what scrolls.
+func TestTheArrowsChooseAmongTheComments(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.openSix()
+	h.press("tab")
+	if help := helpText(h.m); !strings.Contains(help, "up/down comment") || strings.Contains(help, "up/down scroll") {
+		t.Fatalf("help: %q", help)
+	}
+	post := h.m.app.detail.post
+	h.press("down")
+	if h.m.app.detail.post == post {
+		t.Fatal("down did not choose the next comment")
+	}
+}
+
+// A text that fits the pane offers neither way of scrolling.
+func TestNoScrollIsOfferedForATextThatFits(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.start()
+	h.drive(h.choose(orgA))
+	h.press("enter")
+	if help := helpText(h.m); strings.Contains(help, "up/down scroll") || strings.Contains(help, "u/space page") {
+		t.Fatalf("help: %q", help)
+	}
+	if h.m.allowed()[Down] || h.m.allowed()[PageDown] {
+		t.Fatal("a scroll key acts on a text that fits")
+	}
+}
+
 // Only the object pane's body scrolls: the wheel over the list, the
 // header, the help, and the sideways wheel leave the ticket where it is.
 func TestTheWheelScrollsOnlyOverTheObjectPane(t *testing.T) {

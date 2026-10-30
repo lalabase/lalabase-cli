@@ -183,7 +183,9 @@ navigation again.
   ticket opens it. `Esc` goes back one level, `R` refreshes what is shown
   (the directory and the counters in the chooser, the open page, the open
   ticket), `PgUp`/`PgDn` (or `u`/space, for a keyboard without them)
-  move by a screen, `←`/`→` move the focus, `q`
+  move by a screen, `↑`/`↓` scroll an open ticket or notification by a
+  line (in a ticket's comments or files, when there are several to choose
+  among, they choose instead), `←`/`→` move the focus, `q`
   quits with 0, Ctrl-C and SIGINT with 130. While an agent exists, `A`
   opens the agents (C9b): in three columns and in two the focus moves into
   the Agents area under the organisations, in one they are a screen of

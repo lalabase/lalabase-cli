@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
@@ -479,7 +480,7 @@ func (m Model) objectBindings() []binding {
 		out = append(out, binding{Back, uitext.EscapeKey, help})
 	case a.active != nil:
 		if a.active.opened != "" {
-			out = append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
+			out = append(out, binding{Up, uitext.UpDownKey, uitext.ScrollHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.PageScrollHelp})
 		}
 		if _, ok := a.linkedTicket(); ok {
 			out = append(out, binding{Order, uitext.OrderKey, uitext.OpenLinkedTicketHelp})
@@ -521,18 +522,17 @@ func (m Model) ticketBindings() []binding {
 		return nil
 	}
 	out := []binding{{NextArea, uitext.TabKey, uitext.NextAreaHelp}}
-	if d.area == areaComments && !d.commentsLoading() {
+	switch stops := len(d.stops()); {
+	case !d.arrowsSelect():
+		out = append(out, binding{Up, uitext.UpDownKey, uitext.ScrollHelp})
+	case d.area == areaAttachments:
+		out = append(out, binding{Up, uitext.UpDownKey, uitext.FileHelp})
+	case stops > len(d.record.Posts):
 		// The help says what the page has, not where the cursor stands: it
 		// does not change on every move.
-		switch stops := len(d.stops()); {
-		case stops > len(d.record.Posts):
-			out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentOrFileHelp})
-		case stops > 1:
-			out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentHelp})
-		}
-	}
-	if d.area == areaAttachments && len(d.openable()) > 1 {
-		out = append(out, binding{Up, uitext.UpDownKey, uitext.FileHelp})
+		out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentOrFileHelp})
+	default:
+		out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentHelp})
 	}
 	if _, _, ok := m.fileTarget(); ok {
 		out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenFileHelp})
@@ -561,29 +561,25 @@ func (m Model) ticketBindings() []binding {
 		out = append(out, binding{AddComment, uitext.AddCommentKey, uitext.AddCommentHelp})
 	}
 	out = append(out, m.dBinding()...)
-	return append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
+	return append(out, binding{PageUp, uitext.PageUpDownKey, uitext.PageScrollHelp})
 }
 
-// withoutIdleScroll drops the scroll binding of the details when their text
+// withoutIdleScroll drops the scroll bindings of the details when their text
 // fits the pane. The pane is measured in the geometry of the help without
-// the binding: if the text overflows there, it overflows the smaller pane
-// the binding's own line leaves (a text's lines depend on the width alone),
+// them: if the text overflows there, it overflows the smaller pane the
+// bindings' own line leaves (a text's lines depend on the width alone),
 // and if it fits there, that is the pane the person gets. Help and dispatch
 // agree either way.
 func (m Model) withoutIdleScroll(out []binding) []binding {
 	if m.focus != view.Object {
 		return out
 	}
-	at := -1
-	for i, b := range out {
-		if b.kind == PageUp {
-			at = i
-		}
-	}
-	if at < 0 {
+	without := slices.DeleteFunc(slices.Clone(out), func(b binding) bool {
+		return b.kind == PageUp || b.help == uitext.ScrollHelp
+	})
+	if len(without) == len(out) {
 		return out
 	}
-	without := append(out[:at:at], out[at+1:]...)
 	g := m.withNotice(layoutWith(m.width, m.height, len(view.HelpLines(toHelp(without), m.width, m.widthMethod)), m.focus))
 	c := m.objectColumn()
 	if view.Extent(c, g, view.Object, m.widthMethod) > view.Capacity(c, g) {
