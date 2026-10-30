@@ -28,13 +28,14 @@ func contractTools(t *testing.T) ([]transport.Tool, *contract.File) {
 	return tools, file
 }
 
-var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.13.0"}
+var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.13.1"}
 
-// On the contract the client was built against (MCP 0.13.0, server slices
-// S1, S2, S2b and S6 included), every feature is on.
+// On the contract the client was built against (MCP 0.13.1, REST API 1.7.0,
+// server slices S1, S2, S2b and S6 and the core's R6 included), every
+// feature is on.
 func TestOnTheContractEveryFeatureIsOn(t *testing.T) {
 	tools, _ := contractTools(t)
-	report := Detect(contractServer, tools, nil)
+	report := Detect(contractServer, tools, contractCapabilities(t))
 	for _, f := range All {
 		if !report.Enabled[f.Name] {
 			t.Errorf("%s: off (missing %v)", f.Name, report.Missing[f.Name])
@@ -159,7 +160,7 @@ func TestAMissingToolSwitchesOffItsFeatures(t *testing.T) {
 func TestANewerServerWithMoreToolsIsANotice(t *testing.T) {
 	tools, _ := contractTools(t)
 	tools = append(tools, transport.Tool{Name: "delete_ticket", InputSchema: json.RawMessage(`{"type":"object","properties":{"ticket_id":{}}}`)})
-	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.13.0"}, tools, nil)
+	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.13.1"}, tools, contractCapabilities(t))
 	for _, f := range All {
 		if !report.Enabled[f.Name] {
 			t.Errorf("%s went off on a newer server", f.Name)
@@ -199,8 +200,8 @@ func TestTheVersionDecidesNothing(t *testing.T) {
 // tests that), so the spec's arguments are what detection must find.
 func TestFeaturesNameTheArgumentsTheirAdaptersSend(t *testing.T) {
 	for _, f := range All {
-		if f.Spec.Tool == "" {
-			t.Errorf("%s has no tool", f.Name)
+		if f.Spec.Tool == "" && len(f.Capabilities) == 0 {
+			t.Errorf("%s has neither a tool nor a capability", f.Name)
 		}
 		for _, arg := range f.ExtraArgs {
 			if slices.Contains(f.Spec.Args, arg) {
@@ -395,7 +396,7 @@ func TestOnTheServerBeforeS2TheWriteFeaturesAreOff(t *testing.T) {
 	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.9.0"}, tools, nil)
 	on := 0
 	for _, f := range All {
-		want := f.Since != "S2" && f.Since != "S2b" && f.Since != "S6"
+		want := f.Since != "S2" && f.Since != "S2b" && f.Since != "S6" && f.Since != "R6"
 		if report.Enabled[f.Name] != want {
 			t.Errorf("%s on %v on a 0.9.0 server (missing %v)", f.Name, report.Enabled[f.Name], report.Missing[f.Name])
 		}
@@ -410,7 +411,7 @@ func TestOnTheServerBeforeS2TheWriteFeaturesAreOff(t *testing.T) {
 		t.Errorf("missing %v / %v", report.Missing["ticket_update"], report.Missing["comment_plain"])
 	}
 	if !report.BelowTested {
-		t.Error("0.9.0 is not below the tested 0.13.0")
+		t.Error("0.9.0 is not below the tested 0.13.1")
 	}
 }
 

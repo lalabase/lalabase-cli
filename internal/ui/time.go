@@ -16,8 +16,8 @@ import (
 // The time the person booked on the ticket in the pane (S6): in its meta
 // bar, under "Booked by you", in hours and minutes. It is read when the
 // ticket opens (never for a preview, so moving through a list costs no
-// request more) and again with R, beside the ticket's own read and with
-// the person's priority. The cache shows it at once when the ticket
+// request more), again with R, beside the ticket's own read and with the
+// person's priority, and after a booking (book.go). The cache shows it at once when the ticket
 // opened before: from memory, else from the disk (C1e), as every read.
 // The time is extra: no access to the project's time, no such
 // ticket or a server without the tool shows no line, and nothing else of
