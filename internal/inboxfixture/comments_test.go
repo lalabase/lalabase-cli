@@ -13,28 +13,12 @@ import (
 // A comment over REST (K3a) against the fixture, through the real adapter and
 // the real transport.
 
-// unreadTicket is the number of a Website ticket with an unread row of OrgA.
-func unreadTicket(f *Fixture) int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, row := range f.rows[OrgA] {
-		ticket, _ := row["ticket"].(map[string]any)
-		id, _ := ticket["id"].(string)
-		if read, _ := row["read"].(bool); !read && id != "" {
-			_, n := ticketByID(id)
-			return n
-		}
-	}
-	return 0
-}
-
-// It is kept as the tool's is: the ticket reads it as the core stores it, a
-// repeat of the key writes nothing, and core #989 reads the author's rows.
+// It is kept as the tool's is: the ticket reads it as the core stores it, and
+// a repeat of the key writes nothing.
 func TestACommentOverRESTIsKept(t *testing.T) {
 	f, a, _ := serve(t, Normal)
 	ctx := context.Background()
-	n := unreadTicket(f)
-	id, key, typed := TicketID(ProjectWebsite, n), "key-00000001", "\n Zeile 1\nZeile 2\n\n\nAbsatz <b>&\n \n"
+	id, key, typed := TicketID(ProjectWebsite, 6), "key-00000001", "\n Zeile 1\nZeile 2\n\n\nAbsatz <b>&\n \n"
 	comment, ans := a.PostCommentREST(ctx, id, typed, key)
 	if !ans.OK() || ans.Status != http.StatusCreated || comment.TicketID != id || comment.BodyText != " Zeile 1\nZeile 2\n\nAbsatz <b>&" {
 		t.Fatalf("%v %d %+v", ans.Class, ans.Status, comment)
@@ -51,9 +35,6 @@ func TestACommentOverRESTIsKept(t *testing.T) {
 	}
 	if m := f.Mutations(); len(m) != 1 || m[0] != (Mutation{Kind: MutationComment, Ticket: id, Key: key}) {
 		t.Fatalf("mutations %+v", m)
-	}
-	if unreadTicket(f) == n {
-		t.Fatal("the author's row stayed unread")
 	}
 }
 

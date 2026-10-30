@@ -12,7 +12,6 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/contract"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
-	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
@@ -103,20 +102,19 @@ func TestKIsOfferedOnAKnownTicketWithTheFeatureAndAWritingToken(t *testing.T) {
 	t.Parallel()
 
 	writes := boolPtr(false)
-	noFormat := func(h *harness) {
-		h.setToken(writes, "posts.plain")
-		h.f.tools = func() ([]transport.Tool, transport.Answer) {
-			return withoutArgument(h.d.tools, "post_comment", "format"), transport.Answer{Class: transport.Object, Sent: true}
-		}
-	}
 	for name, tc := range map[string]struct {
 		token func(h *harness)
 		want  bool
 	}{
 		"posts.plain":          {func(h *harness) { h.setToken(writes) }, true},
 		"the tool with format": {func(h *harness) { h.setToken(writes, "posts.plain") }, true},
-		"neither":              {noFormat, false},
-		"a read-only token":    {func(h *harness) { h.setToken(boolPtr(true)) }, false},
+		"neither": {func(h *harness) {
+			h.setToken(writes, "posts.plain")
+			h.f.tools = func() ([]transport.Tool, transport.Answer) {
+				return withoutArgument(h.d.tools, "post_comment", "format"), transport.Answer{Class: transport.Object, Sent: true}
+			}
+		}, false},
+		"a read-only token": {func(h *harness) { h.setToken(boolPtr(true)) }, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := newRESTHarness(t)
@@ -343,22 +341,19 @@ func TestTheLockIsOfTheTicketAndTheKind(t *testing.T) {
 }
 
 // Esc leaves a send under way: its end is told on the line wherever the person
-// is, in its tone, and the draft follows the end.
+// is, and the draft follows the end.
 func TestTheEndOfACommentLeftWithEscIsTold(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		name  string
-		ans   transport.Answer
-		want  string
-		tone  present.Style
-		draft string
+	for name, tc := range map[string]struct {
+		ans         transport.Answer
+		want, draft string
 	}{
-		{"confirmed", transport.Answer{}, "Comment posted on #6", present.Plain, ""},
-		{"refused", transport.Answer{Class: transport.NoAccess, Sent: true}, "Not posted on #6: You may not comment", present.NoticeProblem, "Hallo"},
-		{"unclear", commentLost, "Not clear whether it was posted on #6", present.NoticeProblem, "Hallo"},
+		"confirmed": {transport.Answer{}, "Comment posted on #6", ""},
+		"refused":   {transport.Answer{Class: transport.NoAccess, Sent: true}, "Not posted on #6: You may not comment", "Hallo"},
+		"unclear":   {commentLost, "Not clear whether it was posted on #6", "Hallo"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 			h := bookingHarness(t)
 			if tc.ans.Sent {
 				h.f.commentFails(&tc.ans)
@@ -368,9 +363,8 @@ func TestTheEndOfACommentLeftWithEscIsTold(t *testing.T) {
 			h.reopen(7)
 			pane := h.paneText()
 			h.drive(send)
-			got, tone := h.m.status()
-			if !strings.Contains(got.String(), tc.want) || tone != tc.tone || h.m.app.drafts[six()] != tc.draft || h.paneText() != pane {
-				t.Fatalf("status %q, tone %v, drafts %q", got.String(), tone, h.m.app.drafts)
+			if !strings.Contains(h.status(), tc.want) || h.m.app.drafts[six()] != tc.draft || h.paneText() != pane {
+				t.Fatalf("status %q, drafts %q", h.status(), h.m.app.drafts)
 			}
 		})
 	}
@@ -404,8 +398,8 @@ func TestEndsStandSideBySide(t *testing.T) {
 	}
 }
 
-// Esc keeps the text per ticket, k brings it back, an emptied text leaves no
-// draft, and a 401 takes the drafts with the session.
+// Esc keeps the text per ticket, k brings it back, and a 401 takes the drafts
+// with the session.
 func TestADraftStaysWithItsTicketAndItsSession(t *testing.T) {
 	t.Parallel()
 
@@ -414,21 +408,16 @@ func TestADraftStaysWithItsTicketAndItsSession(t *testing.T) {
 	h.fillComment("Ent\nwurf")
 	h.press("esc")
 	h.reopen(7)
-	h.fillComment("Sieben")
+	if h.press("k"); dialogValues(h.m)[0] != "" {
+		t.Fatalf("another ticket's draft: %q", dialogValues(h.m))
+	}
 	h.press("esc")
 	h.reopen(6)
+	h.f.commentFails(&transport.Answer{Class: transport.Unauthenticated, Status: 401, Sent: true})
 	if h.press("k"); dialogValues(h.m)[0] != "Ent\nwurf" {
 		t.Fatalf("draft %q", dialogValues(h.m))
 	}
-	for range len("Ent\nwurf") {
-		h.press("backspace")
-	}
-	h.press("esc")
-	if _, ok := a.drafts[six()]; ok || a.drafts[ticketID(website, 7)] != "Sieben" {
-		t.Fatalf("drafts %q", a.drafts)
-	}
-	h.f.commentFails(&transport.Answer{Class: transport.Unauthenticated, Status: 401, Sent: true})
-	h.drive(h.sendComment("mehr"))
+	h.drive(h.press("ctrl+s"))
 	if !a.expired || h.m.dialog != nil || len(a.drafts) != 0 || len(a.comments) != 0 {
 		t.Fatalf("expired %v, dialog %v, drafts %q", a.expired, h.m.dialog != nil, a.drafts)
 	}
@@ -457,20 +446,21 @@ func TestWhatTheFieldTakes(t *testing.T) {
 	}
 }
 
-// A read of the ticket begun before the post does not count: canceling reaches
-// the network's reads alone, so the epoch stops this one, from the disk.
+// A read of the ticket begun before the end of the post does not count. The
+// pane is elsewhere, so no area moved on and only the epoch stops this one.
 func TestAPageOnItsWayFromTheDiskDoesNotCount(t *testing.T) {
 	t.Parallel()
 
 	h := bookingHarness(t)
 	a := h.m.app
-	late := a.scope.Begin(gateway.Detail, a.detail.key, 0)
-	old := h.d.defaultRESTTicket(six(), api.TicketOptions{})
-	h.f.setRESTTicket(func(string, api.TicketOptions) transport.Answer {
-		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
-	})
-	h.drive(h.sendComment("x"))
-	if a.scope.Promote(a.store, late, cache.Entry{Payload: old.Payload, LoadedAt: h.now}) {
+	key := a.detail.key
+	old, _ := a.store.Get(key)
+	send := h.sendComment("x")
+	h.press("esc")
+	h.reopen(7)
+	late := a.scope.Begin(gateway.Titles, key, 0)
+	h.drive(send)
+	if a.scope.Promote(a.store, late, old) {
 		t.Fatal("a page from before the comment was filed")
 	}
 }

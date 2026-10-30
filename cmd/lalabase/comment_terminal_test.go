@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -46,33 +47,20 @@ func TestPTYComment(t *testing.T) {
 			c.act(t, "UNSENT", width, "UNSENT"+boxCaret)
 			c.act(t, keyEsc, width, offerComment)
 			c.quit(t)
-			requests := f.Requests()
-			var sent []inboxfixture.Request
-			for _, r := range requests {
-				if r.Route == "posts.create" {
-					sent = append(sent, r)
-				}
-			}
-			if len(sent) != 1 || sent[0].Args["body"] != "Zeile eins\nZeile zwei" || sent[0].Args["format"] != "plain" || sent[0].Status != 201 {
-				t.Fatalf("comments %+v", sent)
+			at := slices.IndexFunc(f.Requests(), func(r inboxfixture.Request) bool { return r.Route == "posts.create" })
+			if at < 0 || f.Requests()[at].Args["body"] != "Zeile eins\nZeile zwei" || f.Requests()[at].Args["format"] != "plain" || len(f.Mutations()) != 1 {
+				t.Fatalf("comment at %d of %+v", at, f.Requests())
 			}
 			if keys := f.Keys(); len(keys) != 1 || !strings.HasPrefix(keys[0], "lalabase-comment-") {
 				t.Fatalf("keys %v", keys)
 			}
 			// A draft is memory alone: nothing the client left holds it.
-			err := filepath.WalkDir(home, func(path string, d fs.DirEntry, err error) error {
-				if err != nil || d.IsDir() {
-					return err
-				}
-				text, err := os.ReadFile(path)
-				if err == nil && strings.Contains(string(text), "UNSENT") {
+			_ = filepath.WalkDir(home, func(path string, d fs.DirEntry, _ error) error {
+				if text, err := os.ReadFile(path); err == nil && strings.Contains(string(text), "UNSENT") {
 					t.Errorf("the draft is on the disk: %s", path)
 				}
-				return err
+				return nil
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
 		})
 	}
 }

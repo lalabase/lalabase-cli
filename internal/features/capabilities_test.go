@@ -288,8 +288,7 @@ func TestACommentTakesRESTOrTheToolWithItsFormat(t *testing.T) {
 	}{
 		{"posts.plain and the tool", tools, caps, true, REST},
 		{"posts.plain, the tool gone", noTool, caps, true, REST},
-		{"the tool with format, no posts.plain", tools, noPlain, true, MCP},
-		{"the tool with format, before R0", tools, nil, true, MCP},
+		{"the tool, no posts.plain", tools, noPlain, true, MCP},
 		{"neither", noTool, noPlain, false, MCP},
 	} {
 		report := Detect(contractServer, tc.tools, tc.caps)

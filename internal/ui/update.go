@@ -85,8 +85,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case gateway.MarkReadResult:
 		return m.receiveMark(msg)
 	case gateway.WriteResult:
-		if msg.Kind == gateway.Comment {
-			return m.receiveComment(msg)
+		if msg.Kind == gateway.Comment && m.app != nil {
+			return m.endOnTicket(m.app.commentWrites(), msg)
 		}
 		return m.receiveBooking(msg)
 	case launch.Done:

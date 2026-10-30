@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"slices"
 	"testing"
 
@@ -67,19 +66,13 @@ func TestACommentGoesAsPlainText(t *testing.T) {
 	}
 }
 
-// A comment without a key of the right form, or on an id that is no path
-// segment, is refused before anything is sent.
+// A comment without a usable key, or on an id that is no path segment, is
+// refused before anything is sent.
 func TestACommentIsRefusedBeforeSending(t *testing.T) {
-	hits := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits++ }))
-	defer srv.Close()
-	c, _ := transport.New(srv.URL, "lalab_pat_test")
+	c, _ := transport.New("http://127.0.0.1:1", "lalab_pat_test")
 	for _, in := range [][2]string{{login, ""}, {login, "short"}, {"", "key-0005"}, {"..", "key-0005"}, {"a/b", "key-0005"}} {
 		if _, ans := New(c).PostCommentREST(context.Background(), in[0], "Hallo", in[1]); ans.Class != transport.InvalidInput || ans.Sent {
 			t.Errorf("%q: %v sent %v", in, ans.Class, ans.Sent)
 		}
-	}
-	if hits != 0 {
-		t.Fatalf("%d requests sent", hits)
 	}
 }

@@ -85,22 +85,13 @@ func (m Model) pressK() Model {
 		Large:  true,
 		Fields: []DialogField{{Label: uitext.Inline(uitext.CommentText), Hint: uitext.Inline(uitext.CommentHint), Limit: commentLimit, Value: a.drafts[t.Ticket], Required: true, Tidy: withoutBlankEdges}},
 		Send:   a.sendComment,
-		Left:   a.keepDraft,
+		Left:   func(s Submission) { a.drafts[s.Target.Ticket] = s.Values[0] },
 	})
 }
 
 // sendComment is one press of Ctrl-S.
 func (a *app) sendComment(s Submission) tea.Cmd {
 	return a.sendOnTicket(a.commentWrites(), s, gateway.WriteTicket{Value: s.Values[0], Way: gateway.RoutesOf(*a.report).Comment})
-}
-
-// keepDraft is esc: the text as it stands stays with the ticket.
-func (a *app) keepDraft(s Submission) {
-	if s.Values[0] == "" {
-		delete(a.drafts, s.Target.Ticket)
-		return
-	}
-	a.drafts[s.Target.Ticket] = s.Values[0]
 }
 
 // withoutBlankEdges takes the blank lines off both ends of a text and leaves
@@ -115,14 +106,6 @@ func withoutBlankEdges(text string) string {
 		lines = lines[:len(lines)-1]
 	}
 	return strings.Join(lines, "\n")
-}
-
-// receiveComment files what became of a comment.
-func (m Model) receiveComment(r gateway.WriteResult) (Model, tea.Cmd) {
-	if m.app == nil {
-		return m, nil
-	}
-	return m.endOnTicket(m.app.commentWrites(), r)
 }
 
 // afterComment follows a confirmed comment and an unknown one alike. The
