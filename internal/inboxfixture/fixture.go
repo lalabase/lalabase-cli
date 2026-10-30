@@ -156,6 +156,8 @@ type Fixture struct {
 	projectList []map[string]any
 	ticketRow   map[string]any
 	ticketTmpl  map[string]any
+	// filePost is the recorded comment with a file (C12).
+	filePost map[string]any
 
 	// dropped names what a scenario took out of tools/list: a tool by its
 	// name, an argument as "tool:argument". A dropped tool is unknown to
@@ -343,6 +345,9 @@ func New(scenario Scenario, contractJSON []byte, opts ...Option) (*Fixture, erro
 		return fmt.Sprintf("00000000-0000-4000-8000-%012d", 200000+number), fmt.Sprintf("Ticket %d of %s", number, b["name"])
 	})
 	if f.projectList, f.ticketRow, f.ticketTmpl, err = recordedTickets(file); err != nil {
+		return nil, err
+	}
+	if f.filePost, err = recordedFilePost(file); err != nil {
 		return nil, err
 	}
 	if f.people, f.meID, err = recordedPeople(f.me, f.ticketRow, f.ticketTmpl); err != nil {
