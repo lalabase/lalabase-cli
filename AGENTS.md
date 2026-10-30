@@ -20,7 +20,8 @@ feature switched, #47); K1 (the ticket list and the ticket view over REST
 when `/me` lists the core's R1 capabilities, the tools otherwise, #48); M1
 (the dialog: `internal/textentry`, `clean.Draft`, `present.Dialog`,
 `view.Overlay`, the mode `Dialog`, #49); K6 (`b` books time on a ticket, the
-first write over REST) is this branch.
+first write over REST, #50); C11 (`g`, the ticket list grouped by status,
+`internal/ui/groups.go`) is this branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
@@ -51,7 +52,7 @@ on a Mac before every merge, by running the tests here.
 | `internal/queue` | the one queue every request goes through |
 | `internal/gateway` | reads from the queue to the interface: one typed message per waiter, `Scope`, which checks a result before it is cached and (K1) stamps each ticket with its read's way (`Routes`), and the one write path (`Write`, K6's `BookTime` among its kinds), which confirms a success only from the answer |
 | `internal/worker` | the supervisor: the only place a goroutine is started, its panics become one fatal error |
-| `internal/ui` | the root Bubble Tea model: owns every piece of state, issues reads through the gateway, builds the screen; `view/` renders it and knows nothing else; the dialog (M1, `dialog.go`): a mode of its own, its target taken when it opens, its sending state; what a send does is its user's; the booking (K6, `book.go`): `b`, one operation per Enter, the lock per ticket, the time read again; `write.go`: what writes share, `placeWrite` the one reading of an answer to a write |
+| `internal/ui` | the root Bubble Tea model: owns every piece of state, issues reads through the gateway, builds the screen; `view/` renders it and knows nothing else; the dialog (M1, `dialog.go`): a mode of its own, its target taken when it opens, its sending state; what a send does is its user's; the booking (K6, `book.go`): `b`, one operation per Enter, the lock per ticket, the time read again; `write.go`: what writes share, `placeWrite` the one reading of an answer to a write; the grouped list (C11, `groups.go`): one list per status beside the chronological one, its reads apart (`forGroup`) |
 | `internal/textentry` | the buffer of an input field (M1): runes with a caret between two graphemes, a hard limit, everything through `clean.Draft`, lines wrapped and kept in sight; own code, no widget |
 | `internal/present` | the display values the views take: opaque, cleaned once, a cast cannot forge one |
 | `internal/uitext` | every text of the interface, in English, in one place |
