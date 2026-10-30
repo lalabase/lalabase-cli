@@ -144,6 +144,8 @@ func TestAMarkThatStandsOnNothingIsNotKept(t *testing.T) {
 		{"a soft hyphen alone", "\u00ad", "", false},
 		{"before a letter", "\u0301a", "a", false},
 		{"a run of them", "\u0301\u200d\ufe0fa", "a", false},
+		{"an enclosing mark", "\u20e3a", "a", false},
+		{"a mark that takes a spacing one with it", "\u0301\u0903a", "a", false},
 		{"a soft hyphen and a mark", "\u00ad\u0301a", "a", false},
 		{"at the start of a line", "a\n\u0301b", "a\nb", true},
 		{"on a letter it stays", "e\u0301", "e\u0301", false},
@@ -200,6 +202,23 @@ func TestALoneMarkTakesNoRoomFromTheLimit(t *testing.T) {
 		t.Fatal("cut, though it fits")
 	}
 	assertEntry(t, e, "ab\ncd", 5)
+	// At the start of a line inside what is put in, wherever the caret is.
+	e = New(6, true)
+	if e.Insert("\n\u0301\u0301\u0301\u0301abc") {
+		t.Fatal("cut, though it fits")
+	}
+	assertEntry(t, e, "\nabc", 4)
+	e = New(5, true)
+	if e.Insert("a\u0301\n\u0301bc") {
+		t.Fatal("cut, though it fits")
+	}
+	assertEntry(t, e, "a\u0301\nbc", 5)
+	// What does not fit is still cut, and said.
+	e = New(3, true)
+	if !e.Insert("\n\u0301abcd") {
+		t.Fatal("no cut")
+	}
+	assertEntry(t, e, "\nab", 3)
 	e = New(3, false)
 	e.Insert("ab")
 	if !e.Insert("\u0301\u0301") {

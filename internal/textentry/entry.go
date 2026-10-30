@@ -77,15 +77,8 @@ func (e *Entry) Value() string { return string(e.text) }
 // was cut. What does not fit the limit is left out from the first grapheme
 // that does not fit: half a character is no text.
 func (e *Entry) Insert(text string) (cut bool) {
-	text = clean.Draft(text, e.multiline)
-	if e.caret == 0 || e.text[e.caret-1] == '\n' {
-		// What would stand on nothing takes no room.
-		text = strings.TrimLeftFunc(text, lone)
-	}
-	room := e.limit - len(e.text)
-	if utf8.RuneCountInString(text) > room {
-		text, cut = fitted(text, room), true
-	}
+	lineStart := e.caret == 0 || e.text[e.caret-1] == '\n'
+	text, cut = fitted(clean.Draft(text, e.multiline), e.limit-len(e.text), lineStart)
 	add := []rune(text)
 	e.text = slices.Insert(e.text, e.caret, add...)
 	e.caret += len(add)
@@ -93,20 +86,27 @@ func (e *Entry) Insert(text string) (cut bool) {
 	return cut
 }
 
-// fitted is the graphemes of text that fit room runes, from its start. The
-// width method plays no part in where a grapheme ends.
-func fitted(text string, room int) string {
-	end := 0
-	for rest := text; rest != ""; {
-		c, _ := ansi.FirstGraphemeCluster(rest, ansi.WcWidth)
-		room -= utf8.RuneCountInString(c)
-		if room < 0 {
-			break
+// fitted is what of text goes into room runes, read grapheme by grapheme up
+// to the first that does not fit, so a paste of any size costs no more than
+// the room: what would stand on nothing (lone) takes none, lineStart says
+// whether that holds for text's start. Where a grapheme ends has nothing to
+// do with the width method.
+func fitted(text string, room int, lineStart bool) (kept string, cut bool) {
+	var b strings.Builder
+	for text != "" {
+		c, _ := ansi.FirstGraphemeCluster(text, ansi.WcWidth)
+		text = text[len(c):]
+		first, _ := utf8.DecodeRuneInString(c)
+		if lineStart && lone(first) {
+			continue
 		}
-		end += len(c)
-		rest = rest[len(c):]
+		lineStart = first == '\n'
+		if room -= utf8.RuneCountInString(c); room < 0 {
+			return b.String(), true
+		}
+		b.WriteString(c)
 	}
-	return text[:end]
+	return b.String(), false
 }
 
 // Backspace deletes the grapheme before the caret.
