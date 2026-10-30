@@ -9,10 +9,11 @@ import (
 )
 
 // The dialog (M1) is the box a person writes in: the time booked on a ticket
-// (K6) is its first user, the comment and the title its next. It is one
-// component in two sizes and knows nothing of what it is for: its user names
-// the fields, the target and what a send does (DialogSpec). It sends nothing
-// by itself; b opens one (book.go), and a test or a fixture may (WithDialog).
+// (K6) is its first user, the comment (K3a) its second, the title its next.
+// It is one component in two sizes and knows nothing of what it is for: its
+// user names the fields, the target and what a send does (DialogSpec). It
+// sends nothing by itself; b opens one (book.go), k a large one (comment.go),
+// and a test or a fixture may (WithDialog).
 //
 // While it is open a key does one thing, inside the box (routeDialog): the
 // screen behind it goes on showing what arrives, and nothing there moves by a
@@ -26,23 +27,26 @@ import (
 
 // DialogTarget is what a dialog acts on, taken when it opens and never read
 // again from the selection. Title is the ticket's, foreign text, for the
-// box's title alone.
+// box's title alone; Organisation the one the ticket was reached through.
 type DialogTarget struct {
-	Project, Ticket string
-	Number          int
-	Title           string
+	Project, Ticket, Organisation string
+	Number                        int
+	Title                         string
 }
 
 // DialogField is one field of a dialog: its label and its hint, its limit in
 // runes, and what it starts with. Value is foreign text as often as not (a
 // ticket's title to change): it passes the same filter as a key. A required
 // field left empty stops the send before it begins, by what it holds: what
-// its text means is the server's to say.
+// its text means is the server's to say. Tidy, when set, is what the text
+// becomes on its way out, the required check included; the field keeps it as
+// written.
 type DialogField struct {
 	Label, Hint present.Inline
 	Limit       int
 	Value       string
 	Required    bool
+	Tidy        func(string) string
 }
 
 // DialogSpec is a dialog as its user describes it. Action opens the box's
@@ -53,17 +57,19 @@ type DialogField struct {
 // has one or a few fields of one line. Send is called once per send, with
 // what the fields hold; what it returns runs as any command, and how it ended
 // must reach the dialog as a DialogOutcome with the submission's number: as
-// the command's message, or through the model that received its result.
+// the command's message, or through the model that received its result. Left,
+// when set, gets what the fields hold when the person leaves with esc.
 type DialogSpec struct {
 	Action, SendHelp, Text present.Inline
 	Target                 DialogTarget
 	Large, Danger          bool
 	Fields                 []DialogField
 	Send                   func(Submission) tea.Cmd
+	Left                   func(Submission)
 }
 
 // Submission is one send: the dialog's number, its target as it was taken,
-// and each field's text as it is shown.
+// and each field's text as it goes.
 type Submission struct {
 	Dialog uint64
 	Target DialogTarget
@@ -152,7 +158,26 @@ func (m Model) ticketTarget() (DialogTarget, bool) {
 		return DialogTarget{}, false
 	}
 	d := a.detail
-	return DialogTarget{Project: d.project, Ticket: d.id, Number: d.record.Number, Title: d.record.Title}, true
+	return DialogTarget{Project: d.project, Ticket: d.id, Organisation: a.organisationOf(d), Number: d.record.Number, Title: d.record.Title}, true
+}
+
+// organisationOf is the organisation of the ticket in the pane, by the way
+// it came there: its notification, its list, its agent (the agents' list
+// shows any organisation's), the projects an agent opened beside it.
+func (a *app) organisationOf(d *detailView) string {
+	if o := a.origin; o != nil && o.ticket == d.id {
+		return o.org
+	}
+	if v := a.tickets; v != nil && v.project == d.project {
+		return v.org
+	}
+	if ag, ok := a.agentAt(d.id); ok {
+		return ag.Organisation
+	}
+	if p := a.projects; p != nil {
+		return p.org
+	}
+	return ""
 }
 
 // openTicketDialog opens a dialog on the ticket in the focused object pane,
@@ -222,6 +247,9 @@ func (m Model) dialogKey(action keyAction) (Model, tea.Cmd) {
 	d.cut = present.Inline{}
 	switch action.Kind {
 	case Cancel:
+		if d.spec.Left != nil {
+			d.spec.Left(Submission{Dialog: d.id, Target: d.spec.Target, Values: d.values()})
+		}
 		return m.closeDialog()
 	case Submit:
 		return m, d.send()
@@ -276,16 +304,27 @@ func (d *dialog) locked() bool { return d.sending || d.held != nil }
 // send starts the send: the lock first, since the bindings read it. A
 // required field left empty keeps it from beginning, and gets the caret.
 func (d *dialog) send() tea.Cmd {
-	values := make([]string, len(d.entries))
-	for i, e := range d.entries {
-		values[i] = e.Value()
-		if d.spec.Fields[i].Required && values[i] == "" {
-			d.active, d.refusal = i, uitext.Fill(uitext.DialogRequired, d.spec.Fields[i].Label.String())
+	values := d.values()
+	for i, f := range d.spec.Fields {
+		if f.Tidy != nil {
+			values[i] = f.Tidy(values[i])
+		}
+		if f.Required && values[i] == "" {
+			d.active, d.refusal = i, uitext.Fill(uitext.DialogRequired, f.Label.String())
 			return nil
 		}
 	}
 	d.sending, d.refusal = true, present.Inline{}
 	return d.spec.Send(Submission{Dialog: d.id, Target: d.spec.Target, Values: values})
+}
+
+// values are what the fields hold.
+func (d *dialog) values() []string {
+	out := make([]string, len(d.entries))
+	for i, e := range d.entries {
+		out[i] = e.Value()
+	}
+	return out
 }
 
 // receiveOutcome ends a send of the open dialog.

@@ -34,20 +34,20 @@ on a Mac before every merge, by running the tests here.
 |---|---|
 | `cmd/lalabase` | commands; everything a command reads or writes goes through `Env` (tests pass their own) |
 | `internal/transport` | REST `/api/v1` and MCP `/api/mcp`; every answer becomes one `Answer` with one `Class` (a REST error by its `code` since K0); REST writes with an `Idempotency-Key` (`Write`); the words of a refusal for showing alone (`RefusalText`, K6) |
-| `internal/api` | one adapter per tool or REST reader, each with a `Spec` (`Newer`: fields a newer server sends, since K0); the generic REST write (`write`), `BookTime` its first caller (K6); since K1 the REST readers of the ticket view, each spec the tool's fields (under `data`), what they file in the tool's form |
-| `internal/features` | which features a server has, from `tools/list` and input schemas, and since K0 the REST capabilities of `/api/v1/me` (REST way first, MCP the fallback); since K1 the ticket view's five features name theirs; a feature without a tool has the REST way alone (`time_book`, K6) |
+| `internal/api` | one adapter per tool or REST reader, each with a `Spec` (`Newer`: fields a newer server sends, since K0); the generic REST write (`write`), `BookTime` its first caller (K6), `PostCommentREST` its second (K3a); since K1 the REST readers of the ticket view, each spec the tool's fields (under `data`), what they file in the tool's form |
+| `internal/features` | which features a server has, from `tools/list` and input schemas, and since K0 the REST capabilities of `/api/v1/me` (REST way first, MCP the fallback); since K1 the ticket view's five features name theirs; a feature without a tool has the REST way alone (`time_book`, K6); `comment_plain` takes `posts.plain` first (K3a) |
 | `internal/cache` | the decisions on an answer, from its class alone, the memory store they act on, and the journal of its changes the disk replays |
 | `internal/diskcache` | the disk cache (C1e): one directory per profile, one lock per run, a replay of the journal, every file checked before it is an entry |
 | `internal/privatefs` | the one threat model of the client's private files (the config, its lock, the disk cache, the launch files, the agents' files): owners, modes, the directory chain, macOS access lists, locks; the exclusive create and the bounded directory walk they share |
 | `internal/queue` | the one queue every request goes through |
-| `internal/gateway` | reads from the queue to the interface: one typed message per waiter, `Scope`, which checks a result before it is cached and (K1) stamps each ticket with its read's way (`Routes`), and the one write path (`Write`, K6's `BookTime` among its kinds), which confirms a success only from the answer |
+| `internal/gateway` | reads from the queue to the interface: one typed message per waiter, `Scope`, which checks a result before it is cached and (K1) stamps each ticket with its read's way (`Routes`), and the one write path (`Write`, K6's `BookTime` among its kinds, a comment by its ticket's `Way`, K3a), which confirms a success only from the answer |
 | `internal/worker` | the supervisor: the only place a goroutine is started, its panics become one fatal error |
-| `internal/ui` | the root Bubble Tea model: owns every piece of state, issues reads through the gateway, builds the screen; `view/` renders it and knows nothing else, its colours in `palette.go`; the dialog (M1, `dialog.go`): a mode of its own, its target taken when it opens, its sending state; what a send does is its user's; the booking (K6, `book.go`): `b`, one operation per Enter, the lock per ticket, the time read again; `write.go`: what writes share, `placeWrite` the one reading of an answer to a write; the grouped list (C11, `groups.go`): one list per status beside the chronological one, its reads apart (`forGroup`) |
+| `internal/ui` | the root Bubble Tea model: owns every piece of state, issues reads through the gateway, builds the screen; `view/` renders it and knows nothing else, its colours in `palette.go`; the dialog (M1, `dialog.go`): a mode of its own, its target taken when it opens, its sending state; what a send does is its user's; the booking (K6, `book.go`): `b`, one operation per Enter, the time read again; the comment (K3a, `comment.go`): `k`, the large box, the draft in memory, what a post reads again; `write.go`: what writes share, `placeWrite` the one reading of an answer to a write, and for a write on a ticket (`ticketWrites`) the lock per ticket and kind, the ends and their status line; the grouped list (C11, `groups.go`): one list per status beside the chronological one, its reads apart (`forGroup`) |
 | `internal/textentry` | the buffer of an input field (M1): runes with a caret between two graphemes, a hard limit, everything through `clean.Draft`, lines wrapped and kept in sight; own code, no widget |
 | `internal/present` | the display values the views take: opaque, cleaned once, a cast cannot forge one |
 | `internal/uitext` | every text of the interface, in English, in one place |
 | `internal/terminal` | the UTF-8 locale check before raw mode |
-| `internal/inboxfixture` | the loopback stand-in for a server, built from the contract copy, the ticket view on both ways (K1: REST by default, `BeforeR1` the tools), a booking with state (K6); `tools/inbox-fixture` serves it for a person |
+| `internal/inboxfixture` | the loopback stand-in for a server, built from the contract copy, the ticket view on both ways (K1: REST by default, `BeforeR1` the tools), a booking and a comment over REST with state (K6, K3a); `tools/inbox-fixture` serves it for a person |
 | `tools/dialog-fixture` | the dialog on a person's terminal, without a server (M1) |
 | `internal/profile` | server plus token; the config file, checked through `internal/privatefs` |
 | `internal/safefile` | reading files the client does not control |
@@ -153,9 +153,10 @@ on a Mac before every merge, by running the tests here.
 * Terminal output is asserted on bytes; the terminal is tested through a real
   pseudo-terminal (`github.com/creack/pty`). The dialog's own tests and
   `tools/dialog-fixture` start with one (`ui.WithDialog`); the source guard
-  allows no opener in `cmd/` and `internal/` but `b` in `internal/ui/book.go` and
-  `d` on a waiting agent in `internal/ui/agents_remove.go`
-  (`dialogCallers`), and a new one is a decision taken there.
+  allows no opener in `cmd/` and `internal/` but `b` in `internal/ui/book.go`,
+  `k` in `internal/ui/comment.go` and `d` on a waiting agent in
+  `internal/ui/agents_remove.go` (`dialogCallers`), and a new one is a decision
+  taken there.
 * Ask "what change would this test miss?". A reviewer's mutation probes are
   run as given, not a selection of them.
 

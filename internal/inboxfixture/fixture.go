@@ -177,8 +177,8 @@ type Fixture struct {
 	// seen, the result each key answered first with the arguments it was
 	// used with, the changes on the tickets and the comments added, the
 	// number of the last comment. K6 (bookings.go): the minutes booked per
-	// ticket, the number of the last booking, the row a booking answers
-	// with, as recorded.
+	// ticket, the number of the last booking, the rows a booking and a
+	// comment over REST answer with, as recorded.
 	mutations []Mutation
 	keys      []string
 	results   map[string]storedResult
@@ -187,6 +187,7 @@ type Fixture struct {
 	booked    map[string]int
 	nextBook  int
 	bookRow   map[string]any
+	postRow   map[string]any
 }
 
 // contractFile is the part of the contract copy the fixture reads. It is
@@ -348,7 +349,10 @@ func New(scenario Scenario, contractJSON []byte, opts ...Option) (*Fixture, erro
 	if f.people, f.meID, err = recordedPeople(f.me, f.ticketRow, f.ticketTmpl); err != nil {
 		return nil, err
 	}
-	if f.bookRow, err = recordedBooking(file); err != nil {
+	if f.postRow, err = recordedAnswer(file, "POST /api/v1/tickets/:ticket_id/posts", "plain"); err != nil {
+		return nil, err
+	}
+	if f.bookRow, err = recordedAnswer(file, "POST /api/v1/tickets/:ticket_id/time_sessions", "ok_minutes_text"); err != nil {
 		return nil, err
 	}
 	for _, opt := range opts {
@@ -527,6 +531,8 @@ func (f *Fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.rest(w, r, req)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/mcp":
 		f.rpc(w, r, req)
+	case r.Method == http.MethodPost && ticketWrite(r.URL.Path, "posts") != "":
+		f.createComment(w, r, req)
 	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/v1/tickets/"):
 		f.bookTime(w, r, req)
 	default:

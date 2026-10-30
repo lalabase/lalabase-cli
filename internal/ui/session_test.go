@@ -229,6 +229,9 @@ type fakes struct {
 	writes markFakes
 	// K6: the booking of time (book_harness_test.go).
 	bookings bookFakes
+	// K3a: the comment (comment_test.go).
+	commentLog    []commentCall
+	commentAnswer func(c commentCall) (api.Comment, transport.Answer)
 	// K1: the ticket view over REST (rest_harness_test.go); the gates hold
 	// these as they hold the tools' reads.
 	restTickets func(q api.TicketQuery) transport.Answer

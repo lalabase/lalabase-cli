@@ -65,6 +65,8 @@ const (
 	BookTime
 	// C11: the ticket list chronological or grouped by status.
 	ToggleGroups
+	// K3a: a comment on the ticket in the pane.
+	AddComment
 )
 
 type keyAction struct {
@@ -151,6 +153,8 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: RemoveAgent}
 	case "b":
 		return keyAction{Kind: BookTime}
+	case "k":
+		return keyAction{Kind: AddComment}
 	}
 	return keyAction{}
 }
@@ -545,6 +549,9 @@ func (m Model) ticketBindings() []binding {
 	out = append(out, m.xBinding()...)
 	if _, ok := m.bookTarget(); ok {
 		out = append(out, binding{BookTime, uitext.BookKey, uitext.BookHelp})
+	}
+	if _, ok := m.commentTarget(); ok {
+		out = append(out, binding{AddComment, uitext.AddCommentKey, uitext.AddCommentHelp})
 	}
 	out = append(out, m.dBinding()...)
 	return append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})

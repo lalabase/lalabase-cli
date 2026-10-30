@@ -1,16 +1,11 @@
 package ui
 
 import (
-	"context"
-	"slices"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/present"
-	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
@@ -35,7 +30,8 @@ import (
 // line tells the end of each ticket side by side, until its deadline
 // (bookNotice), and the next press on a ticket takes its end away: what it says
 // is never older than what is known, and the end of one ticket never takes
-// the end of another away.
+// the end of another away. All of it is what writes on a ticket share
+// (write.go), the comment's lock and ends too.
 //
 // A confirmed and an unknown booking both drop the time on the ticket and
 // read it again. Nothing else: a booking writes no activity and no
@@ -46,35 +42,25 @@ const (
 	// the server has none, and these are more than either is for.
 	bookDurationLimit = 32
 	bookNoteLimit     = 200
-	// maxRefusal bounds a server's text in the box or on the status line,
-	// whose three lines it is wrapped into at every frame.
-	maxRefusal = 240
-	// problemFor is how long a problem with a booking stands on the status
-	// line: a hint's hintFor is too short to come back to.
-	problemFor = 30 * time.Second
 )
 
-// bookOp is one booking on its way, or one nobody knows the end of.
-type bookOp struct {
-	id uint64
-	// The target, taken from the dialog: it does not move with the pane.
-	project, ticket string
-	number          int
-	// dialog is the box it was sent from, which may be gone by the end.
-	dialog uint64
-	cancel context.CancelFunc
-	// unclear: it ended, and nobody knows how.
-	unclear bool
-}
-
-// bookNotice says what became of a booking of ticket on the status line. It
-// stands until its deadline, wherever the person went meanwhile, or until the
-// person presses Enter on that ticket again.
-type bookNotice struct {
-	ticket string
-	text   present.Inline
-	tone   present.Style
-	until  time.Time
+// bookingWrites is the booking among the writes on a ticket (write.go). Any
+// later read of the time clears an unknown end up as well: it left after the
+// booking did.
+func (a *app) bookingWrites() ticketWrites {
+	return ticketWrites{
+		kind: gateway.BookTime, name: "book", ops: a.bookings, busy: uitext.BookBusy,
+		clearing: func(op *ticketOp) bool { return a.pending(a.timeKey(op.project, op.ticket)) },
+		done: func(op *ticketOp, r gateway.WriteResult) (present.Inline, tea.Cmd) {
+			return uitext.Fill(uitext.BookDone, hoursMinutes(r.Booking.Minutes), op.number), a.afterBooking(op)
+		},
+		unclear: a.afterBooking,
+		held:    a.unclearLine,
+		why: func(end writeEnd, r gateway.WriteResult) present.Inline {
+			return notDone(notDoneWords{uitext.BookNotSent, uitext.BookRateLimited, uitext.BookForbidden}, end, r.Answer)
+		},
+		notDone: uitext.BookNotBooked, unclearNotice: uitext.BookUnclearNotice,
+	}
 }
 
 // bookTarget is the ticket b would book on right now: the known ticket in
@@ -84,28 +70,13 @@ func (m Model) bookTarget() (DialogTarget, bool) {
 	if a == nil || !a.bookAllowed() {
 		return DialogTarget{}, false
 	}
-	t, ok := m.ticketTarget()
-	if !ok || a.bookBlocks(t.Ticket) {
-		return DialogTarget{}, false
-	}
-	return t, true
+	return m.freeTarget(a.bookingWrites())
 }
 
 // bookAllowed: the token may write and /me names the capability. There is
 // no other way to book: the client never used the tool.
 func (a *app) bookAllowed() bool {
 	return a.tokenWrites() && a.on("time_book") && a.deps.Gateway != nil
-}
-
-// bookBlocks is the ticket's lock: a booking on it is out, or its end is
-// unknown and the read that clears it up has not landed. Any later read of
-// the time clears it up as well: it left after the booking did.
-func (a *app) bookBlocks(ticket string) bool {
-	op := a.bookings[ticket]
-	if op == nil {
-		return false
-	}
-	return !op.unclear || a.pending(a.timeKey(op.project, op.ticket))
 }
 
 // pressB is b: the dialog on the ticket in the pane, which it holds from
@@ -125,90 +96,17 @@ func (m Model) pressB() Model {
 	})
 }
 
-// sendBooking is one press of Enter: the ticket's lock first, then the
-// operation with a key of its own, then the command of the write.
+// sendBooking is one press of Enter.
 func (a *app) sendBooking(s Submission) tea.Cmd {
-	t := s.Target
-	if a.bookBlocks(t.Ticket) {
-		return func() tea.Msg { return DialogOutcome{Dialog: s.Dialog, Refusal: uitext.Inline(uitext.BookBusy)} }
-	}
-	a.forgetBookNotice(t.Ticket)
-	a.nextOp++
-	ctx, cancel := context.WithCancel(a.base)
-	op := &bookOp{id: a.nextOp, project: t.Project, ticket: t.Ticket, number: t.Number, dialog: s.Dialog, cancel: cancel}
-	a.bookings[t.Ticket] = op
-	return a.deps.Gateway.Write(ctx, gateway.WriteTicket{
-		Session: a.session, Op: op.id, Kind: gateway.BookTime, Key: a.idempotencyKey("book", op.id),
-		Project: t.Project, Ticket: t.Ticket, Value: s.Values[0], Note: s.Values[1],
-	})
+	return a.sendOnTicket(a.bookingWrites(), s, gateway.WriteTicket{Value: s.Values[0], Note: s.Values[1]})
 }
 
-// receiveBooking files what became of a booking under the operation it
-// started, whatever the pane shows now. A 401 ends the session first. A
-// result of another session or of no operation running is dropped.
+// receiveBooking files what became of a booking.
 func (m Model) receiveBooking(r gateway.WriteResult) (Model, tea.Cmd) {
-	a := m.app
-	if a == nil || a.expired || r.Session != a.session {
+	if m.app == nil {
 		return m, nil
 	}
-	if r.Answer.Class == transport.Unauthenticated {
-		m.expire()
-		return m, nil
-	}
-	op := a.bookings[r.Ticket]
-	if op == nil || op.id != r.Op || op.unclear {
-		return m, nil
-	}
-	op.cancel()
-	inBox := m.dialog != nil && m.dialog.id == op.dialog
-	switch end := placeWrite(r.Answer); end {
-	case writeConfirmed:
-		delete(a.bookings, op.ticket)
-		told := a.tellBooking(op.ticket, uitext.Fill(uitext.BookDone, hoursMinutes(r.Booking.Minutes), op.number), present.Plain, hintFor)
-		read := a.afterBooking(op)
-		var closed tea.Cmd
-		m, closed = m.receiveOutcome(DialogOutcome{Dialog: op.dialog, Done: true})
-		return m, tea.Batch(told, read, closed)
-	case writeUnknown:
-		op.unclear = true
-		read := a.afterBooking(op)
-		if inBox {
-			m, _ = m.receiveOutcome(DialogOutcome{Dialog: op.dialog, Held: func() (present.Inline, present.Style) { return a.unclearLine(op) }})
-			return m, read
-		}
-		return m, tea.Batch(read, a.tellBooking(op.ticket, uitext.Fill(uitext.BookUnclearNotice, op.number), present.NoticeProblem, problemFor))
-	default:
-		delete(a.bookings, op.ticket)
-		why := notBooked(end, r.Answer)
-		if inBox {
-			return m.receiveOutcome(DialogOutcome{Dialog: op.dialog, Refusal: why})
-		}
-		return m, a.tellBooking(op.ticket, uitext.Fill(uitext.BookNotBooked, op.number, why.String()), present.NoticeProblem, problemFor)
-	}
-}
-
-// notBooked is why a booking did not happen: what stopped it from reaching
-// the server, else the server's text, cleaned here where it is shown; the
-// API's 403 and 404 carry none, and their class says it.
-func notBooked(end writeEnd, ans transport.Answer) present.Inline {
-	switch end {
-	case writeNotSent:
-		return uitext.Inline(uitext.BookNotSent)
-	case writeRateLimited:
-		return uitext.Inline(uitext.BookRateLimited)
-	}
-	if text := ans.RefusalText(); text != "" {
-		return present.NewInline(bounded(text, maxRefusal))
-	}
-	switch ans.Class {
-	case transport.NoAccess:
-		return uitext.Inline(uitext.BookForbidden)
-	case transport.ReadOnly:
-		return uitext.Inline(uitext.ReadOnlyToken)
-	case transport.NotFound:
-		return uitext.Inline(uitext.BookGone)
-	}
-	return uitext.Inline(uitext.DialogRefused)
+	return m.endOnTicket(m.app.bookingWrites(), r)
 }
 
 // afterBooking follows a confirmed booking and an unknown one alike: the
@@ -217,11 +115,8 @@ func notBooked(end writeEnd, ans transport.Answer) present.Inline {
 // sum being wrong by now, and the time is read again, the person's priority,
 // for as long as the pane still shows the ticket. Elsewhere the next open
 // reads it.
-func (a *app) afterBooking(op *bookOp) tea.Cmd {
-	res := a.timeKey(op.project, op.ticket).Resource()
-	a.cancelResource(res)
-	a.store.Apply(res, cache.Remove, nil, a.now())
-	a.scope.Invalidate(res)
+func (a *app) afterBooking(op *ticketOp) tea.Cmd {
+	a.dropResources(a.timeKey(op.project, op.ticket).Resource())
 	d := a.detail
 	if d == nil || d.id != op.ticket || d.project != op.project {
 		return nil
@@ -230,47 +125,15 @@ func (a *app) afterBooking(op *bookOp) tea.Cmd {
 	return a.readTime(d, false)
 }
 
-// tellBooking puts a booking's end on the status line, beside the ends of
-// other tickets: the press it came from took the ticket's own away. The Events
-// wake the model at its deadline, so the line is drawn again.
+// tellBooking puts a booking's end on the status line (tell).
 func (a *app) tellBooking(ticket string, text present.Inline, tone present.Style, lasts time.Duration) tea.Cmd {
-	now := a.now()
-	n := bookNotice{ticket: ticket, text: text, tone: tone, until: now.Add(lasts)}
-	a.bookNotices = append(a.bookNotices, n)
-	if a.deps.Events == nil {
-		return nil
-	}
-	return a.deps.Events.Expiry(n.until, now)
-}
-
-// forgetBookNotice takes what the line says of a ticket away: a new press
-// on it is the person's answer to that, and it must never stand over the end
-// of the booking that follows.
-func (a *app) forgetBookNotice(ticket string) {
-	a.bookNotices = slices.DeleteFunc(a.bookNotices, func(n bookNotice) bool { return n.ticket == ticket })
-}
-
-// bookStatus is what the line says of bookings now: the ends whose deadline
-// has not come, oldest first, in the tone of a problem when one is among them.
-// shown is false when none is.
-func (a *app) bookStatus() (text present.Inline, tone present.Style, shown bool) {
-	now := a.now()
-	var ends []string
-	for _, n := range a.bookNotices {
-		if n.until.After(now) {
-			ends = append(ends, n.text.String())
-			if n.tone == present.NoticeProblem {
-				tone = n.tone
-			}
-		}
-	}
-	return present.NewInline(strings.Join(ends, uitext.Inline(uitext.PathDetail).String())), tone, len(ends) > 0
+	return a.tell(gateway.BookTime, ticket, text, tone, lasts)
 }
 
 // unclearLine is what a box held on op says, as it is now: that the time is
 // being read, then the time on the ticket to go by, when the pane still shows
 // that ticket and the read brought one.
-func (a *app) unclearLine(op *bookOp) (present.Inline, present.Style) {
+func (a *app) unclearLine(op *ticketOp) (present.Inline, present.Style) {
 	if a.pending(a.timeKey(op.project, op.ticket)) {
 		return uitext.Inline(uitext.BookUnclearReading), present.NoticeWaiting
 	}

@@ -2,7 +2,6 @@ package inboxfixture
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -35,23 +34,23 @@ const (
 // durationForm is TimeSession#validate_duration_format.
 var durationForm = regexp.MustCompile(`(?m)^\s*(\d+(:?\d{0,2})?([.,]\d+)?|\d+:\d{1,2})\s*$`)
 
-// recordedBooking is the row of the recorded booking, the template of every
-// answer.
-func recordedBooking(file contractFile) (map[string]any, error) {
+// recordedAnswer is the row a recorded success has under data, the template
+// of every answer of its route.
+func recordedAnswer(file contractFile, route, name string) (map[string]any, error) {
 	var body struct {
 		Data map[string]any `json:"data"`
 	}
-	ex := file.Contract.REST["POST /api/v1/tickets/:ticket_id/time_sessions"]["ok_minutes_text"]
-	if err := json.Unmarshal(ex.Response.Body, &body); err != nil || len(body.Data) == 0 {
-		return nil, errors.New("inbox fixture: the contract copy records no booking")
+	if err := json.Unmarshal(file.Contract.REST[route][name].Response.Body, &body); err != nil || len(body.Data) == 0 {
+		return nil, fmt.Errorf("inbox fixture: the contract copy records no %s", name)
 	}
 	return body.Data, nil
 }
 
-// bookingOf is the ticket id of a booking's path, "" for any other.
-func bookingOf(path string) string {
+// ticketWrite is the ticket id of a path /api/v1/tickets/:id/<route>, "" for
+// any other.
+func ticketWrite(path, route string) string {
 	parts := strings.Split(strings.TrimPrefix(path, "/api/v1/"), "/")
-	if len(parts) == 3 && parts[0] == "tickets" && parts[2] == "time_sessions" {
+	if len(parts) == 3 && parts[0] == "tickets" && parts[2] == route {
 		return parts[1]
 	}
 	return ""
@@ -107,18 +106,9 @@ func checkDuration(typed string, minutes int) []string {
 	return refusals
 }
 
-// bookingRefusal answers a booking the input or the model refuses.
-func (f *Fixture) bookingRefusal(w http.ResponseWriter, req Request, messages ...string) {
-	req.Status = http.StatusUnprocessableEntity
-	f.record(req)
-	out, _ := json.Marshal(map[string]any{"error": "validation_failed", "code": "invalid_input", "errors": messages})
-	w.WriteHeader(http.StatusUnprocessableEntity)
-	_, _ = w.Write(out)
-}
-
 // bookTime answers a POST under /api/v1/tickets/.
 func (f *Fixture) bookTime(w http.ResponseWriter, r *http.Request, req Request) {
-	id := bookingOf(r.URL.Path)
+	id := ticketWrite(r.URL.Path, "time_sessions")
 	if id == "" || !f.r1 {
 		restError(w, req, f, http.StatusNotFound, "not_found", "")
 		return
@@ -142,37 +132,7 @@ func (f *Fixture) bookTime(w http.ResponseWriter, r *http.Request, req Request) 
 		req.Args["description"] = body.Session.Description
 	}
 	key := r.Header.Get("Idempotency-Key")
-	f.mu.Lock()
-	f.keys = append(f.keys, key)
-	f.mu.Unlock()
-	// The token: a read-only one, a revoked one, the rate limit.
-	switch f.scenario {
-	case ReadOnly:
-		req.Status = http.StatusForbidden
-		f.record(req)
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"error":"forbidden","code":"read_only"}`))
-		return
-	case Unauthorized, RateLimited:
-		if f.scenarioOn(w, "book:"+id, req) {
-			return
-		}
-	}
-	// A key seen before: the first answer again, with other arguments the
-	// mismatch.
-	f.mu.Lock()
-	stored, seen := f.results[key]
-	f.mu.Unlock()
-	if key != "" && seen {
-		if stored.fingerprint != fingerprint(req.Args) {
-			req.Status = http.StatusUnprocessableEntity
-			f.record(req)
-			out, _ := json.Marshal(map[string]any{"error": "idempotency_key_reused", "code": "invalid_input", "message": textKeyMismatch})
-			w.WriteHeader(http.StatusUnprocessableEntity)
-			_, _ = w.Write(out)
-			return
-		}
-		f.bookingAnswer(w, req, stored.result)
+	if f.restWriteGate(w, req, key, "book:"+id) {
 		return
 	}
 	// The read gate: a missing, a hidden and a vanished ticket answer alike.
@@ -186,7 +146,7 @@ func (f *Fixture) bookTime(w http.ResponseWriter, r *http.Request, req Request) 
 		typed = *body.Session.Duration
 	}
 	if strings.TrimSpace(typed) == "" {
-		f.bookingRefusal(w, req, textDurationMissing)
+		f.restRefusal(w, req, textDurationMissing)
 		return
 	}
 	if f.scenario == Refusals && project == ProjectWebsite && n == refusedWrite {
@@ -198,7 +158,7 @@ func (f *Fixture) bookTime(w http.ResponseWriter, r *http.Request, req Request) 
 	}
 	minutes := durationMinutes(typed)
 	if refusals := checkDuration(typed, minutes); len(refusals) > 0 {
-		f.bookingRefusal(w, req, refusals...)
+		f.restRefusal(w, req, refusals...)
 		return
 	}
 	// The booking, and its record: a description of blanks is none.
@@ -215,15 +175,6 @@ func (f *Fixture) bookTime(w http.ResponseWriter, r *http.Request, req Request) 
 	f.remember(key, req.Args, row)
 	f.mu.Unlock()
 	if f.answerDue(w, r, req) {
-		f.bookingAnswer(w, req, row)
+		f.restCreated(w, req, row)
 	}
-}
-
-// bookingAnswer answers 201 with the row under data.
-func (f *Fixture) bookingAnswer(w http.ResponseWriter, req Request, row map[string]any) {
-	req.Status = http.StatusCreated
-	f.record(req)
-	out, _ := json.Marshal(map[string]any{"data": row})
-	w.WriteHeader(http.StatusCreated)
-	_, _ = w.Write(out)
 }
