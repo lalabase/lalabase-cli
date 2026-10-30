@@ -15,8 +15,9 @@ import (
 
 // The writes of the interface run through one path (C1f built it for the
 // one write of C1, a notification marked as read; C2 adds the comment,
-// the status, the assignment and the title of a ticket). A write is never
-// shared and never joins a read: it runs as the person's job of kind
+// the status, the assignment and the title of a ticket, K6 the time booked
+// on one, over REST). A write is never shared and never joins a read: it
+// runs as the person's job of kind
 // Write, so the queue retries it only when the server cannot have acted
 // (a 429, or nothing was sent), with the same idempotency key. The result
 // carries the target of the operation, not of a selection: the model
@@ -41,6 +42,9 @@ const (
 	Assign
 	// Title sets the ticket's title to Value (C2c).
 	Title
+	// BookTime books the duration in Value, as typed, on the ticket, with
+	// the note in Note when there is one (K6).
+	BookTime
 )
 
 func (k WriteKind) String() string {
@@ -55,6 +59,8 @@ func (k WriteKind) String() string {
 		return "assign"
 	case Title:
 		return "title"
+	case BookTime:
+		return "book time"
 	}
 	return "write"
 }
@@ -74,8 +80,10 @@ type WriteTicket struct {
 	Project      string
 	Ticket       string
 	// The payload: the body of a comment, the status key, the new title,
-	// or the person's own id for Assign (see WriteKind).
+	// the duration of a booking, or the person's own id for Assign (see
+	// WriteKind). Note is a booking's note, empty for none.
 	Value string
+	Note  string
 }
 
 // WriteResult is the outcome of one write. The value of its kind is filled
@@ -85,6 +93,7 @@ type WriteResult struct {
 	State   api.NotificationState // MarkRead
 	Summary api.TicketRow         // Status, Assign, Title
 	Comment api.Comment           // Comment
+	Booking api.TimeBooking       // BookTime
 	Answer  transport.Answer
 }
 
@@ -101,7 +110,7 @@ func CheckWriteTicket(t WriteTicket) error {
 		if t.Notification == "" {
 			return errors.New("mark read: no notification id")
 		}
-	case Comment, Status, Assign, Title:
+	case Comment, Status, Assign, Title, BookTime:
 		if t.Project == "" || t.Ticket == "" {
 			return fmt.Errorf("%s: no ticket", t.Kind)
 		}
@@ -174,6 +183,25 @@ func CheckPostedComment(t WriteTicket, c api.Comment) error {
 	return nil
 }
 
+// CheckBooking says whether a booking confirms the write: it is of the
+// ticket asked for, with an id and with minutes. The minutes are not
+// compared with what was typed: only the server reads a duration.
+func CheckBooking(t WriteTicket, b api.TimeBooking) error {
+	if t.Kind != BookTime {
+		return fmt.Errorf("%s: a booking confirms no such write", t.Kind)
+	}
+	if b.TicketID != t.Ticket {
+		return errors.New("book time: a booking of another ticket answered")
+	}
+	if b.ID == "" {
+		return errors.New("book time: a booking without an id answered")
+	}
+	if b.Minutes <= 0 {
+		return fmt.Errorf("book time: a booking of %d minutes answered", b.Minutes)
+	}
+	return nil
+}
+
 // confirm picks the confirmation of a kind.
 func confirm(t WriteTicket, r WriteResult) error {
 	switch t.Kind {
@@ -181,6 +209,8 @@ func confirm(t WriteTicket, r WriteResult) error {
 		return checkMarkedState(t, r.State)
 	case Comment:
 		return CheckPostedComment(t, r.Comment)
+	case BookTime:
+		return CheckBooking(t, r.Booking)
 	}
 	return CheckUpdatedTicket(t, r.Summary)
 }
@@ -210,6 +240,8 @@ func (g *Gateway) Write(ctx context.Context, t WriteTicket) tea.Cmd {
 			r.Summary, ans = g.src.UpdateTicket(ctx, t.Project, t.Ticket, api.TicketChange{AddMe: true}, t.Key)
 		case Title:
 			r.Summary, ans = g.src.UpdateTicket(ctx, t.Project, t.Ticket, api.TicketChange{Title: t.Value}, t.Key)
+		case BookTime:
+			r.Booking, ans = g.src.BookTime(ctx, t.Ticket, t.Value, t.Note, t.Key)
 		}
 		return ans
 	}

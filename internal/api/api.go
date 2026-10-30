@@ -74,8 +74,8 @@ func checkKey(spec Spec, key string) (transport.Answer, bool) {
 	return transport.Answer{Class: transport.InvalidInput, Message: spec.Name + ": a write needs an idempotency key of 8 to 128 letters, digits or ._:-"}, false
 }
 
-// write runs a REST write adapter (K0: no adapter of the interface uses it
-// yet). The key is checked first. A retry of the queue runs the same job
+// write runs a REST write adapter (K0; BookTime is its first caller, K6). The
+// key is checked first. A retry of the queue runs the same job
 // again and encodes the same value again: encoding/json writes it the same
 // way every time (map keys sorted), so the server's replay, which compares
 // the request, sees the same bytes. The value must not change between the
@@ -1136,6 +1136,52 @@ func DecodeBookedTime(ans transport.Answer) (BookedTime, transport.Answer) {
 		return BookedTime{}, ans
 	}
 	return BookedTime{Ticket: body.Filters.Ticket.ID, Scope: body.Scope, Minutes: body.Total.Minutes}, ans
+}
+
+// --- booking time (K6) --------------------------------------------------------
+
+// BookTimeSpec is a booking over REST (the core's R6): the row of the new
+// time session under data, of which the three fields are what confirms the
+// write (gateway.CheckBooking). It has no tool: the client never used
+// create_time_session, and a booking has no way but this one.
+var BookTimeSpec = Spec{
+	Name: "POST /api/v1/tickets/:ticket_id/time_sessions", Path: "/api/v1/tickets/:ticket_id/time_sessions",
+	Method:   http.MethodPost,
+	Required: []string{"data.id", "data.ticket_id", "data.duration_minutes"},
+}
+
+// TimeBooking is a booking as the server filed it.
+type TimeBooking struct {
+	ID       string `json:"id"`
+	TicketID string `json:"ticket_id"`
+	Minutes  int    `json:"duration_minutes"`
+}
+
+// BookTime books time on a ticket, today, for the token's person. duration
+// goes as it was typed: the server's parser is the one parser, a second
+// one here would disagree with it ("1,5"), and only its answer says how
+// many minutes that was. An empty note is not sent. key is the idempotency
+// key of the person's action, the same on every retry of that action.
+func (a *API) BookTime(ctx context.Context, ticketID, duration, note, key string) (TimeBooking, transport.Answer) {
+	id, ok := segment(ticketID)
+	if !ok {
+		return TimeBooking{}, noSegment(BookTimeSpec, "ticket")
+	}
+	type session struct {
+		DurationString string `json:"duration_string"`
+		Description    string `json:"description,omitempty"`
+	}
+	body := struct {
+		TimeSession session `json:"time_session"`
+	}{session{DurationString: duration, Description: note}}
+	var out struct {
+		Data TimeBooking `json:"data"`
+	}
+	ans := a.write(ctx, BookTimeSpec, strings.Replace(BookTimeSpec.Path, ":ticket_id", id, 1), body, key, &out)
+	if !ans.OK() {
+		return TimeBooking{}, ans
+	}
+	return out.Data, ans
 }
 
 // --- REST readers ------------------------------------------------------------

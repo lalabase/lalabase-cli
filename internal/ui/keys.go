@@ -61,6 +61,8 @@ const (
 	DeleteForward
 	LineStart
 	LineEnd
+	// K6: book time on the ticket in the pane.
+	BookTime
 )
 
 type keyAction struct {
@@ -142,6 +144,8 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: OpenAgents}
 	case "d":
 		return keyAction{Kind: RemoveAgent}
+	case "b":
+		return keyAction{Kind: BookTime}
 	}
 	return keyAction{}
 }
@@ -521,6 +525,9 @@ func (m Model) ticketBindings() []binding {
 		out = append(out, binding{Expand, uitext.ExpandKey, uitext.ExpandHelp})
 	}
 	out = append(out, m.xBinding()...)
+	if _, ok := m.bookTarget(); ok {
+		out = append(out, binding{BookTime, uitext.BookKey, uitext.BookHelp})
+	}
 	if _, ok := m.removeTarget(); ok {
 		out = append(out, binding{RemoveAgent, uitext.RemoveAgentKey, uitext.RemoveAgentHelp})
 	}
@@ -557,7 +564,8 @@ func (m Model) withoutIdleScroll(out []binding) []binding {
 
 // allowed is the set of actions the bindings cover. While the search line
 // or a dialog is open, and there is room for it, every printable key is text
-// (InsertText), which no binding names; a dialog sending takes no text.
+// (InsertText), which no binding names; a dialog sending, or held on what
+// became of a send, takes no text.
 func (m Model) allowed() map[Action]bool {
 	set := map[Action]bool{}
 	for _, b := range m.actions() {
@@ -569,7 +577,7 @@ func (m Model) allowed() map[Action]bool {
 	if m.mode == TextEntry && !m.small() {
 		set[InsertText] = true
 	}
-	if m.dialog != nil && !m.dialog.sending && !m.small() {
+	if m.dialog != nil && !m.dialog.locked() && !m.small() {
 		set[InsertText] = true
 	}
 	if set[Back] && m.focus == view.Agents {

@@ -107,6 +107,9 @@ func TestTheTicketViewShowsTheSameOnBothWays(t *testing.T) {
 		return screens, h.f.viewReads()
 	}
 	tools, rest := newHarness(t), newRESTHarness(t)
+	// b comes with its own capability, not with the view (K6): without it
+	// the help is the same as well.
+	rest.setToken(rest.d.me.Token.ReadOnly, "time_sessions.book")
 	mcpScreens, mcpReads := run(tools)
 	restScreens, restReads := run(rest)
 	// Each run took its own way, or the comparison says nothing (review
