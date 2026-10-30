@@ -247,27 +247,35 @@ navigation again.
   creator, last change); every section's heading is bold and ends in a
   rule; a comment is its author in bold, its time faint, and its text
   indented below; an attachment's type, size and text status are faint.
-* **Opening a file (C10).** The client shows no images. In the section of
+* **Opening a file (C10, C12).** The client shows no images. In the section of
   attachments (`Tab`) the arrows select a file and `Enter` opens it in the
   default browser, on the server's own address for the file: the client
   builds that address from the profile's server and the ids, sends no request
-  for it, and the browser uses its own login. The client downloads nothing;
-  the server lets the browser show images (not SVG) and PDFs, and the
+  for it, and the browser uses its own login. A comment's files stand under
+  its text, each with its type and size, and come with the page. In the
+  comments the arrows walk a comment, its files, the next comment; `Enter` on
+  a file opens it the same way and on a comment does nothing, `e` on a file
+  expands its comment, and `b` and `x` act on the ticket from anywhere. A file
+  that leaves the page (another page, the other order, a refresh without it)
+  gives way to its comment, or to the page's first. The client downloads
+  nothing; the server lets the browser show images (not SVG) and PDFs, and the
   browser saves every other type. Logged out, the browser asks for the login and lands on
   the organisation's home, not on the file: `Enter` again opens it. Logged in
   as someone who may not read the file, it usually gets an empty 404. With
   `SSH_CONNECTION` set (a tmux started locally and attached over SSH does
   not have it), or without a program to open a browser (`open` on macOS, `xdg-open`
-  elsewhere), a notice says so and nothing starts. Only the ticket's own
-  files are listed: files of comments, and images inside a text, cannot be
-  opened yet. A server that sends no ids shows the names alone.
+  elsewhere), a notice says so and nothing starts. Images inside a text cannot
+  be opened yet. A server that sends no ids shows the names alone. A server
+  before REST API 1.8.0 sends a comment's count without its files, and a page
+  kept from one has no more: the comment says "2 files, not listed by this
+  server", with nothing to select.
 * **Paging the ticket (C1d).** `Tab` moves between the description, the
   comments and the attachments and brings the section's heading into
   sight; `[`/`]` turn the page of that section, `o` switches the comments
   between newest and oldest first (back to their page 1; the attachments'
-  page stays), `↑`/`↓` select a comment (kept by its id across a reload,
-  else the first). A text the server shortened ends with "Text shortened
-  by server"; `e` reads it whole: the description (`full_text`, with the
+  page stays), `↑`/`↓` select a comment or one of its files (kept by its id
+  across a reload, else the first comment). A text the server shortened
+  ends with "Text shortened by server"; `e` reads it whole: the description (`full_text`, with the
   options of the page asked) or the selected comment (`post_id`). One
   expansion at a time; it is a read of its own and replaces no page; `Esc`
   closes it first, without a request, and a late answer does not open it
@@ -927,10 +935,13 @@ navigation again.
 contract copy: two organisations, two pages of unread notifications for the
 first, rows without a project, a ticket or an actor among them; the first
 organisation's four recorded projects (the second has none), 30 tickets in
-Website-Relaunch (two pages; #1 is the recorded ticket, #2 has nothing, #3
+Website-Relaunch (two pages; #1 is the recorded ticket, its first comment
+with the recorded file, #2 has nothing, #3
 has 30 comments, #4 twelve attachments, #6 everything C1d pages and
 expands, #8 a description and a newest comment of 9,000 characters,
-longer than the pane shows), 3 in Handbuch, 5 in Archiv; the first organisation's rows name
+longer than the pane shows, #9 a comment of every kind of files: two
+files, a private comment's, a count without a list, an empty list beside
+a count), 3 in Handbuch, 5 in Archiv; the first organisation's rows name
 Website-Relaunch's tickets (row 6 names ticket #6), the second's name
 tickets the fixture does not have. It
 binds to 127.0.0.1 only, accepts one synthetic token (`inboxfixture.Token`)
@@ -944,7 +955,8 @@ tickets as the tools' answers; `-before-r1` (`inboxfixture.BeforeR1`)
 serves a server before R1, whose `/me` lists the capabilities of API
 1.2.0 and whose REST ticket answers lack the status catalogue and the
 pages, and the client takes the tools. The scenarios of older servers
-(`older`, `s1-only`, `s2-only`) list no capabilities at all. Writes:
+(`older`, `s1-only`, `s2-only`) list no capabilities at all; these and
+`-before-r1` send a comment's count without its files. Writes:
 `mark_notification_read` (a marked row leaves the unread pages and the
 counts), `update_ticket` (one change per call, validated in the server's
 order with its texts and its trimming, ASCII and NUL as `String#strip`,

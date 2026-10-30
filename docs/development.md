@@ -112,6 +112,9 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   its schemas say. Fields a newer server sends are `Newer` in the spec:
   absent is fine, present they are checked like the required ones
   (`/api/v1/me` names `api_version` and `capabilities` since R0). A
+  comment's files (core R7, C12) are in no spec: a server before them
+  sends the count alone, the client takes the list's presence as the
+  signal, and an entry that does not read is left out, the ticket stays. A
   feature may name the REST capabilities its REST way needs; a server
   whose `/me` lists them all gets that way, any other the MCP way, so a
   server without capabilities keeps every feature. Since K1 the five

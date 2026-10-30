@@ -606,6 +606,28 @@ func TestAFileListedTwiceIsOneStop(t *testing.T) {
 	h.at(29, "seven-a.png")
 }
 
+// The same file under two comments stands on two lines: the mark is on the
+// one the walk reached.
+func TestAFileUnderTwoCommentsMarksTheOneWalkedTo(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.editSeven(func(posts []api.Post) []api.Post {
+		postAt(posts, 30).Attachments = postAt(posts, 29).Attachments[:1]
+		return posts
+	})
+	h.toComments()
+	h.press("down")
+	h.at(30, "seven-a.png")
+	h.press("down")
+	h.press("down")
+	h.at(29, "seven-a.png")
+	tl := ticketText(h.m.app.detail, ticketContext{paged: true, when: h.m.app.when})
+	if head := tl.posts[sevenPostID(29)]; tl.file < head {
+		t.Fatalf("the mark at line %d, comment 29 at %d", tl.file, head)
+	}
+}
+
 func TestAMissingCommentTakesItsFilesWithIt(t *testing.T) {
 	t.Parallel()
 
