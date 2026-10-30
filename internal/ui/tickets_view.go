@@ -377,7 +377,7 @@ func (a *app) ownID() string {
 func ticketText(d *detailView, c ticketContext) ticketLines {
 	r, paged, origin, when := d.record, c.paged, c.origin, c.when
 	t := ticketLines{posts: map[string]int{}, file: -1}
-	// The one selected file, of the active section; a kind of none without.
+	// The one selected file of the active section, if any.
 	selected, _ := d.selectedFile()
 	// The head: the title, then one faint line of its facts, unless they
 	// stand in the meta bar, then the line of its agent, if it has one.

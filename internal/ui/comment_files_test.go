@@ -60,6 +60,19 @@ func (h *harness) editSeven(edit func(posts []api.Post) []api.Post) {
 	})
 }
 
+// editSevenLater serves ticket #7 as it is until the function it returns is
+// called, and with its comments changed by edit from then on.
+func (h *harness) editSevenLater(edit func(posts []api.Post) []api.Post) func() {
+	changed := false
+	h.editSeven(func(posts []api.Post) []api.Post {
+		if changed {
+			return edit(posts)
+		}
+		return posts
+	})
+	return func() { changed = true }
+}
+
 // postAt is comment i of ticket #7 among posts, oldest first.
 func postAt(posts []api.Post, i int) *api.Post {
 	return &posts[slices.IndexFunc(posts, func(p api.Post) bool { return p.ID == sevenPostID(i) })]
@@ -404,19 +417,24 @@ func TestWhileThePageLoadsNoFileIsSelected(t *testing.T) {
 	h.at(5, "")
 }
 
+// withoutSevenA takes the first file of comment 29 away.
+func withoutSevenA(posts []api.Post) []api.Post {
+	postAt(posts, 29).Attachments = postAt(posts, 29).Attachments[1:]
+	return posts
+}
+
+// withoutComment29 takes comment 29 away.
+func withoutComment29(posts []api.Post) []api.Post {
+	return slices.DeleteFunc(posts, func(p api.Post) bool { return p.ID == sevenPostID(29) })
+}
+
 func TestARefreshWithoutTheFileFallsBackToItsComment(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	gone := false
-	h.editSeven(func(posts []api.Post) []api.Post {
-		if gone {
-			postAt(posts, 29).Attachments = postAt(posts, 29).Attachments[1:]
-		}
-		return posts
-	})
+	change := h.editSevenLater(withoutSevenA)
 	h.onSevenA()
-	gone = true
+	change()
 	h.drive(h.press("R"))
 	h.at(29, "")
 	h.press("down")
@@ -427,16 +445,10 @@ func TestARefreshKeepsTheFileByItsID(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	gone := false
-	h.editSeven(func(posts []api.Post) []api.Post {
-		if gone {
-			postAt(posts, 29).Attachments = postAt(posts, 29).Attachments[1:]
-		}
-		return posts
-	})
+	change := h.editSevenLater(withoutSevenA)
 	h.onSevenA()
 	h.press("down")
-	gone = true
+	change()
 	h.drive(h.press("R"))
 	h.at(29, "seven-b.log")
 }
@@ -445,15 +457,9 @@ func TestARefreshWithoutTheCommentFallsBackToTheFirst(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	gone := false
-	h.editSeven(func(posts []api.Post) []api.Post {
-		if gone {
-			return slices.DeleteFunc(posts, func(p api.Post) bool { return p.ID == sevenPostID(29) })
-		}
-		return posts
-	})
+	change := h.editSevenLater(withoutComment29)
 	h.onSevenA()
-	gone = true
+	change()
 	h.drive(h.press("R"))
 	h.at(30, "")
 }
@@ -738,16 +744,12 @@ func TestAnotherCommentTakesNoFileAlong(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	gone := false
-	h.editSeven(func(posts []api.Post) []api.Post {
-		if gone {
-			postAt(posts, 30).Attachments = postAt(posts, 29).Attachments
-			return slices.DeleteFunc(posts, func(p api.Post) bool { return p.ID == sevenPostID(29) })
-		}
-		return posts
+	change := h.editSevenLater(func(posts []api.Post) []api.Post {
+		postAt(posts, 30).Attachments = postAt(posts, 29).Attachments
+		return withoutComment29(posts)
 	})
 	h.onSevenA()
-	gone = true
+	change()
 	h.drive(h.press("R"))
 	h.at(30, "")
 }
