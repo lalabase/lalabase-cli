@@ -443,6 +443,9 @@ type Post struct {
 // without it. The extracted text the server sends along is not read: the
 // client shows metadata only.
 type Attachment struct {
+	// ID is the document's id, what opens the file (C10); nil from a server
+	// that sends none.
+	ID          *string `json:"id,omitempty"`
 	Filename    string  `json:"filename"`
 	ContentType *string `json:"content_type,omitempty"`
 	ByteSize    *int64  `json:"byte_size,omitempty"`
@@ -452,6 +455,7 @@ type Attachment struct {
 // UnmarshalJSON reads the file name strictly and the metadata leniently.
 func (a *Attachment) UnmarshalJSON(data []byte) error {
 	var raw struct {
+		ID          json.RawMessage `json:"id"`
 		Filename    string          `json:"filename"`
 		ContentType json.RawMessage `json:"content_type"`
 		ByteSize    json.RawMessage `json:"byte_size"`
@@ -460,7 +464,7 @@ func (a *Attachment) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	*a = Attachment{Filename: raw.Filename, ContentType: optionalString(raw.ContentType), TextStatus: optionalString(raw.TextStatus)}
+	*a = Attachment{ID: optionalString(raw.ID), Filename: raw.Filename, ContentType: optionalString(raw.ContentType), TextStatus: optionalString(raw.TextStatus)}
 	// A size is a whole number of bytes, written as one: 1e3 or 1.5 is not.
 	if n, err := strconv.ParseInt(string(raw.ByteSize), 10, 64); err == nil && n >= 0 {
 		a.ByteSize = &n

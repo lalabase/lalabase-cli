@@ -159,7 +159,7 @@ func TestTheRecordedPageOfATicketReadsAsTheToolsTicket(t *testing.T) {
 	ticket, decoded := DecodeTicketREST(ans, o)
 	if !decoded.OK() || ticket.ID != login || ticket.Project.ID != website || len(ticket.Posts) != 1 || ticket.PostsTotal != 7 ||
 		ticket.PostsPage != 2 || ticket.PostsPages != 7 || ticket.PostsOrder != "oldest" || !ticket.PostsTruncated ||
-		len(ticket.Attachments) != 1 || ticket.Attachments[0].Filename != "test_document.pdf" || ticket.AttachmentsPages != 1 {
+		len(ticket.Attachments) != 1 || ticket.Attachments[0].Filename != "test_document.pdf" || ticket.Attachments[0].ID == nil || ticket.AttachmentsPages != 1 {
 		t.Fatalf("%v %q %+v", decoded.Class, decoded.Message, ticket)
 	}
 	if err := CheckTicket(ticket, o); err != nil {
