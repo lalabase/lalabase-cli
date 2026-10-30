@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/gboyke/lalabase-cli/internal/launch"
+	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
 
@@ -227,20 +228,53 @@ func TestNoFileThatCanBeOpened(t *testing.T) {
 }
 
 func TestEveryOutcomeOfAFileHasItsNotice(t *testing.T) {
-	for kind, want := range map[launch.Kind]string{
-		launch.FileOpened:    "Sent six-01.txt to the browser",
-		launch.NoOpener:      "No browser can be opened here",
-		launch.OpenFailed:    "The browser could not be opened",
-		launch.NotHandedOver: "The file's address did not pass its check",
-		launch.Canceled:      "",
+	for kind, want := range map[launch.Kind]struct {
+		text string
+		tone present.Style
+		goes bool
+	}{
+		launch.FileOpened:    {"Sent six-01.txt to the browser", present.Plain, true},
+		launch.NoOpener:      {"No browser can be opened here", present.Plain, true},
+		launch.OpenFailed:    {"The browser could not be opened", present.NoticeProblem, false},
+		launch.NotHandedOver: {"The file's address did not pass its check", present.NoticeProblem, false},
+		launch.NoAnswer:      {"The browser did not answer in time; it may still open", present.NoticeProblem, false},
+		launch.Canceled:      {"", present.Plain, false},
 	} {
 		h := newHarness(t)
 		f := h.toFiles()
 		f.openKind = kind
 		h.drive(h.press("enter"))
-		if got := h.status(); got != want {
-			t.Fatalf("kind %d: %q", kind, got)
+		l := h.m.app.launch
+		if got := h.status(); got != want.text || l.tone != want.tone || l.until.IsZero() == want.goes {
+			t.Fatalf("kind %d: %q, tone %v, until %v", kind, got, l.tone, l.until)
 		}
+	}
+}
+
+func TestAnEmptyIDIsNoFile(t *testing.T) {
+	h := newHarness(t)
+	f := h.toFiles()
+	empty := ""
+	h.m.app.detail.record.Attachments[0].ID = &empty
+	h.drive(h.press("enter"))
+	if calls := f.opened(); len(calls) != 1 || calls[0].file.ID != fileID(2) {
+		t.Fatalf("opened %+v", calls)
+	}
+}
+
+func TestWithoutTheOrganisationNoFileIsOffered(t *testing.T) {
+	h := newHarness(t)
+	f := h.toFiles()
+	h.m.app.tickets.project = "another"
+	if h.m.app.detailOrg() != "" {
+		t.Fatalf("organisation %q", h.m.app.detailOrg())
+	}
+	if h.offers(OpenList) {
+		t.Fatal("enter offered without the organisation")
+	}
+	h.drive(h.press("enter"))
+	if calls := f.opened(); len(calls) != 0 {
+		t.Fatalf("opened %+v", calls)
 	}
 }
 

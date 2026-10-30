@@ -11,8 +11,9 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
-// Launcher starts Claude Code beside a ticket (C7): one command per launch,
-// whose message is a launch.Done with the same ref. The command gives the
+// Launcher starts Claude Code beside a ticket (C7) and opens a ticket's
+// file (C10): one command per launch, whose message is a launch.Done with
+// the same ref. The command gives the
 // session one (launch.New); tests give a fake.
 type Launcher interface {
 	Launch(ref uint64, t launch.Ticket) tea.Cmd
@@ -28,7 +29,7 @@ type Launcher interface {
 	OpenFile(ref uint64, t launch.Ticket, f launch.File) tea.Cmd
 }
 
-// launchState is the one launch at a time: its number, whether it runs, and
+// launchState is the one launch at a time, a file's opening among them: its number, whether it runs, and
 // the notice of the newest one with the ticket it was for. A plain notice
 // is a hint (L2): it is shown until its deadline, a problem or a launch
 // running has none. everywhere: x was pressed in the agents' list, where
@@ -170,8 +171,9 @@ func (a *app) launchHint() tea.Cmd {
 }
 
 // launchTone is the notice's tone by the outcome: plain when Claude Code
-// opened or ended, or the jump went or had nowhere to go, a problem for
-// every outcome that opened nothing or ended in an error.
+// opened or ended, the jump went or had nowhere to go, or a file went to
+// the browser or had no way there, a problem for every outcome that opened
+// nothing or ended in an error.
 func launchTone(k launch.Kind) present.Style {
 	switch k {
 	case launch.Opened, launch.Ended, launch.Canceled, launch.Jumped, launch.NoPane, launch.FileOpened, launch.NoOpener:
@@ -237,6 +239,8 @@ func fileNotice(d launch.Done) present.Inline {
 		return uitext.Inline(uitext.FileNoOpener)
 	case launch.NotHandedOver:
 		return uitext.Inline(uitext.FileNotHandedOver)
+	case launch.NoAnswer:
+		return uitext.Inline(uitext.FileNoAnswer)
 	case launch.Canceled:
 		return present.Inline{}
 	}

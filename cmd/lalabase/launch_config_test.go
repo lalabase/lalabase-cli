@@ -31,7 +31,8 @@ func TestTheLaunchReadsTheCommandsEnvironment(t *testing.T) {
 	}
 	env := Env{Home: "/Users/anna", Cwd: "/Users/anna/dev", Executable: "/opt/lalabase/bin/lalabase", Getenv: func(k string) string { return vars[k] }}
 	p := profile.Profile{Name: "default", URL: "https://lalabase.com", Token: "lalab_pat_X", Folders: folders}
-	const server, mcp = "https://lalabase.com", "https://lalabase.com/api/mcp"
+	// The checked base, which is not the profile's text.
+	const server, mcp = "https://checked.example.com", "https://lalabase.com/api/mcp"
 	got := launchConfig(env, p, server, mcp, sup)
 	want := launch.Config{
 		Supervisor: sup, Home: "/Users/anna", Cwd: "/Users/anna/dev", MCP: mcp, Token: "lalab_pat_X", Folders: folders,

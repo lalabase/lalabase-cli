@@ -250,6 +250,7 @@ const (
 	FileNoOpener
 	FileNotHandedOver
 	FileOpenFailed
+	FileNoAnswer
 	// C9a: the agent's line in the ticket's head, its states' words and
 	// the age of a state.
 	AgentLine
@@ -466,6 +467,7 @@ var english = map[ID]string{
 	FileNoOpener:        "No browser can be opened here",
 	FileNotHandedOver:   "The file's address did not pass its check",
 	FileOpenFailed:      "The browser could not be opened",
+	FileNoAnswer:        "The browser did not answer in time; it may still open",
 	AgentLine:           "Agent %s · for %s",
 	AgentApproval:       "waiting for approval", AgentWaiting: "waiting for you", AgentLost: "lost",
 	AgentWorking: "working", AgentStarting: "starting", AgentEnded: "ended",

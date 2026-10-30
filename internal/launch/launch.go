@@ -221,7 +221,9 @@ func (l *Launcher) openFile(ref uint64, t Ticket, f File) Done {
 	switch {
 	case err == nil:
 		d.Kind = FileOpened
-	case errors.Is(ctx.Err(), context.Canceled):
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		d.Kind = NoAnswer
+	case ctx.Err() != nil:
 		d.Kind = Canceled
 	default:
 		d.Kind = OpenFailed

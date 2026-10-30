@@ -22,8 +22,10 @@ func TestPTYOpenFileHandsTheAddressToTheOpener(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bin, "xdg-open"), []byte(stub), 0o700); err != nil { //nolint:gosec // a test program
 		t.Fatal(err)
 	}
+	// The profile's text with an empty fragment, which the transport takes:
+	// the address starts with the checked base, not with this text.
 	c := startTerminalWith(t, "inbox-normal", 120, terminalOptions{
-		url: url, marker: "Token can write: yes", limit: inboxLimit,
+		url: url + "#", marker: "Token can write: yes", limit: inboxLimit,
 		env: []string{"PATH=" + bin + ":/usr/bin:/bin"},
 	})
 	if err := c.ready(); err != nil {

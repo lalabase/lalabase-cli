@@ -150,6 +150,8 @@ func TestOpenFileWhoseOpenerFails(t *testing.T) {
 	}
 }
 
+// A program that does not end in time may still have opened the browser
+// (xdg-open waits for it where no desktop runs): that is no failure.
 func TestOpenFileHasADeadline(t *testing.T) {
 	l, _ := openLauncher(t, Config{}, nil)
 	l.deadline = time.Millisecond
@@ -157,7 +159,21 @@ func TestOpenFileHasADeadline(t *testing.T) {
 		<-ctx.Done()
 		return ctx.Err()
 	}
-	if d := openDone(t, l, File{ID: fileDoc}); d.Kind != OpenFailed {
+	if d := openDone(t, l, File{ID: fileDoc}); d.Kind != NoAnswer {
+		t.Fatalf("done = %+v", d)
+	}
+}
+
+func TestOpenFileEndedWithTheSession(t *testing.T) {
+	l, _ := openLauncher(t, Config{}, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	l.cfg.Supervisor = worker.New(ctx)
+	l.runOpener = func(ctx context.Context, _ string, _ []string) error {
+		cancel()
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	if d := l.openFile(1, Ticket{Org: fileOrg}, File{ID: fileDoc}); d.Kind != Canceled {
 		t.Fatalf("done = %+v", d)
 	}
 }

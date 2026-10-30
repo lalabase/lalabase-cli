@@ -30,7 +30,8 @@ const (
 	NoPermission
 	// SessionGone: iTerm did not find the client's session.
 	SessionGone
-	// NoAnswer: iTerm did not answer within the deadline.
+	// NoAnswer: iTerm, or the opener of a file, did not answer within the
+	// deadline.
 	NoAnswer
 	// ITermFailed: iTerm refused for another reason.
 	ITermFailed
@@ -51,7 +52,7 @@ const (
 	// NoOpener: this machine cannot show a browser to the person: no
 	// program for it, or the client runs over SSH.
 	NoOpener
-	// OpenFailed: the program refused, or did not end in time.
+	// OpenFailed: the program refused.
 	OpenFailed
 )
 
