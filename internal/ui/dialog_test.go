@@ -298,16 +298,17 @@ func TestALateOutcomeTouchesNoOtherDialog(t *testing.T) {
 	if m.dialog.id == first {
 		t.Fatal("two dialogs share an id")
 	}
-	before := m
-	for _, done := range []bool{false, true} {
-		next, _ := step(t, m, DialogOutcome{Dialog: first, Done: done, Refusal: present.NewInline("late")})
-		if next != before || next.dialog.refusal.String() != "" {
-			t.Fatalf("a late outcome reached the new dialog: %+v", next.dialog)
-		}
-	}
 	// One that is not sending has no outcome to wait for.
 	if next, _ := step(t, m, DialogOutcome{Dialog: m.dialog.id, Done: true}); next.dialog == nil {
 		t.Fatal("an outcome closed a dialog that sent nothing")
+	}
+	// One that is sending waits for its own.
+	m, _ = step(t, m, press("enter"))
+	for _, done := range []bool{false, true} {
+		next, _ := step(t, m, DialogOutcome{Dialog: first, Done: done, Refusal: present.NewInline("late")})
+		if next.dialog == nil || !next.dialog.sending || next.dialog.refusal.String() != "" {
+			t.Fatalf("a late outcome reached the new dialog: %+v", next.dialog)
+		}
 	}
 }
 
@@ -372,6 +373,22 @@ func TestUpDownAndThePagesWalkTheLargeField(t *testing.T) {
 	m, _ = step(t, m, key(tea.KeyDown))
 	if text := boxed(m); !strings.Contains(text, "last") {
 		t.Fatalf("back at the end:\n%s", text)
+	}
+}
+
+// What a key writes passes the filter too: it is the same way in.
+func TestATypedKeyPassesTheFilter(t *testing.T) {
+	var l sendLog
+	m := dialogModel(t, oneLineSpec(&l), 80, 24)
+	for _, k := range []tea.KeyPressMsg{
+		{Code: 0x202e, Text: "\u202e"},
+		{Code: 'a', Text: "a\x1b[31mb"},
+		{Code: 0x200b, Text: "c\u200bd"},
+	} {
+		m, _ = step(t, m, k)
+	}
+	if got := dialogValues(m); got[0] != "abcd" {
+		t.Fatalf("value %q", got)
 	}
 }
 
@@ -597,6 +614,9 @@ func TestTheTargetStaysWhenTheSelectionBehindItMoves(t *testing.T) {
 	var l sendLog
 	h := newHarness(t)
 	h.openTickets(website)
+	// The first ticket is in the cache, so the pane can take it back.
+	h.openTicket(1)
+	h.press("esc")
 	h.m.focus = view.List
 	second := h.m.app.tickets.rows[1].ID
 	h.m.app.tickets.selected = second
@@ -619,6 +639,11 @@ func TestTheTargetStaysWhenTheSelectionBehindItMoves(t *testing.T) {
 	h.drive(reload)
 	if v := h.m.app.tickets; v.selected == second || h.m.dialog == nil {
 		t.Fatalf("the reload did not move the selection: %q", v.selected)
+	}
+	// A resize lets the pane follow the selection, the ticket in it changes.
+	h.drive(h.feed(tea.WindowSizeMsg{Width: 121, Height: 31})...)
+	if d := h.m.app.detail; d == nil || d.id == second {
+		t.Fatalf("the pane still shows the ticket: %+v", d)
 	}
 	h.typeText("30")
 	h.press("enter")
