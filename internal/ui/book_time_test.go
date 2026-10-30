@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"github.com/gboyke/lalabase-cli/internal/api"
+	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
+	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 )
@@ -174,6 +176,9 @@ func TestTheNoticeOfABookingGoesAtItsDeadline(t *testing.T) {
 	if !until.After(h.now) {
 		t.Fatalf("no deadline: %v", until)
 	}
+	if _, tone := h.m.status(); tone != present.Plain || !until.Equal(h.now.Add(hintFor)) {
+		t.Fatalf("tone %v, until %v", tone, until)
+	}
 	h.now = until
 	if got := h.status(); got != "" {
 		t.Fatalf("status %q past its deadline", got)
@@ -241,6 +246,25 @@ func TestATimeReadBegunBeforeTheBookingDoesNotCount(t *testing.T) {
 	h.drive(stale)
 	if got := h.metaText(); !strings.Contains(got, "Booked by you\n3:00") {
 		t.Fatalf("meta bar:\n%s", got)
+	}
+}
+
+// What the disk is still reading comes too late as well: canceling reads
+// reaches the network's alone, and only the epoch stops this one. Without
+// the tool nothing is read back here, so the store would take it. Would
+// miss: an entry dropped without moving the epoch on.
+func TestATimeOnItsWayFromTheDiskDoesNotCount(t *testing.T) {
+	h := bookingHarness(t)
+	a := h.m.app
+	a.report.Enabled["booked_time"] = false
+	key := a.timeKey(website, six())
+	late := a.scope.Begin(gateway.Time, key, 0)
+	h.sendBooking("30", "")()
+	if a.scope.Promote(a.store, late, cache.Entry{Payload: bookedAnswer(six(), 150).Payload, LoadedAt: h.now}) {
+		t.Fatal("a time from before the booking was filed")
+	}
+	if _, ok := a.store.Get(key); ok {
+		t.Fatal("the old time is in the cache")
 	}
 }
 
@@ -618,6 +642,7 @@ func TestARefusalOfABookingLeftWithEscIsAProblemOnTheLine(t *testing.T) {
 	if !strings.Contains(got, "Not booked on #6") || !strings.Contains(got, "Dauer darf") {
 		t.Fatalf("status %q", got)
 	}
+	h.isAProblemOnTheLine()
 	if !h.offers(BookTime) {
 		t.Fatalf("b stayed locked: %s", h.helpText())
 	}
@@ -634,8 +659,21 @@ func TestAnUnclearBookingLeftWithEscIsAProblemOnTheLine(t *testing.T) {
 	if got := h.status(); !strings.Contains(got, "Not clear") || !strings.Contains(got, "#6") {
 		t.Fatalf("status %q", got)
 	}
+	h.isAProblemOnTheLine()
 	if got := len(h.f.bookedReads()); got != times+1 {
 		t.Fatalf("%d time reads", got-times)
+	}
+}
+
+// isAProblemOnTheLine: a notice in the tone of a problem, which stands long
+// enough to come back to, not a hint that goes.
+func (h *harness) isAProblemOnTheLine() {
+	h.t.Helper()
+	if _, tone := h.m.status(); tone != present.NoticeProblem {
+		h.t.Fatalf("tone %v", tone)
+	}
+	if got := h.m.app.bookNotice.until; !got.Equal(h.now.Add(problemFor)) {
+		h.t.Fatalf("until %v", got)
 	}
 }
 
@@ -649,6 +687,23 @@ func TestA401OnABookingEndsTheSession(t *testing.T) {
 	}
 	if len(h.m.app.bookings) != 0 {
 		t.Fatalf("bookings %d", len(h.m.app.bookings))
+	}
+}
+
+// The result says so itself, where the mailbox did not hear of it: the
+// session ends all the same, also when the ticket was left meanwhile.
+func TestA401TheMailboxDidNotHearOfEndsTheSession(t *testing.T) {
+	h := bookingHarness(t)
+	h.fillBooking("30", "")
+	h.press("enter")
+	a := h.m.app
+	op := a.bookings[six()]
+	h.feed(gateway.WriteResult{
+		WriteTicket: gateway.WriteTicket{Session: a.session, Op: op.id, Kind: gateway.BookTime, Project: website, Ticket: six()},
+		Answer:      transport.Answer{Class: transport.Unauthenticated, Status: 401, Sent: true},
+	})
+	if !a.expired || h.m.dialog != nil {
+		t.Fatalf("expired %v, dialog %v", a.expired, h.m.dialog != nil)
 	}
 }
 
@@ -673,6 +728,25 @@ func TestAResultOfNoBookingChangesNothing(t *testing.T) {
 	h.drive(send)
 	if h.m.dialog != nil {
 		t.Fatal("the real result did not end it")
+	}
+}
+
+// One operation has one end: the same result again reads nothing and tells
+// nothing, once a booking is unclear. Would miss: a second round of reads.
+func TestAnUnclearBookingEndsOnce(t *testing.T) {
+	h := bookingHarness(t)
+	h.f.bookFails(transport.Answer{Class: transport.Temporary, Message: "lost", Sent: true})
+	h.fillBooking("30", "")
+	msgs := messages(t, h.press("enter"))
+	h.drive(h.feed(msgs...)...)
+	h.press("esc")
+	reads := len(h.f.bookedReads())
+	h.drive(h.feed(msgs...)...)
+	if got := len(h.f.bookedReads()); got != reads {
+		t.Fatalf("%d more reads", got-reads)
+	}
+	if got := h.status(); got != "" {
+		t.Fatalf("status %q", got)
 	}
 }
 
