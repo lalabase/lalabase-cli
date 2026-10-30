@@ -349,10 +349,10 @@ func New(scenario Scenario, contractJSON []byte, opts ...Option) (*Fixture, erro
 	if f.people, f.meID, err = recordedPeople(f.me, f.ticketRow, f.ticketTmpl); err != nil {
 		return nil, err
 	}
-	if f.postRow, err = recordedComment(file); err != nil {
+	if f.postRow, err = recordedAnswer(file, "POST /api/v1/tickets/:ticket_id/posts", "plain"); err != nil {
 		return nil, err
 	}
-	if f.bookRow, err = recordedBooking(file); err != nil {
+	if f.bookRow, err = recordedAnswer(file, "POST /api/v1/tickets/:ticket_id/time_sessions", "ok_minutes_text"); err != nil {
 		return nil, err
 	}
 	for _, opt := range opts {

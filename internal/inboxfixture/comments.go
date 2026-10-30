@@ -2,10 +2,8 @@ package inboxfixture
 
 import (
 	"encoding/json"
-	"errors"
 	"maps"
 	"net/http"
-	"strings"
 )
 
 // A comment over REST (K3a): POST /api/v1/tickets/:ticket_id/posts, the
@@ -13,28 +11,14 @@ import (
 // the tool keeps (addComment). It answers in the core's order: the token, a
 // key seen before, the ticket, the input, the right. So a bad input on a
 // hidden ticket is a 404, and a good one without the right a 403. Refusals:
-// #2 and #4 are forbidden, as the tool's, #5 has vanished. This client writes
-// plain text alone: any other format is refused here.
+// #2 and #4 are forbidden, as the tool's, #5 has vanished.
 
-// The texts of the core, as recorded in the contract copy.
+// The text of the core, as recorded in the contract copy, for a body of blanks
+// and, since nothing here writes html, for any other format.
 const (
 	textCommentEmpty  = "Bitte geben Sie einen Kommentartext (post[body]) an."
-	textCommentNUL    = "Ein Kommentar im Format plain (post[body]) darf keine NUL-Bytes enthalten."
 	textCommentFormat = "Das Format (post[format]) muss html oder plain sein."
 )
-
-// recordedComment is the row of the recorded comment, the template of every
-// answer.
-func recordedComment(file contractFile) (map[string]any, error) {
-	var body struct {
-		Data map[string]any `json:"data"`
-	}
-	ex := file.Contract.REST["POST /api/v1/tickets/:ticket_id/posts"]["plain"]
-	if err := json.Unmarshal(ex.Response.Body, &body); err != nil || len(body.Data) == 0 {
-		return nil, errors.New("inbox fixture: the contract copy records no comment")
-	}
-	return body.Data, nil
-}
 
 // createComment answers POST /api/v1/tickets/:ticket_id/posts.
 func (f *Fixture) createComment(w http.ResponseWriter, r *http.Request, req Request) {
@@ -70,9 +54,6 @@ func (f *Fixture) createComment(w http.ResponseWriter, r *http.Request, req Requ
 	switch {
 	case body.Post.Format != "plain":
 		f.restRefusal(w, req, textCommentFormat)
-		return
-	case strings.ContainsRune(body.Post.Body, 0):
-		f.restRefusal(w, req, textCommentNUL)
 		return
 	case text == "":
 		f.restRefusal(w, req, textCommentEmpty)

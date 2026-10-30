@@ -71,6 +71,10 @@ func (inboxOnly) PostComment(context.Context, string, string, string, api.Commen
 	return api.Comment{}, transport.Answer{Class: transport.Refused, Message: "not in this test"}
 }
 
+func (inboxOnly) PostCommentREST(context.Context, string, string, string) (api.Comment, transport.Answer) {
+	return api.Comment{}, transport.Answer{}
+}
+
 func (inboxOnly) BookTime(context.Context, string, string, string, string) (api.TimeBooking, transport.Answer) {
 	return api.TimeBooking{}, transport.Answer{Class: transport.Refused, Message: "not in this test"}
 }

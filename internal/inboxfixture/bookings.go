@@ -2,7 +2,6 @@ package inboxfixture
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -35,15 +34,14 @@ const (
 // durationForm is TimeSession#validate_duration_format.
 var durationForm = regexp.MustCompile(`(?m)^\s*(\d+(:?\d{0,2})?([.,]\d+)?|\d+:\d{1,2})\s*$`)
 
-// recordedBooking is the row of the recorded booking, the template of every
-// answer.
-func recordedBooking(file contractFile) (map[string]any, error) {
+// recordedAnswer is the row a recorded success has under data, the template
+// of every answer of its route.
+func recordedAnswer(file contractFile, route, name string) (map[string]any, error) {
 	var body struct {
 		Data map[string]any `json:"data"`
 	}
-	ex := file.Contract.REST["POST /api/v1/tickets/:ticket_id/time_sessions"]["ok_minutes_text"]
-	if err := json.Unmarshal(ex.Response.Body, &body); err != nil || len(body.Data) == 0 {
-		return nil, errors.New("inbox fixture: the contract copy records no booking")
+	if err := json.Unmarshal(file.Contract.REST[route][name].Response.Body, &body); err != nil || len(body.Data) == 0 {
+		return nil, fmt.Errorf("inbox fixture: the contract copy records no %s", name)
 	}
 	return body.Data, nil
 }

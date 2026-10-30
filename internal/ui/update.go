@@ -85,6 +85,9 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case gateway.MarkReadResult:
 		return m.receiveMark(msg)
 	case gateway.WriteResult:
+		if msg.Kind == gateway.Comment {
+			return m.receiveComment(msg)
+		}
 		return m.receiveBooking(msg)
 	case launch.Done:
 		return m, m.receiveLaunch(msg)
@@ -310,6 +313,8 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		return m.removeAgent()
 	case BookTime:
 		return m.pressB(), nil
+	case AddComment:
+		return m.pressK(), nil
 	}
 	return m, nil
 }

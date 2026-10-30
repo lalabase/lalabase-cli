@@ -1155,7 +1155,7 @@ func TestHelpNamesExactlyTheKeysThatActInTheTicketsSection(t *testing.T) {
 	t.Parallel()
 
 	keys := map[string]Action{"up": Up, "down": Down, "pgup": PageUp, "pgdown": PageDown, "[": PrevPage, "]": NextPage, "R": Refresh, "enter": OpenList, "esc": Back, "left": Left, "right": Right, "/": Search,
-		"tab": NextArea, "o": Order, "e": Expand, "g": ToggleGroups}
+		"tab": NextArea, "o": Order, "e": Expand, "g": ToggleGroups, "k": AddComment}
 	entryKeys := map[string]Action{"enter": Submit, "esc": Cancel, "backspace": DeleteBack}
 	acted := func(h *harness, key string) bool {
 		before := ansi.Strip(h.m.View().Content)

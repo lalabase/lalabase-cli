@@ -19,13 +19,13 @@ const dialogFile = "internal/ui/dialog.go"
 var dialogOpeners = []string{"WithDialog", "openDialog", "openTicketDialog"}
 
 // dialogCallers are the production callers of an opener, by file: since K6,
-// b on a ticket, in book.go, through the one opener that takes the target
-// from the focused pane. A new one is a decision to take here, not a fix for
-// a red guard: a dialog is where a person writes to a server, and the file
-// that opens one owns what its send does. d on a waiting agent asks in one
-// (owner, 2026-10-30): its target is the agent, not the focused pane, and it
-// writes to no server.
-var dialogCallers = map[string]string{"internal/ui/book.go": "openTicketDialog", "internal/ui/agents_remove.go": "openDialog"}
+// b on a ticket, in book.go, and since K3a k, in comment.go, through the one
+// opener that takes the target from the focused pane. A new one is a decision
+// to take here, not a fix for a red guard: a dialog is where a person writes
+// to a server, and the file that opens one owns what its send does. d on a
+// waiting agent asks in one (owner, 2026-10-30): its target is the agent, not
+// the focused pane, and it writes to no server.
+var dialogCallers = map[string]string{"internal/ui/book.go": "openTicketDialog", "internal/ui/comment.go": "openTicketDialog", "internal/ui/agents_remove.go": "openDialog"}
 
 // inspectDialogOpeners reports every use of a dialog opener in a production
 // file of the client (cmd/, internal/; the fixture tools under tools/ are no
