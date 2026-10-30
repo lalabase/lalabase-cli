@@ -314,7 +314,10 @@ func (m Model) move(delta int) (Model, tea.Cmd) {
 	case view.Agents:
 		a.moveAgent(delta)
 	case view.Object:
-		if a.detail != nil {
+		switch d := a.detail; {
+		case d != nil && d.area == areaAttachments:
+			return m.moveFile(delta), nil
+		case d != nil:
 			return m.moveComment(delta), nil
 		}
 	case view.List:
@@ -438,6 +441,10 @@ func (m Model) open() (Model, tea.Cmd) {
 			return m.openTicket()
 		case a.projects != nil:
 			return m.openTickets(a.projects.selected)
+		}
+	case view.Object:
+		if t, f, ok := m.fileTarget(); ok {
+			return m, m.openFile(t, f)
 		}
 	}
 	return m, nil

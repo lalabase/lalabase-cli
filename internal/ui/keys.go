@@ -509,6 +509,12 @@ func (m Model) ticketBindings() []binding {
 	if d.area == areaComments && len(d.record.Posts) > 1 && !d.commentsLoading() {
 		out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentHelp})
 	}
+	if d.area == areaAttachments && len(d.openable()) > 1 {
+		out = append(out, binding{Up, uitext.UpDownKey, uitext.FileHelp})
+	}
+	if _, _, ok := m.fileTarget(); ok {
+		out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenFileHelp})
+	}
 	if m.canTurn(-1) {
 		out = append(out, binding{PrevPage, uitext.PrevPageKey, uitext.PrevPageHelp})
 	}

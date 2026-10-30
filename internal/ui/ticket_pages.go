@@ -40,6 +40,7 @@ const (
 	anchorNone anchor = iota
 	anchorArea
 	anchorPost
+	anchorFile
 )
 
 // expansion is the one text of the ticket read whole: the description
@@ -90,6 +91,7 @@ func (d *detailView) startAtHead() {
 	d.follow = anchorNone
 	d.area = areaDescription
 	d.post = ""
+	d.file = ""
 }
 
 // settle follows a new record: the selected comment is kept by its id or
@@ -140,6 +142,47 @@ func (m Model) moveComment(delta int) Model {
 	at := max(0, slices.IndexFunc(posts, func(p api.Post) bool { return p.ID == d.post }))
 	d.post = posts[max(0, min(len(posts)-1, at+delta))].ID
 	d.follow = anchorPost
+	return m
+}
+
+// openable are the files of the page shown that can be opened: those whose
+// id the server sent (C10). None while their page loads.
+func (d *detailView) openable() []api.Attachment {
+	if d.attachmentsLoading() {
+		return nil
+	}
+	return slices.DeleteFunc(slices.Clone(d.record.Attachments), func(f api.Attachment) bool {
+		return f.ID == nil || *f.ID == ""
+	})
+}
+
+// selectedFile is the selected file, kept by its id; when it is not on the
+// page shown, the page's first. So a page turn and a refresh need no step
+// of their own, and a selection never names a file the pane does not show.
+func (d *detailView) selectedFile() (api.Attachment, bool) {
+	files := d.openable()
+	if len(files) == 0 {
+		return api.Attachment{}, false
+	}
+	return files[max(0, d.fileIndex(files))], true
+}
+
+// fileIndex is the place of the selected file among files, or -1.
+func (d *detailView) fileIndex(files []api.Attachment) int {
+	return slices.IndexFunc(files, func(f api.Attachment) bool { return *f.ID == d.file })
+}
+
+// moveFile moves the selection among the files of the page shown, and
+// keeps it in sight.
+func (m Model) moveFile(delta int) Model {
+	d := m.app.detail
+	files := d.openable()
+	if len(files) == 0 {
+		return m
+	}
+	at := max(0, d.fileIndex(files))
+	d.file = *files[max(0, min(len(files)-1, at+delta))].ID
+	d.follow = anchorFile
 	return m
 }
 

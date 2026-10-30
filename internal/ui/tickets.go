@@ -143,8 +143,10 @@ type detailView struct {
 	offset int
 	// area is the active section, post the selected comment (by id),
 	// follow what the pane keeps in sight (C1d).
-	area   ticketArea
-	post   string
+	area ticketArea
+	post string
+	// file is the id of the selected file (C10), "" for the page's first.
+	file   string
 	follow anchor
 	// corrected: the one page correction after a shrink was done; R and a
 	// page turn free it again.

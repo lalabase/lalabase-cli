@@ -28,7 +28,7 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
 * **No invisible characters in the repository:** `internal/sourceguard` reads
   every tracked text file. Write such characters as escapes or numbers.
 * **Child processes** start in `internal/launch` alone (C7: `osascript` and
-  `claude`): the source guard allows `os/exec` there, by name, and refuses
+  `claude`; C10: `open` or `xdg-open`): the source guard allows `os/exec` there, by name, and refuses
   it and the process calls of `os` and `syscall` in every other production
   file of the client, and every raw system call of `syscall` and
   `x/sys/unix` (any name with `Syscall` in it) but the one the access list

@@ -11,8 +11,9 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
-// Launcher starts Claude Code beside a ticket (C7): one command per launch,
-// whose message is a launch.Done with the same ref. The command gives the
+// Launcher starts Claude Code beside a ticket (C7) and opens a ticket's
+// file (C10): one command per launch, whose message is a launch.Done with
+// the same ref. The command gives the
 // session one (launch.New); tests give a fake.
 type Launcher interface {
 	Launch(ref uint64, t launch.Ticket) tea.Cmd
@@ -23,9 +24,12 @@ type Launcher interface {
 	Jump(ref uint64, t launch.Ticket, agent, pane string) tea.Cmd
 	Again(ref uint64, t launch.Ticket, a launch.Again) tea.Cmd
 	Jumps() bool
+	// OpenFile opens a file of t in the browser (C10); its message is a
+	// launch.Done with the same ref.
+	OpenFile(ref uint64, t launch.Ticket, f launch.File) tea.Cmd
 }
 
-// launchState is the one launch at a time: its number, whether it runs, and
+// launchState is the one launch at a time, a file's opening among them: its number, whether it runs, and
 // the notice of the newest one with the ticket it was for. A plain notice
 // is a hint (L2): it is shown until its deadline, a problem or a launch
 // running has none. everywhere: x was pressed in the agents' list, where
@@ -57,6 +61,35 @@ func (m Model) launchTarget() (launch.Ticket, bool) {
 		return launch.Ticket{}, false
 	}
 	return launch.Ticket{Org: a.detailOrg(), Project: d.project, ID: d.id, Number: d.record.Number}, true
+}
+
+// fileTarget is what Enter opens (C10): the selected file of the ticket the
+// pane shows, in the section of files, when x's conditions hold and the
+// ticket's organisation is known. Like launchTarget it reads the pane's
+// record, never the list's cursor. The name is only for the notice.
+func (m Model) fileTarget() (launch.Ticket, launch.File, bool) {
+	t, ok := m.launchTarget()
+	d := m.app.detail
+	if !ok || m.focus != view.Object || d.area != areaAttachments || t.Org == "" {
+		return launch.Ticket{}, launch.File{}, false
+	}
+	f, ok := d.selectedFile()
+	if !ok {
+		return launch.Ticket{}, launch.File{}, false
+	}
+	return t, launch.File{ID: *f.ID, Name: f.Filename}, true
+}
+
+// openFile is Enter on a file: one child at a time, shared with x, and its
+// notice in the same place.
+func (m Model) openFile(t launch.Ticket, f launch.File) tea.Cmd {
+	a := m.app
+	a.launch.ref++
+	a.launch.busy, a.launch.ticket, a.launch.everywhere = true, t.ID, false
+	a.launch.notice, a.launch.tone = uitext.Fill(uitext.OpeningFile, f.Name), present.NoticeWaiting
+	a.clearAgentsNotice()
+	a.launch.until = time.Time{}
+	return a.deps.Launcher.OpenFile(a.launch.ref, t, f)
 }
 
 // detailOrg is the organisation of the ticket in the pane: the one of the
@@ -138,11 +171,12 @@ func (a *app) launchHint() tea.Cmd {
 }
 
 // launchTone is the notice's tone by the outcome: plain when Claude Code
-// opened or ended, or the jump went or had nowhere to go, a problem for
-// every outcome that opened nothing or ended in an error.
+// opened or ended, the jump went or had nowhere to go, or a file went to
+// the browser or had no way there, a problem for every outcome that opened
+// nothing or ended in an error.
 func launchTone(k launch.Kind) present.Style {
 	switch k {
-	case launch.Opened, launch.Ended, launch.Canceled, launch.Jumped, launch.NoPane:
+	case launch.Opened, launch.Ended, launch.Canceled, launch.Jumped, launch.NoPane, launch.FileOpened, launch.NoOpener:
 		return present.Plain
 	}
 	return present.NoticeProblem
@@ -195,10 +229,31 @@ var jumpTexts = map[launch.Kind]uitext.ID{
 	launch.NoPermission: uitext.LaunchNoPermission,
 }
 
+// fileNotice is the status text of opening a file (C10): the file's name is
+// foreign and passes the cleaning of Fill.
+func fileNotice(d launch.Done) present.Inline {
+	switch d.Kind {
+	case launch.FileOpened:
+		return uitext.Fill(uitext.FileOpened, d.Detail)
+	case launch.NoOpener:
+		return uitext.Inline(uitext.FileNoOpener)
+	case launch.NotHandedOver:
+		return uitext.Inline(uitext.FileNotHandedOver)
+	case launch.NoAnswer:
+		return uitext.Inline(uitext.FileNoAnswer)
+	case launch.Canceled:
+		return present.Inline{}
+	}
+	return uitext.Inline(uitext.FileOpenFailed)
+}
+
 // launchNotice is the status text of an outcome; nothing for a launch the
 // session's end canceled. The detail passes the cleaning of Fill: it may
 // name a path of the person's config.
 func launchNotice(d launch.Done) present.Inline {
+	if d.Action == launch.OpenFileAction {
+		return fileNotice(d)
+	}
 	if d.Action == launch.JumpAction {
 		id, ok := jumpTexts[d.Kind]
 		switch {

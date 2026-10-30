@@ -287,3 +287,37 @@ func serveBody(t *testing.T, status int, body []byte) *API {
 	}
 	return New(c)
 }
+
+// TestAttachmentIDIsReadOnBothForms: the id of a ticket's file is what
+// opens it (C10); it is a string or nothing, and an entry without one
+// stays an entry.
+func TestAttachmentIDIsReadOnBothForms(t *testing.T) {
+	var a Attachment
+	if err := json.Unmarshal([]byte(`{"id":"00000000-0000-4000-8000-000000000001","filename":"a.png"}`), &a); err != nil {
+		t.Fatal(err)
+	}
+	if a.ID == nil || *a.ID != "00000000-0000-4000-8000-000000000001" {
+		t.Fatalf("id = %v", a.ID)
+	}
+	for _, body := range []string{`{"filename":"a.png"}`, `{"id":null,"filename":"a.png"}`, `{"id":7,"filename":"a.png"}`} {
+		var b Attachment
+		if err := json.Unmarshal([]byte(body), &b); err != nil {
+			t.Fatalf("%s: %v", body, err)
+		}
+		if b.ID != nil || b.Filename != "a.png" {
+			t.Fatalf("%s: %+v", body, b)
+		}
+	}
+}
+
+// TestTheAttachmentIDIsNoRequiredField: an older server sends no id and
+// its ticket reads as before. Like the file's metadata the id is read
+// leniently, so no spec names it (a Newer field would still report a list
+// that is missing as a whole, twice).
+func TestTheAttachmentIDIsNoRequiredField(t *testing.T) {
+	for _, spec := range []Spec{TicketSpec, TicketRESTSpec, TicketByNumberRESTSpec} {
+		if slices.ContainsFunc(spec.Required, func(f string) bool { return strings.HasSuffix(f, "attachments[].id") }) {
+			t.Fatalf("%s requires the id", spec.Name)
+		}
+	}
+}
