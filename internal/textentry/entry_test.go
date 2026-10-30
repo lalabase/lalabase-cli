@@ -262,6 +262,20 @@ func TestWhatIsInsertedPassesTheFilter(t *testing.T) {
 	}
 }
 
+// U+FFFE and U+FFFF take no cell: in a buffer they would be a text that
+// looks empty and is not.
+func TestWhatTakesNoCellStaysOutOfTheBuffer(t *testing.T) {
+	e := New(10, true)
+	e.Insert("\ufffe\uffff")
+	if e.Value() != "" {
+		t.Fatalf("value %q", e.Value())
+	}
+	e.Insert("a\ufffeb\uffff")
+	if e.Value() != "ab" {
+		t.Fatalf("value %q", e.Value())
+	}
+}
+
 func TestLineBreaksByTheKindOfEntry(t *testing.T) {
 	one := New(100, false)
 	one.Insert("a\r\nb\nc")

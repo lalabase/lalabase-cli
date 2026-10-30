@@ -13,8 +13,9 @@
 // locale that is not UTF-8 instead; C0 does not check the locale yet.
 //
 // A port of clean() in bin/lala of the core repository; the test cases there
-// are the golden file of this package. Draft is this client's own: the filter
-// of what a person types or pastes into an input field.
+// are the golden file of this package. Beyond the port it drops the two
+// characters no terminal draws (drawsNothing). Draft is this client's own: the
+// filter of what a person types or pastes into an input field.
 package clean
 
 import (
@@ -32,6 +33,13 @@ import (
 // so it reads the same and matches nothing, tag characters hide ASCII text.
 func keepFormat(r rune) bool {
 	return r == '\u200c' || r == '\u200d' || r == '\u00ad'
+}
+
+// drawsNothing reports U+FFFE and U+FFFF, the two non-characters that take no
+// cell (every other one takes one and shows). They would stand in a line
+// unseen, and in an input field a text that looks empty would not be.
+func drawsNothing(r rune) bool {
+	return r == 0xfffe || r == 0xffff
 }
 
 // isControl reports the C0 controls except tab and newline (ESC among them),
@@ -107,7 +115,7 @@ func clean(s string, inline bool) string {
 			// A control between two words separated them: it becomes a space, so
 			// "a\x0bb" stays two words instead of turning into "ab".
 			b.WriteByte(' ')
-		case unicode.Is(unicode.Cf, r) && !keepFormat(r):
+		case unicode.Is(unicode.Cf, r) && !keepFormat(r), drawsNothing(r):
 			// dropped
 		default:
 			b.WriteRune(r)

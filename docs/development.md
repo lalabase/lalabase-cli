@@ -18,7 +18,8 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
 * **Foreign text** (titles, comments, names, server error texts) goes through
   `internal/clean` before it reaches the terminal, in every mode. Its test
   cases are those of `bin/lala` in the core repository, byte for byte, plus a
-  test over every code point. The output is valid UTF-8 for a **UTF-8
+  test over every code point; beyond the port it drops U+FFFE and U+FFFF, the
+  two non-characters that take no cell. The output is valid UTF-8 for a **UTF-8
   terminal**; an 8-bit terminal that reads C1 controls from single bytes cannot
   be protected by cleaning (ordinary letters carry such bytes once encoded).
   The interface therefore refuses a locale that is not UTF-8. The existing
