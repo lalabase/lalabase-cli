@@ -214,8 +214,8 @@ navigation again.
   group, `R` reads them all again, a group that fails says so in its head,
   one that keeps old rows as "Possibly stale",
   and leaves the others usable. Tickets without a status, or with one the
-  project no longer lists, can be found by no status: once every group has
-  landed, a faint last line counts them, and `g` shows them. A project
+  project no longer lists, can be found by no status: once the list and
+  every group have landed and none failed, a faint last line counts them, and `g` shows them. A project
   without statuses stays chronological with a short hint. The mode is not
   kept: every project opens chronological.
 * **The mouse wheel** scrolls the object pane (a ticket, the details of a

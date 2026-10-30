@@ -831,6 +831,104 @@ func TestGroupKeysAreOfferedExactlyWhereTheyAct(t *testing.T) {
 	}
 }
 
+// The rest is a difference of two counts, so both must come from one round
+// of reads: not while the list's read is out, not after a read failed.
+func TestTheRestWaitsForCountsOfOneRound(t *testing.T) {
+	t.Parallel()
+	endsInRest := func(h *harness) bool {
+		c := h.m.ticketsColumn()
+		return strings.Contains(c.Rows[len(c.Rows)-1].Primary.String(), "without a listed")
+	}
+	t.Run("the list's read is out", func(t *testing.T) {
+		t.Parallel()
+		h, s := groupHarness(t)
+		h.drive(h.press("g"))
+		s.rows = s.rows[:len(s.rows)-1]
+		msgs := baseFirst(messages(h.t, h.press("R")))
+		h.drive(h.feed(msgs[1:]...)...) // every group, the list still out
+		if endsInRest(h) {
+			t.Fatal("a rest while the list's read is out")
+		}
+		h.drive(h.feed(msgs[0])...)
+		if endsInRest(h) {
+			t.Fatal("a rest of none")
+		}
+	})
+	t.Run("a group's read failed", func(t *testing.T) {
+		t.Parallel()
+		h, s := groupHarness(t)
+		h.drive(h.press("g"))
+		s.add(strPtr("new"), []string{"is_new"}, 1)
+		h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+			if q.Status == "new" {
+				return failing(transport.Temporary, 503)
+			}
+			return s.answer(q)
+		})
+		h.drive(h.press("R"))
+		if endsInRest(h) {
+			t.Fatal("a rest beside a group that may be old")
+		}
+	})
+	t.Run("the list's read failed", func(t *testing.T) {
+		t.Parallel()
+		h, s := groupHarness(t)
+		h.drive(h.press("g"))
+		s.rows = s.rows[:len(s.rows)-1]
+		h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+			if q.Status == "" {
+				return failing(transport.Temporary, 503)
+			}
+			return s.answer(q)
+		})
+		h.drive(h.press("R"))
+		if endsInRest(h) {
+			t.Fatal("a rest from an old total")
+		}
+	})
+}
+
+// A status that left the project takes its group, with the cursor on it:
+// the pane follows the cursor, whichever answer lands last.
+func TestAGroupThatGoesTakesThePreviewWithIt(t *testing.T) {
+	t.Parallel()
+	h, s := groupHarness(t)
+	h.drive(h.press("g"))
+	v := h.m.app.tickets
+	toHead(h, "in_progress")
+	h.drive(h.press("down"))
+	h.m.app.ensureDetail(website, v.selected)
+	s.statuses = []string{"new", "resolved", "hold"}
+	msgs := baseFirst(messages(h.t, h.press("R")))
+	h.drive(h.feed(append(msgs[1:], msgs[0])...)...) // the list last
+	if d := h.m.app.detail; d != nil && d.id != v.selected {
+		t.Fatalf("the pane shows %q, the cursor %q %q", d.id, v.selected, v.heading)
+	}
+}
+
+// A shrink of the list and a new status at once: the new group is read once,
+// after the correction, whose cancelling would lose a read begun before it.
+func TestANewStatusWithAShrinkIsReadOnce(t *testing.T) {
+	t.Parallel()
+	h, s := groupHarness(t)
+	h.drive(h.press("]"))
+	h.drive(h.press("g"))
+	s.rows = s.rows[:10]
+	s.statuses = append(s.statuses, "fresh")
+	s.add(strPtr("fresh"), []string{"is_new"}, 1)
+	h.drive(h.feed(baseFirst(messages(h.t, h.press("R")))...)...)
+	n := 0
+	for _, r := range statusReads(h) {
+		if strings.HasPrefix(r, "fresh:") {
+			n++
+		}
+	}
+	v := h.m.app.tickets
+	if n != 1 || v.page != 1 || v.groups[len(v.groups)-1].total != 1 {
+		t.Fatalf("%d reads, page %d, %d groups", n, v.page, len(v.groups))
+	}
+}
+
 func strPtr(s string) *string { return &s }
 
 // A group's page kept on the disk is shown while its reload is out, like

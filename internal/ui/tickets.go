@@ -772,7 +772,9 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 		}
 		// After the correction: a removal there refuses what began before.
 		m, cmd := m.correctTicketPage()
-		if synced := a.syncGroups(); synced != nil {
+		synced := a.syncGroups()
+		if v.isGrouped() {
+			// The groups may have changed under the cursor.
 			cmd = tea.Batch(cmd, synced, m.selectionChanged())
 		}
 		return m, cmd

@@ -517,10 +517,15 @@ func (v *ticketsView) groupsNotice(empty uitext.ID) present.Inline {
 }
 
 // rest is the number of tickets no group holds: without a status, or with
-// one the project no longer has, which no status filter finds. Known only
-// when the list and every group are; a group still out would count as rest.
+// one the project no longer has, which no status filter finds. It is the
+// difference of counts from separate reads, so it is told only when all of
+// them landed and none failed: a count of an older round would name
+// tickets that are not there.
 func (v *ticketsView) rest() int {
-	if !v.known || !v.allSettled() || slices.ContainsFunc(v.groups, func(g *ticketGroup) bool { return !g.known }) {
+	if !v.known || v.loading || v.stale || v.err.String() != "" || !v.allSettled() {
+		return 0
+	}
+	if slices.ContainsFunc(v.groups, func(g *ticketGroup) bool { return !g.known || g.stale || g.err.String() != "" }) {
 		return 0
 	}
 	n := v.total
