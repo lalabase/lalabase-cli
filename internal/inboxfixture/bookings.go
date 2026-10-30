@@ -57,26 +57,35 @@ func bookingOf(path string) string {
 	return ""
 }
 
+// Ruby's to_i and to_f read the number a text starts with, sign included,
+// and stop at the first character that is none of it.
+var (
+	leadingInt   = regexp.MustCompile(`^[+-]?\d+`)
+	leadingFloat = regexp.MustCompile(`^[+-]?\d*(\.\d+)?`)
+)
+
+func rubyInt(s string) int {
+	n, _ := strconv.Atoi(leadingInt.FindString(s))
+	return n
+}
+
+func rubyFloat(s string) float64 {
+	n, _ := strconv.ParseFloat(leadingFloat.FindString(s), 64)
+	return n
+}
+
 // durationMinutes reads a duration as TimeSession#parse_duration_string does:
 // a comma is a point, HH:MM with a missing half as zero, decimal hours,
-// else minutes; digits up to the first that is none, as Ruby's to_i and
-// to_f read them. The form is judged apart (durationForm).
+// else minutes. The form is judged apart (durationForm).
 func durationMinutes(typed string) int {
 	cleaned := strings.ReplaceAll(strings.TrimSpace(typed), ",", ".")
 	if hours, minutes, ok := strings.Cut(cleaned, ":"); ok {
-		return leadingInt(hours)*60 + leadingInt(minutes)
+		return rubyInt(hours)*60 + rubyInt(minutes)
 	}
 	if strings.Contains(cleaned, ".") {
-		n := len(cleaned) - len(strings.TrimLeft(cleaned, "0123456789."))
-		hours, _ := strconv.ParseFloat(cleaned[:n], 64)
-		return int(hours * 60)
+		return int(rubyFloat(cleaned) * 60)
 	}
-	return leadingInt(cleaned)
-}
-
-func leadingInt(s string) int {
-	n, _ := strconv.Atoi(s[:len(s)-len(strings.TrimLeft(s, "0123456789"))])
-	return n
+	return rubyInt(cleaned)
 }
 
 // checkDuration is what the model says of a duration: the messages of its

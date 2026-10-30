@@ -94,9 +94,11 @@ func (m Model) screen() present.Screen {
 }
 
 // status is the notice of the second line, the most urgent first: an
-// expired session, a rate-limit pause, the disk cache, what became of a
-// booking, then of what the agents told (a removal, a seen mark) and a
-// launch's outcome the newer; with its tone, from the same state. A plain
+// expired session, what became of a booking, a rate-limit pause, the disk
+// cache, then of what the agents told (a removal, a seen mark) and a
+// launch's outcome the newer; with its tone, from the same state. A
+// booking's stands above what lasts: it has a deadline and no second
+// telling, and nothing else says what became of the time. A plain
 // one is a hint, which the view draws in the path's place.
 func (m Model) status() (present.Inline, present.Style) {
 	a := m.app
@@ -105,14 +107,14 @@ func (m Model) status() (present.Inline, present.Style) {
 		return uitext.Inline(uitext.SessionExpiredDiskKept), present.NoticeProblem
 	case a.expired:
 		return uitext.Inline(uitext.SessionExpired), present.NoticeProblem
+	case a.bookNotice.until.After(a.now()):
+		return a.bookNotice.text, a.bookNotice.tone
 	case a.pause.After(a.now()):
 		return uitext.Fill(uitext.RateLimited, a.pause.In(a.loc).Format("15:04:05")), present.NoticeWaiting
 	case a.diskStatus() != 0:
 		return uitext.Inline(a.diskStatus()), present.NoticeProblem
 	case a.agents.tooMany:
 		return uitext.Inline(uitext.AgentsTooMany), present.NoticeProblem
-	case a.bookNotice.until.After(a.now()):
-		return a.bookNotice.text, a.bookNotice.tone
 	case a.agentsNoticeShown():
 		// Of the agents' notice and the launch's the newer shows: a
 		// launch's start and its answer clear the agents' notice.

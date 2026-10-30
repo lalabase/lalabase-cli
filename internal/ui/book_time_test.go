@@ -5,13 +5,16 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
+	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
 // K6: time booked on a ticket from the terminal. Every test names the
@@ -917,5 +920,184 @@ func TestLocksAreByTicket(t *testing.T) {
 	slices.Sort(want)
 	if len(calls) != 2 || !slices.Equal(tickets, want) {
 		t.Fatalf("calls %+v", calls)
+	}
+}
+
+// Review round 1 of #50, finding 1: what became of a booking is the
+// person's to know, whatever else stands on the line. A lasting notice (the
+// disk in use by another run, too many agents) does not go, so one below it
+// would never be read, and after an unclear end b is free again.
+func TestALastingNoticeHidesNoBooking(t *testing.T) {
+	for name, set := range map[string]func(a *app){
+		"the disk":        func(a *app) { a.disk.notice = uitext.DiskBusy },
+		"too many agents": func(a *app) { a.agents.tooMany = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := bookingHarness(t)
+			set(h.m.app)
+			h.sendBooking("30", "")()
+			if got := h.status(); !strings.Contains(got, "0:30 booked on #6") {
+				t.Fatalf("a booking told nothing: %q", got)
+			}
+			h.f.bookFails(transport.Answer{Class: transport.Temporary, Message: "lost", Sent: true})
+			h.fillBooking("30", "")
+			send := h.press("enter")
+			h.press("esc")
+			h.drive(send)
+			if got := h.status(); !strings.Contains(got, "Not clear") {
+				t.Fatalf("an unclear booking told nothing: %q", got)
+			}
+		})
+	}
+}
+
+// Finding 2: a pause outlasts a problem's deadline, and the booking it held
+// up was refused by the same limit: told first, the pause after it.
+func TestAPauseHidesNoBooking(t *testing.T) {
+	h := bookingHarness(t)
+	h.m.app.pause = h.now.Add(time.Minute)
+	h.fillBooking("30", "")
+	h.press("enter")
+	h.press("esc")
+	a := h.m.app
+	op := a.bookings[six()]
+	h.feed(gateway.WriteResult{
+		WriteTicket: gateway.WriteTicket{Session: a.session, Op: op.id, Kind: gateway.BookTime, Project: website, Ticket: six()},
+		Answer:      transport.Answer{Class: transport.Temporary, Status: 429, Sent: true},
+	})
+	if got := h.status(); !strings.Contains(got, "Not booked on #6") {
+		t.Fatalf("status %q", got)
+	}
+	h.now = a.bookNotice.until
+	if got := h.status(); !strings.Contains(got, "Rate limited") {
+		t.Fatalf("status %q after the notice", got)
+	}
+}
+
+// Finding 3: one place on the line, and a hint is not worth a problem's: the
+// problem of #6 stays when #7 books. A problem takes a hint's place, the
+// newer problem an older one's. Would miss: the last end always winning.
+func TestAHintDoesNotTakeAProblemsPlace(t *testing.T) {
+	h := bookingHarness(t)
+	h.f.setBook(func(c bookCall) (api.TimeBooking, transport.Answer) {
+		if c.ticket == six() {
+			return api.TimeBooking{}, transport.Answer{Class: transport.Temporary, Message: "lost", Sent: true}
+		}
+		return bookedOf(c.ticket, 30)
+	})
+	h.fillBooking("30", "")
+	unclear := h.press("enter")
+	h.press("esc")
+	h.reopen(7)
+	h.fillBooking("15", "")
+	booked := h.press("enter")
+	h.drive(unclear)
+	until := h.m.app.bookNotice.until
+	h.drive(booked)
+	if got := h.status(); !strings.Contains(got, "Not clear") || !strings.Contains(got, "#6") {
+		t.Fatalf("status %q", got)
+	}
+	if got := h.m.app.bookNotice.until; !got.Equal(until) {
+		t.Fatalf("until %v, want %v", got, until)
+	}
+	// Past its deadline the place is free again.
+	h.now = until
+	h.sendBooking("15", "")()
+	if got := h.status(); !strings.Contains(got, "0:30 booked on #7") {
+		t.Fatalf("status %q", got)
+	}
+}
+
+// Finding 5: the box open on one ticket is no box of a booking on another:
+// the end of the first is told on the line, whichever it is, and the box
+// stays as it is. Would miss: any open box taken for the booking's own.
+func TestTheEndOfABookingLeavesAnotherTicketsBoxAlone(t *testing.T) {
+	for name, tc := range map[string]struct {
+		ans  transport.Answer
+		want string
+	}{
+		"confirmed": {transport.Answer{Class: transport.Object, Status: 201, Sent: true}, "0:30 booked on #6"},
+		"refused":   {recordedRefusal(t, "invalid_input_over_a_day", transport.InvalidInput), "Not booked on #6"},
+		"unclear":   {transport.Answer{Class: transport.Temporary, Message: "lost", Sent: true}, "Not clear whether it was booked on #6"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := bookingHarness(t)
+			h.f.setBook(func(c bookCall) (api.TimeBooking, transport.Answer) {
+				if tc.ans.OK() {
+					return bookedOf(c.ticket, 30)
+				}
+				return api.TimeBooking{}, tc.ans
+			})
+			h.fillBooking("30", "")
+			send := h.press("enter")
+			h.press("esc")
+			h.reopen(7)
+			h.press("b")
+			h.typeText("15")
+			box := h.m.dialog
+			h.drive(send)
+			if h.m.dialog != box || box.sending || box.held != nil || h.dialogLine() != "" {
+				t.Fatalf("the box of #7: %+v, line %q", h.m.dialog, h.dialogLine())
+			}
+			if got := dialogValues(h.m); got[0] != "15" {
+				t.Fatalf("values %q", got)
+			}
+			if got := h.status(); !strings.Contains(got, tc.want) {
+				t.Fatalf("status %q", got)
+			}
+		})
+	}
+}
+
+// Finding 5: the close of the box is the close esc gives: a preview that
+// fell due behind it is set again, so its command is among the booking's.
+// Would miss: the command dropped. Without the tool of the sum nothing is
+// read back, so only the notice's deadline comes with it.
+func TestTheCloseOfABookingSetsAPreviewAgain(t *testing.T) {
+	h := newRESTHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	a.report.Enabled["booked_time"] = false
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	h.press("right")
+	if !h.offers(BookTime) || a.tickets.opened != "" {
+		t.Fatalf("no b on the preview: %s", h.helpText())
+	}
+	h.press("b")
+	h.typeText("30")
+	h.press("enter")
+	a.tickets.selected = ticketID(website, 7)
+	op := a.bookings[a.detail.id]
+	booking, ans := bookedOf(op.ticket, 30)
+	_, cmd := h.m.receiveBooking(gateway.WriteResult{
+		WriteTicket: gateway.WriteTicket{Session: a.session, Op: op.id, Kind: gateway.BookTime, Project: op.project, Ticket: op.ticket},
+		Booking:     booking, Answer: ans,
+	})
+	if _, ok := cmd().(tea.BatchMsg); !ok {
+		t.Fatal("the close's command did not come along")
+	}
+}
+
+// Finding 5: a ticket is its id in its project: the pane on the same id of
+// another project neither takes the time nor reads it, nor does the box
+// held on a booking show it.
+func TestTheSameIDInAnotherProjectIsAnotherTicket(t *testing.T) {
+	h := bookingHarness(t)
+	h.f.bookFails(transport.Answer{Class: transport.Temporary, Message: "lost", Sent: true})
+	h.fillBooking("30", "")
+	send := h.press("enter")
+	a := h.m.app
+	d := a.detail
+	d.project, d.booked = handbuch, bookedTime{known: true, minutes: 7}
+	reads := len(h.f.bookedReads())
+	h.drive(send)
+	if !d.booked.known || d.booked.minutes != 7 {
+		t.Fatalf("the other project's time went: %+v", d.booked)
+	}
+	if got := len(h.f.bookedReads()); got != reads {
+		t.Fatalf("%d reads", got-reads)
+	}
+	if got := h.dialogLine(); got != "Not clear whether it was booked" {
+		t.Fatalf("line %q", got)
 	}
 }

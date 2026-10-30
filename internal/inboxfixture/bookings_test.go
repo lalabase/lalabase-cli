@@ -69,6 +69,45 @@ func TestABookingIsKeptAndTheSumReadsIt(t *testing.T) {
 	}
 }
 
+// A booking touches its ticket and nothing else of it, and a note of blanks
+// is none, as in the core.
+func TestABookingTouchesItsTicketAndDropsABlankNote(t *testing.T) {
+	_, a, c := serve(t, Normal)
+	ctx := context.Background()
+	six, seven := TicketID(ProjectWebsite, 6), TicketID(ProjectWebsite, 7)
+	updated := func(id string) string {
+		t.Helper()
+		page, ans := a.Tickets(ctx, api.TicketQuery{ProjectID: ProjectWebsite, Page: 1, PerPage: 25})
+		if !ans.OK() {
+			t.Fatalf("%v", ans.Class)
+		}
+		for _, row := range page.Data {
+			if row.ID == id {
+				return row.UpdatedAt
+			}
+		}
+		t.Fatalf("no row %s", id)
+		return ""
+	}
+	before := updated(seven)
+	if before == writeStamp {
+		t.Fatalf("the stamp proves nothing: %s", before)
+	}
+	ans := c.Write(ctx, http.MethodPost, "/api/v1/tickets/"+six+"/time_sessions", json.RawMessage(`{"time_session":{"duration_string":"30","description":"  "}}`), "key-00000016")
+	var got struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(ans.Payload, &got); err != nil || !ans.OK() {
+		t.Fatalf("%v %v", ans.Class, err)
+	}
+	if got.Data["description"] != nil {
+		t.Fatalf("description %v", got.Data["description"])
+	}
+	if updated(six) != writeStamp || updated(seven) != before {
+		t.Fatalf("updated %s and %s", updated(six), updated(seven))
+	}
+}
+
 // The answer has the recorded shape: the fields of the recorded success,
 // no other, and the spec's.
 func TestABookingAnswersInTheRecordedShape(t *testing.T) {
@@ -117,11 +156,21 @@ func TestTheFixtureReadsADurationAsTheServerDoes(t *testing.T) {
 			t.Errorf("%q: %v %d, want %d", typed, ans.Class, booking.Minutes, minutes)
 		}
 	}
+	// The words, and what is read of a text the form refuses: its first
+	// message is what the box shows, so "1.5.5" is no zero (Ruby reads 1.5),
+	// nor is "+5". Review round 1 of #50, finding 4.
+	const format, zero = `Dauer muss ein gültiges Zeitformat sein (z.B. "1:30" oder "90")`, "Dauer muss größer als 0 sein"
 	for typed, want := range map[string]string{
-		"1,5x":  textDurationFormat,
-		"abc":   textDurationZero,
-		"0":     textDurationZero,
-		"0:00":  textDurationZero,
+		"1,5x":  format,
+		"1.5.5": format,
+		"1,5,5": format,
+		"+5":    format,
+		"1.5x":  format,
+		".5":    format,
+		"abc":   zero,
+		"0":     zero,
+		"0:00":  zero,
+		"-5":    zero,
 		"24:01": textDurationOverDay,
 		"1441":  textDurationOverDay,
 		"":      textDurationMissing,

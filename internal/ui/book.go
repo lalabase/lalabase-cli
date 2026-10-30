@@ -221,10 +221,15 @@ func (a *app) afterBooking(op *bookOp) tea.Cmd {
 	return a.readTime(d, false)
 }
 
-// tellBooking puts a booking's end on the status line. The Events wake the
-// model at its deadline, so the line is drawn again.
+// tellBooking puts a booking's end on the status line, which has one place
+// for it: a hint does not take the place of a problem still standing, which
+// is what the person has to come back to. The Events wake the model at the
+// deadline, so the line is drawn again.
 func (a *app) tellBooking(text present.Inline, tone present.Style, lasts time.Duration) tea.Cmd {
 	now := a.now()
+	if tone == present.Plain && a.bookNotice.tone == present.NoticeProblem && a.bookNotice.until.After(now) {
+		return nil
+	}
 	a.bookNotice = bookNotice{text: text, tone: tone, until: now.Add(lasts)}
 	if a.deps.Events == nil {
 		return nil

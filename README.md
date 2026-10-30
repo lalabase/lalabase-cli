@@ -85,7 +85,8 @@ navigation again.
   Code opened or ended) takes the path's place for 5 seconds, then the path
   is back. A notice of a problem or a wait (an expired session, a
   rate-limit pause, the disk cache, an `x` running or failed) stands beside
-  the path as long as its state holds. A notice or hint that does not fit
+  the path as long as its state holds. What became of a booking comes
+  first but for an expired session: it has a deadline and no second telling. A notice or hint that does not fit
   takes the lines under it, from the panes,
   wrapped and whole. Only where that would leave the pane in focus no row
   is it cut, marked with "…". Its tone comes from the state it reports,
@@ -309,7 +310,8 @@ navigation again.
     same key. While a booking on a ticket is out its `b` is gone, on that
     ticket alone. `Esc` leaves the send under way, and how it ended is told
     on the status line, by the ticket's number, wherever the person is by
-    then.
+    then: a hint for five seconds, a problem for thirty, and a hint does not
+    take a problem's place.
   * **How it ends.** Confirmed, when the answer names the ticket, an id and
     minutes above zero: the box closes, and the time on the ticket leaves the
     cache and is read again, so "Booked by you" moves; it stays blank while
@@ -908,7 +910,8 @@ arguments are read, and the store is one for all its writes. A booking
 is answered in the core's order, with its texts: the token, a key seen
 before, the ticket, what the input lacks, the right, the duration; so an
 empty duration without the right is a 422 and a bad one a 403. It reads a
-duration as the core's model does (`1,5x` is refused) and keeps the
+duration as the core's model does, Ruby's reading of a number included
+(`1,5x` is refused for its form, `0` for its minutes), and keeps the
 minutes: the sum of `summarize_time_sessions` reads them afterwards. The
 fixture logs attempts (`Requests`), keys (`Keys`) and the changes it
 carried out (`Mutations`, with their kind) apart, for the tests. A tool a
