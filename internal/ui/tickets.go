@@ -248,13 +248,16 @@ func (a *app) cancelArea(area gateway.Area) {
 }
 
 // openProjects opens the tickets section of org: its projects, from the
-// cache at once when they are there, then one reload.
+// cache at once when they are there, then one reload. On the section already
+// open it leads back to the projects from a ticket list; Esc in the chooser
+// is the way back to that list.
 func (m Model) openProjects(org string) (Model, tea.Cmd) {
 	a := m.app
 	if !a.canOpen(org, sectionTickets) {
 		return m, nil
 	}
 	if a.projects != nil && a.projects.org == org {
+		a.leaveList()
 		m.focus = view.List
 		return m, nil
 	}

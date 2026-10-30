@@ -64,13 +64,22 @@ func TestPTYStatusTones(t *testing.T) {
 				t.Fatal("no reversed cells: the cursor bar is gone")
 			}
 			if noColor {
-				if seen[32] || seen[33] || seen[36] {
+				if seen[38] || seen[48] {
 					t.Fatalf("a colour despite NO_COLOR: %v", seen)
+				}
+				if strings.Contains(out, "\x1b]1") {
+					t.Fatalf("the window was painted despite NO_COLOR: %q", out)
 				}
 				return
 			}
-			if !seen[33] || !seen[36] {
-				t.Fatalf("yellow %v, cyan %v: a tone is missing", seen[33], seen[36])
+			if !seen[180] || !seen[116] {
+				t.Fatalf("yellow %v, cyan %v: a tone is missing", seen[180], seen[116])
+			}
+			// The window takes the palette, and gets the terminal's back.
+			for _, osc := range []string{"\x1b]10;#c4c7cd", "\x1b]11;#0e1014", "\x1b]110", "\x1b]111"} {
+				if !strings.Contains(out, osc) {
+					t.Fatalf("no %q in %q", osc, out)
+				}
 			}
 		})
 	}

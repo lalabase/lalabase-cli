@@ -66,9 +66,8 @@ func (l screenLine) render(width int, method ansi.Method) string {
 }
 
 // styled draws text in a style; spaces stay unstyled, so nothing but the
-// text itself carries an attribute. A status's tone is one of the
-// terminal's own sixteen colours, so the user's theme picks the shade, and
-// a terminal without colour (NO_COLOR) draws the text alone.
+// text itself carries an attribute. A tone comes from the palette; a
+// terminal without colour (NO_COLOR) draws the text alone.
 func styled(text string, s present.Style) string {
 	if strings.TrimSpace(text) == "" || s == present.Plain {
 		return text
@@ -89,33 +88,35 @@ func styleOf(s present.Style) lipgloss.Style {
 	style := lipgloss.NewStyle()
 	switch s {
 	case present.Strong:
-		return style.Bold(true)
+		return style.Bold(true).Foreground(brightColor)
 	case present.Faint:
 		return style.Faint(true)
 	case present.StatusOpen:
-		return style.Foreground(lipgloss.Cyan)
+		return style.Foreground(cyanColor)
 	case present.StatusActive:
-		return style.Foreground(lipgloss.Yellow)
+		return style.Foreground(yellowColor)
 	case present.StatusDone:
-		return style.Foreground(lipgloss.Green)
+		return style.Foreground(greenColor)
 	case present.NoticeProblem:
-		return style.Bold(true).Foreground(lipgloss.Red)
+		return style.Bold(true).Foreground(redColor)
 	case present.NoticeWaiting:
-		return style.Foreground(lipgloss.Yellow)
+		return style.Foreground(yellowColor)
 	case present.Own:
-		return style.Bold(true).Foreground(lipgloss.Blue)
+		return style.Bold(true).Foreground(brandColor)
+	case present.Author:
+		return style.Bold(true).Foreground(authorColor)
 	case present.AgentApproval:
-		return style.Bold(true).Foreground(lipgloss.Magenta)
+		return style.Bold(true).Foreground(authorColor)
 	case present.AgentWaiting:
-		return style.Foreground(lipgloss.Magenta)
+		return style.Foreground(authorColor)
 	case present.AgentLost:
-		return style.Foreground(lipgloss.Red)
+		return style.Foreground(redColor)
 	case present.AgentWorking:
-		return style.Foreground(lipgloss.Cyan)
+		return style.Foreground(cyanColor)
 	case present.AgentStarting:
-		return style.Faint(true).Foreground(lipgloss.Cyan)
+		return style.Faint(true).Foreground(cyanColor)
 	case present.AgentEnded:
-		return style.Faint(true).Foreground(lipgloss.Green)
+		return style.Faint(true).Foreground(greenColor)
 	}
 	return style
 }

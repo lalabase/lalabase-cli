@@ -9,8 +9,10 @@ import (
 )
 
 const (
-	bold  = "\x1b[1m"
+	bold  = "\x1b[1;38;2;241;243;245m"
 	faint = "\x1b[2m"
+
+	focusBold = "\x1b[1;38;2;107;154;238m"
 )
 
 // A line's lead and rest keep their styles across a wrap, its indent
@@ -141,12 +143,12 @@ func TestANarrowListKeepsItsTitles(t *testing.T) {
 	}
 }
 
-// A status's tone is a colour of the terminal's own palette (cyan, yellow,
-// green: the user's theme picks the shade), and only the status takes it.
-func TestAStatusIsDrawnInTheTerminalsOwnColours(t *testing.T) {
+// A status's tone is a colour of the client's palette (cyan, yellow, green),
+// and only the status takes it.
+func TestAStatusIsDrawnInItsTone(t *testing.T) {
 	t.Parallel()
 
-	for style, sgr := range map[present.Style]string{present.StatusOpen: "36", present.StatusActive: "33", present.StatusDone: "32"} {
+	for style, sgr := range map[present.Style]string{present.StatusOpen: "38;2;117;197;213", present.StatusActive: "38;2;223;193;132", present.StatusDone: "38;2;157;207;146"} {
 		c := present.Column{Title: present.NewInline("Tickets"), Cursor: -1, Rows: []present.Row{
 			{Primary: present.NewInline("#2 Export"), Trailing: present.NewInline("fertig"), TrailingStyle: style},
 		}}
@@ -156,25 +158,44 @@ func TestAStatusIsDrawnInTheTerminalsOwnColours(t *testing.T) {
 		}
 	}
 	lines := wrapStyled("fertig · Website", present.LineStyle{Lead: len("fertig"), LeadStyle: present.StatusDone, RestStyle: present.Faint}, 40, ansi.WcWidth)
-	if got := lines[0].render(40, ansi.WcWidth); !strings.Contains(got, "\x1b[32mfertig") || !strings.Contains(got, faint+" · Website") {
+	if got := lines[0].render(40, ansi.WcWidth); !strings.Contains(got, "\x1b[38;2;157;207;146mfertig") || !strings.Contains(got, faint+" · Website") {
 		t.Fatalf("the facts line: %q", got)
 	}
 }
 
-// L2 allowed magenta in the terminal's bytes for an agent that waits; since
-// C9a exactly the two waits draw it, for an approval and for the person.
-func TestOnlyTheTwoWaitsDrawMagenta(t *testing.T) {
+// Violet is the authors' colour and, among the states, exactly the two
+// waits': for an approval and for the person.
+func TestOnlyAuthorsAndTheTwoWaitsDrawViolet(t *testing.T) {
 	t.Parallel()
 
 	for s := present.Plain; s <= present.AgentEnded; s++ {
-		magenta := s == present.AgentApproval || s == present.AgentWaiting
+		violet := s == present.Author || s == present.AgentApproval || s == present.AgentWaiting
 		for _, out := range []string{styled("x", s), quieted("x", s)} {
-			if got := strings.Contains(out, "35m") || strings.Contains(out, ";35;") || strings.Contains(out, "[35;"); got != magenta {
-				t.Errorf("style %d draws magenta: %v, want %v (%q)", s, got, magenta, out)
+			if got := strings.Contains(out, "191;148;228"); got != violet {
+				t.Errorf("style %d draws violet: %v, want %v (%q)", s, got, violet, out)
 			}
 		}
 	}
-	if got := styled("x", present.Own); got != "\x1b[1;34mx\x1b[m" {
+	if got := styled("x", present.Own); got != "\x1b[1;38;2;121;194;250mx\x1b[m" {
 		t.Fatalf("own: %q", got)
+	}
+}
+
+// The app's name opens the header in its colour; the rest of the line,
+// and a header without the name, stay as they are.
+func TestTheHeaderOpensWithTheBrand(t *testing.T) {
+	if got := branded("lalabase | default"); got != "\x1b[1;38;2;121;194;250mlalabase\x1b[m | default" {
+		t.Fatalf("%q", got)
+	}
+	if got := branded("lala…"); got != "lala…" {
+		t.Fatalf("a cut name: %q", got)
+	}
+}
+
+// A bar and a key cap stay reversed without colour, so NO_COLOR keeps
+// them, and their fill is the palette's.
+func TestAFilledRunIsReversed(t *testing.T) {
+	if got := capStyle.Render("q"); got != "\x1b[7;38;2;216;218;223mq\x1b[m" {
+		t.Fatalf("%q", got)
 	}
 }

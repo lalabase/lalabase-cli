@@ -69,7 +69,7 @@ func startTerminal(t *testing.T, scenario string, width uint16) *terminalProcess
 	t.Helper()
 	// The header is the one line every interface shows first, the shell and
 	// the session alike.
-	return startTerminalWith(t, scenario, width, terminalOptions{url: "http://127.0.0.1:1", marker: "lalabase | default", limit: caseLimit})
+	return startTerminalWith(t, scenario, width, terminalOptions{url: "http://127.0.0.1:1", marker: " | default", limit: caseLimit})
 }
 
 func startTerminalWith(t *testing.T, scenario string, width uint16, opts terminalOptions) *terminalProcess {
@@ -671,9 +671,9 @@ func TestPTYResizePreservesFocus(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The focused pane's frame in blue, its title in it; the renderer
-	// joins the blue with what it ends ("\x1b[34;22;1m") and may end the
+	// joins the blue with what it ends ("\x1b[38;5;69;22;1m") and may end the
 	// blue just before the title.
-	focused := regexp.MustCompile(`\x1b\[[0-9;]*\b34\b[0-9;]*m\x{256d}\x{2500} (\x1b\[[0-9;]*m)?Object`)
+	focused := regexp.MustCompile(`\x1b\[[0-9;]*\b69\b[0-9;]*m\x{256d}\x{2500} (\x1b\[[0-9;]*m)?Object`)
 	if err := c.until("object focus", readyLimit, func() bool {
 		return focused.MatchString(c.bytes()[offset:])
 	}); err != nil {

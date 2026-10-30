@@ -1,6 +1,7 @@
 package view
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -18,10 +19,9 @@ func cellAttrs(line string) (reversed []bool, params map[int]bool) {
 	return cellsWith(line, 7, 27)
 }
 
-// grounded counts the cells of a line drawn on the grey ground (bright
-// black, SGR 100).
+// grounded counts the cells of a line drawn on the rest colour.
 func grounded(line string) int {
-	cells, _ := cellsWith(line, 100, 49)
+	cells, _ := cellsWith(line, restSGR, 49)
 	n := 0
 	for _, on := range cells {
 		if on {
@@ -29,6 +29,34 @@ func grounded(line string) int {
 		}
 	}
 	return n
+}
+
+// paletteTones names the palette's colours by the plain SGR number of their
+// hue, so a test reads as "cyan" whatever the shade; a colour without a hue
+// of its own (bright text, a frame, the fill of a bar) has none. restSGR
+// stands for the ground of a bar out of focus.
+const restSGR = 100
+
+var paletteTones = map[string]int{
+	"38;2;117;197;213": 36, "38;2;223;193;132": 33, "38;2;157;207;146": 32, "38;2;223;115;118": 31,
+	"38;2;191;148;228": 35, "38;2;107;154;238": 34, "38;2;121;194;250": 94, "48;2;59;63;70": restSGR,
+}
+
+// namedTones folds each 24-bit colour of an SGR sequence into its number.
+func namedTones(seq []int) []int {
+	var out []int
+	for i := 0; i < len(seq); i++ {
+		if (seq[i] != 38 && seq[i] != 48) || i+4 >= len(seq) || seq[i+1] != 2 {
+			out = append(out, seq[i])
+			continue
+		}
+		key := fmt.Sprintf("%d;2;%d;%d;%d", seq[i], seq[i+2], seq[i+3], seq[i+4])
+		if n, ok := paletteTones[key]; ok {
+			out = append(out, n)
+		}
+		i += 4
+	}
+	return out
 }
 
 // cellsWith follows the SGR state through a line and returns, per cell,
@@ -58,6 +86,7 @@ func cellsWith(line string, set, off int) (cells []bool, params map[int]bool) {
 				seq = append(seq, 0)
 			}
 		}
+		seq = namedTones(seq)
 		for _, n := range seq {
 			switch n {
 			case 0, off:
@@ -129,7 +158,7 @@ func TestTheCursorRowOfTheFocusedPaneIsABar(t *testing.T) {
 		t.Fatalf("the second line is bold in the bar: %q", got[3])
 	}
 	// The rows outside the bar keep their styles.
-	if !strings.Contains(got[0], "\x1b[36m") || !strings.Contains(got[1], faint+"Ben") {
+	if !strings.Contains(got[0], "\x1b[38;2;117;197;213m") || !strings.Contains(got[1], faint+"Ben") {
 		t.Fatalf("a row outside the bar lost its style: %q %q", got[0], got[1])
 	}
 }
@@ -138,7 +167,7 @@ func TestTheCursorRowOfTheFocusedPaneIsABar(t *testing.T) {
 // the pane's whole width and both lines, never reversed: the place stays
 // seen while the keys act elsewhere. The marker stays, bold stays, faint
 // and a tone give way as in the focused bar.
-func TestAnUnfocusedPaneDrawsItsCursorOnTheGreyGround(t *testing.T) {
+func TestAnUnfocusedPaneDrawsItsCursorOnTheRestColour(t *testing.T) {
 	t.Parallel()
 
 	c := present.Column{Title: present.NewInline("Tickets"), Cursor: 0, Rows: []present.Row{

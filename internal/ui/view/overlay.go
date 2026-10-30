@@ -160,10 +160,10 @@ func dialogBox(d present.Dialog, g Geometry, method ansi.Method) []string {
 		rows = append(rows, make([]string, s.errorLines)...)
 	}
 	rows = append(rows, s.help...)
-	border := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Blue)
+	border := lipgloss.NewStyle().Bold(true).Foreground(focusColor)
 	run := s.width - 2
 	out := make([]string, 0, len(rows)+frameLines)
-	out = append(out, frameTop(d.Title.String(), run, border, lipgloss.NewStyle().Bold(true), method))
+	out = append(out, frameTop(d.Title.String(), run, border, border, method))
 	left, right := border.Render(frameSide)+dialogMargin, dialogMargin+border.Render(frameSide)
 	for _, row := range rows {
 		out = append(out, left+row+strings.Repeat(" ", max(0, s.inner-method.StringWidth(row)))+right)

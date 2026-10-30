@@ -408,7 +408,7 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 		// below it. The token's own person (by the id alone, never the
 		// name) is blue and marked, so the mark stays without colour.
 		t.posts[p.ID] = len(t.lines)
-		author, tone := present.NewInline(personOf(p.Author)).String(), present.Strong
+		author, tone := present.NewInline(personOf(p.Author)).String(), present.Author
 		if c.me != "" && p.Author != nil && p.Author.ID == c.me {
 			author, tone = author+" "+uitext.Inline(uitext.You).String(), present.Own
 		}
