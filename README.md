@@ -32,7 +32,8 @@ the core's REST API when its `/me` lists the capabilities of the core's R1,
 and through the MCP tools on an older server; the screen is the same
 either way. M1 lays the ground for what a person writes: a box over the
 screen with input fields (see "The dialog"). Since K6 `b` on a ticket books
-time through it, the first write over REST (see "Booking time").
+time through it, the first write over REST (see "Booking time"), and since
+K3a `k` writes a comment (see "A comment").
 
 ## Setting up
 
@@ -85,8 +86,8 @@ navigation again.
   Code opened or ended) takes the path's place for 5 seconds, then the path
   is back. A notice of a problem or a wait (an expired session, a
   rate-limit pause, the disk cache, an `x` running or failed) stands beside
-  the path as long as its state holds. What became of a booking comes
-  first but for an expired session: it has a deadline and no second telling. A notice or hint that does not fit
+  the path as long as its state holds. What became of a booking or a comment
+  comes first but for an expired session: it has a deadline and no second telling. A notice or hint that does not fit
   takes the lines under it, from the panes,
   wrapped and whole. Only where that would leave the pane in focus no row
   is it cut, marked with "…". Its tone comes from the state it reports,
@@ -374,6 +375,29 @@ navigation again.
     a quick loss a second press would be a second booking. The way on is
     `Esc`, looking at the time, and `b`, which is a new action with a new key
     once the read has landed.
+* **A comment (K3a).** `k` on the ticket in the focused pane opens the large
+  box: `Enter` breaks the line, `ctrl+s` sends, `Esc` closes. It is plain text
+  of up to 10,000 characters, and the server makes the markup: what you write
+  is what the comment says, less the blank lines around it. A text of blanks
+  sends nothing. It goes over REST when `/me` lists `posts.plain`, else
+  through `post_comment` with `format`; a server with neither, a read-only
+  token and a token that does not say have no `k`.
+  * **The draft.** `Esc` keeps the text with its ticket, in memory alone: `k`
+    brings it back. Quitting loses it, and so does an expired session: a new
+    login is a new program.
+  * **How it ends.** As a booking does: one operation per `ctrl+s`, a lock per
+    ticket and kind (a booking runs beside a comment, a second comment waits),
+    the ends told on the status line after `Esc`. Confirmed, when the answer
+    names the ticket and an id: the box and the draft go, the ticket shows its
+    first page of comments, newest first, with the comment selected, and the
+    ticket, the project's list and both inboxes leave the cache and are read
+    again, the counters unknown until then, since the server marks your rows
+    of the ticket read. A refusal or an unsent comment stands in the box, the
+    text kept; a refusal drops nothing from the cache.
+  * **When nobody knows.** The box holds and nothing is sent again. What a
+    confirmed comment reads is read, and `k` is back once those reads have
+    landed, with the text as a draft: sending it is a new action with a new
+    key, by a person who has seen the ticket as it stands.
 * **Claude Code beside the ticket (C7).** `x` in the ticket view (the
   focus on the ticket, the ticket shown whole) starts Claude Code with the
   ticket as its task. It gets the ticket's **address only**: a fixed German
@@ -714,7 +738,7 @@ navigation again.
   Without `full_text` and `post_id` there is no `e`; without the paging
   arguments no `[`/`]`/`o` in the ticket; each works without the other.
 * **The dialog (M1).** The box a person writes in, for the time booked on a
-  ticket first (`b`, see "Booking time"), then for a comment and a title. It
+  ticket first (`b`, see "Booking time"), for a comment (`k`), then for a title. It
   sends nothing by itself; what a send does is its user's. To see it with no
   server, run `tools/dialog-fixture` (below).
   * **How it looks.** A box in the frame of the focused pane, in the middle
@@ -933,8 +957,8 @@ longer than the pane shows), 3 in Handbuch, 5 in Archiv; the first organisation'
 Website-Relaunch's tickets (row 6 names ticket #6), the second's name
 tickets the fixture does not have. It
 binds to 127.0.0.1 only, accepts one synthetic token (`inboxfixture.Token`)
-and refuses everything but the reads of C1 and the writes of C1f, C2 and
-K6.
+and refuses everything but the reads of C1 and the writes of C1f, C2, K6 and
+K3a.
 The ticket view is served on both ways (K1): its `/me` is the contract's,
 with R1's capabilities, so the client reads the list and the tickets over
 REST (`/api/v1/projects/:id/tickets`, `/api/v1/tickets/:id` with or
@@ -966,7 +990,11 @@ before, the ticket, what the input lacks, the right, the duration; so an
 empty duration without the right is a 422 and a bad one a 403. It reads what
 the core's form lets through as the core's model does (`1,5x` is refused for
 its form, `0` for its minutes; of other text the form refuses the first
-message may differ) and keeps the minutes: the sum of `summarize_time_sessions` reads them afterwards. The
+message may differ) and keeps the minutes: the sum of `summarize_time_sessions` reads them afterwards. A
+comment over REST (K3a, `POST /api/v1/tickets/:id/posts`, only with R1's
+capabilities) keeps what `post_comment` keeps and answers in the core's order:
+the token, a key seen before, the ticket, the input, the right; a format other
+than plain is refused here, since this client writes no other. The
 fixture logs attempts (`Requests`), keys (`Keys`) and the changes it
 carried out (`Mutations`, with their kind) apart, for the tests. A tool a
 scenario took out of `tools/list` is unknown to the fixture, as to the

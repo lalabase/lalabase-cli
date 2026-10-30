@@ -127,7 +127,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case gateway.Wake:
 		return m.wake(msg)
 	case gateway.Expired:
-		// The deadline of a pause or of a hint or of a booking's notice:
+		// The deadline of a pause or of a hint or of a write's notice:
 		// whichever still shows it is over; or of the next read of the agents.
 		if a := m.app; a != nil && msg.Session == a.session {
 			if msg.Until.Equal(a.pause) {

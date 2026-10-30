@@ -85,7 +85,8 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   `"me"` to add; nobody is ever removed) and refuses a change of none or
   two before sending; `post_comment` sends `format: plain` only when asked
   (feature `comment_plain`), so an older server gets the request it knows.
-  A REST write (K0; the booking of K6 is the first) is a POST or
+  A REST write (K0; the booking of K6 is the first, the comment of K3a the
+  second, in plain text alone) is a POST or
   PATCH under `/api/` with a JSON body and the key as its `Idempotency-Key`
   header; one with another method, no usable key or a body that is no JSON
   object is refused before sending, and its success is a JSON object
@@ -121,8 +122,10 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   came with R1, `tickets.list` with R0), the ticket and its pages
   `tickets.show` with `tickets.paging`, the texts whole `posts.show` too.
   The booking (K6) is the first feature with the REST way alone: without
-  `time_sessions.book` it is off, whatever tools the server lists. Every
-  other feature takes the MCP way. A REST reader's spec is its
+  `time_sessions.book` it is off, whatever tools the server lists. A comment
+  in plain text (K3a) takes REST with `posts.plain`, else the tool with
+  `format`; the way goes on its write (`WriteTicket.Way`). Every other
+  feature takes the MCP way. A REST reader's spec is its
   tool's fields, under `data` for a ticket and one comment (the list has
   the tool's form as it is), so one rule serves both ways, and what a read
   files in the cache has the tool's form (a ticket's `data`; one comment
