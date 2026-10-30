@@ -17,7 +17,8 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
-// deadline is how long iTerm has to split the session and type the line.
+// deadline is how long iTerm has to split the session and type the line,
+// and an opener to hand over a file's address.
 const deadline = 5 * time.Second
 
 // osascriptPath is macOS's own: not looked up on the PATH.
@@ -113,10 +114,7 @@ func New(cfg Config) *Launcher {
 		return runChild(ctx, l.tmux, "", args)
 	}
 	l.opener = l.findOpener
-	l.runOpener = func(ctx context.Context, path string, args []string) error {
-		_, _, err := runChild(ctx, path, "", args)
-		return err
-	}
+	l.runOpener = runOpener
 	return l
 }
 
@@ -538,6 +536,13 @@ func runChild(ctx context.Context, path, script string, args []string) (stdout, 
 	c.WaitDelay = time.Second
 	err = c.Run()
 	return string(out.b), string(errOut.b), err
+}
+
+// runOpener runs the opener with nothing attached: what it says is nobody's,
+// and it may leave the browser behind, which must not inherit a pipe of ours
+// (runChild would wait for the pipe, and close it under the browser).
+func runOpener(ctx context.Context, path string, args []string) error {
+	return exec.CommandContext(ctx, path, args...).Run()
 }
 
 // capped keeps the first maxOutput bytes written to it.

@@ -3,6 +3,8 @@ package launch
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -182,5 +184,21 @@ func TestOpenerPathIsAbsolute(t *testing.T) {
 	l := &Launcher{lookPath: func(string) (string, error) { return "relative/xdg-open", nil }}
 	if path, ok := l.findOpener(); ok && !strings.HasPrefix(path, "/") {
 		t.Fatalf("path = %q", path)
+	}
+}
+
+// An opener that leaves the browser running behind it has done its work
+// (xdg-open through gio, with no browser open yet): its output is nobody's,
+// and no pipe may hold the answer back or be closed under the browser.
+func TestAnOpenerThatLeavesAProgramBehindHasOpened(t *testing.T) {
+	stub := filepath.Join(t.TempDir(), "opener")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nsleep 8 &\nexit 0\n"), 0o700); err != nil { //nolint:gosec // a test program
+		t.Fatal(err)
+	}
+	l, _ := openLauncher(t, Config{}, nil)
+	l.runOpener = New(l.cfg).runOpener
+	l.opener = func() (string, bool) { return stub, true }
+	if d := openDone(t, l, File{ID: fileDoc}); d.Kind != FileOpened {
+		t.Fatalf("done = %+v", d)
 	}
 }
