@@ -1,30 +1,17 @@
 # AGENTS.md
 
 Working notes for coding agents in this repository (Claude Code reads this
-file through `CLAUDE.md`). The README says what the
-program does; this file says how to change it without repeating mistakes the
-reviews of C0 already found. Status: 2026-10-30, main at C2a (#16: the
-ground for the writes of C2, with its review findings in #21) plus the
-status colours (#18), the cursor bar (#19) and the scrollbar on free text
-(#23), C7 (Claude Code beside the ticket: `x`, `internal/launch`, project
-folders per profile) and C7b (#33); C9a (the agents' state: hooks,
-`lalabase hook`, `internal/agents`, #34); C9b (the agents across the
-organisations: the Agents area, `A`, the seen mark, #36); the order of
-C9b's titles (#37), the C9 review's readability and duplication passes
-(#38, #39) and C9c's groundwork (#40); C9c-2 (`d`, the cleanup, #41) and
-the booked time (#42); C9c-3 (`x` jumps to an agent's pane or starts it
-again, a starting agent without its pane is lost, #43), the preview
-budget (#44), tmux sessions for the agents as a prototype (#45) and a PTY test that dropped a signal (#46); K0 (the REST
-ground: classes from `code`, REST writes, capabilities from `/me`; no
-feature switched, #47); K1 (the ticket list and the ticket view over REST
-when `/me` lists the core's R1 capabilities, the tools otherwise, #48); M1
-(the dialog: `internal/textentry`, `clean.Draft`, `present.Dialog`,
-`view.Overlay`, the mode `Dialog`, #49); K6 (`b` books time on a ticket, the
-first write over REST) is this branch.
+file through `CLAUDE.md`). The README says what the program does,
+`docs/development.md` how it is built; this file says how to change it
+without repeating mistakes the reviews of C0 already found. What is done is
+in `git log`.
 
-The plan lives in a private repository: `doc/terminal_client_plan.md`
-(slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
-Read the section of the slice you work on before you start.
+The plans live in a private repository: `doc/cli_rest_plan.md`
+(the current slices) and `doc/terminal_client_plan.md` (design and decisions);
+the "As built" sections of finished slices are in
+`doc/terminal_client_as_built.md`. Read the section of the slice you work on,
+found with `grep -n '^##'`, not the whole file: these files are long, and so
+is the README.
 
 ## Check before every push
 
@@ -37,7 +24,7 @@ the packages a change reaches, without the pseudo-terminals, in seconds. Run
 the full check once, before the push, not after every edit.
 
 The CI runs the same plus a 20 s fuzz run of `internal/clean` and `go-licenses`
-(see README "Development"). The CI tests on Linux only: code behind
+(see `docs/development.md`). The CI tests on Linux only: code behind
 `//go:build darwin` (access lists, file locks, FIFOs, the terminal) is tested
 on a Mac before every merge, by running the tests here.
 
@@ -157,6 +144,9 @@ on a Mac before every merge, by running the tests here.
   holding the run.
 * A test that cannot set up its case skips locally but **fails on the CI**
   (`os.Getenv("CI")`): a skip there passes without testing anything.
+* A test goes into the file of its topic, never one named after a review
+  (`internal/sourceguard` refuses that). New tests join the file that holds
+  the behaviour they pin.
 * Tests in `internal/ui` and the `TestPTY` tests run in parallel: a new one
   there starts with `t.Parallel()`, unless it changes process state (a
   serial test finishes before any parallel one goes on).
@@ -168,15 +158,33 @@ on a Mac before every merge, by running the tests here.
 * Ask "what change would this test miss?". A reviewer's mutation probes are
   run as given, not a selection of them.
 
-## Reviews: keep them converging
+## Slices
 
-C0 took 3 to 6 review rounds per PR. Most findings were real, but late rounds
-also found what earlier rounds' fixes had opened. To keep the count down:
+* A slice adds at most about 1,000 lines, tests included. The review rounds
+  grew with the size: up to 500 lines took 0 to 2 rounds, the largest PRs 7
+  and 9.
+* A slice ends in something a person can press. Ground without a user gets
+  built against guesses and draws findings about guesses; cut it thinner and
+  bring the first user along.
+* Its brief is the PR body: scope, threat model, what is out. A page, no more.
 
-* State the threat model and the slice's scope in the PR body before the first
-  review, and give both to the reviewer.
-* A finding needs a concrete failing case (input, state, wrong result). One
-  without goes into the plan's backlog, not into this PR.
+## Reviews: a budget by risk
+
+Every review prompt names the area and carries this section. Set the budget
+before the first round.
+
+| Area | Budget |
+|---|---|
+| Security boundaries: `privatefs`, `safefile`, `clean`, `profile`, `transport`, `launch`, `agents`, the token, every write | rounds until no blocking finding is left |
+| Everything else: `ui`, `view`, `uitext`, `present`, `textentry`, fixtures, tools | one round; a second only for a blocking finding of the first |
+
+A diff that touches both gets the stricter budget for those files alone.
+
+* **Blocking** means a concrete failing case (input, state, wrong result) a
+  person meets in normal use, or lost data, a crash, a security hole. The rest
+  goes into the plan's backlog, not into this PR: a rare character in a rare
+  place, a wider terminal case, a nicer structure.
+* A later round reviews the fixes of the round before, not the whole diff.
 * From round 3 on, ask of each finding: a bug in this slice, or a new
   requirement? A new requirement goes into the next slice.
 * When fixes keep adding special cases, stop and look for the missing rule
