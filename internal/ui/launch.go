@@ -77,7 +77,7 @@ func (m Model) fileTarget() (launch.Ticket, launch.File, bool) {
 	if !ok {
 		return launch.Ticket{}, launch.File{}, false
 	}
-	return t, launch.File{ID: *f.ID, Name: f.Filename}, true
+	return t, launch.File{Kind: launch.TicketFile, ID: *f.ID, Name: f.Filename}, true
 }
 
 // openFile is Enter on a file: one child at a time, shared with x, and its

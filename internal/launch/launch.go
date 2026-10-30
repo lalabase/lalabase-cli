@@ -152,9 +152,9 @@ func (l *Launcher) Jump(ref uint64, t Ticket, agent, pane string) tea.Cmd {
 	return l.command(ref, t, JumpAction, func() tea.Msg { return l.jump(ref, t, agent, pane) })
 }
 
-// OpenFile is the command that opens a file of the ticket t in the browser
-// (C10); its message is a Done with the action OpenFileAction, under the
-// supervisor like Launch.
+// OpenFile is the command that opens a file of the ticket t or of one of its
+// comments in the browser (C10, C12); its message is a Done with the action
+// OpenFileAction, under the supervisor like Launch.
 func (l *Launcher) OpenFile(ref uint64, t Ticket, f File) tea.Cmd {
 	return l.command(ref, t, OpenFileAction, func() tea.Msg { return l.openFile(ref, t, f) })
 }
@@ -203,7 +203,7 @@ func (l *Launcher) jump(ref uint64, t Ticket, agent, pane string) Done {
 // answer: this says only that the address was handed over.
 func (l *Launcher) openFile(ref uint64, t Ticket, f File) Done {
 	d := Done{Ref: ref, Ticket: t, Action: OpenFileAction, Detail: f.Name}
-	address, ok := fileAddress(l.cfg.Server, t.Org, f.ID)
+	address, ok := fileAddress(l.cfg.Server, t.Org, f.Kind, f.ID)
 	if !ok {
 		d.Kind = NotHandedOver
 		return d

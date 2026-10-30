@@ -20,22 +20,27 @@ func checkTicket(t Ticket) bool {
 	return agents.ForeignID(t.Project) && agents.ForeignID(t.ID) && agents.TicketNumber(t.Number)
 }
 
-// fileAddress is where the core shows a ticket's file: its file proxy, which
-// asks the browser's login and the file's rights on every read. The address
-// is built here from the profile's server and two ids of the form the launch
-// trusts, so no string of an answer becomes one, and with https or http the
-// system hands it to the browser, never to a file or another program. A
-// token has no place in it: the browser has its own login.
-func fileAddress(server, org, document string) (string, bool) {
+// fileWords are the proxy's words for the kinds of file.
+var fileWords = map[FileKind]string{TicketFile: "ticket_document", CommentFile: "post_document"}
+
+// fileAddress is where the core shows a file of a ticket or of a comment: its
+// file proxy, which asks the browser's login and the file's rights on every
+// read. The address is built here from the profile's server, a word of the
+// client's own for the kind and two ids of the form the launch trusts, so no
+// string of an answer becomes one, and with https or http the system hands
+// it to the browser, never to a file or another program. A token has no
+// place in it: the browser has its own login.
+func fileAddress(server, org string, kind FileKind, document string) (string, bool) {
 	base := strings.TrimRight(server, "/")
 	host, https := strings.CutPrefix(base, "https://")
 	if !https {
 		host, _ = strings.CutPrefix(base, "http://")
 	}
-	if host == base || host == "" || !agents.ForeignID(org) || !agents.ForeignID(document) {
+	word, known := fileWords[kind]
+	if host == base || host == "" || !known || !agents.ForeignID(org) || !agents.ForeignID(document) {
 		return "", false
 	}
-	return base + "/org/" + org + "/files/ticket_document/" + document, true
+	return base + "/org/" + org + "/files/" + word + "/" + document, true
 }
 
 // sessionID is ITERM_SESSION_ID: the window, tab and pane, then the
