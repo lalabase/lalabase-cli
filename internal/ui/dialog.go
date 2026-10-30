@@ -49,8 +49,9 @@ type DialogField struct {
 // title ("Book time"), and SendHelp names the key that sends, "send" when
 // empty. Large is the size of one field of several lines; a small dialog
 // has one or a few fields of one line. Send is called once per send, with
-// what the fields hold; what it returns runs as any command and must end in
-// a DialogOutcome with the submission's number.
+// what the fields hold; what it returns runs as any command, and how it ended
+// must reach the dialog as a DialogOutcome with the submission's number: as
+// the command's message, or through the model that received its result.
 type DialogSpec struct {
 	Action, SendHelp present.Inline
 	Target           DialogTarget
