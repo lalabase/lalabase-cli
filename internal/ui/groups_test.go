@@ -870,6 +870,49 @@ func TestTheRestWaitsForCountsOfOneRound(t *testing.T) {
 			t.Fatal("a rest beside a group that may be old")
 		}
 	})
+	t.Run("the groups' reads are out", func(t *testing.T) {
+		t.Parallel()
+		h, s := groupHarness(t)
+		h.drive(h.press("g"))
+		s.add(strPtr("new"), []string{"is_new"}, 1)
+		msgs := baseFirst(messages(h.t, h.press("R")))
+		h.drive(h.feed(msgs[0])...) // the list alone
+		if endsInRest(h) {
+			t.Fatal("a rest of a new total and old groups")
+		}
+	})
+	t.Run("the list was refused", func(t *testing.T) {
+		t.Parallel()
+		h, s := groupHarness(t)
+		h.drive(h.press("g"))
+		s.rows = s.rows[:len(s.rows)-1]
+		h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+			if q.Status == "" {
+				return failing(transport.Refused, 422)
+			}
+			return s.answer(q)
+		})
+		h.drive(h.press("R"))
+		if endsInRest(h) {
+			t.Fatal("a rest from a total the server refused to renew")
+		}
+	})
+	t.Run("a group was refused", func(t *testing.T) {
+		t.Parallel()
+		h, s := groupHarness(t)
+		h.drive(h.press("g"))
+		s.add(strPtr("new"), []string{"is_new"}, 1)
+		h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+			if q.Status == "new" {
+				return failing(transport.Refused, 422)
+			}
+			return s.answer(q)
+		})
+		h.drive(h.press("R"))
+		if endsInRest(h) {
+			t.Fatal("a rest beside a refused group")
+		}
+	})
 	t.Run("the list's read failed", func(t *testing.T) {
 		t.Parallel()
 		h, s := groupHarness(t)
@@ -926,6 +969,49 @@ func TestANewStatusWithAShrinkIsReadOnce(t *testing.T) {
 	v := h.m.app.tickets
 	if n != 1 || v.page != 1 || v.groups[len(v.groups)-1].total != 1 {
 		t.Fatalf("%d reads, page %d, %d groups", n, v.page, len(v.groups))
+	}
+}
+
+// The last status left the project: the list falls back to chronological,
+// the pane follows the cursor, and the hint has its end.
+func TestWhenTheLastStatusGoesThePaneFollowsAndTheHintEnds(t *testing.T) {
+	t.Parallel()
+	h, s := groupHarness(t)
+	h.drive(h.press("g"))
+	v := h.m.app.tickets
+	toHead(h, "in_progress")
+	h.drive(h.press("down"))
+	id := v.selected
+	h.m.app.ensureDetail(website, id)
+	s.statuses = []string{}
+	h.drive(h.press("R"))
+	if v.grouped || v.selected == id {
+		t.Fatalf("grouped %v, selected %q", v.grouped, v.selected)
+	}
+	if d := h.m.app.detail; d != nil && d.id != v.selected {
+		t.Fatalf("the pane shows %q, the cursor %q", d.id, v.selected)
+	}
+}
+
+// Every ticket lacks a status and a group's read failed: there is no rest to
+// tell, and no claim of an empty list either.
+func TestAFailedEmptyGroupDoesNotSayThereAreNoTickets(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	s := &groupServer{h: h, statuses: []string{"new"}}
+	s.add(nil, nil, 3)
+	h.f.setTickets(s.answer)
+	h.openTickets(website)
+	h.drive(h.press("g"))
+	h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+		if q.Status == "new" {
+			return failing(transport.Temporary, 503)
+		}
+		return s.answer(q)
+	})
+	h.drive(h.press("R"))
+	if got := h.m.ticketsColumn().Notice.String(); strings.Contains(got, "No tickets") {
+		t.Fatalf("the notice %q", got)
 	}
 }
 

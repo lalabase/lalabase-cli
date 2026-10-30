@@ -513,7 +513,7 @@ func (v *ticketsView) groupsNotice(empty uitext.ID) present.Inline {
 	s := v.status
 	s.known = slices.ContainsFunc(v.groups, func(g *ticketGroup) bool { return g.known })
 	s.loading = s.loading || slices.ContainsFunc(v.groups, func(g *ticketGroup) bool { return g.loading })
-	return s.notice(empty, len(v.entries()) == 0 && v.rest() == 0)
+	return s.notice(empty, len(v.entries()) == 0 && v.total == 0)
 }
 
 // rest is the number of tickets no group holds: without a status, or with
@@ -525,7 +525,7 @@ func (v *ticketsView) rest() int {
 	if !v.known || v.loading || v.stale || v.err.String() != "" || !v.allSettled() {
 		return 0
 	}
-	if slices.ContainsFunc(v.groups, func(g *ticketGroup) bool { return !g.known || g.stale || g.err.String() != "" }) {
+	if slices.ContainsFunc(v.groups, func(g *ticketGroup) bool { return g.stale || g.err.String() != "" }) {
 		return 0
 	}
 	n := v.total
