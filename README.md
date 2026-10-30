@@ -30,7 +30,9 @@ ticket with an agent jumps to the agent's pane, or starts it again once
 its session is over. Since K1 the ticket list and the ticket are read over
 the core's REST API when its `/me` lists the capabilities of the core's R1,
 and through the MCP tools on an older server; the screen is the same
-either way.
+either way. M1 lays the ground for what a person writes: a box over the
+screen with input fields (see "The dialog"); no key opens it yet and it
+sends nothing.
 
 ## Setting up
 
@@ -594,6 +596,60 @@ navigation again.
   description, removes the ticket with every cached page and expansion.
   Without `full_text` and `post_id` there is no `e`; without the paging
   arguments no `[`/`]`/`o` in the ticket; each works without the other.
+* **The dialog (M1).** The box a person writes in, for the time booked on a
+  ticket first, then for a comment and a title. No key opens one yet: it
+  has no user in the client, and it sends nothing by itself; what a send
+  does is its user's. To see it, run `tools/dialog-fixture` (below).
+  * **How it looks.** A box in the frame of the focused pane, in the middle
+    of the screen, over whatever the panes show: the action and the ticket
+    in its top border, a long title cut with "…", then the fields, each
+    with its label, a faint hint under it, an error line, and the keys that
+    act at the bottom. The label of the field in focus is bold, and only
+    that field has a caret. Small, it has one or a few fields of one line
+    and is 54 columns wide; large, it has one field of several lines and
+    takes about 80 % of the screen. Below 60 columns it takes the whole
+    width. The screen's last line stays free: it names `ctrl+c`, the one key
+    left. A screen too low for the box gives up the empty line first, then
+    the hints, then the fields furthest from the one in focus (a large box
+    its hint, then its label); the keys and the field in focus stay. On a
+    terminal below 24 columns or 8 rows no box shows: the notice of a small
+    terminal does, with `esc` and `ctrl+c`, the only keys that act, and the
+    box comes back whole when the terminal grows.
+  * **Keys.** While a dialog is open every printable key is text, `q` too,
+    and no key reaches the screen behind it, nor does the wheel. `Enter`
+    sends a dialog of one-line fields; in a field of several lines `Enter`
+    breaks the line and `Ctrl-S` sends. `Tab` goes to the next field, `Esc`
+    closes the dialog, `Ctrl-C` ends the program as everywhere. `←`/`→`,
+    `Home`/`End`, `Backspace` and `Delete` act on what a person sees as one
+    character, however many code points it is (a combining mark, a joined
+    emoji, a flag); `↑`/`↓` and `PgUp`/`PgDn` walk the lines on the screen
+    in a large field, in the same column. Text wraps at spaces, and the
+    field scrolls with the caret; a line of a small field wider than it
+    moves sideways, a cut end marked with "…".
+  * **What it holds.** Everything typed or pasted passes one filter,
+    `clean.Draft`, so a field never holds what the screen would not show,
+    and what is shown is what is sent. Escape sequences go whole, an
+    unfinished one with the rest of the text, as on a terminal; controls,
+    bidi and invisible characters go by the rules for foreign text, and a
+    mark with no letter before it does not stay. A
+    field of several lines keeps its line breaks, a terminal's CR and a
+    file's CRLF as LF, and turns a tab into four spaces; a field of one
+    line takes a run of them as one space. A paste arrives as one
+    (bracketed paste), so a line break in it sends nothing; a terminal
+    without bracketed paste types it, `Enter` included. Each field has a
+    limit in runes: what does not fit is left out from the first grapheme
+    that does not, and the error line says "Note cut at 200 characters"
+    until the next key, for a value a field starts with too. A ticket's
+    title in the top border and a server's text in the
+    error line are foreign text and are cleaned on their way there.
+  * **Sending.** The dialog keeps the ticket it was opened on: a reload that
+    moves the selection behind the box does not change where a send goes.
+    While a send is out the input stands still, the error line says
+    "Sending…", and the keys say what is left: no `enter`, and `esc` closes
+    the box, it does not cancel the send. A refusal stands in the error line
+    (up to three lines, then cut), and the input stays, until the next send.
+    A success closes the box. A 401 closes it too, with the session:
+    nothing of it stays on the screen, the text written so far included.
 * **What the server supports** comes from its tool schemas, never from its
   version: without `organisation_id` only "All organisations" opens, first
   page only; without `list_notifications` the inbox is off and the counts
@@ -838,6 +894,16 @@ the reload is out, then fresh; `temporary`: "Cached, possibly stale" and
 directory and a busy lock). The shipped binary does not carry the fixture
 or the contract copy (`internal/sourceguard` holds that).
 
+`tools/dialog-fixture` shows the dialog (M1), which no key opens yet, with no
+server at all: the box over panes of hostile text, on a ticket with a hostile
+title. Every send takes a second; the first is refused with what it would have
+sent, the next goes through.
+
+```sh
+go run ./tools/dialog-fixture           # the small box
+go run ./tools/dialog-fixture -large    # the large one
+```
+
 To see the disk cache by hand, run the fixture with `-scenario slow-reads`,
 start the client as above with a `$fixture_dir` of its own and
 `XDG_CACHE_HOME="$fixture_dir/cache"` added to its environment, open an
@@ -869,7 +935,7 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   zsh, fish): the launch tests run the typed line in each and fail on the
   CI when one is missing; locally a missing one is skipped. A real terminal check at 80 and 120 columns,
   including resize and terminal restoration, is still required before
-  merge; the fixture above is what it runs against.
+  merge; the fixtures above are what it runs against.
 
 * **Foreign text** (titles, comments, names, server error texts) goes through
   `internal/clean` before it reaches the terminal, in every mode. Its test
@@ -878,7 +944,9 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   terminal**; an 8-bit terminal that reads C1 controls from single bytes cannot
   be protected by cleaning (ordinary letters carry such bytes once encoded).
   The interface therefore refuses a locale that is not UTF-8. The existing
-  auth commands do not check the locale; agent commands arrive in C4.
+  auth commands do not check the locale; agent commands arrive in C4. What
+  a person types or pastes into a field has a filter of its own in the same
+  package, `clean.Draft` (M1), which the CI's fuzz run covers too.
 * **No invisible characters in the repository:** `internal/sourceguard` reads
   every tracked text file. Write such characters as escapes or numbers.
 * **Child processes** start in `internal/launch` alone (C7: `osascript` and

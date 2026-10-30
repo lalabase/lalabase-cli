@@ -188,5 +188,8 @@ func FuzzCleanedTextIsTerminalSafe(f *testing.F) {
 		if again := Inline(inline); again != inline {
 			t.Fatalf("Inline is not idempotent on %q: %q then %q", in, inline, again)
 		}
+		// The filter of what a person types and pastes (M1) runs in the same
+		// fuzz: the CI's -fuzz flag takes one target.
+		assertDraft(t, in)
 	})
 }

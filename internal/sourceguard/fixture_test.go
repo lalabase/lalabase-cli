@@ -55,7 +55,7 @@ func TestTheFixtureAndTheContractStayOutOfTheBinary(t *testing.T) {
 	sources := repositorySources(t)
 	graph := productionGraph(t, sources)
 	reachable := reachableFrom(graph, "cmd/lalabase")
-	for _, barred := range []string{"internal/inboxfixture", "internal/contract", "tools/inbox-fixture"} {
+	for _, barred := range []string{"internal/inboxfixture", "internal/contract", "tools/inbox-fixture", "tools/dialog-fixture"} {
 		if reachable[barred] {
 			t.Errorf("cmd/lalabase reaches %s", barred)
 		}

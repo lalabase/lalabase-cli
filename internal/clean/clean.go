@@ -13,13 +13,16 @@
 // locale that is not UTF-8 instead; C0 does not check the locale yet.
 //
 // A port of clean() in bin/lala of the core repository; the test cases there
-// are the golden file of this package.
+// are the golden file of this package. Draft is this client's own: the filter
+// of what a person types or pastes into an input field.
 package clean
 
 import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // keepFormat reports the format characters (category Cf) that carry real
@@ -49,6 +52,32 @@ func Text(s string) string {
 // row or field in a list.
 func Inline(s string) string {
 	return clean(s, true)
+}
+
+// lineBreaks are the two ways a line break arrives that is none to clean: a
+// terminal pastes it as CR, a file from Windows brings CRLF.
+var lineBreaks = strings.NewReplacer("\r\n", "\n", "\r", "\n")
+
+// draftTab is what a tab becomes in a field of several lines: the width of
+// no cell can be known for one, and the panes show it as four spaces.
+const draftTab = "    "
+
+// Draft cleans what a person types or pastes into an input field (M1): the
+// one filter in front of every buffer, so that a buffer holds nothing the
+// screen would not show, and what is shown is what is sent.
+//
+// Escape sequences go whole, not only their ESC, since nobody meant to write
+// "[31m". An unfinished one takes the rest of the text with it, as it would
+// on a terminal. What is left follows the rules of Text and Inline: controls,
+// bidi and invisible characters go, and a field of several lines (multiline)
+// keeps its line breaks, whichever way they arrived, with its tabs as spaces;
+// a field of one line takes a run of them as one space.
+func Draft(s string, multiline bool) string {
+	s = lineBreaks.Replace(ansi.Strip(s))
+	if !multiline {
+		return clean(s, true)
+	}
+	return strings.ReplaceAll(clean(s, false), "\t", draftTab)
 }
 
 func clean(s string, inline bool) string {

@@ -3,7 +3,7 @@
 Working notes for coding agents in this repository (Claude Code reads this
 file through `CLAUDE.md`). The README says what the
 program does; this file says how to change it without repeating mistakes the
-reviews of C0 already found. Status: 2026-10-29, main at C2a (#16: the
+reviews of C0 already found. Status: 2026-10-30, main at C2a (#16: the
 ground for the writes of C2, with its review findings in #21) plus the
 status colours (#18), the cursor bar (#19) and the scrollbar on free text
 (#23), C7 (Claude Code beside the ticket: `x`, `internal/launch`, project
@@ -17,8 +17,9 @@ again, a starting agent without its pane is lost, #43), the preview
 budget (#44), tmux sessions for the agents as a prototype (#45) and a PTY test that dropped a signal (#46); K0 (the REST
 ground: classes from `code`, REST writes, capabilities from `/me`; no
 feature switched, #47); K1 (the ticket list and the ticket view over REST
-when `/me` lists the core's R1 capabilities, the tools otherwise) is this
-branch.
+when `/me` lists the core's R1 capabilities, the tools otherwise, #48); M1
+(the dialog: `internal/textentry`, `clean.Draft`, `present.Dialog`,
+`view.Overlay`, the mode `Dialog`; no key opens one yet) is this branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
@@ -49,18 +50,20 @@ on a Mac before every merge, by running the tests here.
 | `internal/queue` | the one queue every request goes through |
 | `internal/gateway` | reads from the queue to the interface: one typed message per waiter, `Scope`, which checks a result before it is cached and (K1) stamps each ticket with its read's way (`Routes`), and the one write path (`Write`), which confirms a success only from the answer |
 | `internal/worker` | the supervisor: the only place a goroutine is started, its panics become one fatal error |
-| `internal/ui` | the root Bubble Tea model: owns every piece of state, issues reads through the gateway, builds the screen; `view/` renders it and knows nothing else |
+| `internal/ui` | the root Bubble Tea model: owns every piece of state, issues reads through the gateway, builds the screen; `view/` renders it and knows nothing else; the dialog (M1, `dialog.go`): a mode of its own, its target taken when it opens, its sending state; what a send does is its user's |
+| `internal/textentry` | the buffer of an input field (M1): runes with a caret between two graphemes, a hard limit, everything through `clean.Draft`, lines wrapped and kept in sight; own code, no widget |
 | `internal/present` | the display values the views take: opaque, cleaned once, a cast cannot forge one |
 | `internal/uitext` | every text of the interface, in English, in one place |
 | `internal/terminal` | the UTF-8 locale check before raw mode |
 | `internal/inboxfixture` | the loopback stand-in for a server, built from the contract copy, the ticket view on both ways (K1: REST by default, `BeforeR1` the tools); `tools/inbox-fixture` serves it for a person |
+| `tools/dialog-fixture` | the dialog on a person's terminal, without a server, while no key opens one (M1) |
 | `internal/profile` | server plus token; the config file, checked through `internal/privatefs` |
 | `internal/safefile` | reading files the client does not control |
 | `internal/claudecfg` | Lalabase entries in Claude Code's configuration, for `auth import` alone (the launch reads none of it since C7b) |
 | `internal/launch` | Claude Code beside the ticket (C7, C7b): the folder, the server file's bytes, the arguments, the launch script, the typed line, the AppleScripts; the jump to an agent's pane and the start again through `--resume` (C9c); the only package that starts a child process |
 | `internal/launchdir` | the launch files (C7b): one private directory per press beside the disk cache, its files created exclusively, old ones pruned |
 | `internal/agents` | the agents x started (C9a): their directory beside the launch files, the launch record, the state `lalabase hook` writes, the reading every 500 ms, lost processes, the seen mark the client alone writes (C9b), the removal of an agent's files and the cleanup at every start (C9c), the lost mark the client writes and the settling after a start (C9c-3) |
-| `internal/clean` | making foreign text safe for a terminal |
+| `internal/clean` | making foreign text safe for a terminal, and `Draft`, the one filter of what a person types or pastes |
 | `internal/contract` | copy of the core's MCP contract; imported by tests only |
 | `internal/sourceguard` | tests over the repository's own files |
 | `tools/update-contract` | refreshes the contract copy from a core checkout |
@@ -150,7 +153,9 @@ on a Mac before every merge, by running the tests here.
 * A test that cannot set up its case skips locally but **fails on the CI**
   (`os.Getenv("CI")`): a skip there passes without testing anything.
 * Terminal output is asserted on bytes; the terminal is tested through a real
-  pseudo-terminal (`github.com/creack/pty`).
+  pseudo-terminal (`github.com/creack/pty`). No key opens the dialog yet, so
+  its tests and `tools/dialog-fixture` start with one (`ui.WithDialog`); the
+  source guard allows that nowhere in `cmd/` and `internal/`, and K6 lifts it.
 * Ask "what change would this test miss?". A reviewer's mutation probes are
   run as given, not a selection of them.
 
