@@ -19,7 +19,8 @@ ground: classes from `code`, REST writes, capabilities from `/me`; no
 feature switched, #47); K1 (the ticket list and the ticket view over REST
 when `/me` lists the core's R1 capabilities, the tools otherwise, #48); M1
 (the dialog: `internal/textentry`, `clean.Draft`, `present.Dialog`,
-`view.Overlay`, the mode `Dialog`; no key opens one yet) is this branch.
+`view.Overlay`, the mode `Dialog`, #49); K6 (`b` books time on a ticket, the
+first write over REST) is this branch.
 
 The plan lives in a private repository: `doc/terminal_client_plan.md`
 (slices C0 to C6, server slices S0 to S3, an "As built" section per slice).
@@ -45,22 +46,22 @@ on a Mac before every merge, by running the tests here.
 | Package | Job |
 |---|---|
 | `cmd/lalabase` | commands; everything a command reads or writes goes through `Env` (tests pass their own) |
-| `internal/transport` | REST `/api/v1` and MCP `/api/mcp`; every answer becomes one `Answer` with one `Class` (a REST error by its `code` since K0); REST writes with an `Idempotency-Key` (`Write`) |
-| `internal/api` | one adapter per tool or REST reader, each with a `Spec` (`Newer`: fields a newer server sends, since K0); the generic REST write (`write`); since K1 the REST readers of the ticket view, each spec the tool's fields (under `data`), what they file in the tool's form |
-| `internal/features` | which features a server has, from `tools/list` and input schemas, and since K0 the REST capabilities of `/api/v1/me` (REST way first, MCP the fallback); since K1 the ticket view's five features name theirs |
+| `internal/transport` | REST `/api/v1` and MCP `/api/mcp`; every answer becomes one `Answer` with one `Class` (a REST error by its `code` since K0); REST writes with an `Idempotency-Key` (`Write`); the words of a refusal for showing alone (`RefusalText`, K6) |
+| `internal/api` | one adapter per tool or REST reader, each with a `Spec` (`Newer`: fields a newer server sends, since K0); the generic REST write (`write`), `BookTime` its first caller (K6); since K1 the REST readers of the ticket view, each spec the tool's fields (under `data`), what they file in the tool's form |
+| `internal/features` | which features a server has, from `tools/list` and input schemas, and since K0 the REST capabilities of `/api/v1/me` (REST way first, MCP the fallback); since K1 the ticket view's five features name theirs; a feature without a tool has the REST way alone (`time_book`, K6) |
 | `internal/cache` | the decisions on an answer, from its class alone, the memory store they act on, and the journal of its changes the disk replays |
 | `internal/diskcache` | the disk cache (C1e): one directory per profile, one lock per run, a replay of the journal, every file checked before it is an entry |
 | `internal/privatefs` | the one threat model of the client's private files (the config, its lock, the disk cache, the launch files, the agents' files): owners, modes, the directory chain, macOS access lists, locks; the exclusive create and the bounded directory walk they share |
 | `internal/queue` | the one queue every request goes through |
-| `internal/gateway` | reads from the queue to the interface: one typed message per waiter, `Scope`, which checks a result before it is cached and (K1) stamps each ticket with its read's way (`Routes`), and the one write path (`Write`), which confirms a success only from the answer |
+| `internal/gateway` | reads from the queue to the interface: one typed message per waiter, `Scope`, which checks a result before it is cached and (K1) stamps each ticket with its read's way (`Routes`), and the one write path (`Write`, K6's `BookTime` among its kinds), which confirms a success only from the answer |
 | `internal/worker` | the supervisor: the only place a goroutine is started, its panics become one fatal error |
-| `internal/ui` | the root Bubble Tea model: owns every piece of state, issues reads through the gateway, builds the screen; `view/` renders it and knows nothing else; the dialog (M1, `dialog.go`): a mode of its own, its target taken when it opens, its sending state; what a send does is its user's |
+| `internal/ui` | the root Bubble Tea model: owns every piece of state, issues reads through the gateway, builds the screen; `view/` renders it and knows nothing else; the dialog (M1, `dialog.go`): a mode of its own, its target taken when it opens, its sending state; what a send does is its user's; the booking (K6, `book.go`): `b`, one operation per Enter, the lock per ticket, the time read again; `write.go`: what writes share, `placeWrite` the one reading of an answer to a write |
 | `internal/textentry` | the buffer of an input field (M1): runes with a caret between two graphemes, a hard limit, everything through `clean.Draft`, lines wrapped and kept in sight; own code, no widget |
 | `internal/present` | the display values the views take: opaque, cleaned once, a cast cannot forge one |
 | `internal/uitext` | every text of the interface, in English, in one place |
 | `internal/terminal` | the UTF-8 locale check before raw mode |
-| `internal/inboxfixture` | the loopback stand-in for a server, built from the contract copy, the ticket view on both ways (K1: REST by default, `BeforeR1` the tools); `tools/inbox-fixture` serves it for a person |
-| `tools/dialog-fixture` | the dialog on a person's terminal, without a server, while no key opens one (M1) |
+| `internal/inboxfixture` | the loopback stand-in for a server, built from the contract copy, the ticket view on both ways (K1: REST by default, `BeforeR1` the tools), a booking with state (K6); `tools/inbox-fixture` serves it for a person |
+| `tools/dialog-fixture` | the dialog on a person's terminal, without a server (M1) |
 | `internal/profile` | server plus token; the config file, checked through `internal/privatefs` |
 | `internal/safefile` | reading files the client does not control |
 | `internal/claudecfg` | Lalabase entries in Claude Code's configuration, for `auth import` alone (the launch reads none of it since C7b) |
@@ -160,9 +161,10 @@ on a Mac before every merge, by running the tests here.
   there starts with `t.Parallel()`, unless it changes process state (a
   serial test finishes before any parallel one goes on).
 * Terminal output is asserted on bytes; the terminal is tested through a real
-  pseudo-terminal (`github.com/creack/pty`). No key opens the dialog yet, so
-  its tests and `tools/dialog-fixture` start with one (`ui.WithDialog`); the
-  source guard allows that nowhere in `cmd/` and `internal/`, and K6 lifts it.
+  pseudo-terminal (`github.com/creack/pty`). The dialog's own tests and
+  `tools/dialog-fixture` start with one (`ui.WithDialog`); the source guard
+  allows no opener in `cmd/` and `internal/` but `b` in `internal/ui/book.go`
+  (`dialogCallers`), and a new one is a decision taken there.
 * Ask "what change would this test miss?". A reviewer's mutation probes are
   run as given, not a selection of them.
 

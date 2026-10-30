@@ -275,9 +275,9 @@ func TestTheIdempotencyKeyCarriesTheClock(t *testing.T) {
 	h := newHarness(t)
 	h.start()
 	a := h.m.app
-	k1 := a.idempotencyKey(1)
+	k1 := a.idempotencyKey("mark", 1)
 	h.now = h.now.Add(time.Second)
-	k2 := a.idempotencyKey(1)
+	k2 := a.idempotencyKey("mark", 1)
 	if k1 == k2 || !keyFormOK(k1) || !keyFormOK(k2) {
 		t.Fatalf("keys %q and %q", k1, k2)
 	}

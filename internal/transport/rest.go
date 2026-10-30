@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strings"
 )
 
 // keyForm is what an idempotency key of this client looks like. The server
@@ -68,6 +69,38 @@ func readRESTError(body []byte) restError {
 		e.Reason = reason.Reason
 	}
 	return e
+}
+
+// RefusalText is what a REST error says to a person: the first of its
+// "errors" that says anything (one localized message, since the core's R6),
+// else its "message"; empty when it names neither, as the API's 403 and 404
+// do, or when the answer is not in the API's own form. It is for showing
+// alone: what the client does follows from the class. Raw like Message,
+// whose body it reads.
+func (a Answer) RefusalText() string {
+	body := []byte(a.Message)
+	if readRESTError(body).Error == "" {
+		return ""
+	}
+	// Each field on its own, as in readRESTError: one of another type does
+	// not take the other with it.
+	var list struct {
+		Errors []any `json:"errors"`
+	}
+	if json.Unmarshal(body, &list) == nil {
+		for _, item := range list.Errors {
+			if text, ok := item.(string); ok && strings.TrimSpace(text) != "" {
+				return text
+			}
+		}
+	}
+	var one struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &one) == nil && strings.TrimSpace(one.Message) != "" {
+		return one.Message
+	}
+	return ""
 }
 
 // codeStatus names the status the codes that drop a record from the cache

@@ -44,6 +44,7 @@ type Source interface {
 	MarkNotificationRead(ctx context.Context, id, key string) (api.NotificationState, transport.Answer)
 	UpdateTicket(ctx context.Context, projectID, ticketID string, c api.TicketChange, key string) (api.TicketRow, transport.Answer)
 	PostComment(ctx context.Context, projectID, ticketID, body string, o api.CommentOptions, key string) (api.Comment, transport.Answer)
+	BookTime(ctx context.Context, ticketID, duration, note, key string) (api.TimeBooking, transport.Answer)
 	BookedTimeAnswer(ctx context.Context, projectID, ticketID string) transport.Answer
 }
 

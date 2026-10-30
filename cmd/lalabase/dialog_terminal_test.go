@@ -17,8 +17,8 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
-// The dialog (M1) through a real terminal. No key opens one yet, so the
-// child starts with it open, over panes of hostile text, on a hostile ticket
+// The dialog (M1) through a real terminal, on its own: the child starts
+// with it open, over panes of hostile text, on a hostile ticket
 // title; the first send is refused with a hostile text that names what the
 // send carried, the next goes through.
 
