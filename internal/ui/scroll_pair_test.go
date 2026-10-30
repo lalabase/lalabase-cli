@@ -15,6 +15,8 @@ import (
 // a second row and act by moving the selection, whatever the pane shows;
 // an overflow without them is the failure. Every third width.
 func TestR3ScrollPairInFinalGeometryAllRowCounts(t *testing.T) {
+	t.Parallel()
+
 	missing, both := 0, 0
 	defer func() {
 		t.Logf("missing=%d offered-without-overflow=%d", missing, both)
@@ -58,6 +60,8 @@ func TestR3ScrollPairInFinalGeometryAllRowCounts(t *testing.T) {
 // R3: R from a failed global page 1 reads it through the counters' waiter;
 // the view does not load meanwhile and offers ] during the read.
 func TestR3RFromFailedGlobalPageOneLoads(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(""))

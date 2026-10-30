@@ -12,6 +12,8 @@ import (
 // The directory can lose an organisation while its first result waits for
 // delivery. A newer global snapshot still makes its absent counter unknown.
 func TestR2NewerGlobalOmissionCoversPendingDroppedOrganisation(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	globalCmd := h.startHolding()
 	old := messages(t, h.choose(orgA))[0].(gateway.InboxResult)
@@ -48,6 +50,8 @@ func TestR2NewerGlobalOmissionCoversPendingDroppedOrganisation(t *testing.T) {
 }
 
 func TestR2RefusedAnswerConsumesScopeWaiter(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	old := messages(t, h.startHolding())[0].(gateway.InboxResult)
 	h.drive(h.choose(""))
@@ -58,6 +62,8 @@ func TestR2RefusedAnswerConsumesScopeWaiter(t *testing.T) {
 }
 
 func TestR2LatestFiledAnswerSettlesLoadingAfterOlderRefusal(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	old := messages(t, h.startHolding())[0].(gateway.InboxResult)
 	h.drive(h.choose(""))
@@ -70,6 +76,8 @@ func TestR2LatestFiledAnswerSettlesLoadingAfterOlderRefusal(t *testing.T) {
 }
 
 func TestR2OldAreaSuccessCannotFileFlightOrCounters(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	old := messages(t, h.choose(orgA))[0].(gateway.InboxResult)
@@ -90,6 +98,8 @@ func TestR2OldAreaSuccessCannotFileFlightOrCounters(t *testing.T) {
 }
 
 func TestR2OldSessionResultCannotFileFlight(t *testing.T) {
+	t.Parallel()
+
 	old := newHarness(t)
 	r := messages(t, old.startHolding())[0].(gateway.InboxResult)
 	old.events.Revoke()
@@ -107,6 +117,8 @@ func TestR2OldSessionResultCannotFileFlight(t *testing.T) {
 }
 
 func TestR2YoungerRemovalFromBeforeCorrectionIsRejectedByEpoch(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	total := 60
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
@@ -149,6 +161,8 @@ func TestR2YoungerRemovalFromBeforeCorrectionIsRejectedByEpoch(t *testing.T) {
 }
 
 func TestR2UndeliveredCanceledWaiterNeverBecomesPendingAgain(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	held := h.choose(orgA)

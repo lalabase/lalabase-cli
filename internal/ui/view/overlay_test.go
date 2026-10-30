@@ -57,6 +57,8 @@ func dots(g Geometry) string {
 }
 
 func TestTheSmallBoxLooksAsPlanned(t *testing.T) {
+	t.Parallel()
+
 	g := sizeOf(80, 24)
 	got := strings.Split(ansi.Strip(Overlay(dots(g), smallDialog(), g, ansi.WcWidth)), "\n")
 	want := []string{
@@ -83,6 +85,8 @@ func TestTheSmallBoxLooksAsPlanned(t *testing.T) {
 }
 
 func TestTheBoxSitsInTheMiddleInItsWidth(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name          string
 		dialog        present.Dialog
@@ -125,6 +129,8 @@ func TestTheBoxSitsInTheMiddleInItsWidth(t *testing.T) {
 // The room of a large field is what its box leaves: the entry's lines stand
 // between its label and its hint, and the entry fills them.
 func TestTheLargeBoxGivesItsFieldTheRest(t *testing.T) {
+	t.Parallel()
+
 	d := largeDialog()
 	g := sizeOf(80, 24)
 	width, height := DialogEntry(d, g, ansi.WcWidth)
@@ -144,6 +150,8 @@ func TestTheLargeBoxGivesItsFieldTheRest(t *testing.T) {
 }
 
 func TestTheEntriesOfASmallBoxStandInOneColumn(t *testing.T) {
+	t.Parallel()
+
 	d := smallDialog()
 	g := sizeOf(80, 24)
 	width, height := DialogEntry(d, g, ansi.WcWidth)
@@ -162,6 +170,8 @@ func TestTheEntriesOfASmallBoxStandInOneColumn(t *testing.T) {
 // A low screen takes from a large box in this order: the empty line, the
 // hint, the label; its field keeps three lines for as long as it can.
 func TestALowLargeBoxGivesWayInOrder(t *testing.T) {
+	t.Parallel()
+
 	d := largeDialog()
 	d.Fields[0].Label = inlineOf("LABEL")
 	for _, tc := range []struct {
@@ -191,6 +201,8 @@ func TestALowLargeBoxGivesWayInOrder(t *testing.T) {
 // The last line of the screen stays the screen's: it names ctrl+c, the one
 // key the box does not.
 func TestTheBoxLeavesTheLastLineFree(t *testing.T) {
+	t.Parallel()
+
 	long := strings.Repeat("The server refused this. ", 12)
 	for _, d := range []present.Dialog{smallDialog(), largeDialog()} {
 		for _, text := range []string{"", "Refused.", long} {
@@ -209,6 +221,8 @@ func TestTheBoxLeavesTheLastLineFree(t *testing.T) {
 }
 
 func TestALabelIsMeasuredInTheWidthOfTheRun(t *testing.T) {
+	t.Parallel()
+
 	d := smallDialog()
 	d.Fields[0].Label = inlineOf("\u2764\ufe0f")
 	d.Fields[1].Label = inlineOf("x")
@@ -219,6 +233,8 @@ func TestALabelIsMeasuredInTheWidthOfTheRun(t *testing.T) {
 }
 
 func TestTheFocusedFieldShowsItself(t *testing.T) {
+	t.Parallel()
+
 	box := dialogBox(smallDialog(), sizeOf(80, 24), ansi.WcWidth)
 	// The active label is bold, the other one is not; the frame is blue
 	// and bold, as the focused pane's.
@@ -237,6 +253,8 @@ func TestTheFocusedFieldShowsItself(t *testing.T) {
 }
 
 func TestTheErrorLineWrapsAndTakesItsTone(t *testing.T) {
+	t.Parallel()
+
 	d := smallDialog()
 	long := strings.Repeat("The server refused this. ", 12)
 	d.Error, d.ErrorStyle = inlineOf(long), present.NoticeProblem
@@ -262,6 +280,8 @@ func TestTheErrorLineWrapsAndTakesItsTone(t *testing.T) {
 }
 
 func TestALongTitleIsCutInTheBorder(t *testing.T) {
+	t.Parallel()
+
 	d := smallDialog()
 	d.Title = inlineOf(strings.Repeat("\u4e16", 80))
 	for _, row := range dialogBox(d, sizeOf(80, 24), ansi.WcWidth) {
@@ -275,6 +295,8 @@ func TestALongTitleIsCutInTheBorder(t *testing.T) {
 // the screen, its lines as wide as it says, its help and the caret of the
 // active field in sight.
 func TestEveryTerminalShowsTheBoxWhole(t *testing.T) {
+	t.Parallel()
+
 	long := strings.Repeat("no ", 60)
 	large := largeDialog()
 	large.Fields[0].Entry = []present.Inline{inlineOf("first\u258f"), inlineOf("second")}
@@ -322,6 +344,8 @@ func TestEveryTerminalShowsTheBoxWhole(t *testing.T) {
 }
 
 func TestASmallGeometryShowsNoBox(t *testing.T) {
+	t.Parallel()
+
 	g := Geometry{Width: 20, Height: 6, Small: true}
 	screen := dots(g)
 	if got := Overlay(screen, smallDialog(), g, ansi.WcWidth); got != screen {
@@ -380,6 +404,8 @@ func cellsOf(t *testing.T, line string, method ansi.Method) []cell {
 }
 
 func TestOverlayCutsBetweenCellsAndKeepsTheirStyles(t *testing.T) {
+	t.Parallel()
+
 	bold := lipgloss.NewStyle().Bold(true)
 	blue := lipgloss.NewStyle().Foreground(lipgloss.Blue)
 	bar := lipgloss.NewStyle().Reverse(true)
@@ -475,6 +501,8 @@ func TestOverlayCutsBetweenCellsAndKeepsTheirStyles(t *testing.T) {
 // line keeps the screen's width and the box's edges, only complete SGR
 // sequences stay, and the hostile text stays the harmless text it became.
 func TestOverlayOverAHostileScreen(t *testing.T) {
+	t.Parallel()
+
 	hostile := "\x1b[2J\x1b[95mCSI\x1b[0m\x1b]8;;https://evil.invalid\x07LINK\x1b]8;;\x1b\\\x1b]52;c;YQ==\x1b\\\x1bPpayload\x1b\\\x07\u202e\u2066\u2069\xff\u009b\u4e16\u754c\U0001F468\u200d\U0001F469\u200d\U0001F467e\u0301"
 	rows := make([]present.Row, 30)
 	for i := range rows {
@@ -550,6 +578,8 @@ func FuzzAroundEnds(f *testing.F) {
 // methods: the left part as wide as it must be, no style left open, and the
 // right part with the styles in force there, or nothing at all.
 func TestAround(t *testing.T) {
+	t.Parallel()
+
 	wide := "\u4e16"
 	for _, tc := range []struct {
 		name, line, head, after string

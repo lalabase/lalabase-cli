@@ -40,8 +40,8 @@ jobs:
         run: go vet ./...
       - name: go test
         # A hanging test fails within the limit instead of holding the job.
-        # internal/ui runs its screen sweeps one after another, over four
-        # minutes under -race here: the limit leaves room above that.
+        # The tests of internal/ui and the PTY tests run in parallel; on few
+        # cores the limit leaves room for their sweeps under -race.
         run: go test -race -count=1 -timeout 10m ./...
       - name: fuzz the cleaning function briefly
         run: go test -run='^$' -fuzz=FuzzCleanedTextIsTerminalSafe -fuzztime=20s ./internal/clean/

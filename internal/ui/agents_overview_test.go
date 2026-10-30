@@ -26,6 +26,8 @@ func agentIn(id int, org string, n int, state agents.State, since time.Time) age
 // The order is the urgency, then the oldest change first; of two with the
 // same state and time, the one read first.
 func TestTheAgentsAreOrderedByUrgencyThenAge(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	t0 := h.now.Add(-time.Hour)
 	list := []agents.Agent{
@@ -64,6 +66,8 @@ func TestTheAgentsAreOrderedByUrgencyThenAge(t *testing.T) {
 // The summary counts the agents per state, the most urgent first, and
 // leaves out a state without one.
 func TestTheSummaryCountsPerState(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.start()
@@ -103,6 +107,8 @@ func TestTheSummaryCountsPerState(t *testing.T) {
 // The header's first line carries the summary at its right end, never
 // wider than the terminal; below 120 columns without the word.
 func TestTheHeaderSumsTheAgentsUp(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 1, agents.WaitingForYou, h.now), agentIn(2, orgB, 2, agents.Ended, h.now))
 	h.start()
@@ -127,6 +133,8 @@ func TestTheHeaderSumsTheAgentsUp(t *testing.T) {
 // heading); "All organisations" and the rows of the sections carry none.
 // Without an agent nothing is reserved.
 func TestAnOrganisationCarriesItsMostUrgentAgent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(
 		agentIn(1, orgA, 1, agents.Working, h.now),
@@ -173,6 +181,8 @@ func TestAnOrganisationCarriesItsMostUrgentAgent(t *testing.T) {
 // the area, the list, the meta bar), no line of the screen is wider than
 // the terminal, at any width from 80 to 200 and in every focus.
 func TestNoLineIsWiderThanTheTerminalWithAgents(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.openSix()

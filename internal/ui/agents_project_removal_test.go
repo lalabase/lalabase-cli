@@ -18,6 +18,8 @@ func listGone(q api.TicketQuery) transport.Answer {
 // A project's removal outweighs a title read begun before it: its late
 // answer brings no title back.
 func TestAProjectRemovalOutweighsATitleReadBeforeIt(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.start()
@@ -44,6 +46,8 @@ func TestAProjectRemovalOutweighsATitleReadBeforeIt(t *testing.T) {
 // After a project's removal a failed retry brings no title back from
 // what the cache held before it.
 func TestAFailedRetryAfterARemovalTakesNothingFromBefore(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start() // the title read succeeds and is cached
@@ -64,6 +68,8 @@ func TestAFailedRetryAfterARemovalTakesNothingFromBefore(t *testing.T) {
 // A title whose read failed before the disk cache opened is still looked
 // up on the disk once it is open.
 func TestAFailedTitleIsStillLookedUpOnTheDisk(t *testing.T) {
+	t.Parallel()
+
 	h := newDiskHarness(t, t.TempDir(), nil)
 	h.withWatcher()
 	h.start()
@@ -84,6 +90,8 @@ func TestAFailedTitleIsStillLookedUpOnTheDisk(t *testing.T) {
 // The agents' list closing by itself (the last agent gone) resumes the
 // preview of the cached ticket behind it, as esc and A do.
 func TestTheAgentsClosingByThemselvesResumeThePreview(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.openSix()

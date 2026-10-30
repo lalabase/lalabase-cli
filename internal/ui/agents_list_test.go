@@ -28,6 +28,8 @@ func (h *harness) rowOf(n int) present.Row {
 }
 
 func TestEveryStateHasItsGlyphInTheList(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		state agents.State
 		glyph string
@@ -55,6 +57,8 @@ func TestEveryStateHasItsGlyphInTheList(t *testing.T) {
 
 // The spinner's frame is the reads' count.
 func TestTheWorkingGlyphIsTheSpinnersFrame(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	h.m.app.agents.list = []agents.Agent{agentOn(6, agents.Working, h.now)}
@@ -70,6 +74,8 @@ func TestTheWorkingGlyphIsTheSpinnersFrame(t *testing.T) {
 
 // Every glyph is one cell wide, by either way of counting widths.
 func TestTheGlyphsAreOneCellWide(t *testing.T) {
+	t.Parallel()
+
 	glyphs := append([]string(nil), spinner...)
 	for s, l := range agentLooks {
 		if s != agents.Working {
@@ -88,6 +94,8 @@ func TestTheGlyphsAreOneCellWide(t *testing.T) {
 // Every state of internal/agents has a look: a glyph, a tone and a word
 // (a state added there without one would show as an empty, plain cell).
 func TestEveryStateHasALook(t *testing.T) {
+	t.Parallel()
+
 	a := &app{}
 	for s := agents.WaitingForApproval; s <= agents.Ended; s++ {
 		l, ok := agentLooks[s]
@@ -103,6 +111,8 @@ func TestEveryStateHasALook(t *testing.T) {
 // In one, two and three columns every line is as wide as the terminal,
 // with an agent and without, and the glyph stands before the number.
 func TestTheColumnFitsEveryLayout(t *testing.T) {
+	t.Parallel()
+
 	glyphBeforeSix := regexp.MustCompile("⣿ +#6 ")
 	for _, width := range []int{60, 100, 160} {
 		for _, list := range [][]agents.Agent{nil, {}} {

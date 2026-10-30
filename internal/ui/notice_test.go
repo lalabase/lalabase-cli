@@ -78,6 +78,8 @@ func showNotice(h *harness, text string) {
 }
 
 func TestTheNoticeIsWholeInEveryFocusWidthAndHeight(t *testing.T) {
+	t.Parallel()
+
 	notices := []struct {
 		label  string
 		text   string
@@ -128,6 +130,8 @@ func itoa(n int) string { return strconv.Itoa(n) }
 // The pane that keeps a row is the focused one: in the ticket list with
 // the search line open (a notice of the list's own) on a low terminal.
 func TestTheNoticeLeavesTheFocusedListARowWithTheSearchLineOpen(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	notice := "macOS does not let this terminal control iTerm: allow it in System Settings > Privacy & Security > Automation"
@@ -149,6 +153,8 @@ func TestTheNoticeLeavesTheFocusedListARowWithTheSearchLineOpen(t *testing.T) {
 // PgDn reaches the end of the ticket with the notice on its lines: the
 // pages are counted in the body that is left.
 func TestPageDownReachesTheEndBesideANoticeOnItsOwnLines(t *testing.T) {
+	t.Parallel()
+
 	for _, notice := range []string{
 		"Folder not found: /home/anna/dev/website/relaunch-2026x",
 		"macOS does not let this terminal control iTerm: allow it in System Settings > Privacy & Security > Automation",

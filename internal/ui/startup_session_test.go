@@ -16,6 +16,8 @@ import (
 // Plan test 1: before /me succeeded nothing else is asked, no namespace
 // exists and no cache is read; keys do nothing.
 func TestNothingIsAskedBeforeMeSucceeded(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	msgs := messages(t, h.m.Init())
 	if h.f.meCalls != 1 || h.f.orgCalls != 0 || h.f.initCall != 0 || h.f.toolCall != 0 || len(h.f.inboxCalls()) != 0 {
@@ -71,6 +73,8 @@ func TestNothingIsAskedBeforeMeSucceeded(t *testing.T) {
 // writes (the fakes have no such readers; the inbox source sees only the
 // one query).
 func TestAHealthyStartMakesExactlyFiveReads(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	if h.f.meCalls != 1 || h.f.initCall != 1 || h.f.toolCall != 1 || h.f.orgCalls != 1 {
@@ -115,6 +119,8 @@ func TestAHealthyStartMakesExactlyFiveReads(t *testing.T) {
 // Plan test 4: every step fails on its own; R repeats only the failed
 // frontier and what it blocked, never the whole chain.
 func TestRRetriesOnlyTheFailedFrontier(t *testing.T) {
+	t.Parallel()
+
 	refused := failing(transport.Refused, 200)
 	for _, tc := range []struct {
 		name  string
@@ -193,6 +199,8 @@ func TestRRetriesOnlyTheFailedFrontier(t *testing.T) {
 // A temporary failure of a step is retried once by the queue; the step
 // then shows its own line and R starts it again.
 func TestATemporaryStartupFailureShowsTheStepsLine(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.orgs = func() ([]api.Ref, transport.Answer) { return nil, failing(transport.Temporary, 503) }
 	h.start()
@@ -223,6 +231,8 @@ func TestATemporaryStartupFailureShowsTheStepsLine(t *testing.T) {
 // Plan test 5: the write permission comes from read_only alone: true,
 // false, missing; allow_write is the profile's and never reaches the model.
 func TestTheWritePermissionComesFromReadOnlyAlone(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		readOnly *bool
 		want     string
@@ -256,6 +266,8 @@ func ptr(b bool) *bool { return &b }
 
 // A /me without a usable token id opens no namespace: the step fails.
 func TestMeWithoutATokenIDOpensNoNamespace(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	me := h.d.me
 	me.Token.ID = ""
@@ -276,6 +288,8 @@ func TestMeWithoutATokenIDOpensNoNamespace(t *testing.T) {
 // without the tool nothing opens and nothing is asked; a low version alone
 // changes nothing but a notice.
 func TestCapabilitiesComeFromTheSchemasAlone(t *testing.T) {
+	t.Parallel()
+
 	t.Run("without the organisation filter", func(t *testing.T) {
 		h := newHarness(t)
 		tools := withoutArgument(h.d.tools, "list_notifications", "organisation_id")
@@ -361,6 +375,8 @@ func TestCapabilitiesComeFromTheSchemasAlone(t *testing.T) {
 // through the mailbox), and before the start finished. Every field is
 // cleared, later successes refill nothing, keys do nothing but leave.
 func TestA401EndsTheSessionForGood(t *testing.T) {
+	t.Parallel()
+
 	expired := func(t *testing.T, h *harness) {
 		t.Helper()
 		a := h.m.app
@@ -455,6 +471,8 @@ func TestA401EndsTheSessionForGood(t *testing.T) {
 // with its deadline in the person's zone; an extension survives the old deadline's
 // expiry; a wake-up of another session changes nothing.
 func TestARateLimitPauseIsShownAndClearedByItsOwnExpiry(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	first := h.now.Add(30 * time.Second)

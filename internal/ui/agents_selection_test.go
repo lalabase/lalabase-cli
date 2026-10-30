@@ -15,6 +15,8 @@ import (
 // selected; a ticket read again from nothing would settle it, a ticket
 // kept must not lose it.
 func TestEnterAgainKeepsTheSelectedComment(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 7, agents.Working, h.now))
 	h.start()
@@ -38,6 +40,8 @@ func TestEnterAgainKeepsTheSelectedComment(t *testing.T) {
 // cached ticket behind them (its timer fired while they were open), with
 // the focus it returns to (esc and a second A).
 func TestClosingTheAgentsResumesThePreview(t *testing.T) {
+	t.Parallel()
+
 	for _, key := range []string{"esc", "A"} {
 		h := newHarness(t)
 		h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
@@ -64,6 +68,8 @@ func TestClosingTheAgentsResumesThePreview(t *testing.T) {
 // ticket read: the agent's row keeps the renamed title after the ticket
 // leaves the pane.
 func TestANewerTicketReadRenamesTheAgent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start()
@@ -94,6 +100,8 @@ func TestANewerTicketReadRenamesTheAgent(t *testing.T) {
 // P2-4: A is offered only where the agents can be shown; and where a
 // resize leaves them no room, esc still goes back.
 func TestAKeepsAWayBackWhereTheAreaCannotFit(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start()

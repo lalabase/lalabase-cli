@@ -8,6 +8,8 @@ import (
 // A server time is shown in the person's zone, without seconds, with the
 // year only when it is not the current one (in that zone).
 func TestTimesAreLocalShortAndYearOnlyWhenOther(t *testing.T) {
+	t.Parallel()
+
 	berlin := time.FixedZone("CEST", 2*60*60)
 	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 	for _, tc := range []struct {

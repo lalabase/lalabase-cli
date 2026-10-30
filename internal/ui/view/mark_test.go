@@ -19,6 +19,8 @@ func marked(primary, glyph string, style present.Style, quiet bool) present.Row 
 }
 
 func TestTheAgentsColumnIsAlwaysReserved(t *testing.T) {
+	t.Parallel()
+
 	c := present.Column{Rows: []present.Row{
 		marked("#6 Login", "⣿", present.AgentWaiting, false),
 		marked("#7 Logout", "", present.Plain, false),
@@ -49,6 +51,8 @@ func TestTheAgentsColumnIsAlwaysReserved(t *testing.T) {
 // Each state's glyph in its tone, byte for byte; the two waits alone are
 // magenta.
 func TestEveryStatesGlyphInItsTone(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		glyph string
 		style present.Style
@@ -70,6 +74,8 @@ func TestEveryStatesGlyphInItsTone(t *testing.T) {
 
 // In a quiet row (a done ticket) the text is faint, the glyph is not.
 func TestTheGlyphIsNotFaintInAQuietRow(t *testing.T) {
+	t.Parallel()
+
 	got := row(marked("#6 Login", "⣿", present.AgentWaiting, true), 30, 4, false, noBar, false, ansi.WcWidth)[0]
 	if !strings.HasPrefix(got, "  \x1b[38;2;191;148;228m⣿\x1b[m \x1b[2m#6 Login") {
 		t.Fatalf("%q", got)
@@ -79,6 +85,8 @@ func TestTheGlyphIsNotFaintInAQuietRow(t *testing.T) {
 // In the cursor bar the glyph takes the bar's colour: the whole line is
 // reversed (or on the grey ground), and no tone of its own is set.
 func TestTheGlyphTakesTheBarsColour(t *testing.T) {
+	t.Parallel()
+
 	for _, bar := range []barKind{focusBar, restBar} {
 		for _, style := range []present.Style{present.AgentApproval, present.AgentWaiting, present.AgentLost, present.AgentWorking} {
 			lines := row(marked("#6 Login", "!", style, true), 30, 4, true, bar, true, ansi.WcWidth)
@@ -109,6 +117,8 @@ func TestTheGlyphTakesTheBarsColour(t *testing.T) {
 
 // Without colour the glyph stays: it is a character, not a tone.
 func TestTheGlyphWithoutColour(t *testing.T) {
+	t.Parallel()
+
 	got := ansi.Strip(row(marked("#6 Login", "✕", present.AgentLost, false), 30, 4, false, noBar, false, ansi.WcWidth)[0])
 	if !strings.HasPrefix(got, "  ✕ #6 Login") {
 		t.Fatalf("%q", got)
@@ -117,6 +127,8 @@ func TestTheGlyphWithoutColour(t *testing.T) {
 
 // A glyph wider than one cell is not drawn: the column stays two cells.
 func TestAWideGlyphIsDropped(t *testing.T) {
+	t.Parallel()
+
 	got := row(marked("#6 Login", "界", present.AgentLost, false), 30, 4, false, noBar, false, ansi.WcWidth)[0]
 	if ansi.Strip(got)[:6] != "    #6" || ansi.WcWidth.StringWidth(got) != 30 {
 		t.Fatalf("%q", got)

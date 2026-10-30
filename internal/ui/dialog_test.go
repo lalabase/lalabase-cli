@@ -74,6 +74,8 @@ func boxed(m Model) string { return ansi.Strip(m.View().Content) }
 func key(code rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: code} }
 
 func TestRouteKeyInADialog(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name string
 		key  tea.KeyPressMsg
@@ -119,6 +121,8 @@ func TestRouteKeyInADialog(t *testing.T) {
 }
 
 func TestTheBoxStandsOverTheScreen(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	text := boxed(m)
@@ -137,6 +141,8 @@ func TestTheBoxStandsOverTheScreen(t *testing.T) {
 }
 
 func TestTypingAndTheFields(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	m = typeInto(t, m, "30")
@@ -165,6 +171,8 @@ func TestTypingAndTheFields(t *testing.T) {
 }
 
 func TestOneFieldHasNoNextField(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	spec := oneLineSpec(&l)
 	spec.Fields = spec.Fields[:1]
@@ -178,6 +186,8 @@ func TestOneFieldHasNoNextField(t *testing.T) {
 }
 
 func TestEnterSendsOnceAndTheSecondDoesNothing(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	m = typeInto(t, m, "30")
@@ -203,6 +213,8 @@ func TestEnterSendsOnceAndTheSecondDoesNothing(t *testing.T) {
 // While a send is out the input stands still: what is shown is what went.
 // The keys that act are named: no enter, and esc closes, it cancels nothing.
 func TestAnInputStandsStillWhileItIsSent(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	m = typeInto(t, m, "30")
@@ -224,6 +236,8 @@ func TestAnInputStandsStillWhileItIsSent(t *testing.T) {
 }
 
 func TestARefusalStaysAndKeepsTheInput(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	m = typeInto(t, m, "1,5")
@@ -259,6 +273,8 @@ func TestARefusalStaysAndKeepsTheInput(t *testing.T) {
 // A refusal without a word of its own still says something, and never
 // passes for a success, which would close the box with the input.
 func TestARefusalWithoutAWordStaysARefusal(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	m = typeInto(t, m, "1")
@@ -273,6 +289,8 @@ func TestARefusalWithoutAWordStaysARefusal(t *testing.T) {
 }
 
 func TestDoneClosesTheDialog(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	m, _ = step(t, m, press("enter"))
@@ -288,6 +306,8 @@ func TestDoneClosesTheDialog(t *testing.T) {
 // Esc leaves a send under way: its outcome finds no dialog, and it does not
 // close the next one.
 func TestALateOutcomeTouchesNoOtherDialog(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	m, _ = step(t, m, press("enter"))
@@ -318,6 +338,8 @@ func TestALateOutcomeTouchesNoOtherDialog(t *testing.T) {
 }
 
 func TestSeveralLinesEnterBreaksAndCtrlSSends(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, largeSpec(&l), 80, 24)
 	if m.mode != DialogLines {
@@ -352,6 +374,8 @@ func TestSeveralLinesEnterBreaksAndCtrlSSends(t *testing.T) {
 }
 
 func TestCtrlSDoesNothingInOneLine(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	if next, cmd := step(t, m, press("ctrl+s")); next != m || cmd != nil || len(l.got) != 0 {
@@ -360,6 +384,8 @@ func TestCtrlSDoesNothingInOneLine(t *testing.T) {
 }
 
 func TestUpDownAndThePagesWalkTheLargeField(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, largeSpec(&l), 80, 24)
 	m, _ = step(t, m, tea.PasteMsg{Content: strings.Repeat("line\n", 60) + "last"})
@@ -383,6 +409,8 @@ func TestUpDownAndThePagesWalkTheLargeField(t *testing.T) {
 
 // What a key writes passes the filter too: it is the same way in.
 func TestATypedKeyPassesTheFilter(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	for _, k := range []tea.KeyPressMsg{
@@ -398,6 +426,8 @@ func TestATypedKeyPassesTheFilter(t *testing.T) {
 }
 
 func TestAPasteComesInAsOne(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	m, _ = step(t, m, tea.PasteMsg{Content: "a\nb\r\nc"})
@@ -417,6 +447,8 @@ func TestAPasteComesInAsOne(t *testing.T) {
 // What a paste brings passes the one filter: neither the buffer nor the
 // screen holds a byte of it.
 func TestAHostilePasteLandsNowhere(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	for _, spec := range []DialogSpec{oneLineSpec(&l), largeSpec(&l)} {
 		m := dialogModel(t, spec, 80, 24)
@@ -438,6 +470,8 @@ func TestAHostilePasteLandsNowhere(t *testing.T) {
 }
 
 func TestAPasteOverTheLimitSaysSo(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	spec := oneLineSpec(&l)
 	spec.Fields[0].Limit = 5
@@ -467,6 +501,8 @@ func TestAPasteOverTheLimitSaysSo(t *testing.T) {
 // What went wrong just now goes before what went wrong at the last send: a
 // cut stands over a refusal, and when it goes the refusal is there again.
 func TestACutStandsOverARefusal(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	spec := oneLineSpec(&l)
 	spec.Fields[0].Limit = 3
@@ -488,6 +524,8 @@ func TestACutStandsOverARefusal(t *testing.T) {
 
 // A prefilled value is one more thing the buffer takes: the filter holds.
 func TestAPrefilledFieldPassesTheFilter(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	spec := oneLineSpec(&l)
 	spec.Fields[0].Value = "Login\x1b[31m\u202e bricht"
@@ -500,6 +538,8 @@ func TestAPrefilledFieldPassesTheFilter(t *testing.T) {
 // A value over the limit is cut like a paste, and says so like a paste, in
 // any field; the next key takes the notice.
 func TestAPrefilledValueOverTheLimitSaysSo(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	spec := oneLineSpec(&l)
 	spec.Fields[1].Limit, spec.Fields[1].Value = 4, "too long a note"
@@ -519,6 +559,8 @@ func TestAPrefilledValueOverTheLimitSaysSo(t *testing.T) {
 
 // A large dialog has one field, whatever its user hands it.
 func TestALargeDialogHasOneField(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	spec := largeSpec(&l)
 	spec.Fields = append(spec.Fields, DialogField{Label: present.NewInline("Second"), Limit: 10})
@@ -534,6 +576,8 @@ func TestALargeDialogHasOneField(t *testing.T) {
 // The keys of the box are named in it, ctrl+c under it: never twice, never
 // not at all, however low the terminal.
 func TestCtrlCIsNamedOnceAtEverySize(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	for _, spec := range []DialogSpec{oneLineSpec(&l), largeSpec(&l)} {
 		for _, size := range [][2]int{{24, 8}, {24, 9}, {30, 8}, {59, 8}, {60, 10}, {80, 24}, {120, 40}} {
@@ -552,6 +596,8 @@ func TestCtrlCIsNamedOnceAtEverySize(t *testing.T) {
 }
 
 func TestAHostileTitleAndRefusalReachTheScreenClean(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	spec := oneLineSpec(&l)
 	spec.Target.Title = "SAFE" + dialogHostile
@@ -570,6 +616,8 @@ func TestAHostileTitleAndRefusalReachTheScreenClean(t *testing.T) {
 }
 
 func TestAnUntitledTicketIsNamed(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	spec := oneLineSpec(&l)
 	spec.Target.Title = "\u202e  "
@@ -579,6 +627,8 @@ func TestAnUntitledTicketIsNamed(t *testing.T) {
 }
 
 func TestAResizeKeepsTheDialogAndItsInput(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, largeSpec(&l), 120, 40)
 	m = typeInto(t, m, strings.Repeat("word ", 60))
@@ -606,6 +656,8 @@ func TestAResizeKeepsTheDialogAndItsInput(t *testing.T) {
 // A terminal too small for anything shows its notice and the two keys that
 // still act; nothing is typed blind, and the box comes back whole.
 func TestATooSmallTerminalKeepsTheDialogForLater(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	m = typeInto(t, m, "30")
@@ -632,6 +684,8 @@ func TestATooSmallTerminalKeepsTheDialogForLater(t *testing.T) {
 }
 
 func TestCtrlCEndsTheProgramFromADialog(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	_, cmd := step(t, m, press("ctrl+c"))
@@ -671,6 +725,8 @@ func (h *harness) openDialogOnTicket(n int, spec DialogSpec) {
 }
 
 func TestNoKeyActsBehindTheDialog(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	for _, spec := range []DialogSpec{oneLineSpec(&l), largeSpec(&l)} {
 		h := newHarness(t)
@@ -686,6 +742,8 @@ func TestNoKeyActsBehindTheDialog(t *testing.T) {
 }
 
 func TestTheWheelActsNotBehindTheDialog(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	h := newHarness(t)
 	h.openDialogOnTicket(6, oneLineSpec(&l))
@@ -701,6 +759,8 @@ func TestTheWheelActsNotBehindTheDialog(t *testing.T) {
 // drops it, changes what the person is looking at behind the box and nothing
 // of where the send goes.
 func TestTheTargetStaysWhenTheSelectionBehindItMoves(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	h := newHarness(t)
 	h.openTickets(website)
@@ -749,6 +809,8 @@ func TestTheTargetStaysWhenTheSelectionBehindItMoves(t *testing.T) {
 }
 
 func TestADialogOnATicketNeedsTheTicketInFocus(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	h := newHarness(t)
 	h.openTickets(website)
@@ -784,6 +846,8 @@ func TestADialogOnATicketNeedsTheTicketInFocus(t *testing.T) {
 // A preview's timer that fires while the box is open reads nothing, and the
 // close sets it again, as the search line's does.
 func TestThePreviewWaitsForTheDialog(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	h := newHarness(t)
 	h.openTickets(website)
@@ -804,6 +868,8 @@ func TestThePreviewWaitsForTheDialog(t *testing.T) {
 // A 401 ends the session: nothing of it stays on the screen, the ticket's
 // title in the box least of all.
 func TestAnExpiredSessionClosesTheDialog(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	h := newHarness(t)
 	h.openDialogOnTicket(1, oneLineSpec(&l))
@@ -821,6 +887,8 @@ func TestAnExpiredSessionClosesTheDialog(t *testing.T) {
 // besides them; the panes keep the help's height they would have had, or
 // one line less, never a key that does not act.
 func TestTheHelpBelowTheBoxNamesOnlyWhatActs(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 120, 24)
 	help := helpText(m)
@@ -832,6 +900,8 @@ func TestTheHelpBelowTheBoxNamesOnlyWhatActs(t *testing.T) {
 // Every binding of a dialog comes from the same list, the dispatch and the
 // help alike.
 func TestTheBoxNamesWhatActs(t *testing.T) {
+	t.Parallel()
+
 	var l sendLog
 	m := dialogModel(t, oneLineSpec(&l), 80, 24)
 	set := m.allowed()

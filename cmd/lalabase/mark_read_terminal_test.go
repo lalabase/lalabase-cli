@@ -128,6 +128,8 @@ func inboxReads(f *inboxfixture.Fixture, from int) []string {
 
 // The whole C1 run at 80 and 120 columns.
 func TestPTYMarkReadFlow(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []uint16{80, 120} {
 		t.Run(fmt.Sprintf("%d", width), func(t *testing.T) {
 			c, f := startMark(t, inboxfixture.Normal, width, "Token can write: yes")
@@ -221,6 +223,8 @@ func TestPTYMarkReadFlow(t *testing.T) {
 // the details say why; the token's permission unknown likewise; a server
 // without the tool likewise.
 func TestPTYMarkReadIsHiddenWithoutThePermission(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		scenario inboxfixture.Scenario
 		identity string
@@ -262,6 +266,8 @@ func TestPTYMarkReadIsHiddenWithoutThePermission(t *testing.T) {
 // the reads that clear it up, and the state stays unknown although the
 // row left the unread page.
 func TestPTYMarkReadWithALostAnswer(t *testing.T) {
+	t.Parallel()
+
 	c, f := startMark(t, inboxfixture.Lost, 120, "Token can write: yes")
 	openInboxA(t, c, 120)
 	before := len(f.Requests())
@@ -295,6 +301,8 @@ func TestPTYMarkReadWithALostAnswer(t *testing.T) {
 // The unknown outcome, seen from the ticket: the head says so while the
 // reads are out and after them, and r is the person's again.
 func TestPTYMarkReadUnknownOutcomeIsShownOnTheTicket(t *testing.T) {
+	t.Parallel()
+
 	c, f := startMark(t, inboxfixture.Lost, 80, "Token can write: yes")
 	openInboxA(t, c, 80)
 	openRow6Details(t, c, 80)
@@ -320,6 +328,8 @@ func TestPTYMarkReadUnknownOutcomeIsShownOnTheTicket(t *testing.T) {
 // its row, shown in the head and in the details; the ticket's cached
 // pages stay (no second read of it).
 func TestPTYRefusedMarksKeepTheTicket(t *testing.T) {
+	t.Parallel()
+
 	c, f := startMark(t, inboxfixture.Refusals, 120, "Token can write: yes")
 	openInboxA(t, c, 120)
 	for _, tc := range []struct {
@@ -377,6 +387,8 @@ func ticketReadsOf(f *inboxfixture.Fixture) []inboxfixture.Request {
 // A 429 on the write: the pause is shown, the queue sends the same key
 // once more after the window, and the write counts as done then.
 func TestPTYMarkReadAfterARateLimit(t *testing.T) {
+	t.Parallel()
+
 	c, f := startMark(t, inboxfixture.RateLimited, 80, "Token can write: yes")
 	openInboxA(t, c, 80)
 	c.act(t, "r", 80, "Rate limited until")
@@ -400,6 +412,8 @@ func TestPTYMarkReadAfterARateLimit(t *testing.T) {
 
 // A 401 on the write ends the session.
 func TestPTYMarkReadExpiresOn401(t *testing.T) {
+	t.Parallel()
+
 	c, f := startMark(t, inboxfixture.Unauthorized, 80, "Token can write: yes")
 	openInboxA(t, c, 80)
 	c.act(t, "r", 80, "Session expired. Restart lalabase.")
@@ -421,6 +435,8 @@ func TestPTYMarkReadExpiresOn401(t *testing.T) {
 // A slow answer: the selection moves on while the write is out, and the
 // answer marks the row it was for, not the one under the cursor.
 func TestPTYASlowAnswerMarksTheRowItWasFor(t *testing.T) {
+	t.Parallel()
+
 	c, f := startMark(t, inboxfixture.Slow, 120, "Token can write: yes")
 	openInboxA(t, c, 120)
 	c.act(t, "r", 120, "marking…")
@@ -452,6 +468,8 @@ func TestPTYASlowAnswerMarksTheRowItWasFor(t *testing.T) {
 // Ctrl-C while a write is out restores the terminal and exits with 130;
 // q likewise with 0.
 func TestPTYMarkReadInterruptWithAPendingWrite(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		key  string
 		code int
@@ -472,6 +490,8 @@ func TestPTYMarkReadInterruptWithAPendingWrite(t *testing.T) {
 // A network error on the inbox after a write: the page says so and R
 // reads it, as before C1f; the write itself was done once.
 func TestPTYMarkReadThenANetworkError(t *testing.T) {
+	t.Parallel()
+
 	c, f := startMark(t, inboxfixture.Temporary, 80, "Token can write: yes")
 	openInboxA(t, c, 80)
 	if err := c.send("r"); err != nil {

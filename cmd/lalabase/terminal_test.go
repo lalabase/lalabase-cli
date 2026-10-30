@@ -74,6 +74,11 @@ func startTerminal(t *testing.T, scenario string, width uint16) *terminalProcess
 
 func startTerminalWith(t *testing.T, scenario string, width uint16, opts terminalOptions) *terminalProcess {
 	t.Helper()
+	// The one door to a pseudo-terminal: scripts/check fast leaves them out,
+	// the CI and the full check never do.
+	if testing.Short() {
+		t.Skip("a pseudo-terminal: not in -short")
+	}
 	master, slave, err := pty.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -466,6 +471,8 @@ func (m environmentModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func TestPTYRunnerUsesExplicitEnvironment(t *testing.T) {
+	t.Parallel()
+
 	c := startTerminal(t, "environment", 80)
 	c.finish(t, 0)
 }
@@ -500,6 +507,8 @@ func (m faultModel) View() tea.View {
 }
 
 func TestPTYRestoresAfterPanic(t *testing.T) {
+	t.Parallel()
+
 	for _, scenario := range []string{"panic-update", "panic-view"} {
 		t.Run(scenario, func(t *testing.T) {
 			c := startTerminal(t, scenario, 80)
@@ -525,6 +534,8 @@ func TestPTYRestoresAfterPanic(t *testing.T) {
 }
 
 func TestPTYTimeoutKillsAndReapsGroup(t *testing.T) {
+	t.Parallel()
+
 	c := startTerminal(t, "hang", 80)
 	if err := c.ready(); err != nil {
 		t.Fatal(err)
@@ -593,6 +604,8 @@ func (c *terminalProcess) descendantsExited() error {
 }
 
 func TestPTYCancellationKillsDescendants(t *testing.T) {
+	t.Parallel()
+
 	c := startTerminal(t, "hang", 80)
 	if err := c.ready(); err != nil {
 		t.Fatal(err)
@@ -625,6 +638,8 @@ func TestPTYCancellationKillsDescendants(t *testing.T) {
 }
 
 func TestPTYDeadlineCannotPassAfterExpiry(t *testing.T) {
+	t.Parallel()
+
 	c := &terminalProcess{deadline: time.Now().Add(-time.Second)}
 	if err := c.until("expired case", time.Second, func() bool { return true }); err == nil {
 		t.Fatal("condition passed after the case deadline")
@@ -632,6 +647,8 @@ func TestPTYDeadlineCannotPassAfterExpiry(t *testing.T) {
 }
 
 func TestPTYDeadlineCannotPassDuringCondition(t *testing.T) {
+	t.Parallel()
+
 	c := &terminalProcess{deadline: time.Now().Add(caseLimit)}
 	err := c.until("slow condition", time.Millisecond, func() bool {
 		time.Sleep(20 * time.Millisecond)
@@ -643,6 +660,8 @@ func TestPTYDeadlineCannotPassDuringCondition(t *testing.T) {
 }
 
 func TestPTYResizePreservesFocus(t *testing.T) {
+	t.Parallel()
+
 	c := startTerminal(t, "resize", 120)
 	if err := c.ready(); err != nil {
 		t.Fatal(err)
@@ -690,6 +709,8 @@ func TestPTYResizePreservesFocus(t *testing.T) {
 }
 
 func TestPTYRestoresOnQuitAndInterrupt(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name, input string
 		code        int

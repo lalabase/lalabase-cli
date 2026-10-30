@@ -16,6 +16,8 @@ import (
 // waiting while it runs, plain when Claude Code opened or ended, a problem
 // for every outcome that opened nothing or ended in an error.
 func TestALaunchsNoticeTakesTheToneOfItsOutcome(t *testing.T) {
+	t.Parallel()
+
 	plain := map[launch.Kind]bool{launch.Opened: true, launch.Ended: true, launch.Canceled: true}
 	for kind := launch.Opened; kind <= launch.Canceled; kind++ {
 		h := newHarness(t)
@@ -41,6 +43,8 @@ func TestALaunchsNoticeTakesTheToneOfItsOutcome(t *testing.T) {
 // expired session and the disk cache are problems, a rate-limit pause is
 // waiting, and no notice has no tone.
 func TestTheSessionsNoticesTakeTheToneOfTheirState(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	if s := h.m.screen(); s.Status.String() != "" || s.StatusStyle != present.Plain {
@@ -68,6 +72,8 @@ func TestTheSessionsNoticesTakeTheToneOfTheirState(t *testing.T) {
 // On the screen the notice is drawn in its tone, beside the context and on
 // a line of its own, and nothing else of its line is.
 func TestAFailedLaunchIsDrawnInItsTone(t *testing.T) {
+	t.Parallel()
+
 	const notice = "Folder not found: /home/anna/dev/website/relaunch-2026x"
 	h := newHarness(t)
 	f := h.withLauncher()
@@ -104,6 +110,8 @@ func TestAFailedLaunchIsDrawnInItsTone(t *testing.T) {
 // A notice wrapped over the lines under the context keeps its tone on
 // every one of them.
 func TestAWrappedNoticeKeepsItsToneOnEveryLine(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withLauncher()
 	f.kind = launch.NoPermission

@@ -15,6 +15,8 @@ import (
 var viewSGR = map[int]bool{0: true, 1: true, 2: true, 7: true, 22: true, 27: true, 39: true, 49: true}
 
 func TestShellBodyColumnsStayAligned(t *testing.T) {
+	t.Parallel()
+
 	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
 		// The cells of the frames' sides and corners, the same on every line
 		// of the body: each pane's first and last column; with the object
@@ -118,6 +120,8 @@ func assertViewSafe(t *testing.T, text string) {
 }
 
 func TestHostilePlaceholderViewBytes(t *testing.T) {
+	t.Parallel()
+
 	m := New()
 	m.width, m.height = 120, 24
 	m.shell = [3]string{"INLINE_START" + hostile, "BODY_START" + hostile + "\n\tEND", "OBJECT_START" + hostile}

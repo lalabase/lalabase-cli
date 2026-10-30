@@ -76,6 +76,8 @@ func (c *terminalProcess) boxCloses(t *testing.T, width uint16, markers ...strin
 // the box goes, the notice has the minutes of the answer, the sum moves. One
 // write, as typed, with its key; of the reads only the time.
 func TestPTYBookTime(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []uint16{80, 120} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			c, f := startBook(t, inboxfixture.Normal, width)
@@ -120,6 +122,8 @@ func TestPTYBookTime(t *testing.T) {
 // A duration the server refuses: its text in the box, the input kept; the
 // next try goes on enter alone, with a new key, and an empty note is not sent.
 func TestPTYBookTimeRefused(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []uint16{80, 120} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			c, f := startBook(t, inboxfixture.Normal, width)
@@ -153,6 +157,8 @@ func TestPTYBookTimeRefused(t *testing.T) {
 // Without the right the key is offered all the same, and the box says no;
 // the input stays, and esc leaves.
 func TestPTYBookTimeForbidden(t *testing.T) {
+	t.Parallel()
+
 	c, f := startMark(t, inboxfixture.Refusals, 120, tokenWrite)
 	openWebsite(t, c, 120)
 	openTicketBelow(t, c, 120, 1, 4, "esc back", offerBook)
@@ -169,6 +175,8 @@ func TestPTYBookTimeForbidden(t *testing.T) {
 // the sum is read back into the box, enter does nothing there; esc and b are
 // the way on, with a new key.
 func TestPTYBookTimeLost(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []uint16{80, 120} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			c, f := startBook(t, inboxfixture.Lost, width)
@@ -202,6 +210,8 @@ func TestPTYBookTimeLost(t *testing.T) {
 // A 429: the queue pauses and shows it, then sends the one request again,
 // under its key. One booking.
 func TestPTYBookTimeAfterARateLimit(t *testing.T) {
+	t.Parallel()
+
 	c, f := startBook(t, inboxfixture.RateLimited, 80)
 	c.act(t, "b", 80, bookTitle)
 	c.act(t, "30"+keyEnter, 80, "Rate limited until")
@@ -221,6 +231,8 @@ func TestPTYBookTimeAfterARateLimit(t *testing.T) {
 // A read-only token and a server without the capability have no b: not in
 // the help, and the key does nothing.
 func TestPTYNoBWithoutTheRightOrTheCapability(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name     string
 		scenario inboxfixture.Scenario
@@ -254,6 +266,8 @@ func TestPTYNoBWithoutTheRightOrTheCapability(t *testing.T) {
 // Two presses of enter at once, on a server that takes its time: one
 // booking.
 func TestPTYTwoEntersBookOnce(t *testing.T) {
+	t.Parallel()
+
 	c, f := startBook(t, inboxfixture.Slow, 120)
 	c.act(t, "b", 120, bookTitle)
 	c.act(t, "30", 120, "30"+boxCaret)
@@ -272,6 +286,8 @@ func TestPTYTwoEntersBookOnce(t *testing.T) {
 // goes on to another, and the end of the first is told there. The booking
 // is on the ticket b was pressed on.
 func TestPTYABookingLeftBehindIsToldElsewhere(t *testing.T) {
+	t.Parallel()
+
 	c, f := startBook(t, inboxfixture.Slow, 120)
 	c.act(t, "b", 120, bookTitle)
 	c.act(t, "30"+keyEnter, 120, "Sending", "esc", "close")
@@ -291,6 +307,8 @@ func TestPTYABookingLeftBehindIsToldElsewhere(t *testing.T) {
 
 // A 401 on a booking ends the session; the box goes with it.
 func TestPTYBookTimeExpiresOn401(t *testing.T) {
+	t.Parallel()
+
 	c, f := startMark(t, inboxfixture.Unauthorized, 120, tokenWrite)
 	openWebsite(t, c, 120)
 	openTicketBelow(t, c, 120, 1, 3, "esc back", offerBook)
@@ -307,6 +325,8 @@ func TestPTYBookTimeExpiresOn401(t *testing.T) {
 
 // Ctrl-C while a booking is out restores the terminal.
 func TestPTYBookTimeInterruptWithAPendingWrite(t *testing.T) {
+	t.Parallel()
+
 	c, _ := startBook(t, inboxfixture.Slow, 80)
 	c.act(t, "b", 80, bookTitle)
 	c.act(t, "30"+keyEnter, 80, "Sending")

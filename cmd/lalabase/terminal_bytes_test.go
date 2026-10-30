@@ -192,6 +192,8 @@ func TestTerminalOutputAllowlist(t *testing.T) {
 }
 
 func TestPTYHostilePlaceholderBytes(t *testing.T) {
+	t.Parallel()
+
 	c := startTerminal(t, "hostile", 120)
 	if err := c.ready(); err != nil {
 		t.Fatal(err)

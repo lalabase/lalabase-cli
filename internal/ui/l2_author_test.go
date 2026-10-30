@@ -40,6 +40,8 @@ func authorLine(h *harness, name string) string {
 // kind of id: the user's UUID, so an author is the token's own person
 // exactly when the ids are equal.
 func TestTheContractNamesTheOwnAuthorByTheUsersID(t *testing.T) {
+	t.Parallel()
+
 	d := recorded(t)
 	uuid := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 	if !uuid.MatchString(d.me.User.ID) {
@@ -63,6 +65,8 @@ func TestTheContractNamesTheOwnAuthorByTheUsersID(t *testing.T) {
 // the name, so the mark stays without colour; everyone else is bold, no
 // colour, no mark.
 func TestTheOwnAuthorIsBlueAndMarked(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openLogin()
 	if got := authorLine(h, "Anna Albers"); !strings.Contains(got, "\x1b[1;38;2;121;194;250mAnna Albers (you)\x1b[m") {
@@ -82,6 +86,8 @@ func TestTheOwnAuthorIsBlueAndMarked(t *testing.T) {
 // Only the id decides: a foreign author whose name ends in "(you)" gets
 // no blue and no second mark.
 func TestANameEndingInYouIsNoOwnAuthor(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openLogin()
 	d := h.m.app.detail
@@ -101,6 +107,8 @@ func TestANameEndingInYouIsNoOwnAuthor(t *testing.T) {
 // Without the token's person known (/me not loaded, failed, or without an
 // id), nobody is marked; an author without an id is never the own one.
 func TestWithoutMeNobodyIsMarked(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openLogin()
 	a := h.m.app

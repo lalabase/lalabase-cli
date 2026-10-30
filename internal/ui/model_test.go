@@ -21,6 +21,8 @@ func step(t *testing.T, m Model, msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func TestTerminalWidthReportPreservesState(t *testing.T) {
+	t.Parallel()
+
 	for _, value := range []ansi.ModeSetting{ansi.ModeReset, ansi.ModeSet, ansi.ModePermanentlySet} {
 		m := New()
 		m.width, m.height, m.focus = 120, 24, view.Object
@@ -41,6 +43,8 @@ func TestTerminalWidthReportPreservesState(t *testing.T) {
 }
 
 func TestResizePreservesRootState(t *testing.T) {
+	t.Parallel()
+
 	m := New()
 	if m.Init() != nil {
 		t.Fatal("shell started work")
@@ -59,6 +63,8 @@ func TestResizePreservesRootState(t *testing.T) {
 }
 
 func TestShellDefaultsBeforeFirstMessage(t *testing.T) {
+	t.Parallel()
+
 	m := New()
 	if m.width != 0 || m.height != 0 || m.focus != view.List || m.mode != Navigate || m.widthMethod != ansi.WcWidth {
 		t.Fatalf("unexpected initial state: %+v", m)
@@ -72,6 +78,8 @@ func TestShellDefaultsBeforeFirstMessage(t *testing.T) {
 }
 
 func TestWidthReportsIgnoreUnrelatedModes(t *testing.T) {
+	t.Parallel()
+
 	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
 		m := NewWithContent("organisation", "list", "object")
 		m.width, m.height, m.focus, m.mode, m.widthMethod = 119, 8, view.Navigation, TextEntry, method
@@ -93,6 +101,8 @@ func TestWidthReportsIgnoreUnrelatedModes(t *testing.T) {
 }
 
 func TestResizeClampsEachDimension(t *testing.T) {
+	t.Parallel()
+
 	m := NewWithContent("organisation", "list", "object")
 	m.focus, m.mode, m.widthMethod = view.Object, TextEntry, ansi.GraphemeWidth
 	for _, tc := range []struct{ width, height, wantWidth, wantHeight int }{

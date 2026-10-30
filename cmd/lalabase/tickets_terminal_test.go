@@ -168,6 +168,8 @@ func openWebsite(t *testing.T, c *terminalProcess, width uint16) {
 }
 
 func TestPTYTicketsFlow(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []uint16{80, 120} {
 		t.Run(fmt.Sprintf("%d", width), func(t *testing.T) {
 			c, f := startInbox(t, inboxfixture.Normal, width)
@@ -242,6 +244,8 @@ func TestPTYTicketsFlow(t *testing.T) {
 
 // Page 2 of the tickets fails twice, R reads it.
 func TestPTYTicketsPageRetry(t *testing.T) {
+	t.Parallel()
+
 	c, f := startInbox(t, inboxfixture.Temporary, 80)
 	openWebsite(t, c, 80)
 	c.act(t, "]", 80, "Could not reach the server")
@@ -264,6 +268,8 @@ func TestPTYTicketsPageRetry(t *testing.T) {
 // A 401 on the preview of a ticket ends the session: nothing of the
 // tickets stays on the screen, keys do nothing but leave.
 func TestPTYTicketPreviewExpiresOn401(t *testing.T) {
+	t.Parallel()
+
 	c, _ := startInbox(t, inboxfixture.Unauthorized, 80)
 	openWebsite(t, c, 80)
 	c.expect(t, "the preview of #1", 80, "Nach dem Absenden")
@@ -291,6 +297,8 @@ func TestPTYTicketPreviewExpiresOn401(t *testing.T) {
 
 // Ctrl-C in the ticket list restores the terminal and exits with 130.
 func TestPTYTicketsInterrupt(t *testing.T) {
+	t.Parallel()
+
 	c, _ := startInbox(t, inboxfixture.Normal, 120)
 	openWebsite(t, c, 120)
 	if err := c.send("\x03"); err != nil {
@@ -302,6 +310,8 @@ func TestPTYTicketsInterrupt(t *testing.T) {
 // An older server: the ticket is read plain and its comments are named as
 // the first ones, oldest first.
 func TestPTYTicketsOnAnOlderServer(t *testing.T) {
+	t.Parallel()
+
 	c, f := startInbox(t, inboxfixture.Older, 120)
 	c.expect(t, "the limitation", 120, "Showing the first")
 	openWebsite(t, c, 120)

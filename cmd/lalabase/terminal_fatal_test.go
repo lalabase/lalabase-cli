@@ -168,6 +168,8 @@ func fatalRunner(scenario string) func(context.Context, io.Reader, io.Writer, []
 // path: the terminal comes back as it was, the safe text is printed, nothing
 // of the panic is, and the exit code is 1.
 func TestPTYFatalErrorsRestoreTheTerminalAndExitOne(t *testing.T) {
+	t.Parallel()
+
 	for scenario, where := range fatalScenarios {
 		t.Run(scenario, func(t *testing.T) {
 			c := startTerminal(t, scenario, 80)
@@ -195,6 +197,8 @@ func TestPTYFatalErrorsRestoreTheTerminalAndExitOne(t *testing.T) {
 // Work that ignores its cancellation does not hold the exit: "q" still ends
 // with 0 within the cleanup limit.
 func TestPTYAHangingWorkerDoesNotHoldTheExit(t *testing.T) {
+	t.Parallel()
+
 	c := startTerminal(t, "worker-hang", 80)
 	if err := c.ready(); err != nil {
 		t.Fatal(err)

@@ -30,6 +30,8 @@ func (h *harness) headLine() (string, present.LineStyle) {
 }
 
 func TestTheTicketHeadShowsItsAgent(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		state agents.State
 		want  string
@@ -78,6 +80,8 @@ func TestTheTicketHeadShowsItsAgent(t *testing.T) {
 }
 
 func TestATicketWithoutAnAgentHasNoLine(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.m.width = 80
@@ -89,6 +93,8 @@ func TestATicketWithoutAnAgentHasNoLine(t *testing.T) {
 
 // The head shows the most urgent of the ticket's agents.
 func TestTheHeadShowsTheMostUrgent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.m.width = 80
@@ -102,6 +108,8 @@ func TestTheHeadShowsTheMostUrgent(t *testing.T) {
 
 // The age runs with the model's clock, in its largest whole unit.
 func TestTheAgeOfAState(t *testing.T) {
+	t.Parallel()
+
 	for d, want := range map[time.Duration]string{
 		-time.Minute:                    "0 s",
 		0:                               "0 s",

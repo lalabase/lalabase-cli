@@ -27,6 +27,8 @@ import (
 // sends the ticket view over REST, a /me before R1 or without
 // capabilities over the tools, read for read.
 func TestTheStartRoutesTheTicketViewByWhatMeLists(t *testing.T) {
+	t.Parallel()
+
 	r1 := []string{"tickets.paging", "tickets.by_number", "posts.show"}
 	cases := []struct {
 		name string
@@ -94,6 +96,8 @@ func (h *harness) openTicket(n int) {
 // for tickets whose texts the tools do not cut: the list, a ticket with
 // two pages of comments, another order, the attachments' second page.
 func TestTheTicketViewShowsTheSameOnBothWays(t *testing.T) {
+	t.Parallel()
+
 	run := func(h *harness) (screens, reads []string) {
 		h.openTickets(website)
 		screens = append(screens, h.m.View().Content)
@@ -137,6 +141,8 @@ func TestTheTicketViewShowsTheSameOnBothWays(t *testing.T) {
 // its two newest comments, REST sends them whole, and the pane shows
 // them whole, with nothing to expand.
 func TestOverRESTTheTextsTheToolsCutAreWhole(t *testing.T) {
+	t.Parallel()
+
 	h := newRESTHarness(t)
 	h.openSix()
 	text := h.paneText()
@@ -170,6 +176,8 @@ func longText(n int) string {
 // tools' bound of a whole text. The screen's bytes stay bounded and
 // cleaned, a megabyte of a comment or not.
 func TestALongWholeTextIsShownBoundedAndCleaned(t *testing.T) {
+	t.Parallel()
+
 	h := newRESTHarness(t)
 	description, comment := longText(1_000_000), longText(300_000)
 	h.f.setRESTTicket(func(id string, o api.TicketOptions) transport.Answer {
@@ -255,6 +263,8 @@ func TestALongWholeTextIsShownBoundedAndCleaned(t *testing.T) {
 // The tools' and REST's comment of the same id file the same entry: the
 // comment alone, read back as the expansion shows it.
 func TestOneCommentOverRESTIsReadOnItsRouteAndFiledAlone(t *testing.T) {
+	t.Parallel()
+
 	h := newRESTHarness(t)
 	long := "Six comment 30 " + strings.Repeat("goes on and on ", 1000) + "THIRTY ENDS HERE."
 	h.f.setRESTPost(func(id, post string) transport.Answer {
@@ -316,6 +326,8 @@ func TestOneCommentOverRESTIsReadOnItsRouteAndFiledAlone(t *testing.T) {
 // run kept as a ticket (before K1) is dropped, never shown, and read again
 // on its route.
 func TestEntriesTheToolsFiledReadAfterTheSwitchToREST(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.openSix()
@@ -414,6 +426,8 @@ func TestEntriesTheToolsFiledReadAfterTheSwitchToREST(t *testing.T) {
 // the booked time (S6) stays with them. The start and the projects are
 // what they were.
 func TestTheRequestBudgetOfTheTicketView(t *testing.T) {
+	t.Parallel()
+
 	type count struct{ tools, rest, projects int }
 	run := func(h *harness) []count {
 		at := func() count {
@@ -468,6 +482,8 @@ func TestTheRequestBudgetOfTheTicketView(t *testing.T) {
 // the title of the ticket's agent stays what it was (REST's answer names
 // no ticket, and the tools' is cut down to its comment).
 func TestOneCommentReadWholeLeavesTheTitleAsItWas(t *testing.T) {
+	t.Parallel()
+
 	for name, h := range map[string]*harness{"tools": newHarness(t), "rest": newRESTHarness(t)} {
 		t.Run(name, func(t *testing.T) {
 			long := "Six comment 30 " + strings.Repeat("goes on ", 1200) + "and ends here."
@@ -547,6 +563,8 @@ func withTexts(h *harness, description, comment string) {
 // description and the comment end where they end (review round 1 of #48,
 // finding 1).
 func TestReadWholeShowsTheTextPastThePagesBound(t *testing.T) {
+	t.Parallel()
+
 	h := newRESTHarness(t)
 	withTexts(h, endingIn(20_000, "THE DESCRIPTION ENDS."), endingIn(20_000, "THE COMMENT ENDS."))
 	h.openTickets(website)
@@ -572,6 +590,8 @@ func TestReadWholeShowsTheTextPastThePagesBound(t *testing.T) {
 // tools' way keeps the reading the client always had (review round 1 of
 // #48, finding 3).
 func TestATypedMarkerIsTheTextsOwnOverREST(t *testing.T) {
+	t.Parallel()
+
 	typed := "A pasted log, cut where it was cut" + api.TruncationMarker
 	h := newRESTHarness(t)
 	withTexts(h, typed, typed)
@@ -610,6 +630,8 @@ func TestATypedMarkerIsTheTextsOwnOverREST(t *testing.T) {
 // ticket from its new project. The pane says so, the ticket leaves the
 // cache, x is not offered (review round 2 of #48, finding 1).
 func TestATicketMovedToAnotherProjectIsGoneOnBothWays(t *testing.T) {
+	t.Parallel()
+
 	moved := ticketID(website, 3)
 	for name, h := range map[string]*harness{"tools": newHarness(t), "rest": newRESTHarness(t)} {
 		t.Run(name, func(t *testing.T) {
@@ -657,6 +679,8 @@ func TestATicketMovedToAnotherProjectIsGoneOnBothWays(t *testing.T) {
 // shown, possibly stale, on REST as on the tools; R reads it (review round
 // 2 of #48, finding 3).
 func TestAPageThatDidNotComeOverRESTIsPossiblyStale(t *testing.T) {
+	t.Parallel()
+
 	h := newRESTHarness(t)
 	h.openSix()
 	h.drive(h.press("tab"))
@@ -683,6 +707,8 @@ func TestAPageThatDidNotComeOverRESTIsPossiblyStale(t *testing.T) {
 // 100,000 characters): that is the server's cut, said so, its marker not
 // shown (review round 2 of #48, finding 2).
 func TestOverTheToolsAWholeTextTheServerCutSaysSo(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	whole := endingIn(100_000, "cut here by the server") + api.TruncationMarker
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
@@ -706,6 +732,8 @@ func TestOverTheToolsAWholeTextTheServerCutSaysSo(t *testing.T) {
 // comes (a title read that failed otherwise falls back to the cache;
 // review round 3 of #48, finding 2).
 func TestAMovedTicketTakesItsAgentsTitleOnBothWays(t *testing.T) {
+	t.Parallel()
+
 	moved := ticketID(website, 6)
 	for name, h := range map[string]*harness{"tools": newHarness(t), "rest": newRESTHarness(t)} {
 		t.Run(name, func(t *testing.T) {

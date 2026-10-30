@@ -11,6 +11,8 @@ import (
 )
 
 func TestBodyWordWidthUsesCells(t *testing.T) {
+	t.Parallel()
+
 	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
 		for _, tc := range []struct {
 			width int
@@ -26,6 +28,8 @@ func TestBodyWordWidthUsesCells(t *testing.T) {
 }
 
 func TestBodyPreservesNonbreakingSpaces(t *testing.T) {
+	t.Parallel()
+
 	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
 		for _, space := range []string{"\u00a0", "\u202f", "\u2007"} {
 			text := "z." + space + "B. x"
@@ -47,6 +51,8 @@ func TestBodyPreservesNonbreakingSpaces(t *testing.T) {
 // cap, a space either side of it, so it stays apart from its words
 // without attributes.
 func TestHelpWrapsInsteadOfDroppingBindings(t *testing.T) {
+	t.Parallel()
+
 	bindings := []present.KeyHelp{
 		{Key: present.NewInline("q"), Help: present.NewInline("quit")},
 		{Key: present.NewInline("ctrl+c"), Help: present.NewInline("interrupt")},
@@ -78,6 +84,8 @@ func TestHelpWrapsInsteadOfDroppingBindings(t *testing.T) {
 }
 
 func TestTextGeometryPreservesGraphemes(t *testing.T) {
+	t.Parallel()
+
 	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
 		for _, tc := range []struct {
 			s    string
@@ -113,6 +121,8 @@ func TestTextGeometryPreservesGraphemes(t *testing.T) {
 }
 
 func TestBodyDimensionBoundaries(t *testing.T) {
+	t.Parallel()
+
 	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
 		for _, tc := range []struct {
 			width, height int
@@ -130,6 +140,8 @@ func TestBodyDimensionBoundaries(t *testing.T) {
 }
 
 func TestBodyWrappingPreservesGraphemeClusters(t *testing.T) {
+	t.Parallel()
+
 	for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
 		for _, cluster := range []string{"e\u0301", "e\u0301\u0327", "1\ufe0f\u20e3", "🇩🇪", "👍🏽", "👩\u200d👩\u200d👧\u200d👦"} {
 			prefix := strings.Repeat("a", 24-method.StringWidth(cluster))
