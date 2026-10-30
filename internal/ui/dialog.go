@@ -9,18 +9,20 @@ import (
 )
 
 // The dialog (M1) is the box a person writes in: the time booked on a ticket
-// (K6) will be its first user, the comment and the title its next. It is one
+// (K6) is its first user, the comment and the title its next. It is one
 // component in two sizes and knows nothing of what it is for: its user names
 // the fields, the target and what a send does (DialogSpec). It sends nothing
-// by itself, and no key opens one yet: a test or a fixture does (WithDialog).
+// by itself; b opens one (book.go), and a test or a fixture may (WithDialog).
 //
 // While it is open a key does one thing, inside the box (routeDialog): the
 // screen behind it goes on showing what arrives, and nothing there moves by a
 // key. Its target is what the person pressed the key on, taken when it opens;
 // a reload that moves the selection behind the box does not move it. While a
 // send is out the input stands still and sending is locked. A refusal stays
-// in the error line, with the input, until the next send. Esc closes it
-// whatever is going on, and a late outcome finds no dialog.
+// in the error line, with the input, until the next send. A send nobody
+// knows the end of holds the dialog: the input stays and the lock with it,
+// since a second press could write twice. Esc closes it whatever is going
+// on, and a late outcome finds no dialog.
 
 // DialogTarget is what a dialog acts on, taken when it opens and never read
 // again from the selection. Title is the ticket's, foreign text, for the
@@ -33,11 +35,14 @@ type DialogTarget struct {
 
 // DialogField is one field of a dialog: its label and its hint, its limit in
 // runes, and what it starts with. Value is foreign text as often as not (a
-// ticket's title to change): it passes the same filter as a key.
+// ticket's title to change): it passes the same filter as a key. A required
+// field left empty stops the send before it begins, by what it holds: what
+// its text means is the server's to say.
 type DialogField struct {
 	Label, Hint present.Inline
 	Limit       int
 	Value       string
+	Required    bool
 }
 
 // DialogSpec is a dialog as its user describes it. Action opens the box's
@@ -63,12 +68,16 @@ type Submission struct {
 }
 
 // DialogOutcome is how a send ended. Done closes the dialog; else it stays,
-// with the input and with Refusal in its error line. An outcome of a dialog
-// that is gone changes nothing: what became of the write is the sender's.
+// with the input and with Refusal in its error line, ready for the next send.
+// Held says nobody knows how it ended: the dialog stays with its input, sends
+// nothing again and takes no text, and its error line is what Held says at
+// each frame, as its user learns more. An outcome of a dialog that is gone
+// changes nothing: what became of the write is the sender's.
 type DialogOutcome struct {
 	Dialog  uint64
 	Done    bool
 	Refusal present.Inline
+	Held    func() (present.Inline, present.Style)
 }
 
 // dialog is the open dialog. It stays behind a pointer: the model is
@@ -83,10 +92,13 @@ type dialog struct {
 	// refusal stands in the error line until the next send; cut says that
 	// the last thing put into a field did not fit, until the next key.
 	refusal, cut present.Inline
+	// held names the error line of a send nobody knows the end of, nil
+	// for any other.
+	held func() (present.Inline, present.Style)
 }
 
-// WithDialog starts the interface with a dialog open. It is how a test or a
-// fixture reaches one while no key does.
+// WithDialog starts the interface with a dialog open: how a test or a
+// fixture reaches one without a session.
 func WithDialog(spec DialogSpec) Option {
 	return func(m *Model) { *m = m.openDialog(spec) }
 }
@@ -130,10 +142,10 @@ func (s DialogSpec) title() present.Inline {
 }
 
 // ticketTarget is the ticket a key would act on: the known ticket in the
-// focused object pane, as it is now.
+// focused object pane, as it is now. An open search line has the keys.
 func (m Model) ticketTarget() (DialogTarget, bool) {
 	a := m.app
-	if a == nil || a.expired || m.focus != view.Object || a.detail == nil || !a.detail.known {
+	if a == nil || a.expired || m.mode != Navigate || m.focus != view.Object || a.detail == nil || !a.detail.known {
 		return DialogTarget{}, false
 	}
 	d := a.detail
@@ -165,17 +177,17 @@ func (m Model) closeDialog() (Model, tea.Cmd) {
 // names it.
 var dialogInterrupt = binding{Interrupt, uitext.InterruptKey, uitext.InterruptHelp}
 
-// dialogBindings are the actions of the dialog. While a send is out, or
-// where no box shows, only the way out acts; esc leaves a send under way, so
-// it does not say it cancels one. The caret's keys act unnamed: nobody
-// needs them named, and the box has one line for its help.
+// dialogBindings are the actions of the dialog. While it is locked, or where
+// no box shows, only the way out acts; esc leaves a send under way, so it
+// does not say it cancels one. The caret's keys act unnamed: nobody needs
+// them named, and the box has one line for its help.
 func (m Model) dialogBindings(small bool) []binding {
 	d := m.dialog
 	cancel := binding{Cancel, uitext.EscapeKey, uitext.CancelHelp}
-	if d.sending {
+	if d.locked() {
 		cancel.help = uitext.CloseHelp
 	}
-	if d.sending || small {
+	if d.locked() || small {
 		return []binding{cancel, dialogInterrupt}
 	}
 	var out []binding
@@ -246,13 +258,22 @@ func (m Model) paste(msg tea.PasteMsg) Model {
 	return m
 }
 
-// send starts the send: the lock first, since the bindings read it.
+// locked: the input stands still and nothing sends, while a send is out or
+// held.
+func (d *dialog) locked() bool { return d.sending || d.held != nil }
+
+// send starts the send: the lock first, since the bindings read it. A
+// required field left empty keeps it from beginning, and gets the caret.
 func (d *dialog) send() tea.Cmd {
-	d.sending, d.refusal = true, present.Inline{}
 	values := make([]string, len(d.entries))
 	for i, e := range d.entries {
 		values[i] = e.Value()
+		if d.spec.Fields[i].Required && values[i] == "" {
+			d.active, d.refusal = i, uitext.Fill(uitext.DialogRequired, d.spec.Fields[i].Label.String())
+			return nil
+		}
 	}
+	d.sending, d.refusal = true, present.Inline{}
 	return d.spec.Send(Submission{Dialog: d.id, Target: d.spec.Target, Values: values})
 }
 
@@ -265,7 +286,12 @@ func (m Model) receiveOutcome(o DialogOutcome) (Model, tea.Cmd) {
 	if o.Done {
 		return m.closeDialog()
 	}
-	d.sending, d.refusal = false, o.Refusal
+	d.sending = false
+	if o.Held != nil {
+		d.held = o.Held
+		return m, nil
+	}
+	d.refusal = o.Refusal
 	if d.refusal.String() == "" {
 		d.refusal = uitext.Inline(uitext.DialogRefused)
 	}
@@ -275,6 +301,8 @@ func (m Model) receiveOutcome(o DialogOutcome) (Model, tea.Cmd) {
 // errorLine is what stands under the fields, with its tone.
 func (d *dialog) errorLine() (present.Inline, present.Style) {
 	switch {
+	case d.held != nil:
+		return d.held()
 	case d.sending:
 		return uitext.Inline(uitext.DialogSending), present.NoticeWaiting
 	case d.cut.String() != "":

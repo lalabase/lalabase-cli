@@ -14,11 +14,16 @@ import (
 // opens one.
 const dialogFile = "internal/ui/dialog.go"
 
-// dialogOpeners name the ways to a dialog. M1 has no production user: no
-// key opens a dialog, and no command, so these are called nowhere in the
-// client but among themselves. K6 gives them their first caller; that is a
-// decision to take here, not a fix for a red guard.
+// dialogOpeners name the ways to a dialog. They are called nowhere in the
+// client but among themselves and by dialogCallers.
 var dialogOpeners = []string{"WithDialog", "openDialog", "openTicketDialog"}
+
+// dialogCallers are the production callers of an opener, by file: since K6,
+// b on a ticket, in book.go, through the one opener that takes the target
+// from the focused pane. A new one is a decision to take here, not a fix for
+// a red guard: a dialog is where a person writes to a server, and the file
+// that opens one owns what its send does.
+var dialogCallers = map[string]string{"internal/ui/book.go": "openTicketDialog"}
 
 // inspectDialogOpeners reports every use of a dialog opener in a production
 // file of the client (cmd/, internal/; the fixture tools under tools/ are no
@@ -34,7 +39,7 @@ func inspectDialogOpeners(name string, file *ast.File) []string {
 		leads := isFunc && name == dialogFile && slices.Contains(dialogOpeners, fn.Name.Name)
 		ast.Inspect(decl, func(node ast.Node) bool {
 			id, ok := node.(*ast.Ident)
-			if !ok || !slices.Contains(dialogOpeners, id.Name) || (isFunc && id == fn.Name) || (leads && id.Name == "openDialog") {
+			if !ok || !slices.Contains(dialogOpeners, id.Name) || (isFunc && id == fn.Name) || (leads && id.Name == "openDialog") || dialogCallers[name] == id.Name {
 				return true
 			}
 			findings = append(findings, name+": a dialog opened through "+id.Name)
@@ -114,13 +119,15 @@ func TestTheDialogGuardSeesAWayIn(t *testing.T) {
 		"cmd/lalabase/main.go":   `package main; func run() { ui.New(ui.WithDialog(spec)) }`,
 		"internal/gateway/g.go":  `package gateway; var way = ui.WithDialog`,
 		dialogFile:               `package ui; func (m Model) closeDialog() Model { return m.openDialog(DialogSpec{}) }`,
-		"internal/ui/update.go":  `package ui; func (m Model) press() Model { m.dialog = &dialog{}; return m }`,
-		"internal/ui/mark.go":    `package ui; func (m Model) press() Model { m.mode, m.dialog = Dialog, new(dialog); return m }`,
-		"internal/ui/agents.go":  `package ui; func (m Model) press() Model { m.mode = DialogLines; return m }`,
-		"internal/ui/inbox.go":   `package ui; func make() *dialog { return &dialog{} }`,
-		"internal/ui/status.go":  `package ui; func (m Model) press() Model { m.dialog = build(); return m }`,
-		"internal/ui/time.go":    `package ui; func (m Model) press() Model { m.dialog, err = build(); return m }`,
-		"internal/ui/counts.go":  `package ui; func make() *dialog { return new(dialog) }`,
+		// The one caller, through another way in.
+		"internal/ui/book.go":   `package ui; func (m Model) pressB() Model { return m.openDialog(DialogSpec{}) }`,
+		"internal/ui/update.go": `package ui; func (m Model) press() Model { m.dialog = &dialog{}; return m }`,
+		"internal/ui/mark.go":   `package ui; func (m Model) press() Model { m.mode, m.dialog = Dialog, new(dialog); return m }`,
+		"internal/ui/agents.go": `package ui; func (m Model) press() Model { m.mode = DialogLines; return m }`,
+		"internal/ui/inbox.go":  `package ui; func make() *dialog { return &dialog{} }`,
+		"internal/ui/status.go": `package ui; func (m Model) press() Model { m.dialog = build(); return m }`,
+		"internal/ui/time.go":   `package ui; func (m Model) press() Model { m.dialog, err = build(); return m }`,
+		"internal/ui/counts.go": `package ui; func make() *dialog { return new(dialog) }`,
 	} {
 		file, err := parser.ParseFile(token.NewFileSet(), name, source, 0)
 		if err != nil {
@@ -134,6 +141,7 @@ func TestTheDialogGuardSeesAWayIn(t *testing.T) {
 		"cmd/lalabase/dialog_terminal_test.go": `package main; func run() { ui.New(ui.WithDialog(spec)) }`,
 		"tools/dialog-fixture/main.go":         `package main; func run() { ui.New(ui.WithDialog(spec)) }`,
 		dialogFile:                             `package ui; func WithDialog() Option { return func(m *Model) { *m = m.openDialog(spec) } }`,
+		"internal/ui/book.go":                  `package ui; func (m Model) pressB() Model { return m.openTicketDialog(DialogSpec{}) }`,
 		"internal/ui/startup.go":               `package ui; func (m *Model) expire() { m.mode, m.dialog = Navigate, nil }`,
 		"internal/ui/keys.go":                  `package ui; func route(mode Mode) bool { return mode == Dialog || mode == DialogLines }`,
 	} {

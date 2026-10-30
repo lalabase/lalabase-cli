@@ -94,10 +94,10 @@ func (m Model) screen() present.Screen {
 }
 
 // status is the notice of the second line, the most urgent first: an
-// expired session, a rate-limit pause, the disk cache, then of what the
-// agents told (a removal, a seen mark) and a launch's outcome the newer;
-// with its tone, from the same state. A plain one is a hint, which the
-// view draws in the path's place.
+// expired session, a rate-limit pause, the disk cache, what became of a
+// booking, then of what the agents told (a removal, a seen mark) and a
+// launch's outcome the newer; with its tone, from the same state. A plain
+// one is a hint, which the view draws in the path's place.
 func (m Model) status() (present.Inline, present.Style) {
 	a := m.app
 	switch {
@@ -111,6 +111,8 @@ func (m Model) status() (present.Inline, present.Style) {
 		return uitext.Inline(a.diskStatus()), present.NoticeProblem
 	case a.agents.tooMany:
 		return uitext.Inline(uitext.AgentsTooMany), present.NoticeProblem
+	case a.bookNotice.until.After(a.now()):
+		return a.bookNotice.text, a.bookNotice.tone
 	case a.agentsNoticeShown():
 		// Of the agents' notice and the launch's the newer shows: a
 		// launch's start and its answer clear the agents' notice.

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"strconv"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/api"
@@ -29,12 +28,11 @@ import (
 // the outcome is known. The result is filed under the operation, wherever
 // the cursor is by then; the answer for A never shows B as read.
 //
-// Outcomes, from the class of the answer (cache.Decide with Write, so a
-// refused write never removes a ticket): confirmed (the server named the
-// notification as read), refused (read-only, missing, no access, archived,
-// invalid), not sent (nothing was done: the server was not reached, or it
-// rate-limited the queue's one retry too), unknown (sent, no usable answer:
-// the server may have acted). Confirmed and unknown invalidate the inbox
+// Outcomes, from the class of the answer (placeWrite): confirmed (the server
+// named the notification as read), refused (read-only, missing, no access,
+// archived, invalid), not sent (nothing was done: the server was not reached,
+// or it rate-limited the queue's one retry too), unknown (sent, no usable
+// answer: the server may have acted). Confirmed and unknown invalidate the inbox
 // variants and counters the write touched and reload what is shown; nothing
 // is written again by itself, and absence from an unread page proves
 // nothing. An explicit r later is a new operation with a new key.
@@ -99,11 +97,9 @@ func targetOf(n api.Notification) markTarget {
 	return t
 }
 
-// writeAllowed: /me succeeded and said the token may write, and the
-// server has the tool with its arguments.
-func (a *app) writeAllowed() bool {
-	return a.steps[stepMe].state == ready && a.me.Token.ReadOnly != nil && !*a.me.Token.ReadOnly && a.on("mark_read")
-}
+// writeAllowed: the token may write, and the server has the tool with its
+// arguments.
+func (a *app) writeAllowed() bool { return a.tokenWrites() && a.on("mark_read") }
 
 // writeBlocked names why r is not offered when it is not: the permission
 // unknown, the token read-only, the tool missing. 0 when it is offered.
@@ -234,17 +230,10 @@ func (m Model) markRead() (Model, tea.Cmd) {
 	op := &markOp{
 		id: a.nextOp, session: a.session, ns: a.ns,
 		notification: t.notification, org: t.org, project: t.project, ticket: t.ticket,
-		key: a.idempotencyKey(a.nextOp), state: markRunning, cancel: cancel,
+		key: a.idempotencyKey("mark", a.nextOp), state: markRunning, cancel: cancel,
 	}
 	a.marks[t.notification] = op
 	return m, a.deps.Gateway.MarkRead(ctx, gateway.MarkReadTicket{Session: a.session, Op: op.id, Notification: op.notification, Key: op.key})
-}
-
-// idempotencyKey is the key of one action: the session and the operation
-// number make it unique in this run, the clock across runs. Its form is
-// what the server keeps unchanged (letters, digits and -, 8 to 128).
-func (a *app) idempotencyKey(op uint64) string {
-	return "lalabase-mark-" + strconv.FormatUint(uint64(a.session), 10) + "-" + strconv.FormatUint(op, 10) + "-" + strconv.FormatInt(a.now().UnixNano(), 10)
 }
 
 // receiveMark files the outcome of an operation under the operation it
@@ -266,46 +255,19 @@ func (m Model) receiveMark(r gateway.MarkReadResult) (Model, tea.Cmd) {
 	}
 	op.cancel()
 	ans := r.Answer
-	switch cache.Decide(ans.Class, cache.Write) {
-	case cache.Reload:
+	switch placeWrite(ans) {
+	case writeConfirmed:
 		// The gateway checked that the answer names the notification as
 		// read.
 		op.state = markConfirmed
 		return m, a.afterMark(op)
-	case cache.KeepStale:
-		// Temporary: the server was not reached, or it answered 429 to the
-		// queue's retry as well, so it did not act; anything else after
-		// the request left may have been carried out.
-		switch {
-		case !ans.Sent:
-			op.state, op.err = markNotSent, uitext.Inline(uitext.MarkNotSent)
-		case ans.Status == 429:
-			op.state, op.err = markNotSent, uitext.Inline(uitext.MarkRateLimited)
-		default:
-			op.state = markUnknown
-			return m, a.afterMark(op)
-		}
-	case cache.Drop:
-		// Canceled by the client: the session ended or the program stops.
-		// Sent means the server may have acted.
-		if ans.Sent {
-			op.state = markUnknown
-			return m, a.afterMark(op)
-		}
+	case writeNotSent:
 		op.state, op.err = markNotSent, uitext.Inline(uitext.MarkNotSent)
-	case cache.KeepShowMessage:
-		// A refusal, or an answer the client cannot place. The latter after
-		// a request that left is an unknown outcome, not a refusal: an
-		// answer that contradicts the question says nothing about the
-		// write.
-		if ans.Class == transport.Protocol && ans.Sent {
-			op.state = markUnknown
-			return m, a.afterMark(op)
-		}
+	case writeRateLimited:
+		op.state, op.err = markNotSent, uitext.Inline(uitext.MarkRateLimited)
+	case writeRefused:
 		op.state, op.err = markRefused, uitext.Fill(uitext.MarkRefused, detail(ans))
 	default:
-		// Replace and Remove are decisions on a read; an answer to a write
-		// never takes either. Taken as unknown, the safe side.
 		op.state = markUnknown
 		return m, a.afterMark(op)
 	}

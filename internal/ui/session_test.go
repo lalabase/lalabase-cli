@@ -227,6 +227,8 @@ type fakes struct {
 	gateTicket   string
 	// C1f: the write (mark_harness_test.go).
 	writes markFakes
+	// K6: the booking of time (book_harness_test.go).
+	bookings bookFakes
 	// K1: the ticket view over REST (rest_harness_test.go); the gates hold
 	// these as they hold the tools' reads.
 	restTickets func(q api.TicketQuery) transport.Answer

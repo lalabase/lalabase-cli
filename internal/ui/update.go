@@ -78,6 +78,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.receiveTime(msg)
 	case gateway.MarkReadResult:
 		return m.receiveMark(msg)
+	case gateway.WriteResult:
+		return m.receiveBooking(msg)
 	case launch.Done:
 		return m, m.receiveLaunch(msg)
 	case agents.Snapshot:
@@ -116,8 +118,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case gateway.Wake:
 		return m.wake(msg)
 	case gateway.Expired:
-		// The deadline of a pause or of a hint: whichever still shows it
-		// is over; or of the next read of the agents.
+		// The deadline of a pause or of a hint or of a booking's notice:
+		// whichever still shows it is over; or of the next read of the agents.
 		if a := m.app; a != nil && msg.Session == a.session {
 			if msg.Until.Equal(a.pause) {
 				a.pause = time.Time{}
@@ -127,6 +129,9 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 			if msg.Until.Equal(a.agents.noticeUntil) {
 				a.clearAgentsNotice()
+			}
+			if msg.Until.Equal(a.bookNotice.until) {
+				a.bookNotice = bookNotice{}
 			}
 			return m, a.agentsDue(msg.Until)
 		}
@@ -286,6 +291,8 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		return m.openAgents()
 	case RemoveAgent:
 		return m, m.removeAgent()
+	case BookTime:
+		return m.pressB(), nil
 	}
 	return m, nil
 }

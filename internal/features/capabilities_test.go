@@ -160,6 +160,9 @@ func TestTheTicketViewTakesTheRESTWayWithTheCapabilitiesOfR1(t *testing.T) {
 	for _, tc := range cases {
 		report := Detect(contractServer, tc.tools, tc.caps)
 		for _, f := range All {
+			if f.Name == bookFeature {
+				continue // TestABookingTakesTheRESTWayAlone
+			}
 			off := slices.Contains(tc.off, f.Name)
 			if report.Enabled[f.Name] == off {
 				t.Errorf("%s: %s on %v (missing %v)", tc.name, f.Name, report.Enabled[f.Name], report.Missing[f.Name])
@@ -172,6 +175,35 @@ func TestTheTicketViewTakesTheRESTWayWithTheCapabilitiesOfR1(t *testing.T) {
 			if !off && report.Via[f.Name] != want {
 				t.Errorf("%s: %s via %v, want %v", tc.name, f.Name, report.Via[f.Name], want)
 			}
+		}
+	}
+}
+
+// bookFeature is the feature of a booking (K6).
+const bookFeature = "time_book"
+
+// K6: a booking has the REST way alone. The capability turns it on and
+// nothing else does: the tool create_time_session stands in every server's
+// list, and the client never used it. A server without the capability has
+// no booking, and the report says what it lacks.
+func TestABookingTakesTheRESTWayAlone(t *testing.T) {
+	tools, _ := contractTools(t)
+	if !slices.ContainsFunc(tools, func(tool transport.Tool) bool { return tool.Name == "create_time_session" }) {
+		t.Fatal("the contract no longer lists create_time_session: this test proves nothing then")
+	}
+	caps := contractCapabilities(t)
+	on := Detect(contractServer, tools, caps)
+	if !on.Enabled[bookFeature] || on.Via[bookFeature] != REST || len(on.Missing[bookFeature]) != 0 {
+		t.Fatalf("on %v via %v, missing %v", on.Enabled[bookFeature], on.Via[bookFeature], on.Missing[bookFeature])
+	}
+	without := slices.DeleteFunc(slices.Clone(caps), func(c string) bool { return c == "time_sessions.book" })
+	for name, listed := range map[string][]string{"without the capability": without, "no capabilities, before R0": nil} {
+		report := Detect(contractServer, tools, listed)
+		if _, way := report.Via[bookFeature]; report.Enabled[bookFeature] || way {
+			t.Errorf("%s: on %v via %v", name, report.Enabled[bookFeature], report.Via[bookFeature])
+		}
+		if !slices.Equal(report.Missing[bookFeature], []string{"capability time_sessions.book"}) {
+			t.Errorf("%s: missing %v", name, report.Missing[bookFeature])
 		}
 	}
 }
@@ -220,14 +252,14 @@ func TestCapabilitiesChangeNothingForTheOtherFeatures(t *testing.T) {
 	a := Detect(contractServer, tools, contractCapabilities(t))
 	b := Detect(contractServer, tools, nil)
 	for _, f := range All {
-		if slices.Contains(ticketView, f.Name) {
+		if slices.Contains(ticketView, f.Name) || f.Name == bookFeature {
 			if len(f.Capabilities) == 0 {
 				t.Errorf("%s names no capability", f.Name)
 			}
 			continue
 		}
 		if len(f.Capabilities) > 0 {
-			t.Errorf("%s names capabilities %v; K1 switches the ticket view alone", f.Name, f.Capabilities)
+			t.Errorf("%s names capabilities %v; K1 switched the ticket view, K6 added the booking, nothing else", f.Name, f.Capabilities)
 		}
 		if a.Enabled[f.Name] != b.Enabled[f.Name] || a.Via[f.Name] != b.Via[f.Name] || !slices.Equal(a.Missing[f.Name], b.Missing[f.Name]) {
 			t.Errorf("%s differs: %v/%v/%v and %v/%v/%v", f.Name, a.Enabled[f.Name], a.Via[f.Name], a.Missing[f.Name], b.Enabled[f.Name], b.Via[f.Name], b.Missing[f.Name])
