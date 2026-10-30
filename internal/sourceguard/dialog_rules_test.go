@@ -41,6 +41,49 @@ func inspectDialogOpeners(name string, file *ast.File) []string {
 			return true
 		})
 	}
+	return append(findings, inspectDialogState(name, file)...)
+}
+
+// inspectDialogState reports what opens a dialog without an opener: outside
+// the dialog's file nothing makes the state of one, sets the model's field
+// but to nil (a 401 ends it), or sets a dialog's mode. A syntax guard: a
+// field set in a literal of the model is not seen.
+func inspectDialogState(name string, file *ast.File) []string {
+	if name == dialogFile {
+		return nil
+	}
+	var findings []string
+	isState := func(expr ast.Expr) bool {
+		id, ok := expr.(*ast.Ident)
+		return ok && id.Name == "dialog"
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		switch n := node.(type) {
+		case *ast.CompositeLit:
+			if isState(n.Type) {
+				findings = append(findings, name+": the state of a dialog made outside "+dialogFile)
+			}
+		case *ast.CallExpr:
+			if id, ok := n.Fun.(*ast.Ident); ok && id.Name == "new" && len(n.Args) == 1 && isState(n.Args[0]) {
+				findings = append(findings, name+": the state of a dialog made outside "+dialogFile)
+			}
+		case *ast.AssignStmt:
+			for i, lhs := range n.Lhs {
+				sel, ok := lhs.(*ast.SelectorExpr)
+				if !ok || len(n.Rhs) != len(n.Lhs) {
+					continue
+				}
+				value, _ := n.Rhs[i].(*ast.Ident)
+				switch {
+				case sel.Sel.Name == "dialog" && (value == nil || value.Name != "nil"):
+					findings = append(findings, name+": a dialog set outside "+dialogFile)
+				case sel.Sel.Name == "mode" && value != nil && (value.Name == "Dialog" || value.Name == "DialogLines"):
+					findings = append(findings, name+": a dialog's mode set outside "+dialogFile)
+				}
+			}
+		}
+		return true
+	})
 	return findings
 }
 
@@ -67,6 +110,10 @@ func TestTheDialogGuardSeesAWayIn(t *testing.T) {
 		"cmd/lalabase/main.go":   `package main; func run() { ui.New(ui.WithDialog(spec)) }`,
 		"internal/gateway/g.go":  `package gateway; var way = ui.WithDialog`,
 		dialogFile:               `package ui; func (m Model) closeDialog() Model { return m.openDialog(DialogSpec{}) }`,
+		"internal/ui/update.go":  `package ui; func (m Model) press() Model { m.dialog = &dialog{}; return m }`,
+		"internal/ui/mark.go":    `package ui; func (m Model) press() Model { m.mode, m.dialog = Dialog, new(dialog); return m }`,
+		"internal/ui/agents.go":  `package ui; func (m Model) press() Model { m.mode = DialogLines; return m }`,
+		"internal/ui/inbox.go":   `package ui; func make() *dialog { return &dialog{} }`,
 	} {
 		file, err := parser.ParseFile(token.NewFileSet(), name, source, 0)
 		if err != nil {
@@ -80,6 +127,8 @@ func TestTheDialogGuardSeesAWayIn(t *testing.T) {
 		"cmd/lalabase/dialog_terminal_test.go": `package main; func run() { ui.New(ui.WithDialog(spec)) }`,
 		"tools/dialog-fixture/main.go":         `package main; func run() { ui.New(ui.WithDialog(spec)) }`,
 		dialogFile:                             `package ui; func WithDialog() Option { return func(m *Model) { *m = m.openDialog(spec) } }`,
+		"internal/ui/startup.go":               `package ui; func (m *Model) expire() { m.mode, m.dialog = Navigate, nil }`,
+		"internal/ui/keys.go":                  `package ui; func route(mode Mode) bool { return mode == Dialog || mode == DialogLines }`,
 	} {
 		file, err := parser.ParseFile(token.NewFileSet(), name, source, 0)
 		if err != nil {

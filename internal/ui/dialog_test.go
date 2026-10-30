@@ -101,6 +101,11 @@ func TestRouteKeyInADialog(t *testing.T) {
 		{"down", key(tea.KeyDown), DialogLines, keyAction{Kind: Down}},
 		{"pgup", key(tea.KeyPgUp), DialogLines, keyAction{Kind: PageUp}},
 		{"pgdown", key(tea.KeyPgDown), DialogLines, keyAction{Kind: PageDown}},
+		{"caps lock is no modifier", tea.KeyPressMsg{Code: 'a', Text: "A", Mod: tea.ModCapsLock}, Dialog, keyAction{Kind: InsertText, Text: "A"}},
+		{"num lock is no modifier", tea.KeyPressMsg{Code: tea.KeyKp1, Text: "1", Mod: tea.ModNumLock}, Dialog, keyAction{Kind: InsertText, Text: "1"}},
+		{"scroll lock is no modifier", tea.KeyPressMsg{Code: ' ', Text: " ", Mod: tea.ModScrollLock}, DialogLines, keyAction{Kind: InsertText, Text: " "}},
+		{"a lock in the search line too", tea.KeyPressMsg{Code: 'a', Text: "A", Mod: tea.ModCapsLock}, TextEntry, keyAction{Kind: InsertText, Text: "A"}},
+		{"a lock beside ctrl is still ctrl", tea.KeyPressMsg{Code: 'a', Text: "a", Mod: tea.ModCtrl | tea.ModCapsLock}, Dialog, keyAction{}},
 		{"ctrl+a is nothing", tea.KeyPressMsg{Code: 'a', Mod: tea.ModCtrl}, Dialog, keyAction{}},
 		{"alt+x is nothing", tea.KeyPressMsg{Code: 'x', Mod: tea.ModAlt}, Dialog, keyAction{}},
 		{"f1 is nothing", key(tea.KeyF1), Dialog, keyAction{}},
@@ -444,6 +449,15 @@ func TestAPasteOverTheLimitSaysSo(t *testing.T) {
 	if text := boxed(m); !strings.Contains(text, "Cut at 5 characters") {
 		t.Fatalf("no notice:\n%s", text)
 	}
+	// A paste that fits (nothing, here) says nothing of the one before it.
+	m, _ = step(t, m, tea.PasteMsg{Content: "\u202e"})
+	if text := boxed(m); strings.Contains(text, "Cut at") {
+		t.Fatalf("the notice outlived a paste:\n%s", text)
+	}
+	m, _ = step(t, m, tea.PasteMsg{Content: "more"})
+	if text := boxed(m); !strings.Contains(text, "Cut at 5 characters") {
+		t.Fatalf("no notice:\n%s", text)
+	}
 	m, _ = step(t, m, key(tea.KeyBackspace))
 	if text := boxed(m); strings.Contains(text, "Cut at") {
 		t.Fatalf("the notice stayed:\n%s", text)
@@ -458,6 +472,59 @@ func TestAPrefilledFieldPassesTheFilter(t *testing.T) {
 	m := dialogModel(t, spec, 80, 24)
 	if got := dialogValues(m); got[0] != "Login bricht" {
 		t.Fatalf("value %q", got)
+	}
+}
+
+// A value over the limit is cut like a paste, and says so like a paste, in
+// any field; the next key takes the notice.
+func TestAPrefilledValueOverTheLimitSaysSo(t *testing.T) {
+	var l sendLog
+	spec := oneLineSpec(&l)
+	spec.Fields[1].Limit, spec.Fields[1].Value = 4, "too long a note"
+	m := dialogModel(t, spec, 80, 24)
+	if got := dialogValues(m); got[1] != "too " {
+		t.Fatalf("value %q", got)
+	}
+	if text := boxed(m); !strings.Contains(text, "Cut at 4 characters") {
+		t.Fatalf("no notice:\n%s", text)
+	}
+	m = typeInto(t, m, "3")
+	if text := boxed(m); strings.Contains(text, "Cut at") {
+		t.Fatalf("the notice stayed:\n%s", text)
+	}
+}
+
+// A large dialog has one field, whatever its user hands it.
+func TestALargeDialogHasOneField(t *testing.T) {
+	var l sendLog
+	spec := largeSpec(&l)
+	spec.Fields = append(spec.Fields, DialogField{Label: present.NewInline("Second"), Limit: 10})
+	m := dialogModel(t, spec, 80, 24)
+	if len(m.dialog.entries) != 1 || len(m.dialogScreen().Fields) != 1 {
+		t.Fatalf("%d entries", len(m.dialog.entries))
+	}
+	if strings.Contains(boxed(m), "Second") {
+		t.Fatalf("a second field:\n%s", boxed(m))
+	}
+}
+
+// The keys of the box are named in it, ctrl+c under it: never twice, never
+// not at all, however low the terminal.
+func TestCtrlCIsNamedOnceAtEverySize(t *testing.T) {
+	var l sendLog
+	for _, spec := range []DialogSpec{oneLineSpec(&l), largeSpec(&l)} {
+		for _, size := range [][2]int{{24, 8}, {24, 9}, {30, 8}, {59, 8}, {60, 10}, {80, 24}, {120, 40}} {
+			m := dialogModel(t, spec, size[0], size[1])
+			text := boxed(m)
+			if got := strings.Count(text, "ctrl+c"); got != 1 {
+				t.Errorf("%v: ctrl+c named %d times:\n%s", size, got, text)
+			}
+			for _, row := range m.dialogScreen().Help {
+				if row.Key.String() == "ctrl+c" {
+					t.Errorf("%v: ctrl+c in the box", size)
+				}
+			}
+		}
 	}
 }
 
@@ -670,9 +737,24 @@ func TestADialogOnATicketNeedsTheTicketInFocus(t *testing.T) {
 	if _, ok := h.m.ticketTarget(); !ok {
 		t.Fatal("the ticket in focus is no target")
 	}
+	// The ticket in the pane is no target from the list beside it, which is
+	// where a preview stands.
+	h.m.focus = view.List
+	if h.m.app.detail == nil || !h.m.app.detail.known {
+		t.Fatal("no ticket in the pane")
+	}
+	if next := h.m.openTicketDialog(oneLineSpec(&l)); next.dialog != nil {
+		t.Fatal("a dialog on the ticket beside the focus")
+	}
+	h.m.focus = view.Object
 	h.m.app.detail.known = false
 	if next := h.m.openTicketDialog(oneLineSpec(&l)); next.dialog != nil {
 		t.Fatal("a dialog on a ticket that is not known yet")
+	}
+	h.m.app.detail.known = true
+	h.m.app.expired = true
+	if next := h.m.openTicketDialog(oneLineSpec(&l)); next.dialog != nil {
+		t.Fatal("a dialog on a session that ended")
 	}
 }
 

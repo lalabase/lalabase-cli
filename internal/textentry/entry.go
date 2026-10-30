@@ -9,7 +9,8 @@
 // A paste of any size costs its length once and takes no more than the
 // limit. The caret stands between two graphemes, never inside one: it steps
 // and deletes what a person sees as one character, and an edit that joins two
-// graphemes around it moves it to the end of the new one.
+// graphemes around it moves it to the end of the new one. A mark with nothing
+// to stand on does not stay: the screen would not show it.
 //
 // The interface owns an Entry behind a pointer and changes it in its Update
 // alone: Size tells it the room it has, and Lines reads what to draw. What
@@ -273,6 +274,18 @@ func (e *Entry) draw(l line, caret string, left int, more string) string {
 // arrange brings the graphemes, the caret, the lines and what is in sight up
 // to date after a change of the text or the room.
 func (e *Entry) arrange() {
+	e.segment()
+	if e.dropLone() {
+		e.segment()
+	}
+	// An edit may have joined two graphemes around the caret.
+	e.caret = e.clusters[e.at(e.caret)].start
+	e.wrap()
+	e.follow()
+}
+
+// segment finds the graphemes of the text.
+func (e *Entry) segment() {
 	e.clusters = e.clusters[:0]
 	start := 0
 	for s := string(e.text); s != ""; {
@@ -282,10 +295,30 @@ func (e *Entry) arrange() {
 		s = s[len(c):]
 	}
 	e.clusters = append(e.clusters, cluster{start: start})
-	// An edit may have joined two graphemes around the caret.
-	e.caret = e.clusters[e.at(e.caret)].start
-	e.wrap()
-	e.follow()
+}
+
+// dropLone takes the graphemes of no cells out of the text that stand on
+// nothing, at its start or a line's: a mark, a joiner or a selector with no
+// letter before it. The screen would show nothing of them, so they would
+// leave a field that looks empty and is not. Once through the text, however
+// many there are.
+func (e *Entry) dropLone() (dropped bool) {
+	kept := e.text[:0]
+	caret := e.caret
+	lineStart := true
+	for i, c := range e.clusters[:len(e.clusters)-1] {
+		runes := e.text[c.start:e.clusters[i+1].start]
+		newline := runes[0] == '\n'
+		if lineStart && c.cells == 0 && !newline {
+			dropped = true
+			caret -= max(0, min(e.caret, c.start+len(runes))-c.start)
+			continue
+		}
+		lineStart = newline
+		kept = append(kept, runes...)
+	}
+	e.text, e.caret = kept, caret
+	return dropped
 }
 
 // wrap breaks the text into lines: at its line breaks and, in a field of

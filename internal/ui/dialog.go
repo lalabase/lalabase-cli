@@ -81,9 +81,8 @@ type dialog struct {
 	active  int
 	sending bool
 	// refusal stands in the error line until the next send; cut says that
-	// the last thing typed or pasted did not fit, until the next key.
-	refusal present.Inline
-	cut     bool
+	// the last thing put into a field did not fit, until the next key.
+	refusal, cut present.Inline
 }
 
 // WithDialog starts the interface with a dialog open. It is how a test or a
@@ -105,13 +104,20 @@ func (m Model) openDialog(spec DialogSpec) Model {
 	}
 	m.dialogs++
 	d := &dialog{id: m.dialogs, spec: spec, title: spec.title()}
-	for _, f := range spec.Fields {
-		e := textentry.New(f.Limit, spec.Large)
-		e.Insert(f.Value)
-		d.entries = append(d.entries, e)
+	for i, f := range spec.Fields {
+		d.entries = append(d.entries, textentry.New(f.Limit, spec.Large))
+		d.insert(i, f.Value)
 	}
 	m.dialog = d
 	return m
+}
+
+// insert puts text into a field, on the field's terms; what does not fit is
+// said in the error line.
+func (d *dialog) insert(field int, text string) {
+	if d.entries[field].Insert(text) {
+		d.cut = uitext.Fill(uitext.DialogCut, d.spec.Fields[field].Limit)
+	}
 }
 
 // title is the box's title: the action and the ticket, if it has one.
@@ -195,7 +201,7 @@ func (m Model) dialogBindings(small bool) []binding {
 func (m Model) dialogKey(action keyAction) (Model, tea.Cmd) {
 	d := m.dialog
 	e := d.entries[d.active]
-	d.cut = false
+	d.cut = present.Inline{}
 	switch action.Kind {
 	case Cancel:
 		return m.closeDialog()
@@ -204,7 +210,7 @@ func (m Model) dialogKey(action keyAction) (Model, tea.Cmd) {
 	case NextField:
 		d.active = (d.active + 1) % len(d.entries)
 	case InsertText:
-		d.cut = e.Insert(action.Text)
+		d.insert(d.active, action.Text)
 	case DeleteBack:
 		e.Backspace()
 	case DeleteForward:
@@ -233,7 +239,8 @@ func (m Model) dialogKey(action keyAction) (Model, tea.Cmd) {
 // key: not while a send is out, and not where no box shows.
 func (m Model) paste(msg tea.PasteMsg) Model {
 	if d := m.dialog; d != nil && m.allowed()[InsertText] {
-		d.cut = d.entries[d.active].Insert(msg.Content)
+		d.cut = present.Inline{}
+		d.insert(d.active, msg.Content)
 	}
 	return m
 }
@@ -269,8 +276,8 @@ func (d *dialog) errorLine() (present.Inline, present.Style) {
 	switch {
 	case d.sending:
 		return uitext.Inline(uitext.DialogSending), present.NoticeWaiting
-	case d.cut:
-		return uitext.Fill(uitext.DialogCut, d.spec.Fields[d.active].Limit), present.NoticeProblem
+	case d.cut.String() != "":
+		return d.cut, present.NoticeProblem
 	}
 	return d.refusal, present.NoticeProblem
 }

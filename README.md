@@ -608,10 +608,10 @@ navigation again.
     that field has a caret. Small, it has one or a few fields of one line
     and is 54 columns wide; large, it has one field of several lines and
     takes about 80 % of the screen. Below 60 columns it takes the whole
-    width. The line under the box names `ctrl+c`, the one key left. A
-    screen too low for the box gives up the empty line first, then the
-    hints, then the fields furthest from the one in focus (a large box its
-    hint and its label); the keys and the field in focus stay. On a
+    width. The screen's last line stays free: it names `ctrl+c`, the one key
+    left. A screen too low for the box gives up the empty line first, then
+    the hints, then the fields furthest from the one in focus (a large box
+    its hint, then its label); the keys and the field in focus stay. On a
     terminal below 24 columns or 8 rows no box shows: the notice of a small
     terminal does, with `esc` and `ctrl+c`, the only keys that act, and the
     box comes back whole when the terminal grows.
@@ -630,7 +630,8 @@ navigation again.
     `clean.Draft`, so a field never holds what the screen would not show,
     and what is shown is what is sent. Escape sequences go whole, an
     unfinished one with the rest of the text, as on a terminal; controls,
-    bidi and invisible characters go by the rules for foreign text. A
+    bidi and invisible characters go by the rules for foreign text, and a
+    mark with no letter before it does not stay. A
     field of several lines keeps its line breaks, a terminal's CR and a
     file's CRLF as LF, and turns a tab into four spaces; a field of one
     line takes a run of them as one space. A paste arrives as one
@@ -638,7 +639,8 @@ navigation again.
     without bracketed paste types it, `Enter` included. Each field has a
     limit in runes: what does not fit is left out from the first grapheme
     that does not, and the error line says "Cut at 200 characters" until the
-    next key. A ticket's title in the top border and a server's text in the
+    next key, for a value a field starts with too. A ticket's title in the
+    top border and a server's text in the
     error line are foreign text and are cleaned on their way there.
   * **Sending.** The dialog keeps the ticket it was opened on: a reload that
     moves the selection behind the box does not change where a send goes.

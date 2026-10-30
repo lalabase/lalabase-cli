@@ -129,7 +129,8 @@ func TestPTYTheLargeDialog(t *testing.T) {
 			c := startDialog(t, dialogLarge, width)
 			c.expect(t, "the box", width, "Comment", "#42", "Text", boxCaret, "Plain text", "ctrl+s", "send", "enter", "new line", "esc")
 			c.act(t, "one", width, "one"+boxCaret)
-			c.act(t, "\r", width, "one", boxCaret)
+			// The caret alone at the start of a line of its own.
+			c.act(t, "\r", width, "\u2502  "+boxCaret)
 			c.act(t, "two", width, "two"+boxCaret)
 			if !c.screenShows(width, "one") {
 				t.Fatal("a line break took the first line")

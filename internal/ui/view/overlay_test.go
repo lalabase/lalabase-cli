@@ -157,6 +157,63 @@ func TestTheEntriesOfASmallBoxStandInOneColumn(t *testing.T) {
 	}
 }
 
+// A label is measured as the terminal counts: in the width method of the
+// run, a heart with its emoji selector takes two cells, and stays whole.
+// A low screen takes from a large box in this order: the empty line, the
+// hint, the label; its field keeps three lines for as long as it can.
+func TestALowLargeBoxGivesWayInOrder(t *testing.T) {
+	d := largeDialog()
+	d.Fields[0].Label = inlineOf("LABEL")
+	for _, tc := range []struct {
+		height                int
+		blank, hint, label    bool
+		entryLines, boxHeight int
+	}{
+		{13, true, true, true, 3, 10},
+		{12, false, true, true, 3, 9},
+		{10, false, false, true, 3, 8},
+		{9, false, false, false, 3, 7},
+		{8, false, false, false, 3, 7},
+	} {
+		g := sizeOf(80, tc.height)
+		box := ansiStripAll(dialogBox(d, g, ansi.WcWidth))
+		plain := strings.Join(box, "\n")
+		blank := strings.TrimSpace(strings.Trim(box[1], "│")) == ""
+		if blank != tc.blank || strings.Contains(plain, "Plain text") != tc.hint || strings.Contains(plain, "LABEL") != tc.label || len(box) != tc.boxHeight {
+			t.Errorf("height %d: %d lines:\n%s", tc.height, len(box), plain)
+		}
+		if _, lines := DialogEntry(d, g, ansi.WcWidth); lines != tc.entryLines {
+			t.Errorf("height %d: %d lines of entry, want %d", tc.height, lines, tc.entryLines)
+		}
+	}
+}
+
+// The last line of the screen stays the screen's: it names ctrl+c, the one
+// key the box does not.
+func TestTheBoxLeavesTheLastLineFree(t *testing.T) {
+	for _, d := range []present.Dialog{smallDialog(), largeDialog()} {
+		for height := 8; height <= 42; height++ {
+			for width := 24; width <= 130; width += 7 {
+				box := dialogBox(d, sizeOf(width, height), ansi.WcWidth)
+				y := (height - len(box)) / 2
+				if y+len(box) > height-1 {
+					t.Fatalf("%dx%d: %d lines from line %d", width, height, len(box), y)
+				}
+			}
+		}
+	}
+}
+
+func TestALabelIsMeasuredInTheWidthOfTheRun(t *testing.T) {
+	d := smallDialog()
+	d.Fields[0].Label = inlineOf("\u2764\ufe0f")
+	d.Fields[1].Label = inlineOf("x")
+	box := ansiStripAll(dialogBox(d, sizeOf(80, 24), ansi.GraphemeWidth))
+	if !strings.Contains(strings.Join(box, "\n"), "\u2764\ufe0f  30") {
+		t.Fatalf("the label was cut:\n%s", strings.Join(box, "\n"))
+	}
+}
+
 func TestTheFocusedFieldShowsItself(t *testing.T) {
 	box := dialogBox(smallDialog(), sizeOf(80, 24), ansi.WcWidth)
 	// The active label is bold, the other one is not; the frame is blue
@@ -216,10 +273,11 @@ func TestALongTitleIsCutInTheBorder(t *testing.T) {
 func TestEveryTerminalShowsTheBoxWhole(t *testing.T) {
 	long := strings.Repeat("no ", 60)
 	large := largeDialog()
-	large.Fields[0].Entry = []present.Inline{inlineOf("first▏"), inlineOf("second")}
+	large.Fields[0].Entry = []present.Inline{inlineOf("first\u258f"), inlineOf("second")}
 	three := smallDialog()
 	three.Fields = append(three.Fields, present.DialogField{Label: inlineOf("Third"), Entry: []present.Inline{inlineOf("text")}, Hint: inlineOf("hint"), Active: false})
 	three.Fields[0].Active, three.Fields[2].Active = false, true
+	three.Fields[0].Entry = []present.Inline{inlineOf("30")}
 	three.Fields[2].Entry = []present.Inline{inlineOf("text\u258f")}
 	for name, d := range map[string]present.Dialog{"small": smallDialog(), "large": large, "three": three} {
 		for _, withError := range []bool{false, true} {
@@ -464,7 +522,7 @@ func TestOverlayOverAHostileScreen(t *testing.T) {
 // Render's lines hold nothing but text and SGR, but what around does with any
 // line ends: it reads the sequences of a line, broken or not, one by one.
 func FuzzAroundEnds(f *testing.F) {
-	f.Add("\x1b[1mabc\x1b[m世", 1, 3)
+	f.Add("\x1b[1mabc\x1b[m\u4e16", 1, 3)
 	f.Add("\x1b", 0, 2)
 	f.Add("\x1b]0;open", 2, 4)
 	f.Add("a\xffb\x9b", 1, 2)
@@ -482,4 +540,47 @@ func FuzzAroundEnds(f *testing.F) {
 			_ = after
 		}
 	})
+}
+
+// What stands on either side of the box, cell by cell, in the two width
+// methods: the left part as wide as it must be, no style left open, and the
+// right part with the styles in force there, or nothing at all.
+func TestAround(t *testing.T) {
+	wide := "\u4e16"
+	for _, tc := range []struct {
+		name, line, head, after string
+		blanks                  int
+	}{
+		{"both sides", "abcdefgh", "ab", "gh", 0},
+		{"a line that ends before the box", "a", "a", "", 1},
+		{"a line that ends in the box", "abcde", "ab", "", 0},
+		{"a wide character on the left edge", "a" + wide + "cdefgh", "a", "fgh", 1},
+		{"a wide character on the right edge", "abcde" + wide + "gh", "ab", " gh", 0},
+		{"a wide character on the right edge at the end", "abcde" + wide, "ab", " ", 0},
+		{"a mark on the last cell before the box", "ae\u0301cdefgh", "ae\u0301", "gh", 0},
+		{"a mark on the first cell in the box", "abc\u0301defgh", "ab", "gh", 0},
+		{"a mark on the last cell in the box", "abcdef\u0301gh", "ab", "gh", 0},
+		{"a mark on the first cell after the box", "abcdefg\u0301h", "ab", "g\u0301h", 0},
+		{"a style ending under the box", "\x1b[1mabcd\x1b[mefgh", "\x1b[1mab", "\x1b[1m\x1b[mgh", 0},
+		{"a style open past the end of the line", "\x1b[7mabcd", "\x1b[7mab", "", 0},
+		{"a style starting under the box", "ab\x1b[7mcdefgh", "ab", "\x1b[7mgh", 0},
+		{"a style starting behind the box", "abcdefg\x1b[7mh", "ab", "g\x1b[7mh", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, method := range bothMethods {
+				before, after := around(tc.line, 2, 6, method)
+				if want := tc.head + ansi.ResetStyle + strings.Repeat(" ", tc.blanks); before != want {
+					t.Errorf("method %d: before %q, want %q", method, before, want)
+				}
+				if after != tc.after {
+					t.Errorf("method %d: after %q, want %q", method, after, tc.after)
+				}
+			}
+		})
+	}
+	// A joined emoji of six cells over the box of two: blanks on both sides.
+	family := "\U0001F468\u200d\U0001F469\u200d\U0001F467"
+	if before, after := around("a"+family+"b", 3, 5, ansi.WcWidth); before != "a"+ansi.ResetStyle+"  " || after != "  b" {
+		t.Errorf("around a grapheme wider than the box: %q, %q", before, after)
+	}
 }

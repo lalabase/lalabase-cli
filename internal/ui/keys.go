@@ -146,9 +146,11 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 	return keyAction{}
 }
 
-// typed is the text a key writes: none with a modifier but Shift.
+// typed is the text a key writes: none with a modifier but Shift. A lock is
+// no modifier: with the Kitty protocol a terminal may report Caps or Num Lock
+// beside any key, and the digit of the keypad is a digit.
 func typed(key tea.KeyPressMsg) string {
-	if key.Mod & ^tea.ModShift != 0 {
+	if key.Mod & ^(tea.ModShift|tea.ModCapsLock|tea.ModNumLock|tea.ModScrollLock) != 0 {
 		return ""
 	}
 	if key.Text == "" && key.Code <= unicode.MaxRune && unicode.IsPrint(key.Code) {

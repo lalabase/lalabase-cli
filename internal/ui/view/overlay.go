@@ -29,8 +29,9 @@ const (
 
 // dialogShape is how a dialog fills a terminal: the box's width, and of what
 // may give way on a low screen what stays. Render's rule holds here too:
-// the keys are never cut away. An error keeps its first line and the active
-// field stays in sight, however low the screen.
+// the keys are never cut away, and the screen's last line stays free, for it
+// names the one key the box does not. An error keeps its first line and the
+// active field stays in sight, however low the screen.
 type dialogShape struct {
 	width, inner                  int
 	label, entryWidth, entryLines int
@@ -51,10 +52,10 @@ func dialogShapeOf(d present.Dialog, g Geometry, method ansi.Method) dialogShape
 	}
 	s.inner = s.width - dialogSides
 	s.help = HelpLines(d.Help, s.inner, method)
-	height := g.Height
+	height := g.Height - 1
 	if d.Large {
 		fixed := frameLines + len(s.help) + 1
-		height = min(height, max(height*4/5, fixed+dialogEntryLines))
+		height = min(height, max(g.Height*4/5, fixed+dialogEntryLines))
 	}
 	room := height - frameLines - len(s.help)
 	s.errorLines = 1
@@ -66,7 +67,7 @@ func dialogShapeOf(d present.Dialog, g Geometry, method ansi.Method) dialogShape
 	if d.Large {
 		s.largeRows(d, room)
 	} else {
-		s.smallRows(d, room)
+		s.smallRows(d, room, method)
 	}
 	return s
 }
@@ -93,10 +94,10 @@ func (s *dialogShape) largeRows(d present.Dialog, room int) {
 // smallRows lays out one line per field and its hint, in the columns of the
 // widest label. A low screen takes the line above them first, then the
 // hints, then the fields furthest from the active one.
-func (s *dialogShape) smallRows(d present.Dialog, room int) {
+func (s *dialogShape) smallRows(d present.Dialog, room int, method ansi.Method) {
 	s.entryLines = 1
 	for _, f := range d.Fields {
-		s.label = max(s.label, ansi.WcWidth.StringWidth(f.Label.String()))
+		s.label = max(s.label, method.StringWidth(f.Label.String()))
 	}
 	s.label = min(s.label, s.inner/2-1)
 	s.entryWidth = s.inner - s.label - dialogLabelGap

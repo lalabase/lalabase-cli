@@ -130,6 +130,58 @@ func TestTheCaretLeavesAGraphemeThatFormsAroundIt(t *testing.T) {
 	assertEntry(t, e, "\U0001F1EB\U0001F1E9\U0001F1EA", 2)
 }
 
+// A mark stands on the character before it. Without one, at the start of the
+// text or of a line, the screen shows nothing of it, so the buffer does not
+// hold it: what is shown is what is sent.
+func TestAMarkThatStandsOnNothingIsNotKept(t *testing.T) {
+	for _, tc := range []struct {
+		name, text, want string
+		multiline        bool
+	}{
+		{"a combining mark alone", "\u0301", "", false},
+		{"a joiner alone", "\u200d", "", false},
+		{"a variation selector alone", "\ufe0f", "", false},
+		{"a soft hyphen alone", "\u00ad", "", false},
+		{"before a letter", "\u0301a", "a", false},
+		{"a run of them", "\u0301\u200d\ufe0fa", "a", false},
+		{"a soft hyphen and a mark", "\u00ad\u0301a", "a", false},
+		{"at the start of a line", "a\n\u0301b", "a\nb", true},
+		{"on a letter it stays", "e\u0301", "e\u0301", false},
+		{"a joiner in an emoji stays", family, family, false},
+		{"a soft hyphen in a word stays", "a\u00adb", "a\u00adb", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, method := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
+				e := New(100, tc.multiline)
+				e.Size(40, 5, method)
+				e.Insert(tc.text)
+				assertEntry(t, e, tc.want, utf8.RuneCountInString(tc.want))
+			}
+		})
+	}
+	// One that arrives on its own at the caret, before existing text.
+	e := filled(t, "ab", false)
+	e.Home()
+	e.Insert("\u0301")
+	assertEntry(t, e, "ab", 0)
+	// One a deletion leaves without its letter is impossible (a grapheme
+	// goes whole), but a line break can go from under one that was kept.
+	e = filled(t, "a\nb", true)
+	e.Left()
+	e.Backspace()
+	assertEntry(t, e, "ab", 1)
+}
+
+// A paste of nothing but lone marks costs its length once.
+func TestLoneMarksCostTheirLengthOnce(t *testing.T) {
+	e := New(1<<16, true)
+	e.Size(100, 40, ansi.WcWidth)
+	e.Insert(strings.Repeat("\n\u0301", 1<<14))
+	if got := e.Value(); got != strings.Repeat("\n", 1<<14) {
+		t.Fatalf("%d runes", utf8.RuneCountInString(got))
+	}
+}
+
 func TestWhatIsInsertedPassesTheFilter(t *testing.T) {
 	for _, multiline := range []bool{false, true} {
 		e := New(100, multiline)
@@ -326,6 +378,20 @@ func TestUpAndDownWalkWrappedLinesAndWideCharacters(t *testing.T) {
 	assertEntry(t, e, e.Value(), 0)
 }
 
+// A key of its own starts a new column.
+func TestAnEditForgetsTheColumn(t *testing.T) {
+	e := sized(t, "abcdef\nab\nabcdef", 20, 10)
+	e.Move(-1) // kept column 6, the short line ends at 2
+	e.Insert("x")
+	e.Move(1)
+	assertEntry(t, e, "abcdef\nabx\nabcdef", 14)
+	e = sized(t, "abcdef\nab\nabcdef", 20, 10)
+	e.Move(-1)
+	e.Backspace()
+	e.Move(1)
+	assertEntry(t, e, "abcdef\na\nabcdef", 10)
+}
+
 func TestHomeAndEndStayOnTheScreenLine(t *testing.T) {
 	e := sized(t, "aaa bbb ccc", 9, 10)
 	e.Home()
@@ -373,6 +439,21 @@ func TestTheFieldLeavesNoEmptyRoomBelowItsText(t *testing.T) {
 	e.Size(8, 10, ansi.WcWidth)
 	if got := e.Lines(caret, ellipse); !slices.Equal(got, []string{"1", "2", "3", "4|"}) {
 		t.Fatalf("after growing: %q", got)
+	}
+}
+
+// The terminal says it counts graphemes after the start (mode 2027): a joined
+// emoji is two cells then, not six, and the lines follow.
+func TestAChangeOfTheWidthMethodArrangesAgain(t *testing.T) {
+	e := New(100, true)
+	e.Insert(family + family)
+	e.Size(8, 5, ansi.WcWidth)
+	if got := e.Lines(caret, ellipse); len(got) != 2 {
+		t.Fatalf("six cells each: %q", got)
+	}
+	e.Size(8, 5, ansi.GraphemeWidth)
+	if got := e.Lines(caret, ellipse); len(got) != 1 {
+		t.Fatalf("two cells each: %q", got)
 	}
 }
 

@@ -3,7 +3,7 @@
 Working notes for coding agents in this repository (Claude Code reads this
 file through `CLAUDE.md`). The README says what the
 program does; this file says how to change it without repeating mistakes the
-reviews of C0 already found. Status: 2026-10-29, main at C2a (#16: the
+reviews of C0 already found. Status: 2026-10-30, main at C2a (#16: the
 ground for the writes of C2, with its review findings in #21) plus the
 status colours (#18), the cursor bar (#19) and the scrollbar on free text
 (#23), C7 (Claude Code beside the ticket: `x`, `internal/launch`, project
