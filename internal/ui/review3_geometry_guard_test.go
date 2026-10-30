@@ -18,6 +18,8 @@ import (
 )
 
 func TestR3CompactTransitionScroll(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
 		return pageAnswer(q.Page, 25, 5, 5, h.d.rows(orgA, 1, 5), map[string]int{orgA: 5})
@@ -48,6 +50,8 @@ func TestR3CompactTransitionScroll(t *testing.T) {
 }
 
 func TestR3NoticeDoesNotOfferInvisibleMovement(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -80,6 +84,8 @@ func TestR3NoticeDoesNotOfferInvisibleMovement(t *testing.T) {
 }
 
 func TestR3IntermediateWidthGeometry(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -110,6 +116,8 @@ func TestR3IntermediateWidthGeometry(t *testing.T) {
 }
 
 func TestR3NestedBatchPanicGuarded(t *testing.T) {
+	t.Parallel()
+
 	sup := worker.New(context.Background())
 	defer sup.Stop(time.Second)
 	g := guarded{sup: sup}
@@ -124,6 +132,8 @@ func TestR3NestedBatchPanicGuarded(t *testing.T) {
 }
 
 func TestR3StoppedGuardDoesNotRunCommand(t *testing.T) {
+	t.Parallel()
+
 	sup := worker.New(context.Background())
 	g := guarded{sup: sup}
 	sup.Stop(time.Second)
@@ -135,6 +145,8 @@ func TestR3StoppedGuardDoesNotRunCommand(t *testing.T) {
 }
 
 func TestR3SequenceGuardProbe(t *testing.T) {
+	t.Parallel()
+
 	sup := worker.New(context.Background())
 	defer sup.Stop(time.Second)
 	g := guarded{sup: sup}

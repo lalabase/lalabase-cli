@@ -114,6 +114,8 @@ func checkRequests(t *testing.T, f *inboxfixture.Fixture) []inboxfixture.Request
 // change that fails twice, R, the details, a resize, Esc, q, and the
 // terminal as it was.
 func TestPTYInboxFlow(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []uint16{80, 120} {
 		t.Run(fmt.Sprintf("%d", width), func(t *testing.T) {
 			c, f := startInbox(t, inboxfixture.Temporary, width)
@@ -179,6 +181,8 @@ const orgA = inboxfixture.OrgA
 // A 401 on a later read ends the session: everything cleared, the notice
 // shown, keys do nothing but leave, and q still restores the terminal.
 func TestPTYInboxExpiresOn401(t *testing.T) {
+	t.Parallel()
+
 	c, _ := startInbox(t, inboxfixture.Unauthorized, 80)
 	c.moveTo(t, keyDown, 80, "Nordlicht GmbH", "Inbox", 1)
 	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "Nordlicht GmbH › Inbox")
@@ -206,6 +210,8 @@ func TestPTYInboxExpiresOn401(t *testing.T) {
 
 // A 429 is shown with its deadline and the read goes on after the window.
 func TestPTYInboxShowsTheRateLimitPause(t *testing.T) {
+	t.Parallel()
+
 	c, f := startInbox(t, inboxfixture.RateLimited, 80)
 	c.moveTo(t, keyDown, 80, "Nordlicht GmbH", "Inbox", 1)
 	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "Nordlicht GmbH › Inbox")
@@ -227,6 +233,8 @@ func TestPTYInboxShowsTheRateLimitPause(t *testing.T) {
 // Without the organisation filter only the entry for all organisations
 // opens, page 1 only; no filtered or paged read leaves the client.
 func TestPTYInboxWithoutTheOrganisationFilter(t *testing.T) {
+	t.Parallel()
+
 	c, f := startInbox(t, inboxfixture.Older, 80)
 	c.expect(t, "the limitation", 80, "first page only")
 	c.moveTo(t, keyDown, 80, "Nordlicht GmbH", "Inbox", 1)
@@ -260,6 +268,8 @@ func TestPTYInboxWithoutTheOrganisationFilter(t *testing.T) {
 
 // Ctrl-C in the inbox restores the terminal and exits with 130.
 func TestPTYInboxInterrupt(t *testing.T) {
+	t.Parallel()
+
 	c, _ := startInbox(t, inboxfixture.Normal, 80)
 	c.moveTo(t, keyDown, 80, "Nordlicht GmbH", "Inbox", 1)
 	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "Nordlicht GmbH › Inbox")

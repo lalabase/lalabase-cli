@@ -10,6 +10,8 @@ import (
 )
 
 func TestR2PagingActuallySharesPendingRead(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
 		if q.Page == 2 {

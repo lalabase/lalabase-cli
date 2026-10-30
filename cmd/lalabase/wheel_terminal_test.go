@@ -25,6 +25,8 @@ func wheelAt(down bool, x, y int) string {
 // the pointer and back, and the terminal's mouse modes are switched off on
 // the way out.
 func TestPTYTheWheelScrollsTheTicket(t *testing.T) {
+	t.Parallel()
+
 	const width = 120
 	c, _ := startInbox(t, inboxfixture.Normal, width)
 	openSix(t, c, width)

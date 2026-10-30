@@ -35,6 +35,8 @@ func metaColumn() present.Column {
 // the text keeps 52. Every line is the pane's width; the text's scrollbar
 // stands in the text's part, left of the bar.
 func TestTheMetaBarStandsFromAnInnerWidthOf76(t *testing.T) {
+	t.Parallel()
+
 	if MetaFits(75) || !MetaFits(76) || !MetaFits(77) {
 		t.Fatalf("MetaFits 75 %v, 76 %v, 77 %v", MetaFits(75), MetaFits(76), MetaFits(77))
 	}
@@ -85,6 +87,8 @@ func TestTheMetaBarStandsFromAnInnerWidthOf76(t *testing.T) {
 // in its tone, the other values plain; a bar longer than the pane is cut
 // and says so.
 func TestTheMetaBarStaysAndKeepsItsStyles(t *testing.T) {
+	t.Parallel()
+
 	c := metaColumn()
 	top := pane(c, 84, 10, true, ansi.WcWidth)
 	c.Offset = 7
@@ -117,6 +121,8 @@ func TestTheMetaBarStaysAndKeepsItsStyles(t *testing.T) {
 // The text beside the bar wraps narrower, and Extent counts what the pane
 // draws: the lines of the text at the narrower width.
 func TestExtentMeasuresTheTextBesideTheBar(t *testing.T) {
+	t.Parallel()
+
 	long := strings.Repeat("word ", 40)
 	c := present.Column{Cursor: -1, Text: present.NewBody(long)}
 	g := Geometry{Width: 160, Height: 24, BodyHeight: 20, Columns: 2, ListWidth: 80, ObjectWidth: 80}
@@ -139,6 +145,8 @@ func TestExtentMeasuresTheTextBesideTheBar(t *testing.T) {
 // Review round 2 of #32: the rule is faint, and a bar exactly as long as
 // the body is whole: its last line keeps its style and no mark.
 func TestTheMetaBarsRuleIsFaintAndAFullBarIsWhole(t *testing.T) {
+	t.Parallel()
+
 	c := metaColumn()
 	c.Meta = c.Meta[:5] // Status, in progress, "", People, Anna Albers
 	lines := content(c, 80, len(c.Meta), true, ansi.WcWidth)
@@ -159,6 +167,8 @@ func TestTheMetaBarsRuleIsFaintAndAFullBarIsWhole(t *testing.T) {
 // agent's state); the line is cut with an ellipsis like the others, the
 // glyph kept.
 func TestAMetaLineLeadsWithItsGlyph(t *testing.T) {
+	t.Parallel()
+
 	c := metaColumn()
 	c.Meta = append(c.Meta,
 		present.MetaLine{Text: present.NewInline("Agent"), Style: present.Faint},

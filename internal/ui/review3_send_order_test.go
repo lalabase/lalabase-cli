@@ -18,6 +18,8 @@ import (
 // go out one after the other (two handovers at the same instant can carry
 // their numbers in either order; the number is given at the handover).
 func TestR3NewestActualSendWinsVisibleCounters(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(""))

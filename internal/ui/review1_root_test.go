@@ -13,6 +13,8 @@ import (
 // the selection left behind must not reach the cache or issue anything
 // once B is active, whenever its canceled result arrives.
 func TestR1AbandonedReissueDoesNotReadOrCache(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	oldA := h.choose(orgA)
@@ -47,6 +49,8 @@ func TestR1AbandonedReissueDoesNotReadOrCache(t *testing.T) {
 }
 
 func TestR1SecondIndependentShrinkCanRecoverWithR(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	total := 60
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
@@ -69,6 +73,8 @@ func TestR1SecondIndependentShrinkCanRecoverWithR(t *testing.T) {
 }
 
 func TestR1JoinAfterCompletedFlightGetsNewSequence(t *testing.T) {
+	t.Parallel()
+
 	for _, newerFirst := range []bool{false, true} {
 		t.Run(map[bool]string{false: "old-first", true: "new-first"}[newerFirst], func(t *testing.T) {
 			h := newHarness(t)
@@ -105,6 +111,8 @@ func TestR1JoinAfterCompletedFlightGetsNewSequence(t *testing.T) {
 }
 
 func TestR1AbandonedReissueWithOnWireRequest(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	gate := make(chan struct{})

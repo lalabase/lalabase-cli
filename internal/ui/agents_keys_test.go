@@ -26,6 +26,8 @@ func (h *harness) helpText() string {
 }
 
 func TestAIsOfferedOnlyWithAnAgent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher()
 	h.start()
@@ -51,6 +53,8 @@ func TestAIsOfferedOnlyWithAnAgent(t *testing.T) {
 // organisations; esc and a second A go back to where it was. One: a
 // screen of their own.
 func TestAInEveryLayout(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		width   int
 		columns int
@@ -98,6 +102,8 @@ func TestAInEveryLayout(t *testing.T) {
 
 // The agents gone while their list is open: the list closes.
 func TestTheLastAgentGoneClosesTheAgents(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start()
@@ -114,6 +120,8 @@ func TestTheLastAgentGoneClosesTheAgents(t *testing.T) {
 // the ticket in the pane, read as the person's; an ended agent is seen
 // after it, a working one is not.
 func TestEnterOpensTheAgentsTicketInItsOrganisation(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	ended := agentIn(1, orgA, 6, agents.Ended, h.now)
 	working := agentIn(2, orgA, 7, agents.Working, h.now)
@@ -172,6 +180,8 @@ func TestEnterOpensTheAgentsTicketInItsOrganisation(t *testing.T) {
 // Enter is not offered where the ticket cannot open: an organisation the
 // tickets cannot open in, before the tools are known.
 func TestEnterOnlyWhereTheTicketOpens(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start()
@@ -185,6 +195,8 @@ func TestEnterOnlyWhereTheTicketOpens(t *testing.T) {
 // "Seen" survives a restart: a new model over the same directory draws
 // the ended agent faint.
 func TestSeenSurvivesARestart(t *testing.T) {
+	t.Parallel()
+
 	dir := filepath.Join(t.TempDir(), "a")
 	if real, err := filepath.EvalSymlinks(filepath.Dir(dir)); err == nil {
 		dir = filepath.Join(real, "a")
@@ -219,6 +231,8 @@ func TestSeenSurvivesARestart(t *testing.T) {
 // R in the agents' list reads the failed titles again, and nothing of
 // the inbox behind it.
 func TestRInTheAgentsReadsTheTitles(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
 		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
@@ -244,6 +258,8 @@ func TestRInTheAgentsReadsTheTitles(t *testing.T) {
 
 // Review round 1 of #36, F3: a lost agent is seen after enter too.
 func TestEnterSeesALostAgent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	lost := agentIn(1, orgA, 6, agents.Lost, h.now)
 	f := h.withWatcher(lost)
@@ -262,6 +278,8 @@ func TestEnterSeesALostAgent(t *testing.T) {
 // Review round 1 of #36, F4: R in the chooser reads the failed titles
 // also while a step of the start failed.
 func TestRWithAFailedStepReadsTheTitlesToo(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
 		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
@@ -287,6 +305,8 @@ func TestRWithAFailedStepReadsTheTitlesToo(t *testing.T) {
 // organisation behind it is removed, and closes to a pane that still
 // shows something.
 func TestTheAgentsKeepTheFocusThroughARemoval(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.openSix()
@@ -313,6 +333,8 @@ func TestTheAgentsKeepTheFocusThroughARemoval(t *testing.T) {
 // Review round 1 of #36, F7: Enter again on the agent whose ticket is
 // shown reads nothing.
 func TestEnterAgainReadsNothing(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start()
@@ -329,6 +351,8 @@ func TestEnterAgainReadsNothing(t *testing.T) {
 // Review round 2 of #36: closing the agents goes back to the details of a
 // notification, which show without a ticket.
 func TestClosingTheAgentsKeepsTheDetailsOfANotification(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start()
@@ -347,6 +371,8 @@ func TestClosingTheAgentsKeepsTheDetailsOfANotification(t *testing.T) {
 // Review round 2 of #36: R is offered in the chooser for a failed title
 // while a failed step's read is still out, as R would read the title.
 func TestRIsOfferedForAFailedTitleBesideAFailedStep(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
 		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
@@ -371,6 +397,8 @@ func TestRIsOfferedForAFailedTitleBesideAFailedStep(t *testing.T) {
 // Review round 3 of #36: a failed title the session learned since (the
 // ticket opened in the pane) offers no R that would read nothing.
 func TestRIsNotOfferedForATitleKnownSince(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
 		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
@@ -395,6 +423,8 @@ func TestRIsNotOfferedForATitleKnownSince(t *testing.T) {
 // Review round 3 of #36: beside a failed step, R is offered for a failed
 // title in the chooser only, where it reads it.
 func TestROffersTheTitlesInTheChooserOnly(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
 		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}

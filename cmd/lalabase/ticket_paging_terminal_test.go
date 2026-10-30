@@ -73,6 +73,8 @@ func readsOf(f *inboxfixture.Fixture, ticket string) []string {
 // Over the tools (a server before R1): the server cuts #6's description
 // and newest comments, e reads them whole.
 func TestPTYTicketPagingFlow(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []uint16{80, 120} {
 		t.Run(fmt.Sprintf("%d", width), func(t *testing.T) {
 			c, f := startInbox(t, inboxfixture.Normal, width, inboxfixture.BeforeR1())
@@ -125,6 +127,8 @@ func TestPTYTicketPagingFlow(t *testing.T) {
 // the pane shows: cut by the view, e reads the description again and the
 // comment on its own route.
 func TestPTYTicketPagingFlowOverREST(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []uint16{80, 120} {
 		t.Run(fmt.Sprintf("%d", width), func(t *testing.T) {
 			c, f := startInbox(t, inboxfixture.Normal, width)
@@ -183,6 +187,8 @@ func TestPTYTicketPagingFlowOverREST(t *testing.T) {
 // Page 2 of #6's comments fails twice (the queue's retry included): the
 // section says so, R reads it.
 func TestPTYTicketPageFailsAndRReadsIt(t *testing.T) {
+	t.Parallel()
+
 	c, f := startInbox(t, inboxfixture.Temporary, 80)
 	openSix(t, c, 80)
 	c.act(t, keyTab, 80, "» Comments · newest first")
@@ -202,6 +208,8 @@ func TestPTYTicketPageFailsAndRReadsIt(t *testing.T) {
 // the ticket is read once without post_id. Over the tools: #6's comment
 // is cut there.
 func TestPTYAVanishedComment(t *testing.T) {
+	t.Parallel()
+
 	c, f := startInbox(t, inboxfixture.Vanished, 120, inboxfixture.BeforeR1())
 	openSix(t, c, 120)
 	c.act(t, keyTab, 120, "» Comments · newest first", "Six comment 30 begins")
@@ -223,6 +231,8 @@ func TestPTYAVanishedComment(t *testing.T) {
 // Over REST the same: #8's newest comment, cut by the view, vanished on
 // its route.
 func TestPTYAVanishedCommentOverREST(t *testing.T) {
+	t.Parallel()
+
 	c, f := startInbox(t, inboxfixture.Vanished, 120)
 	openWebsite(t, c, 120)
 	openTicketBelow(t, c, 120, 1, 8, "Description of eight", "esc back")
@@ -245,6 +255,8 @@ func TestPTYAVanishedCommentOverREST(t *testing.T) {
 
 // Ctrl-C with an expansion open restores the terminal and exits with 130.
 func TestPTYTicketExpansionInterrupt(t *testing.T) {
+	t.Parallel()
+
 	c, _ := startInbox(t, inboxfixture.Normal, 120, inboxfixture.BeforeR1())
 	openSix(t, c, 120)
 	c.act(t, "e", 120, "Description · whole text")

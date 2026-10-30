@@ -8,6 +8,8 @@ import (
 )
 
 func TestR1HighlightDoesNotRelabelActiveInbox(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))

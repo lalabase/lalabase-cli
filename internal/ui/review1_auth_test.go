@@ -12,6 +12,8 @@ import (
 // A real request observer runs before either its result or the mailbox Wake
 // reaches Update. An already queued key may be processed first.
 func TestReviewObserved401BeforeQueuedKeyMustBlockCacheAndRequest(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -36,6 +38,8 @@ func TestReviewObserved401BeforeQueuedKeyMustBlockCacheAndRequest(t *testing.T) 
 }
 
 func TestReviewRealCanceled401BeforeQueuedKeyMustBlock(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	// Real live mailbox: consume the wake produced by its supervised worker,

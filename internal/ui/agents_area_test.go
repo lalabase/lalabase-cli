@@ -41,6 +41,8 @@ func (h *harness) titleReads(n int) int {
 }
 
 func TestTheAreaShowsOnlyWithAnAgent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher()
 	h.start()
@@ -60,6 +62,8 @@ func TestTheAreaShowsOnlyWithAnAgent(t *testing.T) {
 // alone until it comes; the organisation under it only when it is not the
 // chosen one.
 func TestAnAgentsRowAndItsTitle(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.WaitingForYou, h.now), agentIn(2, orgB, 7, agents.Lost, h.now))
 	h.drive(h.m.Init())
@@ -93,6 +97,8 @@ func TestAnAgentsRowAndItsTitle(t *testing.T) {
 // The read of a title is idle work, below what the person looks at and
 // below the previews (queue.Idle).
 func TestATitleIsReadInTheBackground(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	titles := 0
@@ -120,6 +126,8 @@ func TestATitleIsReadInTheBackground(t *testing.T) {
 // Without a title the row says #n alone; a read that failed is not
 // repeated by the reading of the agents, R reads it again.
 func TestAFailedTitleStaysUntilR(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
 		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
@@ -148,6 +156,8 @@ func TestAFailedTitleStaysUntilR(t *testing.T) {
 
 // A title is foreign text: cleaned as in the ticket list.
 func TestAHostileTitleIsCleaned(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
 		r := h.d.ticketRecord(project, 6, o)
@@ -165,6 +175,8 @@ func TestAHostileTitleIsCleaned(t *testing.T) {
 // A title the session holds is not read: the ticket in the pane, a row of
 // the list shown.
 func TestATitleTheSessionHoldsIsNotRead(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.openTickets(website)
@@ -181,6 +193,8 @@ func TestATitleTheSessionHoldsIsNotRead(t *testing.T) {
 
 // A seen agent that ended is faint; any other seen one is not.
 func TestASeenEndedAgentIsFaint(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	ended, working := agentIn(1, orgA, 6, agents.Ended, h.now), agentIn(2, orgA, 7, agents.Working, h.now)
 	ended.Seen, working.Seen = true, true
@@ -202,6 +216,8 @@ func TestASeenEndedAgentIsFaint(t *testing.T) {
 // from the server, which waits as idle work: after a restart the titles
 // cost no request.
 func TestATitleFromTheDiskCancelsItsRead(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.start()

@@ -17,6 +17,8 @@ const (
 // holds on every screen line, and a heading ends in a rule to the reading
 // width.
 func TestStyledLinesWrapWithTheirStyles(t *testing.T) {
+	t.Parallel()
+
 	c := present.Column{
 		Text: present.NewBody("Kai Neahnung  28 Aug 15:45\nfirst words of a body that wraps\nComments"),
 		Styles: []present.LineStyle{
@@ -58,6 +60,8 @@ func TestStyledLinesWrapWithTheirStyles(t *testing.T) {
 // Text wraps at the reading width in a wide pane; a narrow pane keeps its
 // text and drops the indent.
 func TestStyledLinesKeepTheReadingWidthAndDropAnIndentWhenNarrow(t *testing.T) {
+	t.Parallel()
+
 	long := strings.Repeat("word ", 40)
 	lines := textLines(present.Column{Text: present.NewBody(long)}, 200, ansi.WcWidth)
 	for _, l := range lines {
@@ -81,6 +85,8 @@ func TestStyledLinesKeepTheReadingWidthAndDropAnIndentWhenNarrow(t *testing.T) {
 // A line whose text a style map would get wrong (a lead past its end)
 // draws what it has, never more or less text.
 func TestAStyleNeverChangesTheText(t *testing.T) {
+	t.Parallel()
+
 	c := present.Column{Text: present.NewBody("a  b\t c"), Styles: []present.LineStyle{{Lead: 99, LeadStyle: present.Strong, Indent: 3, Rule: true}}}
 	for _, width := range []int{1, 2, 5, 20, 90} {
 		for _, l := range textLines(c, width, ansi.WcWidth) {
@@ -94,6 +100,8 @@ func TestAStyleNeverChangesTheText(t *testing.T) {
 // The values of a list stand right-aligned in one column; the second line
 // is faint; a quiet entry is faint, a highlighted value bold.
 func TestRowValuesAlignAndWeigh(t *testing.T) {
+	t.Parallel()
+
 	c := present.Column{Title: present.NewInline("Tickets"), Cursor: -1, Rows: []present.Row{
 		{Primary: present.NewInline("#2 Landingpage"), Trailing: present.NewInline("in_progress"), Secondary: present.NewInline("Anna")},
 		{Primary: present.NewInline("#10 Catering"), Trailing: present.NewInline("new"), Secondary: present.NewInline("Kai")},
@@ -121,6 +129,8 @@ func TestRowValuesAlignAndWeigh(t *testing.T) {
 // A list too narrow for a column of values keeps its titles: each value
 // follows its own entry's text.
 func TestANarrowListKeepsItsTitles(t *testing.T) {
+	t.Parallel()
+
 	c := present.Column{Title: present.NewInline("Tickets"), Cursor: -1, Rows: []present.Row{
 		{Primary: present.NewInline("#2 Export als CSV"), Trailing: present.NewInline("new")},
 		{Primary: present.NewInline("#1 Login"), Trailing: present.NewInline("in_progress")},
@@ -134,6 +144,8 @@ func TestANarrowListKeepsItsTitles(t *testing.T) {
 // A status's tone is a colour of the terminal's own palette (cyan, yellow,
 // green: the user's theme picks the shade), and only the status takes it.
 func TestAStatusIsDrawnInTheTerminalsOwnColours(t *testing.T) {
+	t.Parallel()
+
 	for style, sgr := range map[present.Style]string{present.StatusOpen: "36", present.StatusActive: "33", present.StatusDone: "32"} {
 		c := present.Column{Title: present.NewInline("Tickets"), Cursor: -1, Rows: []present.Row{
 			{Primary: present.NewInline("#2 Export"), Trailing: present.NewInline("fertig"), TrailingStyle: style},
@@ -152,6 +164,8 @@ func TestAStatusIsDrawnInTheTerminalsOwnColours(t *testing.T) {
 // L2 allowed magenta in the terminal's bytes for an agent that waits; since
 // C9a exactly the two waits draw it, for an approval and for the person.
 func TestOnlyTheTwoWaitsDrawMagenta(t *testing.T) {
+	t.Parallel()
+
 	for s := present.Plain; s <= present.AgentEnded; s++ {
 		magenta := s == present.AgentApproval || s == present.AgentWaiting
 		for _, out := range []string{styled("x", s), quieted("x", s)} {

@@ -19,6 +19,8 @@ func notFound(project, id string, o api.TicketOptions) transport.Answer {
 // Every accepted removal of a ticket takes its agent's title, also one
 // that came with the expansion of its description.
 func TestARemovalThroughTheExpansionForgetsTheTitle(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start()
@@ -41,6 +43,8 @@ func TestARemovalThroughTheExpansionForgetsTheTitle(t *testing.T) {
 // A removal outweighs the older rows of the list shown: the row of the
 // removed ticket does not bring its title back, and R is offered.
 func TestARemovalOutweighsTheListShown(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.openSix() // from the list, which holds #6
@@ -66,6 +70,8 @@ func TestARemovalOutweighsTheListShown(t *testing.T) {
 // More agents than the disk takes reads at once: their titles are looked
 // up on the disk in batches, none dropped.
 func TestTitlesAreReadFromTheDiskInBatches(t *testing.T) {
+	t.Parallel()
+
 	h := newDiskHarness(t, t.TempDir(), nil)
 	h.withWatcher()
 	h.start()
@@ -102,6 +108,8 @@ func TestTitlesAreReadFromTheDiskInBatches(t *testing.T) {
 // A title read that succeeds gives its title even when its answer is too
 // large for the cache to keep.
 func TestATitleTooLargeForTheCacheStillShows(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
 		r := h.d.ticketRecord(project, 6, o)

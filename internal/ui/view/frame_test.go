@@ -11,6 +11,8 @@ import (
 // A pane stands in a rounded frame, its title in the top border, its text
 // inside the sides; every line is the pane's width, the frame's height.
 func TestAPaneStandsInAFrameWithItsTitleInTheBorder(t *testing.T) {
+	t.Parallel()
+
 	c := present.Column{Title: present.NewInline("Tickets"), Cursor: -1, Rows: []present.Row{entry("#1 Login", "", "", false)}}
 	got := pane(c, 20, 4, false, ansi.WcWidth)
 	want := []string{
@@ -50,6 +52,8 @@ func TestAPaneStandsInAFrameWithItsTitleInTheBorder(t *testing.T) {
 // frames are faint, their titles plain. The frame never takes the text's
 // styles.
 func TestTheFocusedPanesFrameStandsOut(t *testing.T) {
+	t.Parallel()
+
 	c := present.Column{Title: present.NewInline("Tickets"), Cursor: -1, Text: present.NewBody("text")}
 	focused := pane(c, 20, 4, true, ansi.WcWidth)
 	rest := pane(c, 20, 4, false, ansi.WcWidth)
@@ -73,6 +77,8 @@ func TestTheFocusedPanesFrameStandsOut(t *testing.T) {
 // and its status still in the colour of its meaning. A row that is not
 // quiet draws its tone at full strength.
 func TestAQuietRowKeepsItsToneFaint(t *testing.T) {
+	t.Parallel()
+
 	c := present.Column{Cursor: -1, Rows: []present.Row{
 		{Primary: present.NewInline("#3 Archiv"), Trailing: present.NewInline("done"), TrailingStyle: present.StatusDone, Quiet: true},
 		{Primary: present.NewInline("#4 Login"), Trailing: present.NewInline("open"), TrailingStyle: present.StatusOpen},
@@ -92,6 +98,8 @@ func TestAQuietRowKeepsItsToneFaint(t *testing.T) {
 // The panes of a screen stand side by side in their frames and fill its
 // width exactly, in every layout; only the focused one is blue.
 func TestTheFramedPanesFillTheWidth(t *testing.T) {
+	t.Parallel()
+
 	s := present.Screen{
 		Chooser: present.Column{Title: present.NewInline("Organisations"), Cursor: -1, Text: present.NewBody("a")},
 		List:    present.Column{Title: present.NewInline("Tickets"), Cursor: -1, Text: present.NewBody("b")},

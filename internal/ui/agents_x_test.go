@@ -36,6 +36,8 @@ func agentTicket(ag agents.Agent) launch.Ticket {
 }
 
 func TestXJumpsToTheAgentThatRuns(t *testing.T) {
+	t.Parallel()
+
 	for _, state := range []agents.State{agents.Working, agents.WaitingForYou, agents.WaitingForApproval, agents.Starting} {
 		h := newHarness(t)
 		l := h.withLauncher()
@@ -72,6 +74,8 @@ func TestXJumpsToTheAgentThatRuns(t *testing.T) {
 // Without iTerm, or without a pane the launch recorded, there is nothing
 // to jump to: x says so, but neither the help nor the head offers it.
 func TestXWithoutAPaneSaysSo(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		name    string
 		pane    string
@@ -104,6 +108,8 @@ func TestXWithoutAPaneSaysSo(t *testing.T) {
 // The pane gone (4201): the agent is settled, which marks a starting one
 // lost; one with a state stays and the status says the pane was closed.
 func TestAJumpToAPaneThatIsGone(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		state agents.State
 		lost  bool
@@ -131,6 +137,8 @@ func TestAJumpToAPaneThatIsGone(t *testing.T) {
 
 // Other outcomes of a jump are told, and settle nothing.
 func TestAJumpThatFails(t *testing.T) {
+	t.Parallel()
+
 	for kind, want := range map[launch.Kind]string{
 		launch.NoPermission: "macOS does not let this terminal control iTerm",
 		launch.ITermFailed:  "iTerm did not switch to the agent's pane",
@@ -156,6 +164,8 @@ func TestAJumpThatFails(t *testing.T) {
 // session it recorded, a new agent; once the pane opened the old one is
 // settled away, and the head and the list show the new one.
 func TestXStartsAnAgentWhoseSessionIsOverAgain(t *testing.T) {
+	t.Parallel()
+
 	for _, state := range []agents.State{agents.Ended, agents.Lost} {
 		h := newHarness(t)
 		l := h.withLauncher()
@@ -221,6 +231,8 @@ func TestXStartsAnAgentWhoseSessionIsOverAgain(t *testing.T) {
 // (claude --resume found nothing and the pane was closed): the start again
 // failed, the new agent goes and the old one stays, x offered on it again.
 func TestAStartAgainWhosePaneWentBeforeAHook(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.recorded = newAgent
@@ -252,6 +264,8 @@ func TestAStartAgainWhosePaneWentBeforeAHook(t *testing.T) {
 // A new agent that leaves without a hook (d, another client) ends the
 // wait: the old agent is offered again.
 func TestAStartAgainWhoseNewAgentWent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.recorded = newAgent
@@ -268,6 +282,8 @@ func TestAStartAgainWhoseNewAgentWent(t *testing.T) {
 // An agent whose hooks never recorded a session is started afresh: no
 // session to resume.
 func TestXStartsANeverStartedAgentAfresh(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	old := paned(h, agents.Lost)
@@ -283,6 +299,8 @@ func TestXStartsANeverStartedAgentAfresh(t *testing.T) {
 // A start again that opened nothing keeps the old agent and settles
 // nothing; x offers it again.
 func TestAFailedStartAgainKeepsTheOldAgent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.again = launch.NoPermission
@@ -306,6 +324,8 @@ func TestAFailedStartAgainKeepsTheOldAgent(t *testing.T) {
 // start again whose new agent got no hook did not start, the old one
 // stays; a first start whose agent got none is lost.
 func TestHereTheEndSettles(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.noITerm, l.again, l.recorded = true, launch.Ended, newAgent
@@ -355,6 +375,8 @@ func TestHereTheEndSettles(t *testing.T) {
 
 // A settlement that fails is told as a problem.
 func TestAFailedSettlementIsTold(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.noITerm, l.again, l.recorded = true, launch.Ended, newAgent
@@ -374,6 +396,8 @@ func TestAFailedSettlementIsTold(t *testing.T) {
 // the list is open; leaving it takes the problem along, it does not stand
 // on every screen without an end.
 func TestAProblemOfXInTheListStaysThere(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.again = launch.NoPermission
@@ -393,6 +417,8 @@ func TestAProblemOfXInTheListStaysThere(t *testing.T) {
 
 // The cursor of the agents' list follows a start again to the new agent.
 func TestTheCursorFollowsTheStartAgain(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.recorded = newAgent
@@ -420,6 +446,8 @@ func TestTheCursorFollowsTheStartAgain(t *testing.T) {
 // A3: in the agents' list x acts on the agent under the cursor, by the
 // same rules, and its notice shows there.
 func TestXInTheAgentsList(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.recorded = newAgent
@@ -461,6 +489,8 @@ func TestXInTheAgentsList(t *testing.T) {
 // While the old agent's settlement is out it is not started again a
 // second time.
 func TestAnAgentBeingReplacedIsNotStartedAgainTwice(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.recorded = newAgent
@@ -487,6 +517,8 @@ func TestAnAgentBeingReplacedIsNotStartedAgainTwice(t *testing.T) {
 
 // Where the meta bar stands the hints stand there, each whole.
 func TestTheMetaBarNamesTheKeys(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		state agents.State
 		want  string
@@ -519,6 +551,8 @@ func TestTheMetaBarNamesTheKeys(t *testing.T) {
 
 // A settlement out is not asked for again by the reads that follow it.
 func TestASettlementOutIsNotAskedTwice(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.recorded = newAgent
@@ -552,6 +586,8 @@ func startedAgain(t *testing.T, h *harness, f *fakeWatcher) (old, started agents
 // Review round 2 of #43: a read that failed lists no agent, but says
 // nothing of the new one: the wait for its first hook goes on.
 func TestAFailedReadDoesNotEndTheWait(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.recorded = newAgent
@@ -578,6 +614,8 @@ func TestAFailedReadDoesNotEndTheWait(t *testing.T) {
 // written does not list it; that is no sign it left, and the wait goes
 // on.
 func TestAReadFromBeforeTheRecordDoesNotEndTheWait(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.recorded = newAgent
@@ -605,6 +643,8 @@ func TestAReadFromBeforeTheRecordDoesNotEndTheWait(t *testing.T) {
 // one goes. One lost without a hook did not: the wait ends, the old one
 // stays and may be started again.
 func TestALostNewAgentAndTheWait(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		resumable bool
 		settled   bool
@@ -635,6 +675,8 @@ func TestALostNewAgentAndTheWait(t *testing.T) {
 // list is left: it does not come back when the list opens again, nor
 // stand in the pane of the agent's ticket.
 func TestAProblemOfTheListGoesWithIt(t *testing.T) {
+	t.Parallel()
+
 	for _, leave := range []string{"esc", "enter"} {
 		h := newHarness(t)
 		l := h.withLauncher()
@@ -657,6 +699,8 @@ func TestAProblemOfTheListGoesWithIt(t *testing.T) {
 // The answer of x in the list is newer than a notice of d told while it
 // ran: it shows.
 func TestTheAnswerOfXInTheListOutranksAnOlderNotice(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.recorded = newAgent
@@ -682,6 +726,8 @@ func TestTheAnswerOfXInTheListOutranksAnOlderNotice(t *testing.T) {
 // comes after the list closed belongs to its ticket: it shows there, as
 // any notice of the ticket in the pane.
 func TestTheAnswerAfterLeavingTheListBelongsToTheTicket(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.jumpKind = launch.PaneGone
@@ -702,6 +748,8 @@ func TestTheAnswerAfterLeavingTheListBelongsToTheTicket(t *testing.T) {
 // Review round 3 of #43: leaving the list takes only its own notice; a
 // problem of x pressed in the ticket's pane stays there.
 func TestLeavingTheListKeepsTheTicketsNotice(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.again = launch.NoPermission

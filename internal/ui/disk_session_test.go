@@ -121,6 +121,8 @@ func onDisk(t *testing.T, c *diskcache.Cache, k cache.Key, now time.Time) bool {
 // read; a start that cannot verify the identity shows nothing of an earlier
 // run, however much the disk holds (no offline start).
 func TestTheDiskIsNotTouchedBeforeMeSucceeded(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	msgs := messages(t, h.m.Init())
@@ -162,6 +164,8 @@ func TestTheDiskIsNotTouchedBeforeMeSucceeded(t *testing.T) {
 // The start is what it was: five requests, none for the disk; the disk
 // opens beside them and no request waits for it.
 func TestTheStartIsStillFiveRequests(t *testing.T) {
+	t.Parallel()
+
 	h := newDiskHarness(t, t.TempDir(), nil)
 	h.start()
 	if h.f.meCalls != 1 || h.f.initCall != 1 || h.f.toolCall != 1 || h.f.orgCalls != 1 || len(h.f.inboxCalls()) != 1 {
@@ -175,6 +179,8 @@ func TestTheStartIsStillFiveRequests(t *testing.T) {
 // Plan test 4: a page written by one run is shown by the next as cached,
 // with the load time of the network read, and reloaded exactly once.
 func TestARestartShowsTheCachedPageWithItsLoadTime(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.start()
@@ -233,6 +239,8 @@ func TestARestartShowsTheCachedPageWithItsLoadTime(t *testing.T) {
 
 // Plan test 5: an entry older than a day is not shown after a restart.
 func TestAnExpiredEntryIsNotShownAfterARestart(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.start()
@@ -270,6 +278,8 @@ func TestAnExpiredEntryIsNotShownAfterARestart(t *testing.T) {
 // Plan test 2: the same page under another token id is another entry: a
 // restart whose /me confirms another token sees nothing of the first.
 func TestAnotherTokenIdSeesNothingOfTheFirst(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.start()
@@ -315,6 +325,8 @@ func TestAnotherTokenIdSeesNothingOfTheFirst(t *testing.T) {
 // (valid JSON of another shape) is forgotten on disk too, not only in
 // memory; every read of it still out brings nothing back.
 func TestADiskEntryThatDoesNotDecodeIsForgottenOnDisk(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.start()
@@ -362,6 +374,8 @@ func TestADiskEntryThatDoesNotDecodeIsForgottenOnDisk(t *testing.T) {
 // Plan test 9: an eviction from memory keeps the disk entry; a removal by
 // the server takes both.
 func TestEvictionKeepsTheDiskARemovalTakesBoth(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.start()
@@ -409,6 +423,8 @@ func TestEvictionKeepsTheDiskARemovalTakesBoth(t *testing.T) {
 // nothing; a disk write journaled before an invalidation does not bring
 // the data back.
 func TestLateDiskWorkChangesNothing(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.start()
@@ -592,6 +608,8 @@ func TestLateDiskWorkChangesNothing(t *testing.T) {
 // waiting one is dropped, its ticket given back, and the flush sends only
 // what waits.
 func TestDiskReadsAreBounded(t *testing.T) {
+	t.Parallel()
+
 	h := newDiskHarness(t, t.TempDir(), nil)
 	h.start()
 	a := h.m.app
@@ -631,6 +649,8 @@ func TestDiskReadsAreBounded(t *testing.T) {
 // a write out at the time fills nothing again; another identity's entries
 // stay.
 func TestA401ClearsTheNamespaceOnDisk(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.start()
@@ -692,6 +712,8 @@ func TestA401ClearsTheNamespaceOnDisk(t *testing.T) {
 // When the namespace cannot be removed (the file system fails) the expired
 // session says so instead of claiming it was.
 func TestA401ThatCannotClearTheDiskSaysSo(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	fail := false
 	o := &diskcache.Opener{Root: root, Faults: func(step, _ string) error {
@@ -725,6 +747,8 @@ func TestA401ThatCannotClearTheDiskSaysSo(t *testing.T) {
 // back from disk after a restart: the mark takes every page of the inbox
 // (not only the one shown), the missing comment takes its expansion.
 func TestMarksAndMissingCommentsDoNotComeBackFromDisk(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.start()
@@ -810,6 +834,8 @@ func TestMarksAndMissingCommentsDoNotComeBackFromDisk(t *testing.T) {
 // Plan test 14: a failing file system keeps the network and the interface,
 // says so once, and the session goes on with memory alone.
 func TestADiskFailureFallsBackToMemoryWithOneNotice(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	fail := false
 	o := &diskcache.Opener{Root: root, Faults: func(step, _ string) error {
@@ -882,6 +908,8 @@ func TestADiskFailureFallsBackToMemoryWithOneNotice(t *testing.T) {
 // Plan test 14: foreign text persisted by one run reaches the terminal of
 // the next through present alone: no dangerous byte of it.
 func TestHostileTextFromDiskIsCleanedAgain(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	const hostile = "\x1b[2J\x1b]8;;https://evil.invalid\x07LINK\x1b]8;;\x1b\\\u202eEVIL\u2066"
@@ -934,6 +962,8 @@ func TestHostileTextFromDiskIsCleanedAgain(t *testing.T) {
 // A quit lets the disk go at once: the next run on the same directory
 // opens it.
 func TestAQuitReleasesTheDisk(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.start()
@@ -962,6 +992,8 @@ func TestAQuitReleasesTheDisk(t *testing.T) {
 // list, another page of comments and the expansion too, each while its
 // reload is still out.
 func TestTicketsPagesAndExpansionsComeFromDisk(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.openTickets(website)
@@ -1105,6 +1137,8 @@ func (h *harness) startGated() <-chan tea.Msg {
 // Finding 1: a 401 on /me ends a session that confirmed no identity: no
 // directory was made, nothing is claimed about clearing one.
 func TestA401OnMeClaimsNothingAboutTheDisk(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.f.me = func() (api.Me, transport.Answer) { return api.Me{}, failing(transport.Unauthenticated, 401) }
@@ -1125,6 +1159,8 @@ func TestA401OnMeClaimsNothingAboutTheDisk(t *testing.T) {
 // command of the model: a panic in them is the supervisor's fatal error,
 // never Bubble Tea's print.
 func TestAPanicInADiskCommandIsTheSupervisorsFatalError(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	explode := false
 	o := &diskcache.Opener{Root: root, Faults: func(step, _ string) error {
@@ -1166,6 +1202,8 @@ func TestAPanicInADiskCommandIsTheSupervisorsFatalError(t *testing.T) {
 // Probe M3: the reload fails for a temporary reason before the disk hit
 // lands: the page shows as cached and possibly stale, not as unreachable.
 func TestADiskHitAfterATemporaryFailureIsCachedAndStale(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.start()
@@ -1210,6 +1248,8 @@ func TestADiskHitAfterATemporaryFailureIsCachedAndStale(t *testing.T) {
 // Probe M4: changes journaled while the open is still out wait for it;
 // nothing is thrown away before the disk said whether it opens.
 func TestChangesWaitForTheOpen(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	gate, fail := make(chan struct{}), false
 	h := buildHarness(t, nil, gatedOpener(root, gate, &fail))
@@ -1242,6 +1282,8 @@ func TestChangesWaitForTheOpen(t *testing.T) {
 // fails, the expired session says the disk was not cleared; when it
 // succeeds, the namespace leaves the disk and nothing of the kind is said.
 func TestA401WhileTheOpenIsOut(t *testing.T) {
+	t.Parallel()
+
 	for _, opens := range []bool{false, true} {
 		t.Run(map[bool]string{false: "the open fails", true: "the open succeeds"}[opens], func(t *testing.T) {
 			root := t.TempDir()
@@ -1296,6 +1338,8 @@ func t0ui() time.Time { return time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC) }
 // Probe M18: the disk went off earlier (a write failed); a 401 then cannot
 // clear it, and the expired session says so.
 func TestA401AfterTheDiskWentOffSaysSo(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	o := &diskcache.Opener{Root: root, Faults: func(step, _ string) error {
 		if step == "rename" {
@@ -1322,6 +1366,8 @@ func TestA401AfterTheDiskWentOffSaysSo(t *testing.T) {
 // Probe M11: a disk miss gives its ticket back; nothing stays pending in
 // the scope for the session.
 func TestADiskMissLeavesNothingPending(t *testing.T) {
+	t.Parallel()
+
 	h := newDiskHarness(t, t.TempDir(), nil)
 	h.start()
 	a := h.m.app
@@ -1340,6 +1386,8 @@ func TestADiskMissLeavesNothingPending(t *testing.T) {
 // Review round 2: the profile the session runs with names the directory;
 // another profile is another directory (and another lock).
 func TestTheProfileNamesTheDirectory(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := buildHarnessFor(t, nil, &diskcache.Opener{Root: root}, "work")
 	h.start()
