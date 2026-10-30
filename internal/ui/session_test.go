@@ -51,6 +51,9 @@ type recordedData struct {
 	sixComments int
 	// sixFiles is the number of attachments of ticket #6, 12 when zero.
 	sixFiles int
+	// sevenEdit changes the comments of ticket #7 (C12), oldest first: a
+	// test sets it on its copy.
+	sevenEdit func(posts []api.Post) []api.Post
 	// capabilities are what the recorded /me lists (K1). me lists none: a
 	// session takes the tools unless a test gives it these
 	// (newRESTHarness).

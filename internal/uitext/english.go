@@ -206,6 +206,10 @@ const (
 	CommentHelp
 	FileHelp
 	OpenFileHelp
+	// C12: a comment's files.
+	CommentOrFileHelp
+	FileNotListed
+	FilesNotListed
 	// C1f: mark as read, and the ticket opened from a notification.
 	MarkReadKey
 	MarkReadHelp
@@ -449,6 +453,8 @@ var english = map[ID]string{
 	TextEmpty: "no text", TextStatusUnknown: "text status unknown",
 	TabKey: "tab", NextAreaHelp: "next section", OrderKey: "o", ExpandKey: "e", ExpandHelp: "expand",
 	CollapseHelp: "collapse", CommentHelp: "comment", FileHelp: "file", OpenFileHelp: "open file",
+	CommentOrFileHelp: "comment or file", FileNotListed: "1 file, not listed by this server",
+	FilesNotListed: "%d files, not listed by this server",
 
 	MarkReadKey: "r", MarkReadHelp: "mark read", OpenLinkedTicketHelp: "open ticket", NotificationHelp: "notification",
 	LabelMarkRead: "Mark as read",

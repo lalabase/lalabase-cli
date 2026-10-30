@@ -63,21 +63,21 @@ func (m Model) launchTarget() (launch.Ticket, bool) {
 	return launch.Ticket{Org: a.detailOrg(), Project: d.project, ID: d.id, Number: d.record.Number}, true
 }
 
-// fileTarget is what Enter opens (C10): the selected file of the ticket the
-// pane shows, in the section of files, when x's conditions hold and the
-// ticket's organisation is known. Like launchTarget it reads the pane's
-// record, never the list's cursor. The name is only for the notice.
+// fileTarget is what Enter opens (C10, C12): the selected file of the ticket
+// the pane shows, of its attachments or of a comment, when x's conditions
+// hold and the ticket's organisation is known. Like launchTarget it reads
+// the pane's record, never the list's cursor. The name is only for the
+// notice.
 func (m Model) fileTarget() (launch.Ticket, launch.File, bool) {
 	t, ok := m.launchTarget()
-	d := m.app.detail
-	if !ok || m.focus != view.Object || d.area != areaAttachments || t.Org == "" {
+	if !ok || m.focus != view.Object || t.Org == "" {
 		return launch.Ticket{}, launch.File{}, false
 	}
-	f, ok := d.selectedFile()
+	f, ok := m.app.detail.selectedFile()
 	if !ok {
 		return launch.Ticket{}, launch.File{}, false
 	}
-	return t, launch.File{Kind: launch.TicketFile, ID: *f.ID, Name: f.Filename}, true
+	return t, f, true
 }
 
 // openFile is Enter on a file: one child at a time, shared with x, and its

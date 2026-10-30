@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gboyke/lalabase-cli/internal/api"
+	"github.com/gboyke/lalabase-cli/internal/launch"
 	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
 	"github.com/gboyke/lalabase-cli/internal/uitext"
@@ -206,8 +207,10 @@ func (m Model) detailColumn() present.Column {
 			line = at
 		}
 	case anchorFile:
-		if f, ok := d.selectedFile(); ok {
-			line = t.files[*f.ID]
+		line = t.file
+		if at, ok := t.posts[d.post]; ok && line < 0 && d.area == areaComments {
+			// The file left the page: the comment that took over is in sight.
+			line = at
 		}
 	}
 	if line >= 0 {
@@ -266,14 +269,14 @@ func boolInt(b bool) int {
 }
 
 // ticketLines is the text of the pane, one cleaned line each with its
-// style, and the line of every section's heading and of every comment's
-// head.
+// style, and the line of every section's heading, of every comment's head
+// and of the selected file, -1 for none.
 type ticketLines struct {
 	lines  []string
 	styles []present.LineStyle
 	areas  [ticketAreas]int
 	posts  map[string]int
-	files  map[string]int
+	file   int
 }
 
 // add appends foreign or own text in one style: a body is cleaned once and
@@ -298,6 +301,41 @@ func (t *ticketLines) addLead(lead string, leadStyle present.Style, rest string,
 	}
 	t.lines = append(t.lines, line)
 	t.styles = append(t.styles, present.LineStyle{Lead: n, LeadStyle: leadStyle, RestStyle: restStyle})
+}
+
+// addFile appends one file, indented, its facts faint. The file with the
+// id selected takes the mark, once: the one line that has it is what Enter
+// opens.
+func (t *ticketLines) addFile(f api.Attachment, name, rest, selected string) {
+	if t.file < 0 && selected != "" && f.ID != nil && *f.ID == selected {
+		t.file = len(t.lines)
+		name = uitext.Inline(uitext.SelectedComment).String() + name
+	}
+	t.addLead(name, present.Plain, rest, present.Faint)
+	t.styles[len(t.styles)-1].Indent = 2
+}
+
+// addPostFiles appends a comment's files under its text; selected is the
+// id of the one the walk stands on, if it is this comment's. A comment
+// without a list has only a count to say (a server before R7, a page kept
+// from then).
+func (t *ticketLines) addPostFiles(p api.Post, selected string) {
+	if p.Attachments == nil && p.AttachmentsCount > 0 {
+		t.add(noteLine, notListed(p.AttachmentsCount))
+		return
+	}
+	for _, f := range p.Attachments {
+		name, rest := fileLine(f)
+		t.addFile(f, name, rest, selected)
+	}
+}
+
+// notListed is the line of a count without its list.
+func notListed(count int) string {
+	if count == 1 {
+		return uitext.Inline(uitext.FileNotListed).String()
+	}
+	return uitext.Fill(uitext.FilesNotListed, count).String()
 }
 
 // The styles of the ticket's lines.
@@ -338,7 +376,10 @@ func (a *app) ownID() string {
 // but a description or a comment keeps its lines.
 func ticketText(d *detailView, c ticketContext) ticketLines {
 	r, paged, origin, when := d.record, c.paged, c.origin, c.when
-	t := ticketLines{posts: map[string]int{}, files: map[string]int{}}
+	t := ticketLines{posts: map[string]int{}, file: -1}
+	// The one selected file, of the active section; the place that shows it
+	// takes its id.
+	selected, chosen := d.selectedFile()
 	// The head: the title, then one faint line of its facts, unless they
 	// stand in the meta bar, then the line of its agent, if it has one.
 	t.addLead(uitext.Fill(uitext.TicketNumber, r.Number).String()+" "+textOr(r.Title, uitext.UntitledTicket), present.Strong, "", present.Strong)
@@ -418,7 +459,7 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 		if c.me != "" && p.Author != nil && p.Author.ID == c.me {
 			author, tone = author+" "+uitext.Inline(uitext.You).String(), present.Own
 		}
-		if d.area == areaComments && p.ID == d.post {
+		if d.area == areaComments && p.ID == d.post && !chosen {
 			author = uitext.Inline(uitext.SelectedComment).String() + author
 		}
 		rest := "  " + when(p.CreatedAt)
@@ -440,6 +481,13 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 				t.add(noteLine, expansionState(e)...)
 			}
 		}
+		if !d.hidden(p.ID) {
+			file := ""
+			if chosen && selected.Kind == launch.CommentFile && p.ID == d.post {
+				file = selected.ID
+			}
+			t.addPostFiles(p, file)
+		}
 		t.add(plainLine, "")
 	}
 
@@ -448,17 +496,13 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 		t.add(noteLine, pageState(d))
 		return t
 	}
-	selected, chosen := d.selectedFile()
+	file := ""
+	if chosen && selected.Kind == launch.TicketFile {
+		file = selected.ID
+	}
 	for _, f := range r.Attachments {
 		name, rest := attachmentLine(f)
-		if f.ID != nil {
-			t.files[*f.ID] = len(t.lines)
-			if chosen && d.area == areaAttachments && selected.ID != nil && *f.ID == *selected.ID {
-				name = uitext.Inline(uitext.SelectedComment).String() + name
-			}
-		}
-		t.addLead(name, present.Plain, rest, present.Faint)
-		t.styles[len(t.styles)-1].Indent = 2
+		t.addFile(f, name, rest, file)
 	}
 	return t
 }
@@ -623,11 +667,12 @@ func attachmentsHeading(d *detailView, paged bool) string {
 	return uitext.Fill(uitext.AttachmentsAll, t.AttachmentsTotal).String()
 }
 
-// attachmentLine is one attachment: its name, and of its metadata what
-// the server sent; what it did not send says so (a missing size is not
-// zero bytes). One line: every value is cleaned as one. The name and the
-// rest come apart, so the rest can be drawn faint.
-func attachmentLine(f api.Attachment) (string, string) {
+// fileLine is one file: its name, and its type and size as far as the server
+// sent them; what it did not send says so (a missing size is not zero
+// bytes). One line: every value is cleaned as one. The name and the rest
+// come apart, so the rest can be drawn faint. The line of a comment's file:
+// the server keeps no text status for it.
+func fileLine(f api.Attachment) (string, string) {
 	kind := uitext.Inline(uitext.TypeUnknown).String()
 	if f.ContentType != nil && strings.TrimSpace(present.NewInline(*f.ContentType).String()) != "" {
 		kind = bounded(present.NewInline(*f.ContentType).String(), maxContentType)
@@ -636,13 +681,20 @@ func attachmentLine(f api.Attachment) (string, string) {
 	if f.ByteSize != nil {
 		size = sizeOf(*f.ByteSize)
 	}
+	return textOr(f.Filename, uitext.UnnamedFile), " · " + kind + " · " + size
+}
+
+// attachmentLine is one attachment of the ticket: fileLine with what the
+// server says of its text.
+func attachmentLine(f api.Attachment) (string, string) {
+	name, rest := fileLine(f)
 	text := uitext.TextStatusUnknown
 	if f.TextStatus != nil {
 		if id, ok := textStatuses[*f.TextStatus]; ok {
 			text = id
 		}
 	}
-	return textOr(f.Filename, uitext.UnnamedFile), " · " + kind + " · " + size + " · " + uitext.Inline(text).String()
+	return name, rest + " · " + uitext.Inline(text).String()
 }
 
 // maxContentType bounds a MIME type: it is a short word, and a long one
