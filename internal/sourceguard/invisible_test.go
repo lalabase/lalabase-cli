@@ -50,11 +50,13 @@ func TestTextFilesCarryNoInvisibleCharacters(t *testing.T) {
 	}
 }
 
-// binaryFiles are the tracked files that may hold any byte, by path. Empty:
-// the repository has no binary file. A NUL byte anywhere else is a finding
+// binaryFiles are the tracked files that may hold any byte, by path: the
+// picture on the README's first screen. A NUL byte anywhere else is a finding
 // (it is a control character), because a shell still runs such a file and a
 // diff shows it as binary, so nobody reads it in review.
-var binaryFiles = map[string]bool{}
+var binaryFiles = map[string]bool{
+	"docs/images/interface.png": true,
+}
 
 // checkFile checks one tracked file: it must be no symbolic link (a tool that
 // writes into the repository would write through it), and unless it is on
@@ -134,8 +136,8 @@ func TestAnInvalidByteDoesNotHideTheRestOfTheFile(t *testing.T) {
 
 // A NUL byte does not make a file binary here: a shell script with one in a
 // comment still runs, and GitHub then shows the whole file as binary, so a
-// reviewer cannot read it at all. The repository has no binary file; one
-// that is needed later goes on binaryFiles by its path.
+// reviewer cannot read it at all. A binary file that is needed goes on
+// binaryFiles by its path.
 func TestANulByteIsAFindingAndTheRestIsStillRead(t *testing.T) {
 	data := []byte("#!/bin/sh\n# x\x00y\necho \"a" + string(rune(0x202e)) + "b\"\n")
 	got := scan("script.sh", data)

@@ -239,7 +239,7 @@ func TestRemovingANamespaceKeepsTheSameTokenIDElsewhere(t *testing.T) {
 	}
 }
 
-// The limits are a promise of the README: 64 entries, 16 MiB, 2 MiB each.
+// The limits are a promise of the reference: 64 entries, 16 MiB, 2 MiB each.
 // The tests above count from the constants; this pins the constants.
 func TestTheLimitsAreTheDocumentedOnes(t *testing.T) {
 	if MaxEntries != 64 || MaxBytes != 16<<20 || MaxEntryBytes != 2<<20 {

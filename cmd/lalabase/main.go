@@ -132,7 +132,7 @@ func buildVersion() string {
 // executable is this program's path with its links resolved: the hooks
 // name the program that runs now, not whatever a link may name later. A
 // program moved or removed while a session runs (an upgrade that replaces
-// the version a link pointed to) breaks the session's hooks; the README
+// the version a link pointed to) breaks the session's hooks; the reference
 // says so. "" when unknown.
 func executable() string {
 	path, err := os.Executable()
