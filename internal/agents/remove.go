@@ -88,6 +88,43 @@ func Removable(a Agent, now time.Time) bool {
 	return false
 }
 
+// Endable says whether d may end a's session: it waits for the person, so
+// no turn of it is cut off. An agent at work is never ended.
+func Endable(a Agent) bool { return a.State == WaitingForYou || a.State == WaitingForApproval }
+
+// End ends the session of the agent id with kill and removes its files
+// (d on a waiting agent), deciding under the agent's lock like Remove: one
+// that works again is ErrRunning and kill is not called, one that ended
+// meanwhile just goes, and a kill that fails keeps it and is the error.
+// A SessionEnd hook that waited for the lock writes a state without a
+// record; Prune takes that leftover after an hour.
+func End(dir, id string, now time.Time, procs Procs, kill func() error) error {
+	running := false
+	var killed error
+	err := removeIf(dir, id, procs, func(c current) bool {
+		switch {
+		case !c.listed:
+			return c.record
+		case Removable(c.agent, now):
+			return true
+		case !Endable(c.agent):
+			running = true
+			return false
+		}
+		killed = kill()
+		return killed == nil
+	})
+	switch {
+	case err != nil:
+		return err
+	case killed != nil:
+		return killed
+	case running:
+		return ErrRunning
+	}
+	return nil
+}
+
 // Remove removes the agent id's files from dir (d) if it is still
 // Removable by now when its lock is held; ErrRunning when it is not any
 // more. An agent already gone is no error.

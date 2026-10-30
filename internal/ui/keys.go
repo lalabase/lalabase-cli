@@ -546,9 +546,7 @@ func (m Model) ticketBindings() []binding {
 	if _, ok := m.bookTarget(); ok {
 		out = append(out, binding{BookTime, uitext.BookKey, uitext.BookHelp})
 	}
-	if _, ok := m.removeTarget(); ok {
-		out = append(out, binding{RemoveAgent, uitext.RemoveAgentKey, uitext.RemoveAgentHelp})
-	}
+	out = append(out, m.dBinding()...)
 	return append(out, binding{PageUp, uitext.PageUpDownKey, uitext.ScrollHelp})
 }
 

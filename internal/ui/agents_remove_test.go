@@ -339,3 +339,117 @@ func TestTooManyAgentFilesAreTold(t *testing.T) {
 		t.Fatalf("status after a good read %q", got)
 	}
 }
+
+// fakeEnder is a launcher that can end an agent's session.
+type fakeEnder struct {
+	fakeLauncher
+	ended []string
+	err   error
+}
+
+func (f *fakeEnder) Ends() bool { return true }
+
+func (f *fakeEnder) EndSession(agent string) error {
+	f.ended = append(f.ended, agent)
+	return f.err
+}
+
+func (h *harness) withEnder() *fakeEnder {
+	f := &fakeEnder{}
+	h.m.app.deps.Launcher = f
+	return f
+}
+
+// d on a waiting agent asks first; the second d ends its session and takes
+// it out of the list.
+func TestDEndsAWaitingAgentOnTheSecondPress(t *testing.T) {
+	t.Parallel()
+
+	for _, state := range []agents.State{agents.WaitingForYou, agents.WaitingForApproval} {
+		h := newHarness(t)
+		f := h.withWatcher(agentIn(1, orgA, 6, state, h.now), agentIn(2, orgA, 7, agents.Ended, h.now))
+		e := h.withEnder()
+		h.start()
+		h.drive(h.press("A"))
+		if !h.offers(RemoveAgent) {
+			t.Fatalf("%v: d is not offered", state)
+		}
+		h.drive(h.press("d"))
+		if len(e.ended) != 0 || len(f.removals()) != 0 {
+			t.Fatalf("%v: the first d acted: %v", state, e.ended)
+		}
+		if got := h.status(); got != "Press d again to end agent #6." {
+			t.Fatalf("%v: status %q", state, got)
+		}
+		h.drive(h.press("d"))
+		if id := agentIn(1, orgA, 6, state, h.now).ID; len(e.ended) != 1 || e.ended[0] != id {
+			t.Fatalf("%v: ended %v", state, e.ended)
+		}
+		for _, r := range h.m.agentsColumn().Rows {
+			if strings.HasPrefix(r.Primary.String(), "#6") {
+				t.Fatalf("%v: #6 still shown", state)
+			}
+		}
+	}
+}
+
+// The second d counts for the agent asked about alone, and only in time.
+func TestTheSecondDMustMatchTheAgentAndTheTime(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.withWatcher(agentIn(1, orgA, 6, agents.WaitingForYou, h.now), agentIn(2, orgA, 7, agents.WaitingForYou, h.now))
+	e := h.withEnder()
+	h.start()
+	h.drive(h.press("A"))
+	h.drive(h.press("d"))
+	h.drive(h.press("down"))
+	h.drive(h.press("d"))
+	if len(e.ended) != 0 {
+		t.Fatalf("ended %v on a question about another agent", e.ended)
+	}
+	h.m.app.agents.armedUntil = h.m.app.now()
+	h.drive(h.press("d"))
+	if len(e.ended) != 0 {
+		t.Fatalf("ended %v after the question ran out", e.ended)
+	}
+}
+
+// A session that does not end keeps the agent and says why.
+func TestAWaitingAgentThatDoesNotEndStays(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.withWatcher(agentIn(1, orgA, 6, agents.WaitingForYou, h.now))
+	e := h.withEnder()
+	e.err = errors.New("it has no session to end")
+	h.start()
+	h.drive(h.press("A"))
+	h.drive(h.press("d"))
+	h.drive(h.press("d"))
+	if got := h.status(); got != "Agent #6 could not be removed: it has no session to end" {
+		t.Fatalf("status %q", got)
+	}
+	if len(h.m.agentsColumn().Rows) != 1 {
+		t.Fatal("the agent left the list")
+	}
+}
+
+// An agent at work offers no d, with a launcher that could end it.
+func TestDNeverEndsAnAgentAtWork(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+	e := h.withEnder()
+	h.start()
+	h.drive(h.press("A"))
+	if h.offers(RemoveAgent) {
+		t.Fatal("d offered")
+	}
+	h.drive(h.press("d"))
+	h.drive(h.press("d"))
+	if len(e.ended) != 0 {
+		t.Fatalf("ended %v", e.ended)
+	}
+}

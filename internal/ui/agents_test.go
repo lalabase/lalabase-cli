@@ -90,6 +90,17 @@ func (f *fakeWatcher) Remove(id string, _ time.Time) tea.Cmd {
 	return func() tea.Msg { return agents.Removed{ID: id, Err: err} }
 }
 
+// End answers as agents.End would: kill, then the agent goes.
+func (f *fakeWatcher) End(id string, at time.Time, kill func(string) error) tea.Cmd {
+	return func() tea.Msg {
+		if err := kill(id); err != nil {
+			return agents.Removed{ID: id, Err: err}
+		}
+		msg := f.Remove(id, at)()
+		return msg
+	}
+}
+
 func (f *fakeWatcher) removals() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 
@@ -67,6 +68,27 @@ func (l *Launcher) startInTmux(ctx context.Context, agent, folder, scriptPath st
 		return TmuxFailed
 	}
 	return Opened
+}
+
+// errNoSession is EndSession's answer when the agent's session did not end.
+var errNoSession = errors.New("it has no session to end")
+
+// Ends says whether agents can be ended: they run in tmux here.
+func (l *Launcher) Ends() bool { return l.tmux != "" }
+
+// EndSession ends the agent's tmux session, and with it its claude (d on
+// a waiting agent). A viewer on it closes (detach-on-destroy). It blocks
+// up to the deadline: the caller runs it under the supervisor.
+func (l *Launcher) EndSession(agent string) error {
+	if l.tmux == "" || !agents.ForeignID(agent) {
+		return errNoSession
+	}
+	ctx, cancel := context.WithTimeout(l.cfg.Supervisor.Context(), l.deadline)
+	defer cancel()
+	if _, _, err := l.runTmux(ctx, tmuxArgs("kill-session", "-t", "="+agent)); err != nil {
+		return errNoSession
+	}
+	return nil
 }
 
 // View is the command that makes the viewer show the agent's session, or
