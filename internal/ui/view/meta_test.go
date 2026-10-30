@@ -172,16 +172,16 @@ func TestAMetaLineLeadsWithItsGlyph(t *testing.T) {
 	c := metaColumn()
 	c.Meta = append(c.Meta,
 		present.MetaLine{Text: present.NewInline("Agent"), Style: present.Faint},
-		present.MetaLine{Lead: present.NewInline("⣿"), LeadStyle: present.AgentWaiting, Text: present.NewInline("waiting for you · 59 min")},
+		present.MetaLine{Lead: present.NewInline("A"), LeadStyle: present.AgentWaiting, Text: present.NewInline("waiting for you · 59 min")},
 	)
 	width := 76 + frameCells
 	lines := pane(c, width, 12, true, ansi.WcWidth)
 	line := lines[1+len(c.Meta)-1]
 	plain := ansi.Strip(line)
-	if !strings.Contains(plain, "⣿ waiting for you · …") {
+	if !strings.Contains(plain, "A waiting for you · …") {
 		t.Fatalf("%q", plain)
 	}
-	if got := inTone(line, 35); got != "⣿" {
+	if got := inTone(line, 35); got != "A" {
 		t.Fatalf("in magenta: %q", got)
 	}
 	if w := ansi.WcWidth.StringWidth(line); w != width {

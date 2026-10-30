@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/agents"
@@ -36,7 +37,7 @@ func TestEveryStateHasItsGlyphInTheList(t *testing.T) {
 		style present.Style
 	}{
 		{agents.WaitingForApproval, "!", present.AgentApproval},
-		{agents.WaitingForYou, "⣿", present.AgentWaiting},
+		{agents.WaitingForYou, "A", present.AgentWaiting},
 		{agents.Lost, "✕", present.AgentLost},
 		{agents.Working, "⠋", present.AgentWorking},
 		{agents.Starting, "⠂", present.AgentStarting},
@@ -113,7 +114,7 @@ func TestEveryStateHasALook(t *testing.T) {
 func TestTheColumnFitsEveryLayout(t *testing.T) {
 	t.Parallel()
 
-	glyphBeforeSix := regexp.MustCompile("⣿ +#6 ")
+	glyphBeforeSix := regexp.MustCompile("A +#6 ")
 	for _, width := range []int{60, 100, 160} {
 		for _, list := range [][]agents.Agent{nil, {}} {
 			h := newHarness(t)
@@ -142,5 +143,46 @@ func TestTheColumnFitsEveryLayout(t *testing.T) {
 				t.Errorf("width %d, agent %v: glyph before #6 %v\n%s", width, list != nil, got, screen)
 			}
 		}
+	}
+}
+
+// An agent that waits for the person breathes: its A moves through the
+// tones one read at a time, never from full to dim at once, and a breath
+// takes six seconds of reads. The other states keep their tone.
+func TestAWaitingAgentPulsesWithTheReads(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.withWatcher(agentIn(1, orgA, 6, agents.WaitingForYou, h.now))
+	h.start()
+	a := h.m.app
+	if want := int(6 * time.Second / agentsEvery); len(waitPulse) != want {
+		t.Fatalf("a breath of %d reads, want %d", len(waitPulse), want)
+	}
+	seen := map[present.Style]bool{}
+	for i := range waitPulse {
+		a.agents.frame = i
+		l := a.look(agents.WaitingForYou)
+		next := waitPulse[(i+1)%len(waitPulse)]
+		if l.glyph != "A" {
+			t.Fatalf("glyph %q", l.glyph)
+		}
+		if (l.style == present.AgentWaiting && next == present.AgentWaitingDim) || (l.style == present.AgentWaitingDim && next == present.AgentWaiting) {
+			t.Fatalf("a jump at read %d", i)
+		}
+		seen[l.style] = true
+		if got := a.look(agents.WaitingForApproval).style; got != present.AgentApproval {
+			t.Fatalf("the approval's tone moved: %v", got)
+		}
+	}
+	if len(seen) != 3 {
+		t.Fatalf("tones %v", seen)
+	}
+	before := a.agents.frame
+	ref := a.agents.ref + 1
+	a.agents.ref, a.agents.reading = ref, true
+	a.receiveAgents(agents.Snapshot{Ref: ref, Agents: a.agents.list})
+	if a.agents.frame != before+1 {
+		t.Fatalf("a read did not move the pulse: frame %d", a.agents.frame)
 	}
 }

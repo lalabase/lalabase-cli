@@ -14,7 +14,7 @@ import (
 func counts() []present.AgentCount {
 	return []present.AgentCount{
 		{Glyph: present.NewInline("!"), Style: present.AgentApproval, Count: 1},
-		{Glyph: present.NewInline("⣿"), Style: present.AgentWaiting, Count: 2},
+		{Glyph: present.NewInline("A"), Style: present.AgentWaiting, Count: 2},
 		{Glyph: present.NewInline("✕"), Style: present.AgentLost, Count: 1},
 		{Glyph: present.NewInline("⠹"), Style: present.AgentWorking, Count: 1},
 		{Glyph: present.NewInline("✓"), Style: present.AgentEnded, Count: 12},
@@ -25,7 +25,7 @@ func headerScreen(identity string, c []present.AgentCount) present.Screen {
 	return present.Screen{Identity: present.NewInline(identity), AgentCounts: c}
 }
 
-const fullSummary = "Agents ! 1 · ⣿ 2 · ✕ 1 · ⠹ 1 · ✓ 12"
+const fullSummary = "Agents ! 1 · A 2 · ✕ 1 · ⠹ 1 · ✓ 12"
 
 func TestTheSummaryStandsRightInTheHeader(t *testing.T) {
 	t.Parallel()
@@ -43,12 +43,12 @@ func TestTheSummaryStandsRightInTheHeader(t *testing.T) {
 	for _, c := range []struct {
 		glyph string
 		sgr   int
-	}{{"!", 35}, {"⣿", 35}, {"✕", 31}, {"⠹", 36}, {"✓", 32}} {
+	}{{"!", 35}, {"A", 35}, {"✕", 31}, {"⠹", 36}, {"✓", 32}} {
 		cells := inTone(got, c.sgr)
 		if !strings.Contains(cells, c.glyph) {
 			t.Errorf("%q is not in its tone: %q", c.glyph, cells)
 		}
-		if strings.ContainsAny(cells, "0123456789As") {
+		if strings.ContainsAny(cells, "0123456789gs") {
 			t.Errorf("a count or the word in a tone: %q", cells)
 		}
 	}
@@ -64,7 +64,7 @@ func TestBelow120ColumnsTheWordGoes(t *testing.T) {
 	t.Parallel()
 
 	s := headerScreen("Ada", counts())
-	if got := ansi.Strip(headerLine(s, 119, ansi.WcWidth)); !strings.HasSuffix(got, "! 1 · ⣿ 2 · ✕ 1 · ⠹ 1 · ✓ 12") || strings.Contains(got, "Agents") {
+	if got := ansi.Strip(headerLine(s, 119, ansi.WcWidth)); !strings.HasSuffix(got, "! 1 · A 2 · ✕ 1 · ⠹ 1 · ✓ 12") || strings.Contains(got, "Agents") {
 		t.Fatalf("%q", got)
 	}
 	if got := ansi.Strip(headerLine(s, 120, ansi.WcWidth)); !strings.HasSuffix(got, fullSummary) {
@@ -93,7 +93,7 @@ func TestANarrowHeaderGivesWayInOrder(t *testing.T) {
 	}
 	// 90: the word gone, the identity cut with an ellipsis.
 	got := at(90)
-	if strings.Contains(got, "Agents") || !strings.HasSuffix(got, "! 1 · ⣿ 2 · ✕ 1 · ⠹ 1 · ✓ 12") || !strings.Contains(got, "…") {
+	if strings.Contains(got, "Agents") || !strings.HasSuffix(got, "! 1 · A 2 · ✕ 1 · ⠹ 1 · ✓ 12") || !strings.Contains(got, "…") {
 		t.Fatalf("90: %q", got)
 	}
 	// Narrower: the counts go from the least urgent on, the most urgent

@@ -18,7 +18,7 @@ import (
 func agentRows(n int, second bool) []present.Row {
 	rows := make([]present.Row, n)
 	for i := range rows {
-		rows[i] = present.Row{Primary: present.NewInline(fmt.Sprintf("#%d Task %d", i+1, i+1)), Marked: true, Mark: present.NewInline("⣿"), MarkStyle: present.AgentWaiting}
+		rows[i] = present.Row{Primary: present.NewInline(fmt.Sprintf("#%d Task %d", i+1, i+1)), Marked: true, Mark: present.NewInline("A"), MarkStyle: present.AgentWaiting}
 		if second {
 			rows[i].Secondary = present.NewInline("Other Org")
 		}
@@ -80,7 +80,7 @@ func TestTheAreaStandsUnderTheOrganisations(t *testing.T) {
 	if !strings.HasPrefix(nav[0], "╭─ Organisations") || !strings.HasPrefix(nav[len(nav)-area], "╭─ Agents") {
 		t.Fatalf("%s", strings.Join(nav, "\n"))
 	}
-	if !strings.Contains(nav[len(nav)-3], "⣿ #1 Task 1") || !strings.Contains(nav[len(nav)-2], "⣿ #2 Task 2") {
+	if !strings.Contains(nav[len(nav)-3], "A #1 Task 1") || !strings.Contains(nav[len(nav)-2], "A #2 Task 2") {
 		t.Fatalf("%s", strings.Join(nav, "\n"))
 	}
 	if !strings.HasPrefix(nav[len(nav)-area-1], "╰") {
@@ -106,7 +106,7 @@ func TestTheAreaIsAtMostHalfTheColumnAndScrolls(t *testing.T) {
 	out := Render(areaScreen(rows, 17), g, Agents, ansi.WcWidth)
 	nav := bodyColumn(out, 0, 26, 2, g.BodyHeight)
 	joined := strings.Join(nav, "\n")
-	if !strings.Contains(joined, "> ⣿ #18 Task 18") {
+	if !strings.Contains(joined, "> A #18 Task 18") {
 		t.Fatalf("the cursor is out of sight:\n%s", joined)
 	}
 	if strings.Contains(joined, "#1 Task 1 ") {
@@ -183,7 +183,7 @@ func TestTheAreasRowsKeepTheirSecondLine(t *testing.T) {
 	out := Render(s, g, Navigation, ansi.WcWidth)
 	nav := bodyColumn(out, 0, ColumnWidth(g, Navigation), 2, g.BodyHeight)
 	area := nav[len(nav)-6:]
-	want := []string{"╭─ Agents", "│   ⣿ #1 Task 1", "│     Other Org", "│   ⣿ #2 Task 2", "│     Other Org", "╰"}
+	want := []string{"╭─ Agents", "│   A #1 Task 1", "│     Other Org", "│   A #2 Task 2", "│     Other Org", "╰"}
 	for i, w := range want {
 		if !strings.HasPrefix(area[i], w) {
 			t.Fatalf("line %d: %q, want %q\n%s", i, area[i], w, strings.Join(area, "\n"))

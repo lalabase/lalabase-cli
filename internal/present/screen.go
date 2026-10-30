@@ -152,6 +152,10 @@ const (
 	// word say the state; the tone only makes it seen.
 	AgentApproval
 	AgentWaiting
+	// AgentWaitingSoft and AgentWaitingDim are the steps of the pulse down
+	// from AgentWaiting.
+	AgentWaitingSoft
+	AgentWaitingDim
 	AgentLost
 	AgentWorking
 	AgentStarting

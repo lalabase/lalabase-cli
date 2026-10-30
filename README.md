@@ -65,7 +65,7 @@ navigation again.
   terminal's own. While an
   agent exists (C9b), the header's first line ends with a summary of the
   agents per state, the most urgent first, each glyph in its tone with its
-  count, `Agents ! 1 · ⣿ 2 · ✕ 1 · ⠹ 1 · ✓ 1`; a state without an agent is
+  count, `Agents ! 1 · A 2 · ✕ 1 · ⠹ 1 · ✓ 1`; a state without an agent is
   left out, and below 120 columns the word `Agents` too. Where the line is
   too narrow, the identity on its left is cut first, then the word goes,
   then the counts from the least urgent; the app and the profile stay
@@ -118,7 +118,7 @@ navigation again.
   with the ticket in focus), the ticket's facts stand in a bar on its
   right, which does not scroll: for a ticket with an agent first (C9b)
   Agent with the glyph in its tone, the state and its age
-  (`⣿ waiting for you`, then `· 4 min` under it where one line is too
+  (`A waiting for you`, then `· 4 min` under it where one line is too
   short), so a low pane, which cuts the bar's end, keeps it; then Status
   in its tone, Project, People (the assignees, then the creator),
   Updated and, against a server with S6 (MCP 0.12.0, feature
@@ -520,7 +520,7 @@ navigation again.
     | State | Glyph | Tone | From |
     |---|---|---|---|
     | waiting for approval | `!` | violet, bold | `PermissionRequest` or `Notification` with `notification_type: "permission_prompt"` |
-    | waiting for you | `⣿` | violet | `Stop`, the question tool's request, or `SessionStart` after `/clear`, `/resume` or `/branch` (no `Stop` follows them) |
+    | waiting for you | `A`, pulsing | violet | `Stop`, the question tool's request, or `SessionStart` after `/clear`, `/resume` or `/branch` (no `Stop` follows them) |
     | lost | `✕` | red | the pid is gone, or now has another start time; or, written by the client, an agent that never got past starting lost its pane, or its `claude` ended here before any hook (C9c) |
     | working | braille spinner | cyan | `SessionStart` (a start, as `x`'s), `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop` with a background task running |
     | starting | `⠂` | cyan, faint | no hook yet (the folder's trust dialog comes first) |
@@ -549,7 +549,8 @@ navigation again.
     The glyph and the word say the state; the tone only weighs it, and
     `NO_COLOR` keeps both. The client reads the files every 500 ms while
     an agent exists or a launch runs, otherwise not at all; the spinner
-    moves one frame with every read.
+    moves one frame with every read, and the `A` of an agent that waits
+    for you breathes slowly, through three tones of violet in six seconds.
   * **Two gaps.** Claude Code sends no event when a permission prompt is
     denied, nor on `Esc` during a tool: the first leaves "waiting for
     approval", the second "working", until the next prompt or the

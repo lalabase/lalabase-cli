@@ -58,26 +58,26 @@ func TestPTYAgentsOverview(t *testing.T) {
 				}
 			}
 			opts := terminalOptions{url: url, marker: "Token can write: yes", limit: inboxLimit, home: home}
-			summary := "Agents ⣿ 1 · ✓ 1"
+			summary := "Agents A 1 · ✓ 1"
 			if width < 120 {
 				opts.env = []string{"NO_COLOR=1"}
-				summary = " ⣿ 1 · ✓ 1"
+				summary = " A 1 · ✓ 1"
 			}
 			c := startTerminalWith(t, "inbox-"+string(inboxfixture.Normal), width, opts)
 			if err := c.ready(); err != nil {
 				t.Fatalf("%v\n%s", err, c.bytes())
 			}
-			c.expect(t, "the summary and the area", width, summary, "╭─ Agents", "⣿ #6 Ticket 6", "✓ #7 Ticket 7", "Nordlicht GmbH")
+			c.expect(t, "the summary and the area", width, summary, "╭─ Agents", "A #6 Ticket 6", "✓ #7 Ticket 7", "Nordlicht GmbH")
 			c.moveTo(t, keyDown, width, "Südwind AG", "Inbox", 6)
 			c.act(t, keyEnter, width, "Südwind AG › Inbox")
-			c.act(t, "A", width, "> ⣿ #6 Ticket 6", "enter open", "esc back")
+			c.act(t, "A", width, "> A #6 Ticket 6", "enter open", "esc back")
 			if width < 120 && !c.screenShows(width, "╭─ Organisations") {
 				t.Fatal("two columns: the organisations are not above the agents")
 			}
 			c.act(t, keyEnter, width, "Nordlicht GmbH › Tickets", "#6 Ticket 6", "waiting for you")
 			// Esc first, alone: an A right behind it would be read as Alt-A.
 			c.act(t, keyEsc, width, "Projects", "enter open tickets")
-			c.act(t, "A", width, "> ⣿ #6 Ticket 6")
+			c.act(t, "A", width, "> A #6 Ticket 6")
 			c.act(t, keyDown, width, "> ✓ #7 Ticket 7")
 			c.act(t, keyEnter, width, "#7 Ticket 7", "ended · ")
 			if err := c.send("q"); err != nil {

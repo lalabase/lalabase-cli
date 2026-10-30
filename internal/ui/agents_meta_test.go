@@ -33,7 +33,7 @@ func TestTheAgentStandsInTheMetaBar(t *testing.T) {
 		c := h.m.objectColumn()
 		line, _ := h.headLine()
 		if !view.MetaFits(tc.inner) {
-			if line != "⣿ Agent waiting for you · for 4 min" || c.Meta != nil {
+			if line != "A Agent waiting for you · for 4 min" || c.Meta != nil {
 				t.Fatalf("width %d: head %q, meta %q", tc.width, line, metaText(c))
 			}
 			continue
@@ -47,7 +47,7 @@ func TestTheAgentStandsInTheMetaBar(t *testing.T) {
 		}
 		// Too long for the bar on one line: the age follows on the next,
 		// under the word, so nothing of it is cut.
-		if value.Lead.String() != "⣿" || value.LeadStyle != present.AgentWaiting || value.Text.String() != "waiting for you" || value.Style != present.Plain {
+		if value.Lead.String() != "A" || value.LeadStyle != present.AgentWaiting || value.Text.String() != "waiting for you" || value.Style != present.Plain {
 			t.Fatalf("width %d: value %+v", tc.width, value)
 		}
 		if more.Lead.String() != "" || more.Text.String() != "  · 4 min" || more.Style != present.Plain {

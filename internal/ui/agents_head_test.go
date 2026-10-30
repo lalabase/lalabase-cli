@@ -38,7 +38,7 @@ func TestTheTicketHeadShowsItsAgent(t *testing.T) {
 		style present.Style
 	}{
 		{agents.WaitingForApproval, "! Agent waiting for approval · for 4 min", present.AgentApproval},
-		{agents.WaitingForYou, "⣿ Agent waiting for you · for 4 min", present.AgentWaiting},
+		{agents.WaitingForYou, "A Agent waiting for you · for 4 min", present.AgentWaiting},
 		{agents.Lost, "✕ Agent lost · for 4 min", present.AgentLost},
 		{agents.Working, "⠹ Agent working · for 4 min", present.AgentWorking},
 		{agents.Starting, "⠂ Agent starting · for 4 min", present.AgentStarting},
@@ -130,7 +130,7 @@ func TestTheAgeOfAState(t *testing.T) {
 	h.m.width = 80
 	h.m.app.agents.list = []agents.Agent{agentOn(6, agents.WaitingForYou, h.now)}
 	h.now = h.now.Add(2 * time.Hour)
-	if line, _ := h.headLine(); line != "⣿ Agent waiting for you · for 2 h" {
+	if line, _ := h.headLine(); line != "A Agent waiting for you · for 2 h" {
 		t.Fatalf("%q", line)
 	}
 }

@@ -22,13 +22,13 @@ func TestTheAgentsColumnIsAlwaysReserved(t *testing.T) {
 	t.Parallel()
 
 	c := present.Column{Rows: []present.Row{
-		marked("#6 Login", "⣿", present.AgentWaiting, false),
+		marked("#6 Login", "A", present.AgentWaiting, false),
 		marked("#7 Logout", "", present.Plain, false),
 	}, Cursor: -1}
 	got := content(c, 30, 12, false, ansi.WcWidth)
 	pad := func(s string) string { return s + strings.Repeat(" ", 30-ansi.WcWidth.StringWidth(s)) }
 	want := []string{
-		"  \u28ff " + pad("#6 Login")[:21] + " open",
+		"  A " + pad("#6 Login")[:21] + " open",
 		pad("       Anna · 09:30"),
 		"    " + pad("#7 Logout")[:21] + " open",
 		pad("       Anna · 09:30"),
@@ -59,7 +59,7 @@ func TestEveryStatesGlyphInItsTone(t *testing.T) {
 		want  string
 	}{
 		{"!", present.AgentApproval, "\x1b[1;38;2;191;148;228m!\x1b[m"},
-		{"⣿", present.AgentWaiting, "\x1b[38;2;191;148;228m⣿\x1b[m"},
+		{"A", present.AgentWaiting, "\x1b[38;2;191;148;228mA\x1b[m"},
 		{"✕", present.AgentLost, "\x1b[38;2;223;115;118m✕\x1b[m"},
 		{"⠹", present.AgentWorking, "\x1b[38;2;117;197;213m⠹\x1b[m"},
 		{"⠂", present.AgentStarting, "\x1b[2;38;2;117;197;213m⠂\x1b[m"},
@@ -76,8 +76,8 @@ func TestEveryStatesGlyphInItsTone(t *testing.T) {
 func TestTheGlyphIsNotFaintInAQuietRow(t *testing.T) {
 	t.Parallel()
 
-	got := row(marked("#6 Login", "⣿", present.AgentWaiting, true), 30, 4, false, noBar, false, ansi.WcWidth)[0]
-	if !strings.HasPrefix(got, "  \x1b[38;2;191;148;228m⣿\x1b[m \x1b[2m#6 Login") {
+	got := row(marked("#6 Login", "A", present.AgentWaiting, true), 30, 4, false, noBar, false, ansi.WcWidth)[0]
+	if !strings.HasPrefix(got, "  \x1b[38;2;191;148;228mA\x1b[m \x1b[2m#6 Login") {
 		t.Fatalf("%q", got)
 	}
 }

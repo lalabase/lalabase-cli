@@ -249,7 +249,7 @@ func TestTerminalOutputAllowsRendererGrammar(t *testing.T) {
 // The palette (internal/ui/view/palette.go) at 256 colours: what text may
 // be drawn in, and the grounds of the focused pane and a bar out of focus.
 var (
-	palette256Text    = map[int]bool{60: true, 69: true, 111: true, 116: true, 140: true, 150: true, 174: true, 180: true, 253: true, 255: true}
+	palette256Text    = map[int]bool{60: true, 69: true, 97: true, 111: true, 116: true, 140: true, 150: true, 174: true, 180: true, 253: true, 255: true}
 	palette256Grounds = map[int]bool{234: true, 238: true}
 )
 
