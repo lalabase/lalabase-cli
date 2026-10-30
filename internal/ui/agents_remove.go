@@ -121,6 +121,7 @@ func (m Model) endAgent() Model {
 		Action:   uitext.Inline(uitext.EndAgentAction),
 		SendHelp: uitext.Inline(uitext.EndAgentHelp),
 		Text:     uitext.Inline(uitext.EndAgentText),
+		Danger:   true,
 		Target:   DialogTarget{Project: ag.Project, Ticket: ag.Ticket, Number: ag.Number, Title: title},
 		Send:     func(s Submission) tea.Cmd { return a.sendEnd(s, ag) },
 	})

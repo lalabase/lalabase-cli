@@ -642,3 +642,24 @@ func TestAQuestionShowsItsTextInTheBox(t *testing.T) {
 		}
 	}
 }
+
+// A dialog that stops something stands out by a red frame; any other keeps
+// the focus colour.
+func TestADangerousDialogHasARedFrame(t *testing.T) {
+	t.Parallel()
+
+	const red, blue = "223;115;118", "107;154;238"
+	g := Geometry{Width: 80, Height: 24}
+	d := smallDialog()
+	for _, c := range []struct {
+		danger    bool
+		want, not string
+	}{{false, blue, red}, {true, red, blue}} {
+		d.Danger = c.danger
+		for _, line := range dialogBox(d, g, ansi.WcWidth) {
+			if !strings.Contains(line, c.want) || strings.Contains(line, c.not) {
+				t.Fatalf("danger %v: %q", c.danger, line)
+			}
+		}
+	}
+}

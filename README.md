@@ -626,7 +626,7 @@ navigation again.
     (including a successful launch or a problem with its tracking).
   * **Ending a waiting agent.** In tmux an agent runs on with nobody
     looking, so one that waits for you (or for an approval) would stay
-    for good. `d` on it asks in a dialog; `Enter` ends its tmux session,
+    for good. `d` on it asks in a dialog with a red frame; `Enter` ends its tmux session,
     and with it its `claude`, and removes the agent, `Esc` leaves it. Its conversation stays with Claude
     Code. The decision is taken again under the agent's lock: one that
     works since then is not ended ("it is running again"), and a session
