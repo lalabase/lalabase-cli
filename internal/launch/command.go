@@ -28,9 +28,11 @@ func checkTicket(t Ticket) bool {
 // token has no place in it: the browser has its own login.
 func fileAddress(server, org, document string) (string, bool) {
 	base := strings.TrimRight(server, "/")
-	_, https := strings.CutPrefix(base, "https://")
-	_, http := strings.CutPrefix(base, "http://")
-	if !https && !http || base == "https:" || base == "http:" || !agents.ForeignID(org) || !agents.ForeignID(document) {
+	host, https := strings.CutPrefix(base, "https://")
+	if !https {
+		host, _ = strings.CutPrefix(base, "http://")
+	}
+	if host == base || host == "" || !agents.ForeignID(org) || !agents.ForeignID(document) {
 		return "", false
 	}
 	return base + "/org/" + org + "/files/ticket_document/" + document, true

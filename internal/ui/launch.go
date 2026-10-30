@@ -129,10 +129,6 @@ func (m Model) receiveLaunch(d launch.Done) tea.Cmd {
 	if a == nil || !a.launch.busy || d.Ref != a.launch.ref {
 		return nil
 	}
-	if d.Action == launch.OpenFileAction {
-		// No agent came of it.
-		return m.launchDone(d)
-	}
 	return tea.Batch(m.launchDone(d), a.readAgents(), a.settleAfter(d))
 }
 
