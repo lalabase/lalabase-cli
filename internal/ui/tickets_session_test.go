@@ -1120,7 +1120,7 @@ func TestHostileTicketTextFromServerAndCacheIsCleaned(t *testing.T) {
 // section, the search line included.
 func TestHelpNamesExactlyTheKeysThatActInTheTicketsSection(t *testing.T) {
 	keys := map[string]Action{"up": Up, "down": Down, "pgup": PageUp, "pgdown": PageDown, "[": PrevPage, "]": NextPage, "R": Refresh, "enter": OpenList, "esc": Back, "left": Left, "right": Right, "/": Search,
-		"tab": NextArea, "o": Order, "e": Expand}
+		"tab": NextArea, "o": Order, "e": Expand, "g": ToggleGroups}
 	entryKeys := map[string]Action{"enter": Submit, "esc": Cancel, "backspace": DeleteBack}
 	acted := func(h *harness, key string) bool {
 		before := ansi.Strip(h.m.View().Content)

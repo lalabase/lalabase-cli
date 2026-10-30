@@ -150,6 +150,17 @@ const (
 	SearchLine
 	Caret
 	ListShrank
+	GroupKey
+	GroupHelp
+	FoldHelp
+	GroupedMode
+	ChronologicalMode
+	ModeShown
+	GroupFolded
+	GroupFoldedMark
+	GroupOpenMark
+	GroupRest
+	GroupNone
 	OpenTicketsHelp
 	OpenTicketHelp
 	TicketsHelp
@@ -406,7 +417,12 @@ var english = map[ID]string{
 	AttachmentsAll:   "Attachments · %d",
 	MetaAssigned:     "assigned %s", MetaUnassigned: "unassigned", MetaCreator: "created by %s", MetaUpdated: "updated %s",
 	SearchFor: "search %q", SearchLine: "Search: ", Caret: "_",
-	ListShrank:      "The list shrank again. R refresh.",
+	ListShrank: "The list shrank again. R refresh.",
+	GroupKey:   "g", GroupHelp: "group", FoldHelp: "fold",
+	GroupedMode: "grouped", ChronologicalMode: "chronological", ModeShown: "[%s]",
+	GroupFolded: "folded", GroupFoldedMark: "\u25b8", GroupOpenMark: "\u25be",
+	GroupRest:       "%d more without a listed status \u00b7 g chronological",
+	GroupNone:       "This project has no statuses to group by.",
 	OpenTicketsHelp: "open tickets", OpenTicketHelp: "open", TicketsHelp: "tickets", ProjectsHelp: "projects",
 	ListHelp: "list", BackHelp: "back",
 	SearchKey: "/", SearchHelp: "search", CancelHelp: "cancel", BackspaceKey: "backspace", DeleteHelp: "delete",

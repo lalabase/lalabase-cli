@@ -390,7 +390,7 @@ func (m Model) receiveDiskDone(msg diskDone) (Model, tea.Cmd) {
 			// disk keep it, not only the view.
 			a.store.Apply(read.ticket.Key, cache.KeepStale, nil, a.now())
 		}
-		if a.showFromDisk(read.purpose, read.ticket.Key) && read.purpose == forTickets {
+		if a.showFromDisk(read.purpose, read.ticket.Key) && (read.purpose == forTickets || read.purpose == forGroup) {
 			cmd = m.selectionChanged()
 		}
 	}
@@ -421,6 +421,16 @@ func (a *app) showFromDisk(p purpose, key cache.Key) bool {
 			if e, ok := a.cachedTickets(v); ok {
 				v.adoptCached(e)
 				return true
+			}
+		}
+	case forGroup:
+		if v := a.tickets; v != nil {
+			if g := v.group(key); g != nil && !g.holdsServerData() {
+				if e, ok := a.cachedGroup(g); ok {
+					g.adoptCached(e)
+					v.reselect()
+					return true
+				}
 			}
 		}
 	case forDetail:

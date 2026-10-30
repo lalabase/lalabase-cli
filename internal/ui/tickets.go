@@ -89,6 +89,15 @@ type ticketsView struct {
 	selected, opened string
 	offset           int
 	corrected        bool
+	// statuses are the project's, in its order, from the last page read;
+	// grouped asks for the list by status (C11, groups.go), groups is that
+	// list, nil while it is not built; heading the status whose head the
+	// cursor is on, "" on a row; folds what the person folded or opened.
+	statuses []string
+	grouped  bool
+	groups   []*ticketGroup
+	heading  string
+	folds    map[string]bool
 }
 
 func (v *ticketsView) index(id string) int {
@@ -104,6 +113,10 @@ func (v *ticketsView) index(id string) int {
 }
 
 func (v *ticketsView) reselect() {
+	if v.isGrouped() {
+		v.reselectGroup()
+		return
+	}
 	if v.index(v.selected) < 0 {
 		v.selected = ""
 		if len(v.rows) > 0 {
@@ -116,6 +129,10 @@ func (v *ticketsView) reselect() {
 }
 
 func (v *ticketsView) moveSelection(delta int) {
+	if v.isGrouped() {
+		v.moveInGroups(delta)
+		return
+	}
 	if len(v.rows) == 0 {
 		return
 	}
@@ -354,6 +371,7 @@ func (a *app) cachedTickets(v *ticketsView) (cache.Entry, bool) {
 		return cache.Entry{}, false
 	}
 	v.rows, v.total, v.perPage = page.Data, page.Meta.Total, page.Meta.PerPage
+	v.statuses = page.Meta.AvailableStatuses
 	v.flight = a.filed[v.key]
 	v.reselect()
 	return e, true
@@ -364,6 +382,9 @@ func (a *app) cachedTickets(v *ticketsView) (cache.Entry, bool) {
 func (m Model) turnTicketPage(delta int) (Model, tea.Cmd) {
 	a := m.app
 	v := a.tickets
+	if v != nil && v.isGrouped() {
+		return m.turnGroup(delta)
+	}
 	if v == nil || v.loading {
 		return m, nil
 	}
@@ -384,11 +405,12 @@ func (m Model) showTicketPage(page int, query string) (Model, tea.Cmd) {
 	v.page, v.query, v.key = page, query, a.ticketsKey(v.project, query, page)
 	v.rows, v.status = nil, status{}
 	v.selected, v.opened, v.offset, v.corrected = "", "", 0, false
+	v.groups, v.heading = nil, ""
 	a.rememberTickets()
 	if m.focus == view.Object {
 		m.focus = view.List
 	}
-	return m, tea.Batch(a.loadTickets(), m.selectionChanged())
+	return m, tea.Batch(a.loadTickets(), a.syncGroups(), m.selectionChanged())
 }
 
 // --- the search line ---------------------------------------------------------
@@ -639,10 +661,11 @@ func (m Model) refreshSection() tea.Cmd {
 	if v := a.tickets; v != nil {
 		v.corrected = false
 		v.loading = true
+		groups := a.reloadGroups()
 		if a.pending(v.key) {
-			return nil
+			return groups
 		}
-		return a.issue(gateway.Tickets, v.key, forTickets, queue.User)
+		return tea.Batch(a.issue(gateway.Tickets, v.key, forTickets, queue.User), groups)
 	}
 	if p := a.projects; p != nil {
 		p.loading = true
@@ -663,7 +686,7 @@ func (m Model) canRefreshSection() bool {
 		return !a.pending(a.detail.key)
 	}
 	if v := a.tickets; v != nil {
-		return !a.pending(v.key)
+		return !a.pending(v.key) || v.groupToRead(a)
 	}
 	if p := a.projects; p != nil {
 		return !a.pending(p.key)
@@ -716,6 +739,9 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 	if v == nil {
 		return m, nil
 	}
+	if g := v.group(r.Key); g != nil && d != cache.Remove {
+		return m.receiveGroup(g, d, r)
+	}
 	sameResource := d == cache.Remove && v.key.Resource() == r.Key.Resource()
 	if v.key != r.Key && !sameResource {
 		return m, nil
@@ -723,6 +749,7 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 	switch d {
 	case cache.Replace:
 		v.rows, v.total, v.perPage = r.Page.Data, r.Page.Meta.Total, r.Page.Meta.PerPage
+		v.statuses = r.Page.Meta.AvailableStatuses
 		v.flight = uint64(r.Flight)
 		for _, row := range r.Page.Data {
 			a.learnTitle(row.ID, row.Title, uint64(r.Flight))
@@ -734,13 +761,16 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 			// preview the person may be reading keeps it.
 			m.focus = view.List
 		}
-		return m.correctTicketPage()
+		synced := a.syncGroups()
+		m, cmd := m.correctTicketPage()
+		return m, tea.Batch(cmd, synced)
 	case cache.Remove:
 		// The project is gone: every page, the ticket shown with it and
 		// the search line (a search of it would answer the same).
 		m = m.closeSearch()
 		a.dropDetail()
 		v.rows, v.total, v.selected, v.opened = nil, 0, "", ""
+		v.grouped, v.groups, v.heading = false, nil, ""
 		v.removed()
 		if m.focus == view.Object {
 			m.focus = view.List
@@ -772,18 +802,19 @@ func (m Model) correctTicketPage() (Model, tea.Cmd) {
 	if v.total == 0 {
 		v.page, v.key.Page = 1, 1
 		a.rememberTickets()
-		return m, nil
+		return m, a.reloadGroups()
 	}
 	if v.corrected {
 		v.err = uitext.Inline(uitext.ListShrank)
-		return m, nil
+		return m, a.reloadGroups()
 	}
 	v.corrected = true
 	a.cancelArea(gateway.Tickets)
 	v.page, v.key.Page = last, last
 	v.known, v.loading = false, true
 	a.rememberTickets()
-	return m, a.issue(gateway.Tickets, v.key, forTickets, queue.User)
+	// The removal took the groups' reads with it, the move those still out.
+	return m, tea.Batch(a.issue(gateway.Tickets, v.key, forTickets, queue.User), a.reloadGroups())
 }
 
 func (m Model) receiveDetail(r gateway.TicketResult) (Model, tea.Cmd) {

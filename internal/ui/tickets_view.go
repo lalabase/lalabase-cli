@@ -44,7 +44,7 @@ func (m Model) projectsColumn() present.Column {
 // it takes the notice.
 func (m Model) ticketsColumn() present.Column {
 	v := m.app.tickets
-	c := present.Column{Title: uitext.Inline(uitext.Tickets), Cursor: -1}
+	c := present.Column{Title: uitext.Inline(uitext.Tickets), Cursor: -1, Switch: v.modeSwitch()}
 	if m.mode == TextEntry {
 		c.Notice = present.NewInline(uitext.Inline(uitext.SearchLine).String() + v.entry + uitext.Inline(uitext.Caret).String())
 	} else {
@@ -56,6 +56,13 @@ func (m Model) ticketsColumn() present.Column {
 			empty = uitext.NoMatches
 		}
 		c.Notice = v.notice(empty, len(v.rows) == 0)
+		if v.isGrouped() {
+			c.Notice = v.groupsNotice(empty)
+		}
+	}
+	if v.isGrouped() {
+		m.groupRows(&c)
+		return c
 	}
 	numbers := make([]string, len(v.rows))
 	width := 0
@@ -167,8 +174,7 @@ func (m Model) detailColumn() present.Column {
 		if v := a.tickets; v != nil && d.loading {
 			// Loading for the first time: the row the ticket was taken
 			// from names it meanwhile, under the notice "Loading…".
-			if i := v.index(d.id); i >= 0 {
-				r := v.rows[i]
+			if r, _, ok := v.find(d.id); ok {
 				c.Text = present.NewBody(uitext.Fill(uitext.TicketNumber, r.Number).String() + " " + textOr(r.Title, uitext.UntitledTicket))
 			}
 		}
