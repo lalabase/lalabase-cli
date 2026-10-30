@@ -28,7 +28,7 @@ type Option func(*Fixture) error
 
 // r1Capabilities are what the core's R1 and the slices after it added to
 // /me: without them, /me is that of API 1.2.0.
-var r1Capabilities = []string{"tickets.paging", "tickets.by_number", "posts.show", "time_sessions.book", "posts.plain"}
+var r1Capabilities = []string{"tickets.paging", "tickets.by_number", "posts.show", "time_sessions.book", "posts.plain", "knowledge.search", "tickets.changes"}
 
 // BeforeR1 is a server whose REST API is older than the core's R1 (API
 // 1.2.0): its /me lists the capabilities of then. The client reads the

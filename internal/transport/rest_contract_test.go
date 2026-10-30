@@ -103,9 +103,8 @@ var restCases = map[string]restExpected{
 	"ticket_view/post":                {class: Object, legacyClass: Object},
 	"ticket_view/post_not_found":      {class: NotFound, code: "not_found", legacyClass: NotFound},
 
-	// A booking (core R6) and a comment (core R3a) over REST. Not sent by
-	// the client yet (K6, K3); classified so that adopting them starts
-	// from a decision. A read-only token was "no access" before the code.
+	// A booking (core R6, sent since K6) and a comment (core R3a, not sent
+	// yet: K3) over REST. A read-only token was "no access" before the code.
 	"POST /api/v1/tickets/:ticket_id/time_sessions/ok_minutes_text":              {class: Object, legacyClass: Object},
 	"POST /api/v1/tickets/:ticket_id/time_sessions/ok_hours_text":                {class: Object, legacyClass: Object},
 	"POST /api/v1/tickets/:ticket_id/time_sessions/ok_minutes":                   {class: Object, legacyClass: Object},
@@ -138,6 +137,42 @@ var restCases = map[string]restExpected{
 	"POST /api/v1/tickets/:ticket_id/posts/hidden":                   {class: NotFound, code: "not_found", legacyClass: NotFound},
 	"POST /api/v1/tickets/:ticket_id/posts/forbidden":                {class: NoAccess, code: "forbidden", legacyClass: NoAccess},
 	"POST /api/v1/tickets/:ticket_id/posts/read_only":                {class: ReadOnly, code: "read_only", legacyClass: NoAccess},
+
+	// Knowledge over REST (core R2). Not read by the client yet: it has no
+	// knowledge area (K5 takes the adapter over); classified so that
+	// adopting it starts from a decision.
+	"GET /api/v1/projects/:project_id/knowledge/ok":                     {class: Object, legacyClass: Object},
+	"GET /api/v1/projects/:project_id/knowledge/empty":                  {class: Object, legacyClass: Object},
+	"GET /api/v1/projects/:project_id/knowledge/list":                   {class: Object, legacyClass: Object},
+	"GET /api/v1/projects/:project_id/knowledge/list_type":              {class: Object, legacyClass: Object},
+	"GET /api/v1/projects/:project_id/knowledge/invalid_input":          {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"GET /api/v1/projects/:project_id/knowledge/invalid_input_per_page": {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"GET /api/v1/projects/:project_id/knowledge/not_found":              {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"GET /api/v1/projects/:project_id/knowledge/unauthorized":           {class: Unauthenticated, code: "unauthorized", legacyClass: Unauthenticated},
+
+	// A change of a ticket over REST (core R3b). Not sent by the client yet
+	// (K3). The project's state refuses with a reason, as the tool does.
+	"POST /api/v1/tickets/:id/changes/ok_status":                 {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:id/changes/ok_assign":                 {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:id/changes/ok_unassign":               {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:id/changes/ok_assign_and_unassign":    {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:id/changes/ok_title":                  {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:id/changes/ok_beside_stale":           {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:id/changes/idempotency_first":         {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:id/changes/idempotency_replay":        {class: Object, legacyClass: Object},
+	"POST /api/v1/tickets/:id/changes/idempotency_mismatch":      {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:id/changes/invalid_input_mixed":       {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:id/changes/invalid_input_unknown_key": {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:id/changes/invalid_input_no_change":   {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:id/changes/invalid_input_title":       {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:id/changes/invalid_input_same_person": {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:id/changes/refused_status":            {class: Refused, code: "refused", reason: "value_not_allowed", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:id/changes/refused_person":            {class: Refused, code: "refused", reason: "value_not_allowed", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:id/changes/refused_no_status_field":   {class: Refused, code: "refused", reason: "no_status_field", legacyClass: InvalidInput},
+	"POST /api/v1/tickets/:id/changes/not_found":                 {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"POST /api/v1/tickets/:id/changes/hidden":                    {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"POST /api/v1/tickets/:id/changes/forbidden":                 {class: NoAccess, code: "forbidden", legacyClass: NoAccess},
+	"POST /api/v1/tickets/:id/changes/read_only":                 {class: ReadOnly, code: "read_only", legacyClass: NoAccess},
 }
 
 // restRequest is a recorded REST request: GET without a method, a write

@@ -1,9 +1,9 @@
 {
   "header": {
     "regenerate": "RAILS_ENV=test bin/rails mcp:contract",
-    "core_commit": "1a16f823f40cab62f11c3e5c929a6912bda0c95b",
+    "core_commit": "44bc4f0b91ee75a3a4bbc0a1fec7d8f18747952f",
     "core_dirty": true,
-    "contract_sha256": "80e07918e69c341f6079cc26d11f2144c73593178faa6cde0d6d616058c1f282"
+    "contract_sha256": "8a85b28c00bd355eee3ae577db4757959078cc7a5f34d8e7c461bdfe2d26b73d"
   },
   "contract": {
     "mcp": {
@@ -42,7 +42,7 @@
               },
               "serverInfo": {
                 "name": "lalabase",
-                "version": "0.13.0"
+                "version": "0.13.1"
               }
             }
           }
@@ -357,7 +357,7 @@
                       },
                       "idempotency_key": {
                         "type": "string",
-                        "description": "Optional. Repeating a write with the same key returns the original result instead of creating a duplicate."
+                        "description": "Optional. Repeating a write with the same key returns the original result instead of creating a duplicate. At most 255 bytes of valid UTF-8 without NUL."
                       }
                     },
                     "required": [
@@ -399,7 +399,7 @@
                       },
                       "idempotency_key": {
                         "type": "string",
-                        "description": "Optional. Repeating a write with the same key returns the original result instead of creating a duplicate."
+                        "description": "Optional. Repeating a write with the same key returns the original result instead of creating a duplicate. At most 255 bytes of valid UTF-8 without NUL."
                       }
                     },
                     "required": [
@@ -486,7 +486,7 @@
                       },
                       "idempotency_key": {
                         "type": "string",
-                        "description": "Optional. Repeating a write with the same key returns the original result instead of creating a duplicate."
+                        "description": "Optional. Repeating a write with the same key returns the original result instead of creating a duplicate. At most 255 bytes of valid UTF-8 without NUL."
                       }
                     },
                     "required": [
@@ -508,7 +508,7 @@
                       },
                       "idempotency_key": {
                         "type": "string",
-                        "description": "Optional. Repeating a write with the same key returns the original result instead of creating a duplicate."
+                        "description": "Optional. Repeating a write with the same key returns the original result instead of creating a duplicate. At most 255 bytes of valid UTF-8 without NUL."
                       }
                     },
                     "required": [
@@ -555,7 +555,7 @@
                       },
                       "idempotency_key": {
                         "type": "string",
-                        "description": "Optional. Repeating a write with the same key returns the original result instead of creating a duplicate."
+                        "description": "Optional. Repeating a write with the same key returns the original result instead of creating a duplicate. At most 255 bytes of valid UTF-8 without NUL."
                       }
                     },
                     "required": [
@@ -3619,6 +3619,116 @@
               }
             }
           }
+        },
+        "idempotency_key": {
+          "too_long": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "post_comment",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000041",
+                  "body": "Hallo",
+                  "idempotency_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "idempotency_key must be valid UTF-8 without NUL, at most 255 bytes"
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "invalid_input"
+                  }
+                }
+              }
+            }
+          },
+          "too_long_multibyte": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "post_comment",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000041",
+                  "body": "Hallo",
+                  "idempotency_key": "ääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääää"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "idempotency_key must be valid UTF-8 without NUL, at most 255 bytes"
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "invalid_input"
+                  }
+                }
+              }
+            }
+          },
+          "nul": {
+            "token": "write",
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "post_comment",
+                "arguments": {
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "ticket_id": "00000000-0000-4000-8000-000000000041",
+                  "body": "Hallo",
+                  "idempotency_key": "k\u0000x"
+                }
+              }
+            },
+            "response": {
+              "status": 200,
+              "body": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "idempotency_key must be valid UTF-8 without NUL, at most 255 bytes"
+                    }
+                  ],
+                  "isError": true,
+                  "_meta": {
+                    "lalabase/code": "invalid_input"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -3654,10 +3764,11 @@
                     "all_projects": true
                   }
                 ],
-                "api_version": "1.5.0",
+                "api_version": "1.7.0",
                 "capabilities": [
                   "error_codes",
                   "idempotency",
+                  "knowledge.search",
                   "me.show",
                   "notifications.archive",
                   "notifications.list",
@@ -3674,6 +3785,7 @@
                   "tickets.activities",
                   "tickets.attachments",
                   "tickets.by_number",
+                  "tickets.changes",
                   "tickets.create",
                   "tickets.list",
                   "tickets.paging",
@@ -3718,10 +3830,11 @@
                     "all_projects": true
                   }
                 ],
-                "api_version": "1.5.0",
+                "api_version": "1.7.0",
                 "capabilities": [
                   "error_codes",
                   "idempotency",
+                  "knowledge.search",
                   "me.show",
                   "notifications.archive",
                   "notifications.list",
@@ -3738,6 +3851,7 @@
                   "tickets.activities",
                   "tickets.attachments",
                   "tickets.by_number",
+                  "tickets.changes",
                   "tickets.create",
                   "tickets.list",
                   "tickets.paging",
@@ -5782,6 +5896,777 @@
               }
             },
             "idempotency_key": "contract-rest-comment-1"
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "idempotency_key_reused",
+              "code": "invalid_input",
+              "message": "idempotency_key already used with different parameters"
+            }
+          }
+        }
+      },
+      "GET /api/v1/projects/:project_id/knowledge": {
+        "ok": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/knowledge?q=Deploy"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "type": "note",
+                  "id": "00000000-0000-4000-8000-000000000061",
+                  "title": "Deploy-Anleitung",
+                  "updated_at": "2026-01-05T09:27:00Z",
+                  "link": "lalabase://note/00000000-0000-4000-8000-000000000061"
+                }
+              ],
+              "meta": {
+                "page": 1,
+                "per_page": 10,
+                "total": 1
+              }
+            }
+          }
+        },
+        "empty": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/knowledge?q=Gibt%20es%20nicht"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": [],
+              "meta": {
+                "page": 1,
+                "per_page": 10,
+                "total": 0
+              }
+            }
+          }
+        },
+        "list": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/knowledge"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "type": "note",
+                  "id": "00000000-0000-4000-8000-000000000061",
+                  "title": "Deploy-Anleitung",
+                  "updated_at": "2026-01-05T09:27:00Z",
+                  "link": "lalabase://note/00000000-0000-4000-8000-000000000061"
+                }
+              ],
+              "meta": {
+                "page": 1,
+                "per_page": 10,
+                "total": 1
+              }
+            }
+          }
+        },
+        "list_type": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/knowledge?type=note&per_page=5"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "type": "note",
+                  "id": "00000000-0000-4000-8000-000000000061",
+                  "title": "Deploy-Anleitung",
+                  "updated_at": "2026-01-05T09:27:00Z",
+                  "link": "lalabase://note/00000000-0000-4000-8000-000000000061"
+                }
+              ],
+              "meta": {
+                "page": 1,
+                "per_page": 5,
+                "total": 1
+              }
+            }
+          }
+        },
+        "invalid_input": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/knowledge?type=ticket"
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "invalid_input",
+              "code": "invalid_input",
+              "message": "invalid type (expected \"note\" or \"document\")"
+            }
+          }
+        },
+        "invalid_input_per_page": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/knowledge?per_page=101"
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "invalid_input",
+              "code": "invalid_input",
+              "message": "per_page must be a whole number from 1 to 100"
+            }
+          }
+        },
+        "not_found": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000034/knowledge"
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "unauthorized": {
+          "token": "invalid",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/knowledge"
+          },
+          "response": {
+            "status": 401,
+            "body": {
+              "error": "unauthorized",
+              "code": "unauthorized"
+            }
+          }
+        }
+      },
+      "POST /api/v1/tickets/:id/changes": {
+        "ok_status": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "status": "new"
+              }
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000042",
+                "number": 2,
+                "title": "Export als CSV und XLSX",
+                "status": "new",
+                "status_functions": [
+                  "is_new"
+                ],
+                "ticket_type": "support",
+                "parent_id": null,
+                "assignees": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000011",
+                    "name": "Anna Albers"
+                  }
+                ],
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000012",
+                  "name": "Ben Berger"
+                },
+                "created_at": "2026-01-05T09:22:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "ok_assign": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "add_assignee_ids": [
+                  "00000000-0000-4000-8000-000000000012"
+                ]
+              }
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000042",
+                "number": 2,
+                "title": "Export als CSV und XLSX",
+                "status": "new",
+                "status_functions": [
+                  "is_new"
+                ],
+                "ticket_type": "support",
+                "parent_id": null,
+                "assignees": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000011",
+                    "name": "Anna Albers"
+                  },
+                  {
+                    "id": "00000000-0000-4000-8000-000000000012",
+                    "name": "Ben Berger"
+                  }
+                ],
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000012",
+                  "name": "Ben Berger"
+                },
+                "created_at": "2026-01-05T09:22:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "ok_unassign": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "remove_assignee_ids": [
+                  "00000000-0000-4000-8000-000000000012"
+                ]
+              }
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000042",
+                "number": 2,
+                "title": "Export als CSV und XLSX",
+                "status": "new",
+                "status_functions": [
+                  "is_new"
+                ],
+                "ticket_type": "support",
+                "parent_id": null,
+                "assignees": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000011",
+                    "name": "Anna Albers"
+                  }
+                ],
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000012",
+                  "name": "Ben Berger"
+                },
+                "created_at": "2026-01-05T09:22:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "ok_assign_and_unassign": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "add_assignee_ids": [
+                  "00000000-0000-4000-8000-000000000012"
+                ],
+                "remove_assignee_ids": [
+                  "me"
+                ]
+              }
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000042",
+                "number": 2,
+                "title": "Export als CSV und XLSX",
+                "status": "new",
+                "status_functions": [
+                  "is_new"
+                ],
+                "ticket_type": "support",
+                "parent_id": null,
+                "assignees": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000012",
+                    "name": "Ben Berger"
+                  }
+                ],
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000012",
+                  "name": "Ben Berger"
+                },
+                "created_at": "2026-01-05T09:22:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "ok_title": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "title": "Export als CSV, XLSX und PDF"
+              }
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000042",
+                "number": 2,
+                "title": "Export als CSV, XLSX und PDF",
+                "status": "new",
+                "status_functions": [
+                  "is_new"
+                ],
+                "ticket_type": "support",
+                "parent_id": null,
+                "assignees": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000012",
+                    "name": "Ben Berger"
+                  }
+                ],
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000012",
+                  "name": "Ben Berger"
+                },
+                "created_at": "2026-01-05T09:22:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "ok_beside_stale": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000041/changes",
+            "params": {
+              "change": {
+                "remove_assignee_ids": [
+                  "00000000-0000-4000-8000-000000000012"
+                ]
+              }
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000041",
+                "number": 1,
+                "title": "Login bricht ab",
+                "status": "in_progress",
+                "status_functions": [
+                  "is_in_progress"
+                ],
+                "ticket_type": "support",
+                "parent_id": null,
+                "assignees": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000011",
+                    "name": "Anna Albers"
+                  },
+                  {
+                    "id": "00000000-0000-4000-8000-000000000013",
+                    "name": "Carla Conrad"
+                  }
+                ],
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "created_at": "2026-01-05T09:21:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "invalid_input_mixed": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "title": "x",
+                "status": "new"
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Bitte geben Sie genau eine Änderung an: title, status oder add_assignee_ids und remove_assignee_ids."
+              ]
+            }
+          }
+        },
+        "invalid_input_unknown_key": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "priority": "low"
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Eine Änderung kennt nur title, status, add_assignee_ids und remove_assignee_ids."
+              ]
+            }
+          }
+        },
+        "invalid_input_no_change": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {}
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Bitte geben Sie genau eine Änderung an: title, status oder add_assignee_ids und remove_assignee_ids."
+              ]
+            }
+          }
+        },
+        "invalid_input_title": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "title": "zwei\nZeilen"
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "Der Titel (change[title]) muss eine Zeile ohne Steuerzeichen sein."
+              ]
+            }
+          }
+        },
+        "invalid_input_same_person": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "add_assignee_ids": [
+                  "me"
+                ],
+                "remove_assignee_ids": [
+                  "00000000-0000-4000-8000-000000000011"
+                ]
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "validation_failed",
+              "code": "invalid_input",
+              "errors": [
+                "add_assignee_ids und remove_assignee_ids nennen dieselbe Person."
+              ]
+            }
+          }
+        },
+        "refused_status": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "status": "erledigt"
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "value_not_allowed",
+              "code": "refused",
+              "reason": "value_not_allowed",
+              "errors": [
+                "Das ist kein Status dieses Projekts; bitte einen Schlüssel aus meta.available_statuses verwenden."
+              ]
+            }
+          }
+        },
+        "refused_person": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "add_assignee_ids": [
+                  "00000000-0000-4000-8000-000000000999"
+                ]
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "value_not_allowed",
+              "code": "refused",
+              "reason": "value_not_allowed",
+              "errors": [
+                "Eine Person in dieser Änderung kann in diesem Projekt nicht zugewiesen werden."
+              ]
+            }
+          }
+        },
+        "refused_no_status_field": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000045/changes",
+            "params": {
+              "change": {
+                "status": "new"
+              }
+            }
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "no_status_field",
+              "code": "refused",
+              "reason": "no_status_field",
+              "errors": [
+                "Dieses Projekt hat kein Statusfeld."
+              ]
+            }
+          }
+        },
+        "not_found": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000999/changes",
+            "params": {
+              "change": {
+                "status": "new"
+              }
+            }
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "hidden": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000043/changes",
+            "params": {
+              "change": {
+                "status": "new"
+              }
+            }
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "forbidden": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000044/changes",
+            "params": {
+              "change": {
+                "status": "new"
+              }
+            }
+          },
+          "response": {
+            "status": 403,
+            "body": {
+              "error": "forbidden",
+              "code": "forbidden"
+            }
+          }
+        },
+        "read_only": {
+          "token": "read",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "status": "new"
+              }
+            }
+          },
+          "response": {
+            "status": 403,
+            "body": {
+              "error": "forbidden",
+              "code": "read_only"
+            }
+          }
+        },
+        "idempotency_first": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "status": "backlog"
+              }
+            },
+            "idempotency_key": "contract-rest-change-1"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000042",
+                "number": 2,
+                "title": "Export als CSV, XLSX und PDF",
+                "status": "backlog",
+                "status_functions": [
+                  "is_backlog"
+                ],
+                "ticket_type": "support",
+                "parent_id": null,
+                "assignees": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000012",
+                    "name": "Ben Berger"
+                  }
+                ],
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000012",
+                  "name": "Ben Berger"
+                },
+                "created_at": "2026-01-05T09:22:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "idempotency_replay": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "status": "backlog"
+              }
+            },
+            "idempotency_key": "contract-rest-change-1"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000042",
+                "number": 2,
+                "title": "Export als CSV, XLSX und PDF",
+                "status": "backlog",
+                "status_functions": [
+                  "is_backlog"
+                ],
+                "ticket_type": "support",
+                "parent_id": null,
+                "assignees": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000012",
+                    "name": "Ben Berger"
+                  }
+                ],
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000012",
+                  "name": "Ben Berger"
+                },
+                "created_at": "2026-01-05T09:22:00Z",
+                "updated_at": "2026-01-05T09:36:00Z"
+              }
+            }
+          }
+        },
+        "idempotency_mismatch": {
+          "token": "write",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/tickets/00000000-0000-4000-8000-000000000042/changes",
+            "params": {
+              "change": {
+                "status": "new"
+              }
+            },
+            "idempotency_key": "contract-rest-change-1"
           },
           "response": {
             "status": 422,
