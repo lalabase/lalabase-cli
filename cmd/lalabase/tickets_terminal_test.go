@@ -333,6 +333,7 @@ func TestPTYTicketsOnAnOlderServer(t *testing.T) {
 // The list grouped by status (C11) through a real terminal: g, a head's
 // fold, a group's own page, g back.
 func TestPTYTheGroupedList(t *testing.T) {
+	t.Parallel()
 	c, f := startInbox(t, inboxfixture.Statuses, 170)
 	openWebsite(t, c, 170)
 	c.act(t, "g", 170, "[grouped]", "\u25be in_progress", "> ")

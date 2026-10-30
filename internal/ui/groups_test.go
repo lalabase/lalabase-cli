@@ -113,6 +113,7 @@ func cursorText(h *harness) string {
 }
 
 func TestGShowsTheStatusesInTheProjectsOrderAndGoesBackWithoutARead(t *testing.T) {
+	t.Parallel()
 	h, _ := groupHarness(t)
 	chronological := h.m.ticketsColumn().Rows
 	if len(statusReads(h)) != 0 || heads(h.m.ticketsColumn()) != nil {
@@ -144,6 +145,7 @@ func TestGShowsTheStatusesInTheProjectsOrderAndGoesBackWithoutARead(t *testing.T
 }
 
 func TestFoldingFollowsTheFunctionsNeverTheName(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	s := &groupServer{h: h, statuses: []string{"Done", "fertig"}}
 	s.add(strPtr("Done"), []string{"is_new"}, 1)
@@ -157,6 +159,7 @@ func TestFoldingFollowsTheFunctionsNeverTheName(t *testing.T) {
 }
 
 func TestEnterAndEFoldAHeadAndTheCursorStaysOnIt(t *testing.T) {
+	t.Parallel()
 	h, _ := groupHarness(t)
 	h.drive(h.press("g"))
 	v := h.m.app.tickets
@@ -191,6 +194,7 @@ func TestEnterAndEFoldAHeadAndTheCursorStaysOnIt(t *testing.T) {
 }
 
 func TestACursorOnAHeadShowsNoTicket(t *testing.T) {
+	t.Parallel()
 	h, _ := groupHarness(t)
 	h.drive(h.press("g"))
 	v := h.m.app.tickets
@@ -204,6 +208,7 @@ func TestACursorOnAHeadShowsNoTicket(t *testing.T) {
 }
 
 func TestAGroupPagesAloneAndTheOtherGroupsKeepTheirPage(t *testing.T) {
+	t.Parallel()
 	h, _ := groupHarness(t)
 	h.drive(h.press("g"))
 	v := h.m.app.tickets
@@ -240,6 +245,7 @@ func rowOf(h *harness, status string) present.Row {
 }
 
 func TestAnswersOfTheGroupsMayComeInAnyOrder(t *testing.T) {
+	t.Parallel()
 	h, _ := groupHarness(t)
 	var msgs []tea.Msg
 	msgs = append(msgs, messages(h.t, h.press("g"))...)
@@ -257,6 +263,7 @@ func TestAnswersOfTheGroupsMayComeInAnyOrder(t *testing.T) {
 }
 
 func TestTheSearchGoesToEveryGroupAndFoldedStaysFolded(t *testing.T) {
+	t.Parallel()
 	h, _ := groupHarness(t)
 	h.drive(h.press("g"))
 	h.drive(h.press("/"))
@@ -278,6 +285,7 @@ func TestTheSearchGoesToEveryGroupAndFoldedStaysFolded(t *testing.T) {
 }
 
 func TestRReadsEveryGroupAgain(t *testing.T) {
+	t.Parallel()
 	h, _ := groupHarness(t)
 	h.drive(h.press("g"))
 	before := len(statusReads(h))
@@ -291,11 +299,13 @@ func TestRReadsEveryGroupAgain(t *testing.T) {
 }
 
 func TestAFailedGroupSaysSoAndTheOthersStayUsable(t *testing.T) {
+	t.Parallel()
 	for name, fail := range map[string]transport.Answer{
 		"temporary": failing(transport.Temporary, 503),
 		"refused":   failing(transport.Refused, 422),
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			h, s := groupHarness(t)
 			h.f.setTickets(func(q api.TicketQuery) transport.Answer {
 				if q.Status == "new" {
@@ -323,6 +333,7 @@ func TestAFailedGroupSaysSoAndTheOthersStayUsable(t *testing.T) {
 }
 
 func TestAShrunkGroupIsCorrectedOnceAndLeavesTheOthersAlone(t *testing.T) {
+	t.Parallel()
 	h, s := groupHarness(t)
 	h.drive(h.press("g"))
 	v := h.m.app.tickets
@@ -343,6 +354,7 @@ func TestAShrunkGroupIsCorrectedOnceAndLeavesTheOthersAlone(t *testing.T) {
 }
 
 func TestARemovedProjectTakesEveryGroup(t *testing.T) {
+	t.Parallel()
 	h, s := groupHarness(t)
 	h.drive(h.press("g"))
 	v := h.m.app.tickets
@@ -363,6 +375,7 @@ func TestARemovedProjectTakesEveryGroup(t *testing.T) {
 }
 
 func TestTheRestStandsAtTheEndOnceAllHaveLandedAndIsNoEntry(t *testing.T) {
+	t.Parallel()
 	h, s := groupHarness(t)
 	s.add(nil, nil, 3)
 	s.add(strPtr("old_status"), nil, 1)
@@ -394,6 +407,7 @@ func TestTheRestStandsAtTheEndOnceAllHaveLandedAndIsNoEntry(t *testing.T) {
 }
 
 func TestAProjectWithoutStatusesStaysChronologicalWithAHint(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	s := &groupServer{h: h, statuses: []string{}}
 	s.add(strPtr("new"), nil, 2)
@@ -415,6 +429,7 @@ func TestAProjectWithoutStatusesStaysChronologicalWithAHint(t *testing.T) {
 }
 
 func TestGActsOnlyOnTheList(t *testing.T) {
+	t.Parallel()
 	h, _ := groupHarness(t)
 	h.m.focus = view.Navigation
 	h.press("g")
@@ -429,6 +444,7 @@ func TestGActsOnlyOnTheList(t *testing.T) {
 }
 
 func TestTheFrameNamesTheMode(t *testing.T) {
+	t.Parallel()
 	h, _ := groupHarness(t)
 	h.m.width = 170
 	frame := func() string { return ansi.Strip(h.m.View().Content) }
@@ -442,6 +458,7 @@ func TestTheFrameNamesTheMode(t *testing.T) {
 }
 
 func TestEveryLineIsTheTerminalsWidthInEveryLayout(t *testing.T) {
+	t.Parallel()
 	h, _ := groupHarness(t)
 	h.drive(h.press("g"))
 	for _, width := range []int{60, 80, 120, 170} {
@@ -461,6 +478,7 @@ func TestEveryLineIsTheTerminalsWidthInEveryLayout(t *testing.T) {
 }
 
 func TestAHostileStatusIsCleaned(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	evil := "ne\u202ew\x07"
 	s := &groupServer{h: h, statuses: []string{evil}}
@@ -480,6 +498,7 @@ func strPtr(s string) *string { return &s }
 // A group's page kept on the disk is shown while its reload is out, like
 // the list's.
 func TestAGroupComesBackFromTheDisk(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	s := &groupServer{h: h, statuses: []string{"new"}}
