@@ -1046,7 +1046,6 @@ func TestTheEndsOfTwoTicketsStandSideBySide(t *testing.T) {
 	t.Parallel()
 
 	for name, tc := range map[string]struct {
-		second bookCall
 		answer func(c bookCall) (api.TimeBooking, transport.Answer)
 		want   string
 		until  time.Duration
@@ -1081,7 +1080,9 @@ func TestTheEndsOfTwoTicketsStandSideBySide(t *testing.T) {
 			h.press("esc")
 			h.drive(second)
 			got, tone := h.m.status()
-			if !strings.Contains(got.String(), "Not clear whether it was booked on #6") || !strings.Contains(got.String(), tc.want) || tone != present.NoticeProblem {
+			// The oldest first: a line that is cut keeps it, the warning.
+			line := "Not clear whether it was booked on #6; check the time on the ticket \u00b7 " + tc.want
+			if !strings.HasPrefix(got.String(), line) || tone != present.NoticeProblem {
 				t.Fatalf("status %q, tone %v", got.String(), tone)
 			}
 			// Each goes at its own deadline, the second a second after the
@@ -1100,6 +1101,80 @@ func TestTheEndsOfTwoTicketsStandSideBySide(t *testing.T) {
 				t.Fatalf("notices %+v", got)
 			}
 		})
+	}
+}
+
+// The line takes a problem's tone whichever end came first: in a hint's tone
+// a refusal would stand in the path's place, and go for one. Would miss: the
+// tone of the first end.
+func TestAProblemAfterAHintGivesTheLineItsTone(t *testing.T) {
+	t.Parallel()
+
+	h := bookingHarness(t)
+	h.fillBooking("30", "")
+	booked := h.press("enter")
+	h.press("esc")
+	h.drive(booked)
+	h.reopen(7)
+	h.f.bookFails(recordedRefusal(t, "invalid_input_over_a_day", transport.InvalidInput))
+	h.fillBooking("24:01", "")
+	refused := h.press("enter")
+	h.press("esc")
+	h.drive(refused)
+	got, tone := h.m.status()
+	if !strings.HasPrefix(got.String(), "0:30 booked on #6 \u00b7 Not booked on #7") || tone != present.NoticeProblem {
+		t.Fatalf("status %q, tone %v", got.String(), tone)
+	}
+}
+
+// A press that does not send answers nothing: the lock holds, and the end on
+// the line stays, since nothing has changed what it says. Would miss: the
+// end taken away before the lock is asked.
+func TestABlockedPressLeavesTheEndOfItsTicket(t *testing.T) {
+	t.Parallel()
+
+	h := bookingHarness(t)
+	h.f.bookFails(transport.Answer{Class: transport.Temporary, Message: "lost", Sent: true})
+	h.fillBooking("30", "")
+	send := h.press("enter")
+	h.press("esc")
+	h.drive(send)
+	h.press("b")
+	h.typeText("30")
+	a := h.m.app
+	read := a.readTime(a.detail, false) // the lock holds while it is out
+	if read == nil {
+		t.Fatal("no read out")
+	}
+	h.drive(h.press("enter"))
+	if got := h.dialogLine(); got != "A booking of this ticket is still on its way" {
+		t.Fatalf("line %q", got)
+	}
+	if got := h.status(); !strings.Contains(got, "Not clear whether it was booked on #6") {
+		t.Fatalf("status %q", got)
+	}
+	if got := len(h.f.bookCalls()); got != 1 {
+		t.Fatalf("%d attempts", got)
+	}
+	h.drive(read)
+}
+
+// The deadline reaches the model by itself: without the wake a hint stays
+// until something else draws the line. Would miss: tellBooking returning no
+// command.
+func TestANoticeWakesTheModelAtItsDeadline(t *testing.T) {
+	t.Parallel()
+
+	h := bookingHarness(t)
+	a := h.m.app
+	a.deps.Events = gateway.NewEvents(h.live) // a mailbox whose timers run
+	cmd := a.tellBooking(six(), present.NewInline("told"), present.Plain, time.Millisecond)
+	if cmd == nil {
+		t.Fatal("no command for the deadline")
+	}
+	msg, ok := h.receive(h.background(cmd)).(gateway.Expired)
+	if !ok || !msg.Until.Equal(a.bookNotices[0].until) {
+		t.Fatalf("%T %+v, until %v", msg, msg, a.bookNotices[0].until)
 	}
 }
 
