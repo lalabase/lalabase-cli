@@ -549,7 +549,7 @@ navigation again.
     `NO_COLOR` keeps both. The client reads the files every 500 ms while
     an agent exists or a launch runs, otherwise not at all; the spinner
     moves one frame with every read, and the `A` of an agent that waits
-    for you pulses at the same pace, full and faint by turns.
+    for you breathes slowly, through three tones of violet in six seconds.
   * **Two gaps.** Claude Code sends no event when a permission prompt is
     denied, nor on `Esc` during a tool: the first leaves "waiting for
     approval", the second "working", until the next prompt or the

@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/agents"
@@ -145,8 +146,9 @@ func TestTheColumnFitsEveryLayout(t *testing.T) {
 	}
 }
 
-// An agent that waits for the person pulses: its A in full and faint by
-// turns with the reads; the other states keep their tone.
+// An agent that waits for the person breathes: its A moves through the
+// tones one read at a time, never from full to dim at once, and a breath
+// takes six seconds of reads. The other states keep their tone.
 func TestAWaitingAgentPulsesWithTheReads(t *testing.T) {
 	t.Parallel()
 
@@ -154,25 +156,33 @@ func TestAWaitingAgentPulsesWithTheReads(t *testing.T) {
 	h.withWatcher(agentIn(1, orgA, 6, agents.WaitingForYou, h.now))
 	h.start()
 	a := h.m.app
+	if want := int(6 * time.Second / agentsEvery); len(waitPulse) != want {
+		t.Fatalf("a breath of %d reads, want %d", len(waitPulse), want)
+	}
 	seen := map[present.Style]bool{}
-	for i := 0; i < 2; i++ {
+	for i := range waitPulse {
+		a.agents.frame = i
 		l := a.look(agents.WaitingForYou)
+		next := waitPulse[(i+1)%len(waitPulse)]
 		if l.glyph != "A" {
 			t.Fatalf("glyph %q", l.glyph)
+		}
+		if (l.style == present.AgentWaiting && next == present.AgentWaitingDim) || (l.style == present.AgentWaitingDim && next == present.AgentWaiting) {
+			t.Fatalf("a jump at read %d", i)
 		}
 		seen[l.style] = true
 		if got := a.look(agents.WaitingForApproval).style; got != present.AgentApproval {
 			t.Fatalf("the approval's tone moved: %v", got)
 		}
-		before := a.agents.frame
-		ref := a.agents.ref + 1
-		a.agents.ref, a.agents.reading = ref, true
-		a.receiveAgents(agents.Snapshot{Ref: ref, Agents: a.agents.list})
-		if a.agents.frame != before+1 {
-			t.Fatalf("a read did not move the pulse: frame %d", a.agents.frame)
-		}
 	}
-	if !seen[present.AgentWaiting] || !seen[present.AgentWaitingFaint] {
-		t.Fatalf("no pulse: %v", seen)
+	if len(seen) != 3 {
+		t.Fatalf("tones %v", seen)
+	}
+	before := a.agents.frame
+	ref := a.agents.ref + 1
+	a.agents.ref, a.agents.reading = ref, true
+	a.receiveAgents(agents.Snapshot{Ref: ref, Agents: a.agents.list})
+	if a.agents.frame != before+1 {
+		t.Fatalf("a read did not move the pulse: frame %d", a.agents.frame)
 	}
 }

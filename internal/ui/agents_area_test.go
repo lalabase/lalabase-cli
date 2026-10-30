@@ -68,7 +68,7 @@ func TestAnAgentsRowAndItsTitle(t *testing.T) {
 	h.withWatcher(agentIn(1, orgA, 6, agents.WaitingForYou, h.now), agentIn(2, orgB, 7, agents.Lost, h.now))
 	h.drive(h.m.Init())
 	r := h.areaRow(6)
-	if r.Primary.String() != "#6 Ticket 6" || !r.Marked || r.Mark.String() != "A" || (r.MarkStyle != present.AgentWaiting && r.MarkStyle != present.AgentWaitingFaint) {
+	if r.Primary.String() != "#6 Ticket 6" || !r.Marked || r.Mark.String() != "A" || r.MarkStyle != present.AgentWaiting {
 		t.Fatalf("%+v", r)
 	}
 	if h.titleReads(6) != 1 || h.titleReads(7) != 1 {

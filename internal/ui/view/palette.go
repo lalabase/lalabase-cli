@@ -22,9 +22,12 @@ var (
 	brandColor  = lipgloss.Color("#79c2fa")
 	authorColor = lipgloss.Color("#bf94e4")
 	cyanColor   = lipgloss.Color("#75c5d5")
-	yellowColor = lipgloss.Color("#dfc184")
-	greenColor  = lipgloss.Color("#9dcf92")
-	redColor    = lipgloss.Color("#df7376")
+	// The steps of a waiting agent's pulse down from authorColor.
+	authorSoftColor = lipgloss.Color("#a582c6")
+	authorDimColor  = lipgloss.Color("#8b70a8")
+	yellowColor     = lipgloss.Color("#dfc184")
+	greenColor      = lipgloss.Color("#9dcf92")
+	redColor        = lipgloss.Color("#df7376")
 )
 
 // focusGround is the focused pane's background, a little lighter than the

@@ -226,6 +226,16 @@ func (a *app) agentSummary() []present.AgentCount {
 // each.
 var spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
+// waitPulse are the tones of a waiting agent's A, one per read: a breath of
+// six seconds through neighbouring tones, slow and without a jump, since
+// it runs for as long as the agent waits and must not blink at the person.
+var waitPulse = []present.Style{
+	present.AgentWaiting, present.AgentWaiting, present.AgentWaiting, present.AgentWaiting,
+	present.AgentWaitingSoft, present.AgentWaitingSoft,
+	present.AgentWaitingDim, present.AgentWaitingDim, present.AgentWaitingDim, present.AgentWaitingDim,
+	present.AgentWaitingSoft, present.AgentWaitingSoft,
+}
+
 // agentLook is how a state is drawn wherever an agent shows (the area,
 // the ticket rows, the header's counts, the ticket's head, the meta bar):
 // its glyph, one cell; its tone; its word. The glyph's shape and the word
@@ -250,15 +260,15 @@ var agentLooks = map[agents.State]agentLook{
 }
 
 // look is a state's look; working's glyph is the spinner's frame of this
-// read, and an agent that waits for the person pulses: its A in full and
-// faint by turns, so that it is told from one at work at a glance.
+// read, and an agent that waits for the person pulses (waitPulse), so that
+// it is told from one at work at a glance.
 func (a *app) look(s agents.State) agentLook {
 	l := agentLooks[s]
 	if s == agents.Working {
 		l.glyph = spinner[a.agents.frame%len(spinner)]
 	}
-	if s == agents.WaitingForYou && a.agents.frame%2 == 1 {
-		l.style = present.AgentWaitingFaint
+	if s == agents.WaitingForYou {
+		l.style = waitPulse[a.agents.frame%len(waitPulse)]
 	}
 	return l
 }
