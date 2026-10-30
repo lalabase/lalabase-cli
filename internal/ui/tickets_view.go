@@ -196,6 +196,7 @@ func (m Model) detailColumn() present.Column {
 		// The agent first: the bar does not scroll, and a low pane cuts its
 		// end (review round 1 of #36, F2).
 		c.Meta = append(append(a.agentMeta(d.id), metaBar(d.record, a.when)...), timeMeta(d)...)
+		c.Meta = append(c.Meta, m.keysMeta()...)
 	}
 	c.Offset = d.offset
 	line := -1
@@ -249,6 +250,29 @@ func metaBar(r api.Ticket, when func(string) string) []present.MetaLine {
 		label(uitext.BarUpdated),
 		value(when(r.UpdatedAt)),
 	)
+}
+
+// keysMeta are the meta bar's last lines: after an empty line a faint label,
+// then the keys that act on the ticket, each as the help names it. They act
+// with the ticket in focus, so none stands beside the list, and none that
+// does nothing now. x on an agent stands in the agent's lines already.
+func (m Model) keysMeta() []present.MetaLine {
+	if m.focus != view.Object {
+		return nil
+	}
+	var keys []binding
+	if x, ok := m.xNow(); ok && x.kind == xStart {
+		keys = m.xBinding()
+	}
+	keys = append(append(keys, m.writeBindings()...), m.refreshBinding()...)
+	if len(keys) == 0 {
+		return nil
+	}
+	out := []present.MetaLine{{}, {Text: uitext.Inline(uitext.BarKeys), Style: present.Faint}}
+	for _, k := range keys {
+		out = append(out, present.MetaLine{Lead: uitext.Inline(k.key), LeadStyle: present.Strong, Text: uitext.Inline(k.help)})
+	}
+	return out
 }
 
 // wrappedLines is the number of screen lines the text's first n lines take
