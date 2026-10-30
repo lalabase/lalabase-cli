@@ -18,6 +18,8 @@ import (
 )
 
 func TestR3ResourceRemovalRecovery(t *testing.T) {
+	t.Parallel()
+
 	for _, again := range []bool{false, true} {
 		t.Run(map[bool]string{false: "shrink", true: "removed-again"}[again], func(t *testing.T) {
 			h := newHarness(t)
@@ -66,6 +68,8 @@ func TestR3ResourceRemovalRecovery(t *testing.T) {
 }
 
 func TestR3FilteredRemovalLeavesGlobalView(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(""))
@@ -86,6 +90,8 @@ func TestR3FilteredRemovalLeavesGlobalView(t *testing.T) {
 }
 
 func TestR3SnapshotRankDoesNotSuppressFilteredRows(t *testing.T) {
+	t.Parallel()
+
 	for _, removal := range []bool{false, true} {
 		t.Run(map[bool]string{false: "rows", true: "removal"}[removal], func(t *testing.T) {
 			h := newHarness(t)
@@ -118,6 +124,8 @@ func TestR3SnapshotRankDoesNotSuppressFilteredRows(t *testing.T) {
 }
 
 func TestR3ExpiredMailboxEveryMessageAndLateCommands(t *testing.T) {
+	t.Parallel()
+
 	for _, name := range []string{"wake", "mode", "batch", "nil", "pause", "resize", "key", "late-me"} {
 		t.Run(name, func(t *testing.T) {
 			h := newHarness(t)
@@ -163,6 +171,8 @@ func TestR3ExpiredMailboxEveryMessageAndLateCommands(t *testing.T) {
 }
 
 func TestR3RefreshHelpDisappearsWhileBothReadsPending(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(""))
@@ -210,6 +220,8 @@ func TestR3RefreshHelpDisappearsWhileBothReadsPending(t *testing.T) {
 }
 
 func TestR3FatalMessageStillExpiresObserved401(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))

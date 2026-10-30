@@ -17,6 +17,8 @@ import (
 // spent on scrolling that is not needed). Every width from 24 to 60, the
 // heights around the wrap of the help.
 func TestTheDetailsScrollIsNotOfferedWhereTheTextFitsWithoutIt(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
 		rows := h.d.rows(orgA, 1, 2)

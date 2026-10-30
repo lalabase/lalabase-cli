@@ -51,6 +51,8 @@ func barOf(lines []string) string {
 // thumb as long as the visible share, at the top only at the top, at the
 // bottom only at the end, in between otherwise.
 func TestScrollbarShowsWhereTheTextIs(t *testing.T) {
+	t.Parallel()
+
 	c := numbered(40) // 40 lines, a body of 10: a thumb of 3 (10*10/40, rounded)
 	const width, height = 20, 11
 	top := 30
@@ -88,6 +90,8 @@ func TestScrollbarShowsWhereTheTextIs(t *testing.T) {
 
 // The thumb is never shorter than one cell, however long the text.
 func TestScrollbarThumbKeepsOneCell(t *testing.T) {
+	t.Parallel()
+
 	c := numbered(5000)
 	c.Offset = 2500
 	got := content(c, 20, 5, false, ansi.WcWidth)
@@ -98,6 +102,8 @@ func TestScrollbarThumbKeepsOneCell(t *testing.T) {
 
 // Text that fits shows no bar, and a list never does.
 func TestNoScrollbarWithoutOverflowOrInAList(t *testing.T) {
+	t.Parallel()
+
 	got := pane(numbered(5), 20, 11, true, ansi.WcWidth)
 	if strings.ContainsAny(ansi.Strip(strings.Join(got, "")), thumb+track) {
 		t.Fatalf("a bar on text that fits: %q", ansiStripAll(got))
@@ -117,6 +123,8 @@ func TestNoScrollbarWithoutOverflowOrInAList(t *testing.T) {
 // text's last line and nothing past it, whether the text overflows or not
 // and however a line wraps at the column the bar takes.
 func TestExtentAndTheDrawnTextAgree(t *testing.T) {
+	t.Parallel()
+
 	words := strings.Repeat("abcd efgh ", 30)
 	for _, width := range []int{8, 9, 10, 11, 12, 20, 40, 79, 80, 81, 82, 120} {
 		for _, text := range []string{words, words + "\nEND", "short", strings.Repeat("x", 81) + "\nEND"} {
@@ -145,6 +153,8 @@ func TestExtentAndTheDrawnTextAgree(t *testing.T) {
 // text (the place of a comment, which the ticket pane measures) wraps as
 // the whole does.
 func TestThePartOfATextWrapsAsTheWhole(t *testing.T) {
+	t.Parallel()
+
 	head := strings.Repeat("abcd ", 4) // 19 cells and a space: one line at 20, two at 18
 	whole := head + "\n" + strings.Repeat("more\n", 30)
 	g := Geometry{Columns: 2, ObjectWidth: 20 + frameCells, BodyHeight: 8}

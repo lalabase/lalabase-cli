@@ -21,6 +21,8 @@ const pathOfSix = "Nordlicht GmbH › Tickets › Website-Relaunch · page 1 of 
 // the second line for 5 s by the model's clock, then the path is back;
 // the expiry of its deadline drops it, an expiry of an older one does not.
 func TestAHintTakesThePathsPlaceForFiveSeconds(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []int{80, 120, 160} {
 		h := newHarness(t)
 		h.withLauncher()
@@ -53,6 +55,8 @@ func TestAHintTakesThePathsPlaceForFiveSeconds(t *testing.T) {
 // is for; an expiry of another session or of an older hint leaves the
 // newer one.
 func TestAHintsExpiryDropsOnlyItsOwnHint(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withLauncher()
 	h.openSix()
@@ -87,6 +91,8 @@ func TestAHintsExpiryDropsOnlyItsOwnHint(t *testing.T) {
 // A problem keeps today's notice: beside the path, in its tone, as long as
 // the state holds, whatever the clock says; so does a launch that runs.
 func TestAProblemStaysBesideThePath(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withLauncher()
 	f.kind = launch.NoClaude
@@ -118,6 +124,8 @@ func TestAProblemStaysBesideThePath(t *testing.T) {
 // A hint wider than the terminal is not cut: it wraps into lines under the
 // second one, taken from the body, and the screen keeps its height.
 func TestAWideHintWrapsInsteadOfBeingCut(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withLauncher()
 	h.openSix()
@@ -140,6 +148,8 @@ func TestAWideHintWrapsInsteadOfBeingCut(t *testing.T) {
 // and the lines it wraps into under it, whole; cut, and marked, only where
 // one more line would leave the focused pane no row.
 func TestAHintIsWholeInEveryFocusWidthAndHeight(t *testing.T) {
+	t.Parallel()
+
 	const hint = "Claude Code ended; back at #6, and a longer hint that wraps on a narrow terminal"
 	h := newHarness(t)
 	h.withLauncher()
@@ -202,6 +212,8 @@ func TestAHintIsWholeInEveryFocusWidthAndHeight(t *testing.T) {
 // lifetime, the launch's answer issues the expiry, and it comes back with
 // the hint's deadline after 5 s by the real clock; a problem issues none.
 func TestAHintsAnswerIssuesItsExpiry(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withLauncher()
 	h.openSix()
@@ -242,6 +254,8 @@ func TestAHintsAnswerIssuesItsExpiry(t *testing.T) {
 // Review round 1 of #32: an older hint's expiry leaves a launch that runs
 // and a problem that came after the hint.
 func TestAnOldHintsExpiryLeavesALaunchAndAProblem(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withLauncher()
 	h.openSix()

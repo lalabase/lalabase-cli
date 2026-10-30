@@ -136,6 +136,8 @@ func (h *harness) shownTicket() launch.Ticket {
 }
 
 func TestXOpensClaudeCodeBesideTheTicketShown(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withLauncher()
 	h.openSix()
@@ -178,6 +180,8 @@ func TestXOpensClaudeCodeBesideTheTicketShown(t *testing.T) {
 // x is the ticket's key: not in the list, the chooser, a notification's
 // details, a ticket still loading, or without a launcher.
 func TestXIsOnlyInTheTicketView(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withLauncher()
 	h.start()
@@ -229,6 +233,8 @@ func TestXIsOnlyInTheTicketView(t *testing.T) {
 // The ticket handed over is the one the pane shows: the list's cursor may
 // have moved to another row meanwhile.
 func TestXHandsOverTheTicketShownNotTheRowUnderTheCursor(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withLauncher()
 	h.openSix()
@@ -254,6 +260,8 @@ func TestXHandsOverTheTicketShownNotTheRowUnderTheCursor(t *testing.T) {
 // A launch's answer unlocks only its own launch: one from before does not
 // free the lock of the one now running.
 func TestAnOldLaunchsAnswerDoesNotUnlock(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withLauncher()
 	h.openSix()
@@ -267,6 +275,8 @@ func TestAnOldLaunchsAnswerDoesNotUnlock(t *testing.T) {
 
 // Every outcome says what came of it, or why nothing opened.
 func TestEveryOutcomeHasItsStatusText(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		kind   launch.Kind
 		detail string
@@ -310,6 +320,8 @@ func TestEveryOutcomeHasItsStatusText(t *testing.T) {
 // A detail (a path of the person's config, an error naming one) is cleaned
 // before it reaches the status line.
 func TestAForeignDetailIsCleaned(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withLauncher()
 	h.openSix()
@@ -323,6 +335,8 @@ func TestAForeignDetailIsCleaned(t *testing.T) {
 // The notice belongs to its ticket: another ticket in the pane does not
 // carry it.
 func TestTheNoticeStaysWithItsTicket(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withLauncher()
 	h.openSix()
@@ -344,6 +358,8 @@ func TestTheNoticeStaysWithItsTicket(t *testing.T) {
 // Review round 1, P43 and P48: a record that is not the ticket asked for,
 // or one without a number, offers no x.
 func TestXNeedsTheRecordOfTheTicketAskedFor(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withLauncher()
 	h.openSix()
@@ -366,6 +382,8 @@ func TestXNeedsTheRecordOfTheTicketAskedFor(t *testing.T) {
 // Review round 2, P27: once a launch is answered, a second answer with its
 // number changes nothing.
 func TestXSecondAnswerToALaunchChangesNothing(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withLauncher()
 	h.openSix()
@@ -383,6 +401,8 @@ func TestXSecondAnswerToALaunchChangesNothing(t *testing.T) {
 // line. Either way the screen is as high as the terminal and the help is
 // whole. Narrower terminals, where it wraps, are in notice_test.go.
 func TestTheNoticeIsShownWholeAtEveryWidth(t *testing.T) {
+	t.Parallel()
+
 	const notice = "Folder not found: /home/anna/dev/website/relaunch-2026x"
 	for _, width := range []int{len(notice), len(notice) + 1, 79, 80, 81, 100, 119, 120, 121, 160, 200} {
 		h := newHarness(t)
@@ -419,6 +439,8 @@ func TestTheNoticeIsShownWholeAtEveryWidth(t *testing.T) {
 // high as the terminal, the focused pane keeps a line, a terminal is not
 // made small by it, and the scroll keys follow the body that is left.
 func TestANoticeOnItsOwnLineKeepsTheFrame(t *testing.T) {
+	t.Parallel()
+
 	for _, number := range []int{6, 7} {
 		h := newHarness(t)
 		f := h.withLauncher()
@@ -472,6 +494,8 @@ func TestANoticeOnItsOwnLineKeepsTheFrame(t *testing.T) {
 // C9a: a launch that opened but could not hand over its hooks, or record
 // its agent, says so as a problem, with why; its text is cleaned.
 func TestAnUntrackedLaunchSaysWhy(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withLauncher()
 	h.openSix()
@@ -506,6 +530,8 @@ func TestAnUntrackedLaunchSaysWhy(t *testing.T) {
 // The organisation handed over is the notification's when the ticket was
 // opened from one, else the list's; none when neither shows this ticket.
 func TestTheOrganisationOfTheTicketShown(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	a := h.m.app

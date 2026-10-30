@@ -17,6 +17,8 @@ import (
 // glyph in its tone, its word and the age of its state; the head's line
 // of C9a goes, as the facts' line does. Below that width the head keeps it.
 func TestTheAgentStandsInTheMetaBar(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.showLogin()
 	h.m.app.agents.list = []agents.Agent{agentOn(1, agents.WaitingForYou, h.now.Add(-4*time.Minute-30*time.Second))}
@@ -66,6 +68,8 @@ func TestTheAgentStandsInTheMetaBar(t *testing.T) {
 // Review round 1 of #36, F2: on a low terminal the bar is cut at its end;
 // the agent's state stays in sight wherever the bar stands.
 func TestTheAgentStaysInSightOnALowTerminal(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.showLogin()
 	h.m.app.agents.list = []agents.Agent{agentOn(1, agents.WaitingForYou, h.now)}
@@ -88,6 +92,8 @@ func TestTheAgentStaysInSightOnALowTerminal(t *testing.T) {
 // at a space, the lines after the first under the word; never wider than
 // the bar.
 func TestTheAgentsValueFitsTheBar(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	for _, c := range []struct {
 		state agents.State

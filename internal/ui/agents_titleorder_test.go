@@ -19,6 +19,8 @@ import (
 )
 
 func TestAnOlderListCannotUndoARemoval(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.openSix()
@@ -40,6 +42,8 @@ func TestAnOlderListCannotUndoARemoval(t *testing.T) {
 }
 
 func TestANewTitleAfterARemovalBeatsAnOldListRow(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.openSix()
@@ -60,6 +64,8 @@ func TestANewTitleAfterARemovalBeatsAnOldListRow(t *testing.T) {
 	}
 }
 func TestTheNoticeFitsBesideTheAgents(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start()
@@ -77,6 +83,8 @@ func TestTheNoticeFitsBesideTheAgents(t *testing.T) {
 }
 
 func TestTheSameAgentFromTheListKeepsTheScroll(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.openSix()
@@ -102,6 +110,8 @@ func TestTheSameAgentFromTheListKeepsTheScroll(t *testing.T) {
 // A project's removal reaches a remembered title also while the agents'
 // list is briefly empty (a failed read of the agents).
 func TestAProjectRemovalReachesAnAgentBrieflyAbsent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start() // the title is read and remembered
@@ -127,6 +137,8 @@ func TestAProjectRemovalReachesAnAgentBrieflyAbsent(t *testing.T) {
 
 // A title the memory cache holds is taken from it: no request.
 func TestATitleInTheMemoryCacheCostsNoRequest(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.start()
@@ -144,6 +156,8 @@ func TestATitleInTheMemoryCacheCostsNoRequest(t *testing.T) {
 // The disk not open yet at the first reading of the agents: the title is
 // looked up there once it is.
 func TestATitleIsLookedUpOnTheDiskOnceItOpens(t *testing.T) {
+	t.Parallel()
+
 	h := newDiskHarness(t, t.TempDir(), nil)
 	h.withWatcher()
 	h.start()
@@ -169,6 +183,8 @@ func TestATitleIsLookedUpOnTheDiskOnceItOpens(t *testing.T) {
 // A removal while the title's read is out offers no R that would read
 // nothing; the read's answer settles it.
 func TestARemovalDuringATitleReadOffersNoR(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.start()
@@ -190,6 +206,8 @@ func TestARemovalDuringATitleReadOffersNoR(t *testing.T) {
 // A failed title that a list from the cache shows (no read accepted, so
 // nothing renews it) offers no R.
 func TestAFailedTitleShownByACachedListOffersNoR(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.openTickets(website) // the list is cached now
@@ -219,6 +237,8 @@ func TestAFailedTitleShownByACachedListOffersNoR(t *testing.T) {
 // keeps the place, but still reads a ticket that is not fresh (its first
 // read or a refresh failed), as opening it from the list does.
 func TestTheSameAgentFromTheListRetriesAFailedRead(t *testing.T) {
+	t.Parallel()
+
 	down := func(project, id string, o api.TicketOptions) transport.Answer {
 		return transport.Answer{Class: transport.Temporary, Message: "down", Status: 503, Sent: true}
 	}
@@ -270,6 +290,8 @@ func TestTheSameAgentFromTheListRetriesAFailedRead(t *testing.T) {
 // A ticket only previewed in the list (the pane shows it, the list has not
 // opened it): Enter on its agent opens it, as Enter on its row does.
 func TestAnAgentOpensItsPreviewedTicket(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.openTickets(website)
@@ -290,6 +312,8 @@ func TestAnAgentOpensItsPreviewedTicket(t *testing.T) {
 // A removal of the ticket sent before a list read that still shows it,
 // answered after the list: the older removal does not take the title.
 func TestAnOlderRemovalCannotUndoANewerList(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.openSix()
@@ -316,6 +340,8 @@ func TestAnOlderRemovalCannotUndoANewerList(t *testing.T) {
 // A title read sent after a list read and answered after it wins: the list
 // answers first with the old name, the title read with the new one.
 func TestANewerTitleReadWinsOverAnOlderList(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.start()
@@ -344,6 +370,8 @@ func TestANewerTitleReadWinsOverAnOlderList(t *testing.T) {
 // The notice is measured with the agents' title alone: whatever their
 // column holds, it takes as many lines as on the screen drawn with it.
 func TestTheNoticeIsMeasuredWithTheAgentsTitle(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.WaitingForApproval, h.now), agentIn(2, orgB, 7, agents.Working, h.now))
 	h.start()

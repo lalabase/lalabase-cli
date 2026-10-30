@@ -37,6 +37,8 @@ printf 'CLAUDE_STUB_RAN\n'
 `
 
 func TestPTYLaunchRunsClaudeHereAndComesBack(t *testing.T) {
+	t.Parallel()
+
 	_, url := fixtureServer(t, inboxfixture.Normal)
 	home, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -147,6 +149,8 @@ const (
 // of its own. Until it had one, a notice was cut ("No MCP server of Cl…",
 // C7) and x seemed to do nothing.
 func TestPTYLaunchNoticeIsWholeOnANarrowTerminal(t *testing.T) {
+	t.Parallel()
+
 	_, url := fixtureServer(t, inboxfixture.Normal)
 	home, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {

@@ -72,6 +72,8 @@ func mustNotContain(t *testing.T, text string, unwanted ...string) {
 }
 
 func TestCommentsArePagedNewestFirstAndAttachmentsOnTheirOwn(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	if reads := h.f.detailReads(); len(reads) != 1 || reads[0].o != first {
@@ -116,6 +118,8 @@ func TestCommentsArePagedNewestFirstAndAttachmentsOnTheirOwn(t *testing.T) {
 
 // A page shown before comes from the cache at once and is read once again.
 func TestAPageShownBeforeComesFromTheCacheAndIsReadOnce(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -138,6 +142,8 @@ func TestAPageShownBeforeComesFromTheCacheAndIsReadOnce(t *testing.T) {
 // The order resets the comments to page 1 and nothing else: the
 // attachments page and the area stay.
 func TestTheOrderResetsOnlyTheCommentPage(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -168,6 +174,8 @@ func TestTheOrderResetsOnlyTheCommentPage(t *testing.T) {
 
 // A key pressed again while its read is out starts no second request.
 func TestRepeatedKeysStartNoSecondRequest(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -207,6 +215,8 @@ func TestRepeatedKeysStartNoSecondRequest(t *testing.T) {
 // is corrected once to the last page, in one request for both areas; a
 // second shrink stops and offers R; a total of zero asks nothing.
 func TestAShrunkTicketPageIsCorrectedOnce(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	sized := func(comments, files func(o api.TicketOptions) int) {
 		h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
@@ -270,6 +280,8 @@ func TestAShrunkTicketPageIsCorrectedOnce(t *testing.T) {
 // The selected comment is kept by its id across a reload; when it left
 // the page the first comment is selected.
 func TestTheSelectedCommentIsKeptByItsID(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -300,6 +312,8 @@ func TestTheSelectedCommentIsKeptByItsID(t *testing.T) {
 // The description whole: only on e, with the pages' options and
 // full_text, without touching the pages; Esc closes it without a request.
 func TestTheDescriptionIsExpandedOnlyOnEAndKeepsThePages(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	text := h.paneText()
@@ -349,6 +363,8 @@ func TestTheDescriptionIsExpandedOnlyOnEAndKeepsThePages(t *testing.T) {
 // One comment whole is no page: the page, its heading and the ticket stay;
 // the answer is cached under its own key; shown again from there at once.
 func TestOneCommentWholeIsNotAPage(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -393,6 +409,8 @@ func TestOneCommentWholeIsNotAPage(t *testing.T) {
 // Without full_text and post_id: paging, but no expansion. Each capability
 // on its own.
 func TestPagingAndExpansionAreTwoCapabilities(t *testing.T) {
+	t.Parallel()
+
 	t.Run("expansion without paging", func(t *testing.T) {
 		h := newHarness(t)
 		tools := withoutArgument(h.d.tools, "get_ticket", "posts_order")
@@ -471,6 +489,8 @@ func TestPagingAndExpansionAreTwoCapabilities(t *testing.T) {
 // Attachments show what the server proved and say what it did not: a
 // missing size is unknown, not zero bytes.
 func TestAttachmentsShowOnlyTheMetadataTheServerSent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	text := h.paneText()
@@ -500,6 +520,8 @@ func TestAttachmentsShowOnlyTheMetadataTheServerSent(t *testing.T) {
 // A late answer for an expansion that was closed opens nothing and fills
 // no cache.
 func TestALateExpansionAnswerDoesNotOpenItAgain(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	gate := make(chan struct{})
@@ -539,6 +561,8 @@ func TestALateExpansionAnswerDoesNotOpenItAgain(t *testing.T) {
 // hidden at once, the ticket stays and says "Comment unavailable", and the
 // ticket is read once without post_id; only that read may remove it.
 func TestAMissingCommentHidesItsTextAndReadsTheTicketOnce(t *testing.T) {
+	t.Parallel()
+
 	setup := func(t *testing.T) (*harness, cache.Key) {
 		h := newHarness(t)
 		h.openSix()
@@ -637,6 +661,8 @@ func TestAMissingCommentHidesItsTextAndReadsTheTicketOnce(t *testing.T) {
 // No access to one comment is no access to the ticket: every cached
 // variant of it goes, and the answer is not "Comment unavailable".
 func TestNoAccessOrAMissingTicketOnAnExpansionRemovesEveryVariant(t *testing.T) {
+	t.Parallel()
+
 	for name, answer := range map[string]transport.Answer{
 		"no access on a comment":      failing(transport.NoAccess, 403),
 		"no ticket on the whole text": {Class: transport.NotFound, Message: "No ticket found.", Status: 200, Sent: true},
@@ -688,6 +714,8 @@ func TestNoAccessOrAMissingTicketOnAnExpansionRemovesEveryVariant(t *testing.T) 
 // A 401 on an expansion the person left ends the session; nothing comes
 // back afterwards.
 func TestA401FromALeftExpansionEndsTheSession(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	a := h.m.app
@@ -726,6 +754,8 @@ func TestA401FromALeftExpansionEndsTheSession(t *testing.T) {
 // Paging, the order and the expansions are the person's: none of them
 // waits for the background budget the previews used up.
 func TestThePersonsReadsDoNotWaitForTheBackgroundBudget(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -749,6 +779,8 @@ func TestThePersonsReadsDoNotWaitForTheBackgroundBudget(t *testing.T) {
 // A resize keeps the area, the pages, the selection and the expansion,
 // and reads nothing.
 func TestAResizeKeepsTheTicketState(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -774,6 +806,8 @@ func TestAResizeKeepsTheTicketState(t *testing.T) {
 // Tab moves the pane to the heading of the area; the selected comment is
 // kept in sight.
 func TestTabAndTheSelectionKeepTheirPlaceInSight(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.m.width, h.m.height = 120, 20
 	h.openSix()
@@ -806,6 +840,8 @@ func TestTabAndTheSelectionKeepTheirPlaceInSight(t *testing.T) {
 // whole, an error of an expansion) reaches the screen cleaned, from the
 // server and from the cache.
 func TestHostileMetadataAndExpandedTextAreCleaned(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	hostileKind, hostileStatus := "KIND_START"+hostileText, "STATUS_START"+hostileText
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
@@ -876,6 +912,8 @@ func TestHostileMetadataAndExpandedTextAreCleaned(t *testing.T) {
 // A page that failed does not say it loads: the section says it did not
 // come, the heading keeps the page asked for, R reads it again.
 func TestAFailedPageSaysSoInItsSection(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -897,6 +935,8 @@ func TestAFailedPageSaysSoInItsSection(t *testing.T) {
 // An expansion that failed is offered again: e reads it once more; one
 // that loads or is shown is not.
 func TestAFailedExpansionIsOfferedAgain(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
@@ -925,6 +965,8 @@ func TestAFailedExpansionIsOfferedAgain(t *testing.T) {
 // e is offered only for a text the server shortened: ticket #1's
 // description and comments are whole.
 func TestEIsOfferedOnlyForAShortenedText(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	h.drive(h.press("enter")) // #1
@@ -942,6 +984,8 @@ func TestEIsOfferedOnlyForAShortenedText(t *testing.T) {
 // Leaving a ticket while its expansion loads cancels that read: the
 // waiter gets "canceled", nothing is cached or shown of it.
 func TestLeavingATicketCancelsItsExpansion(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	gate := make(chan struct{})
@@ -968,6 +1012,8 @@ func TestLeavingATicketCancelsItsExpansion(t *testing.T) {
 // Review round 1, finding 1: a missing comment answered for a newer read
 // must not block the removal an older plain read of the ticket brings.
 func TestR1AnOlderPlainRemovalAfterAMissingCommentStillRemoves(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -1003,6 +1049,8 @@ func TestR1AnOlderPlainRemovalAfterAMissingCommentStillRemoves(t *testing.T) {
 // Review round 1, finding 2: a server that counts comments but no pages
 // gets page 1 asked, never page 0.
 func TestR1ZeroPagesBesideATotalCorrectsToPageOne(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -1026,6 +1074,8 @@ func TestR1ZeroPagesBesideATotalCorrectsToPageOne(t *testing.T) {
 // Review round 1, finding 3: pgup after Tab moves a screen from where the
 // pane really is, not from an anchor beyond the last screen.
 func TestR1PageUpAfterAnAnchorNearTheEndMovesAScreen(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.m.width, h.m.height = 120, 20
 	h.openSix()
@@ -1048,6 +1098,8 @@ func TestR1PageUpAfterAnAnchorNearTheEndMovesAScreen(t *testing.T) {
 // Review round 1, backlog: while another page of comments loads, its
 // comments are not shown, and up/down do not move a selection unseen.
 func TestR1NoCommentSelectionWhileTheirPageLoads(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -1066,6 +1118,8 @@ func TestR1NoCommentSelectionWhileTheirPageLoads(t *testing.T) {
 // after it, never a read that left before (whose answer may predate the
 // deletion).
 func TestR2TheReloadAfterAMissingCommentIsSentAfterIt(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -1140,6 +1194,8 @@ func (h *harness) driveWithin(cmds ...tea.Cmd) {
 // background budget spent: the page turn, the order, the expansion, the
 // correction and the reload after a missing comment come at once.
 func TestR2NoReadOfTheTicketWaitsForTheBudget(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -1189,6 +1245,8 @@ func TestR2NoReadOfTheTicketWaitsForTheBudget(t *testing.T) {
 // Review round 2, probes: the comments say they load as soon as another
 // order or page is asked, and offer no expansion of the old page then.
 func TestR2TheCommentsLoadOnAnOrderAndOfferNothingMeanwhile(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -1206,6 +1264,8 @@ func TestR2TheCommentsLoadOnAnOrderAndOfferNothingMeanwhile(t *testing.T) {
 // Review round 2, probes: with one comment there is nothing to order or to
 // select.
 func TestR2OneCommentHasNoOrderAndNoSelection(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
 		d := h.d
@@ -1223,6 +1283,8 @@ func TestR2OneCommentHasNoOrderAndNoSelection(t *testing.T) {
 // found by the page read is corrected again), clears an error, and the
 // corrected page leaves the cache.
 func TestR2APageTurnFreesTheCorrectionAndClearsTheError(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	comments := 80
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
@@ -1268,6 +1330,8 @@ func TestR2APageTurnFreesTheCorrectionAndClearsTheError(t *testing.T) {
 // none left goes to page 1 without a read, the second shrink stops with
 // the page asked in the heading; ] never goes past the last page.
 func TestR2AttachmentsShrinkLikeComments(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	files := func(o api.TicketOptions) int { return 30 }
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
@@ -1309,6 +1373,8 @@ func TestR2AttachmentsShrinkLikeComments(t *testing.T) {
 // Review round 2, probes: the comments' second shrink keeps the page asked
 // in the heading; a total of zero leaves no section loading.
 func TestR2TheCommentHeadingNamesThePageAsked(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	comments := func(o api.TicketOptions) int { return 80 }
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
@@ -1337,6 +1403,8 @@ func TestR2TheCommentHeadingNamesThePageAsked(t *testing.T) {
 // Review round 2, probes: a cached entry that is not the answer to its key
 // is neither shown nor kept, for a page and for an expansion.
 func TestR2ACachedEntryIsCheckedBeforeItIsShown(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	a := h.m.app
@@ -1373,6 +1441,8 @@ func TestR2ACachedEntryIsCheckedBeforeItIsShown(t *testing.T) {
 // Review round 2, probes: a reopened ticket starts at the top, whatever
 // the pane followed before.
 func TestR2AReopenedTicketStartsAtTheTopAfterTab(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.m.width, h.m.height = 120, 20
 	h.openSix()
@@ -1392,6 +1462,8 @@ func TestR2AReopenedTicketStartsAtTheTopAfterTab(t *testing.T) {
 // is not "whole" yet; a cached one reloading says nothing more; one whose
 // reload failed says it may be stale.
 func TestR2TheStatesOfAnExpansion(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	cmd := h.press("e")
@@ -1418,6 +1490,8 @@ func TestR2TheStatesOfAnExpansion(t *testing.T) {
 // Review round 2, probes: metadata edge cases: a blank type is unknown, a
 // long one is bounded, 1 MiB is named so.
 func TestR2AttachmentMetadataEdges(t *testing.T) {
+	t.Parallel()
+
 	blank, long := "   ", strings.Repeat("x", 200)
 	if _, got := attachmentLine(api.Attachment{Filename: "f", ContentType: &blank}); !strings.Contains(got, "type unknown") {
 		t.Fatalf("blank: %q", got)
@@ -1434,6 +1508,8 @@ func TestR2AttachmentMetadataEdges(t *testing.T) {
 // again until Esc; a reload without the comment closes the marker (no
 // state the person cannot see, Esc goes back at once).
 func TestR2AMissingCommentIsNotOfferedAgainAndLeavesWithIt(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -1467,6 +1543,8 @@ func TestR2AMissingCommentIsNotOfferedAgainAndLeavesWithIt(t *testing.T) {
 // the comment is found missing is canceled, and the reload is a request of
 // its own (another share key), not a join of it.
 func TestR2TheReloadDoesNotJoinAReadStillOut(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.withoutBookedTime()

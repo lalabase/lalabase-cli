@@ -28,6 +28,8 @@ func six() string { return ticketID(website, 6) }
 // token that says it may write. Unknown is no: a server before MCP 0.7.0
 // does not say. Would miss: nil taken as false; a lock on the help alone.
 func TestBIsOfferedWithTheCapabilityAndAWritingTokenAlone(t *testing.T) {
+	t.Parallel()
+
 	writes := boolPtr(false)
 	for _, tc := range []struct {
 		name  string
@@ -67,6 +69,8 @@ func TestBIsOfferedWithTheCapabilityAndAWritingTokenAlone(t *testing.T) {
 // details, which name a ticket they do not show. The ticket opened from a
 // notification and the one an agent opened are tickets like any other.
 func TestBActsOnTheTicketInTheFocusedPaneAlone(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.m.focus = view.List
 	if h.offers(BookTime) || strings.Contains(h.helpText(), offerB) {
@@ -99,6 +103,8 @@ func TestBActsOnTheTicketInTheFocusedPaneAlone(t *testing.T) {
 // the keys write, and no dialog opens from an open line (the check M1 left
 // to K6). Would miss: b routed before the mode.
 func TestBIsTextWhereKeysWrite(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.press("b")
 	h.press("b")
@@ -124,6 +130,8 @@ func TestBIsTextWhereKeysWrite(t *testing.T) {
 // The dialog: the action, the ticket's number and title, the fields and
 // their hint, the help. Would miss: another key's name in its help.
 func TestTheBookingDialogSaysWhatItBooksOn(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.press("b")
 	text := boxed(h.m)
@@ -140,6 +148,8 @@ func TestTheBookingDialogSaysWhatItBooksOn(t *testing.T) {
 // booking writes no activity and no notification (R6). Would miss: a
 // second write, minutes from the input, a reload of the inbox or the ticket.
 func TestABookingBooksOnceAndReadsTheTimeAgain(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	times, inbox, tickets, lists := len(h.f.bookedReads()), len(h.f.inboxCalls()), len(h.f.restCalls()), len(h.f.ticketListReads())
 	h.setBooked(func(_, id string) transport.Answer { return bookedAnswer(id, 180) })
@@ -170,6 +180,8 @@ func TestABookingBooksOnceAndReadsTheTimeAgain(t *testing.T) {
 // The notice goes: it is a hint with a deadline. Would miss: a notice for
 // the rest of the session.
 func TestTheNoticeOfABookingGoesAtItsDeadline(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.sendBooking("30", "")()
 	until := h.m.app.bookNotice.until
@@ -192,6 +204,8 @@ func TestTheNoticeOfABookingGoesAtItsDeadline(t *testing.T) {
 // A second booking is a booking: nothing of the first holds it up, and it
 // has a key of its own.
 func TestASecondBookingIsANewOne(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.sendBooking("30", "")()
 	if !h.offers(BookTime) {
@@ -209,6 +223,8 @@ func TestASecondBookingIsANewOne(t *testing.T) {
 // nor from the cache. Would miss: the line left as it was; the entry left
 // in the cache, which the next open would show.
 func TestTheOldTimeGoesWithABooking(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	if !strings.Contains(h.metaText(), "Booked by you\n2:30") {
 		t.Fatalf("meta bar:\n%s", h.metaText())
@@ -234,6 +250,8 @@ func TestTheOldTimeGoesWithABooking(t *testing.T) {
 // A time read that left before the answer brings the old sum: it does not
 // count. Would miss: an entry dropped without moving the epoch on.
 func TestATimeReadBegunBeforeTheBookingDoesNotCount(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.m.focus = view.Object
 	stale := h.m.app.readTime(h.m.app.detail, false) // 2:30, out, not landed
@@ -254,6 +272,8 @@ func TestATimeReadBegunBeforeTheBookingDoesNotCount(t *testing.T) {
 // the tool nothing is read back here, so the store would take it. Would
 // miss: an entry dropped without moving the epoch on.
 func TestATimeOnItsWayFromTheDiskDoesNotCount(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	a := h.m.app
 	a.report.Enabled["booked_time"] = false
@@ -273,6 +293,8 @@ func TestATimeOnItsWayFromTheDiskDoesNotCount(t *testing.T) {
 // enter, and then with a new key. Would miss: a key per dialog; an
 // automatic retry; the input cleared.
 func TestARefusalStaysInTheDialogAndTheNextTryHasANewKey(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	refused := recordedRefusal(t, "invalid_input_over_a_day", transport.InvalidInput)
 	h.f.bookFails(refused)
@@ -308,6 +330,8 @@ func TestARefusalStaysInTheDialogAndTheNextTryHasANewKey(t *testing.T) {
 // very long one is cut before it is worked on at every frame. Would miss:
 // the raw text in the line.
 func TestARefusalsTextIsCleaned(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	body, _ := json.Marshal(map[string]any{"error": "validation_failed", "code": "invalid_input", "errors": []string{"SAFE" + dialogHostile + strings.Repeat("x", 100_000)}})
 	h.f.bookFails(transport.Answer{Class: transport.InvalidInput, Message: string(body), Status: 422, Sent: true})
@@ -331,6 +355,8 @@ func TestARefusalsTextIsCleaned(t *testing.T) {
 // the project's rights are, and nothing is derived from them. Would miss:
 // the raw body in the line, or a success's close.
 func TestARefusalWithoutATextIsSaidByItsClass(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name  string
 		class transport.Class
@@ -354,6 +380,8 @@ func TestARefusalWithoutATextIsSaidByItsClass(t *testing.T) {
 
 // A refusal that says nothing the client can read still is one.
 func TestAnAnswerNoRuleNamesIsARefusal(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.f.bookFails(transport.Answer{Class: transport.Refused, Reason: "stale_object", Message: `{"error":"stale_object","code":"refused"}`, Status: 422, Sent: true})
 	h.sendBooking("30", "")()
@@ -368,6 +396,8 @@ func TestAnAnswerNoRuleNamesIsARefusal(t *testing.T) {
 // and b, a new action with a new key. Would miss: a resend; a dialog that
 // frees enter; a time not read.
 func TestAnUnclearBookingIsReadBackNeverSentAgain(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.f.bookFails(transport.Answer{Class: transport.Temporary, Message: "connection lost", Sent: true})
 	times := len(h.f.bookedReads())
@@ -408,6 +438,8 @@ func TestAnUnclearBookingIsReadBackNeverSentAgain(t *testing.T) {
 // so and b stays locked; a read that fails says that too. Would miss: a
 // line that stays at reading; the lock freed before the read landed.
 func TestTheBoxSaysWhatIsKnownOfAnUnclearBooking(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.f.bookFails(transport.Answer{Class: transport.Temporary, Message: "connection lost", Sent: true})
 	h.setBooked(func(string, string) transport.Answer {
@@ -446,6 +478,8 @@ func TestTheBoxSaysWhatIsKnownOfAnUnclearBooking(t *testing.T) {
 // gateway makes it a protocol answer, and it never reads "booked". Would
 // miss: a confirmation loosened in the gateway.
 func TestASuccessThatDoesNotConfirmIsNoBooking(t *testing.T) {
+	t.Parallel()
+
 	for name, booking := range map[string]api.TimeBooking{
 		"another ticket": {ID: "x", TicketID: ticketID(website, 7), Minutes: 30},
 		"no id":          {TicketID: ticketID(website, 6), Minutes: 30},
@@ -485,6 +519,8 @@ func keysOf(calls []bookCall) []string {
 // often the queue tried this one. Would miss: such an answer held as
 // unclear, or taken as booked.
 func TestNotSentIsNoUnclearOutcome(t *testing.T) {
+	t.Parallel()
+
 	for name, ans := range map[string]transport.Answer{
 		"not reached": {Class: transport.Temporary, Message: "refused"},
 		"canceled":    {Class: transport.Canceled, Message: "canceled"},
@@ -520,6 +556,8 @@ func TestNotSentIsNoUnclearOutcome(t *testing.T) {
 // answer is fed by hand: the queue's pause would hold the test for ten
 // seconds, and it has its own (gateway).
 func TestARateLimitTwiceIsNoUnclearOutcome(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.fillBooking("30", "")
 	h.press("enter")
@@ -539,6 +577,8 @@ func TestARateLimitTwiceIsNoUnclearOutcome(t *testing.T) {
 
 // A request that may have left and was given up is unclear.
 func TestACanceledBookingThatLeftIsUnclear(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.f.bookFails(transport.Answer{Class: transport.Canceled, Message: "canceled", Sent: true})
 	h.sendBooking("30", "")()
@@ -549,6 +589,8 @@ func TestACanceledBookingThatLeftIsUnclear(t *testing.T) {
 
 // 5. Enter twice: one send. Would miss: the lock taken off the dialog.
 func TestASecondEnterSendsNothing(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.fillBooking("30", "")
 	first := h.press("enter")
@@ -565,6 +607,8 @@ func TestASecondEnterSendsNothing(t *testing.T) {
 // while another runs on the ticket does not go out. Would miss: a lock on
 // the dialog alone.
 func TestABookingRunningOnTheTicketHoldsTheNext(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.fillBooking("30", "")
 	first := h.press("enter")
@@ -580,6 +624,8 @@ func TestABookingRunningOnTheTicketHoldsTheNext(t *testing.T) {
 // The selection moves behind the box: the booking goes where the person
 // pressed b. Would miss: the target read from the pane when enter comes.
 func TestABookingGoesToTheTicketOfTheKeyPress(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.press("b")
 	h.m.app.tickets.selected = ticketID(website, 7)
@@ -600,6 +646,8 @@ func TestABookingGoesToTheTicketOfTheKeyPress(t *testing.T) {
 // waits on that ticket and acts on another. Would miss: a result filed
 // under the pane's ticket; a refusal nobody hears of.
 func TestABookingLeftWithEscIsStillTold(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.fillBooking("30", "")
 	send := h.press("enter")
@@ -632,6 +680,8 @@ func TestABookingLeftWithEscIsStillTold(t *testing.T) {
 }
 
 func TestARefusalOfABookingLeftWithEscIsAProblemOnTheLine(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.f.bookFails(recordedRefusal(t, "invalid_input_over_a_day", transport.InvalidInput))
 	h.fillBooking("24:01", "")
@@ -649,6 +699,8 @@ func TestARefusalOfABookingLeftWithEscIsAProblemOnTheLine(t *testing.T) {
 }
 
 func TestAnUnclearBookingLeftWithEscIsAProblemOnTheLine(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.f.bookFails(transport.Answer{Class: transport.Temporary, Message: "lost", Sent: true})
 	times := len(h.f.bookedReads())
@@ -679,6 +731,8 @@ func (h *harness) isAProblemOnTheLine() {
 
 // 7. A 401 ends the session, box and all, and a later result finds nothing.
 func TestA401OnABookingEndsTheSession(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.f.bookFails(transport.Answer{Class: transport.Unauthenticated, Status: 401, Sent: true})
 	h.sendBooking("30", "")()
@@ -693,6 +747,8 @@ func TestA401OnABookingEndsTheSession(t *testing.T) {
 // The result says so itself, where the mailbox did not hear of it: the
 // session ends all the same, also when the ticket was left meanwhile.
 func TestA401TheMailboxDidNotHearOfEndsTheSession(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.fillBooking("30", "")
 	h.press("enter")
@@ -709,6 +765,8 @@ func TestA401TheMailboxDidNotHearOfEndsTheSession(t *testing.T) {
 
 // A result that belongs to no booking of this session changes nothing.
 func TestAResultOfNoBookingChangesNothing(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.fillBooking("30", "")
 	send := h.press("enter")
@@ -734,6 +792,8 @@ func TestAResultOfNoBookingChangesNothing(t *testing.T) {
 // One operation has one end: the same result again reads nothing and tells
 // nothing, once a booking is unclear. Would miss: a second round of reads.
 func TestAnUnclearBookingEndsOnce(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.f.bookFails(transport.Answer{Class: transport.Temporary, Message: "lost", Sent: true})
 	h.fillBooking("30", "")
@@ -753,6 +813,8 @@ func TestAnUnclearBookingEndsOnce(t *testing.T) {
 // 8. The duration is the person's: empty sends nothing, and the note is
 // not asked for. Would miss: a key used up by nothing; a note required.
 func TestAnEmptyDurationSendsNothing(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.press("b")
 	if cmd := h.press("enter"); cmd != nil {
@@ -769,6 +831,8 @@ func TestAnEmptyDurationSendsNothing(t *testing.T) {
 // An empty note goes as empty, which the adapter leaves out (api); what was
 // pasted into a field is what goes. Would miss: a duration changed on its way.
 func TestWhatIsTypedIsWhatGoes(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.sendBooking("  1,5", "")()
 	got := h.f.bookCalls()
@@ -780,6 +844,8 @@ func TestWhatIsTypedIsWhatGoes(t *testing.T) {
 // 9. Without the tool of the sum there is nothing to read back: the booking
 // works, and an unclear one says so without a number.
 func TestABookingWithoutTheBookedTimeTool(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.m.app.report.Enabled["booked_time"] = false
 	times := len(h.f.bookedReads())
@@ -799,6 +865,8 @@ func TestABookingWithoutTheBookedTimeTool(t *testing.T) {
 // The time of the ticket held is what the box shows, never another's, when
 // the pane moved behind it.
 func TestTheBoxShowsNoOtherTicketsTime(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.f.bookFails(transport.Answer{Class: transport.Temporary, Message: "lost", Sent: true})
 	h.fillBooking("30", "")
@@ -814,6 +882,8 @@ func TestTheBoxShowsNoOtherTicketsTime(t *testing.T) {
 
 // Every operation of a session ends with it.
 func TestTheSessionsEndCancelsARunningBooking(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.fillBooking("30", "")
 	h.press("enter")
@@ -830,6 +900,8 @@ func TestTheSessionsEndCancelsARunningBooking(t *testing.T) {
 // The keys of two tickets are apart, so are their locks: a booking running
 // on one holds nothing on the other.
 func TestLocksAreByTicket(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.fillBooking("30", "")
 	first := h.press("enter")

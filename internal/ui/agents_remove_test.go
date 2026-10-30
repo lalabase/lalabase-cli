@@ -20,6 +20,8 @@ import (
 // d is offered on an ended or lost agent alone, removes it through the
 // watcher, takes it out of the area at once and says so.
 func TestDRemovesAnEndedAgentFromTheList(t *testing.T) {
+	t.Parallel()
+
 	for _, state := range []agents.State{agents.Ended, agents.Lost} {
 		h := newHarness(t)
 		f := h.withWatcher(agentIn(1, orgA, 6, state, h.now), agentIn(2, orgA, 7, agents.Working, h.now))
@@ -60,6 +62,8 @@ func TestDRemovesAnEndedAgentFromTheList(t *testing.T) {
 // An agent that still runs, waits or starts is not removed: d is not
 // offered, and pressing it does nothing.
 func TestDLeavesARunningAgentAlone(t *testing.T) {
+	t.Parallel()
+
 	for _, state := range []agents.State{agents.Working, agents.WaitingForYou, agents.WaitingForApproval, agents.Starting} {
 		h := newHarness(t)
 		f := h.withWatcher(agentIn(1, orgA, 6, state, h.now))
@@ -78,6 +82,8 @@ func TestDLeavesARunningAgentAlone(t *testing.T) {
 // In the pane d removes the ticket's agent when that one ended; the
 // last agent removed from the agents' list closes it.
 func TestDInTheTicketsPaneAndTheLastAgent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now))
 	h.start()
@@ -104,6 +110,8 @@ func TestDInTheTicketsPaneAndTheLastAgent(t *testing.T) {
 // A removal that fails keeps the agent and says why, as a problem; a seen
 // mark that could not be written says so too (C9b left it silent).
 func TestAFailedRemovalOrSeenMarkIsTold(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now))
 	f.removeErr = errors.New("disk gone")
@@ -127,6 +135,8 @@ func TestAFailedRemovalOrSeenMarkIsTold(t *testing.T) {
 // closed, no pane opened) offers d once its start is an hour old; a
 // younger one may still be starting and offers none.
 func TestDRemovesAnAgentStuckInStarting(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		since time.Duration
 		d     bool
@@ -145,6 +155,8 @@ func TestDRemovesAnAgentStuckInStarting(t *testing.T) {
 // may have seen the agent before its files went; its answer does not
 // bring the agent back, and a read follows that sees the directory after.
 func TestAReadFromBeforeTheRemovalDoesNotBringItBack(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now), agentIn(2, orgA, 7, agents.Working, h.now))
 	h.start()
@@ -179,6 +191,8 @@ func TestAReadFromBeforeTheRemovalDoesNotBringItBack(t *testing.T) {
 // the ticket does not hide what d did there, and a launch after d shows
 // its own.
 func TestTheNewestNoticeShows(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.kind, l.again = launch.NoClaude, launch.NoClaude // a first start, and x on the ended agent (C9c)
@@ -201,6 +215,8 @@ func TestTheNewestNoticeShows(t *testing.T) {
 // Review round 1 of C9c-2: a problem told of an agent goes with the agent:
 // once a read no longer has it, nothing could clear it otherwise.
 func TestAProblemGoesWithItsAgent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now), agentIn(2, orgA, 7, agents.Working, h.now))
 	f.removeErr = errors.New("disk gone")
@@ -221,6 +237,8 @@ func TestAProblemGoesWithItsAgent(t *testing.T) {
 // Review round 2 of C9c-2: the newest notice shows also when a launch
 // answers after d told something: the launch's problem is newer.
 func TestALaunchAnsweringAfterDShowsItsProblem(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	l := h.withLauncher()
 	l.kind, l.again = launch.NoClaude, launch.NoClaude // a first start, and x on the ended agent (C9c)
@@ -242,6 +260,8 @@ func TestALaunchAnsweringAfterDShowsItsProblem(t *testing.T) {
 // opened launch can have a tracking problem; both must replace an older
 // removal notice once the complete launch result is ready to show.
 func TestACompletedLaunchReplacesTheRemovalNotice(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		kind      launch.Kind
 		untracked string
@@ -278,6 +298,8 @@ func TestACompletedLaunchReplacesTheRemovalNotice(t *testing.T) {
 // about whether the agent of a problem went: the problem stays until a
 // read that succeeded no longer has it.
 func TestAFailedReadKeepsTheProblem(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(agentIn(1, orgA, 6, agents.Ended, h.now))
 	f.removeErr = errors.New("disk gone")
@@ -297,6 +319,8 @@ func TestAFailedReadKeepsTheProblem(t *testing.T) {
 // a notice instead of an empty area without a word; a read that succeeds
 // takes it away.
 func TestTooManyAgentFilesAreTold(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start()

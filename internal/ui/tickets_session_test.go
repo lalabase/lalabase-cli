@@ -26,6 +26,8 @@ import (
 // Nothing of the projects or the tickets is read at the start or by moving
 // the cursor; the five startup reads stay what they were.
 func TestProjectsAndTicketsAreReadOnlyWhenOpened(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	if h.f.meCalls != 1 || h.f.initCall != 1 || h.f.toolCall != 1 || h.f.orgCalls != 1 || len(h.f.inboxCalls()) != 1 {
@@ -67,6 +69,8 @@ func TestProjectsAndTicketsAreReadOnlyWhenOpened(t *testing.T) {
 // projects of the organisation, Enter on a project its tickets: page 1 of
 // 25, without a search.
 func TestTheChooserHasSectionsAndEnterOpensProjectsThenTickets(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	rows := h.m.screen().Chooser.Rows
@@ -158,6 +162,8 @@ func TestTheChooserHasSectionsAndEnterOpensProjectsThenTickets(t *testing.T) {
 // while typing, Esc discards, Enter sends q once and shows page 1 of the
 // result; an empty search sent clears the filter.
 func TestTheSearchSendsOnEnterAndEscDiscards(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -252,6 +258,8 @@ func TestTheSearchSendsOnEnterAndEscDiscards(t *testing.T) {
 // background work, and only when the object pane is visible; moving on
 // before the pause cancels it; the result shows in the object pane.
 func TestAPreviewIsReadAfterThePauseWhenTheObjectPaneIsVisible(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -335,6 +343,8 @@ func TestAPreviewIsReadAfterThePauseWhenTheObjectPaneIsVisible(t *testing.T) {
 // read (one request, both results whole), a fresh one is shown without a
 // request, and Esc goes back to the list keeping the pane.
 func TestOpenJoinsAPendingPreviewAndEscGoesBack(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	h.withoutBookedTime()
@@ -442,6 +452,8 @@ func TestOpenJoinsAPendingPreviewAndEscGoesBack(t *testing.T) {
 // A ticket seen before is shown from the cache at once and reloaded once
 // after the pause; the reload is background work.
 func TestACachedTicketShowsAtOnceAndReloadsOnce(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -498,6 +510,8 @@ func TestACachedTicketShowsAtOnceAndReloadsOnce(t *testing.T) {
 // id, and a return to the project remembers page, row and search, showing
 // the cached page at once with one reload.
 func TestTicketPagesAndTheReturnToAProject(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -581,6 +595,8 @@ func TestTicketPagesAndTheReturnToAProject(t *testing.T) {
 // Every search, page and option is its own entry: nothing of one shows for
 // another, and the options of a ticket read follow the server's schemas.
 func TestCacheEntriesKeepSearchesProjectsAndOptionsApart(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -640,6 +656,8 @@ func TestCacheEntriesKeepSearchesProjectsAndOptionsApart(t *testing.T) {
 // An answer for a list the person left is not painted over the one shown
 // and not filed; a ticket read for a selection left is dropped.
 func TestLateAnswersForALeftSelectionAreDropped(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.chooseTickets(orgA))
@@ -688,6 +706,8 @@ func TestLateAnswersForALeftSelectionAreDropped(t *testing.T) {
 // A 401 from a preview the person left ends the session: nothing of it is
 // shown, read or asked again, and a late answer does not fill it.
 func TestA401FromALeftPreviewEndsTheSession(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -738,6 +758,8 @@ func TestA401FromALeftPreviewEndsTheSession(t *testing.T) {
 // tickets entry; without get_ticket a list without preview or open;
 // without q no search; without the paging arguments a plain read.
 func TestTicketCapabilitiesComeFromTheSchemas(t *testing.T) {
+	t.Parallel()
+
 	t.Run("without list_tickets", func(t *testing.T) {
 		h := newHarness(t)
 		tools := withoutTool(h.d.tools, "list_tickets")
@@ -832,6 +854,8 @@ func TestTicketCapabilitiesComeFromTheSchemas(t *testing.T) {
 // The pages of comments and attachments say where they are; incompleteness
 // is named.
 func TestTheTicketPaneNamesItsPages(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -877,6 +901,8 @@ func TestTheTicketPaneNamesItsPages(t *testing.T) {
 // R in the tickets section reloads what is shown: the projects, the page,
 // or the opened ticket, as the person's read.
 func TestRInTheTicketsSectionReloadsWhatIsShown(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.chooseTickets(orgA))
@@ -947,6 +973,8 @@ func TestRInTheTicketsSectionReloadsWhatIsShown(t *testing.T) {
 // Leaving a section remembers it and cancels its pending reads; coming
 // back shows what was cached.
 func TestSwitchingSectionsRemembersAndCancels(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -996,6 +1024,8 @@ func TestSwitchingSectionsRemembersAndCancels(t *testing.T) {
 // their own (queue.PreviewBudget), not the six of the other background
 // work.
 func TestPreviewsAreNotHeldByTheBackgroundBudget(t *testing.T) {
+	t.Parallel()
+
 	// Owner's report (2026-10-29): browsing a list showed "Loading…" for
 	// up to a minute once six tickets had been previewed, since previews
 	// shared the background budget of six a minute. They have their own
@@ -1028,6 +1058,8 @@ func TestPreviewsAreNotHeldByTheBackgroundBudget(t *testing.T) {
 // Hostile text from the server and from the cache reaches the screen
 // cleaned, in every pane of the tickets section.
 func TestHostileTicketTextFromServerAndCacheIsCleaned(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.setProjects(func(org string) transport.Answer {
 		list := slices.Clone(h.d.projects)
@@ -1119,6 +1151,8 @@ func TestHostileTicketTextFromServerAndCacheIsCleaned(t *testing.T) {
 // The help names exactly the keys that act, in every state of the tickets
 // section, the search line included.
 func TestHelpNamesExactlyTheKeysThatActInTheTicketsSection(t *testing.T) {
+	t.Parallel()
+
 	keys := map[string]Action{"up": Up, "down": Down, "pgup": PageUp, "pgdown": PageDown, "[": PrevPage, "]": NextPage, "R": Refresh, "enter": OpenList, "esc": Back, "left": Left, "right": Right, "/": Search,
 		"tab": NextArea, "o": Order, "e": Expand}
 	entryKeys := map[string]Action{"enter": Submit, "esc": Cancel, "backspace": DeleteBack}
@@ -1260,6 +1294,8 @@ func TestHelpNamesExactlyTheKeysThatActInTheTicketsSection(t *testing.T) {
 
 // A 401 on the projects read ends the session like any other.
 func TestA401OnTheProjectsEndsTheSession(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.f.setProjects(func(string) transport.Answer { return failing(transport.Unauthenticated, 401) })
@@ -1273,6 +1309,8 @@ func TestA401OnTheProjectsEndsTheSession(t *testing.T) {
 // A timer's wake-up reaching the shell (no session) changes nothing and
 // does not crash.
 func TestADueWithoutASessionIsIgnored(t *testing.T) {
+	t.Parallel()
+
 	m := New()
 	m.width, m.height = 120, 24
 	next, cmd := step(t, m, gateway.Due{Session: 1, Token: 1})
@@ -1285,6 +1323,8 @@ func TestADueWithoutASessionIsIgnored(t *testing.T) {
 // cursor on reads nothing when it wakes up: the opened ticket stays in the
 // pane, its read is not canceled. (A mutation probe survived without it.)
 func TestAWakeUpWhileATicketIsOpenedReadsNothing(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	h.withoutBookedTime()
@@ -1315,6 +1355,8 @@ func TestAWakeUpWhileATicketIsOpenedReadsNothing(t *testing.T) {
 // 401 while the search line is open ends the session in navigation mode,
 // so q quits at once. (Mutation probes survived without these.)
 func TestLeavingCancelsTheProjectsReadAndA401WhileTypingLeavesTheLine(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	gate := make(chan struct{})
@@ -1353,6 +1395,8 @@ func TestLeavingCancelsTheProjectsReadAndA401WhileTypingLeavesTheLine(t *testing
 // highlighted: the cursor goes to the inbox of all organisations, an entry
 // that exists, so it is shown and Enter opens it.
 func TestAVanishedOrganisationResetsTheHighlightToAnEntryThatExists(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.m.focus = view.Navigation
@@ -1374,6 +1418,8 @@ func TestAVanishedOrganisationResetsTheHighlightToAnEntryThatExists(t *testing.T
 // without a mailbox to observe it (the model's own check, not only the
 // mailbox's). (A mutation probe of the reviewer survived without it.)
 func TestA401InAResultEndsTheSessionWithoutAMailbox(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	a := h.m.app
@@ -1391,6 +1437,8 @@ func TestA401InAResultEndsTheSessionWithoutAMailbox(t *testing.T) {
 // (Esc, or Enter with the search unchanged); otherwise no wake-up ever
 // comes for the row the cursor rests on.
 func TestThePreviewIsArmedAgainWhenTheSearchLineCloses(t *testing.T) {
+	t.Parallel()
+
 	for _, close := range []string{"esc", "enter"} {
 		h := newHarness(t)
 		h.openTickets(website)
@@ -1422,6 +1470,8 @@ func TestThePreviewIsArmedAgainWhenTheSearchLineCloses(t *testing.T) {
 // "not found" while a project's tickets are open. Everything under the
 // organisation goes: the list, the ticket shown, the pending reads.
 func TestARemovedOrganisationClosesItsTicketList(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -1450,6 +1500,8 @@ func TestARemovedOrganisationClosesItsTicketList(t *testing.T) {
 
 // The pause before a preview is the documented one.
 func TestThePreviewPauseIsTheDocumentedOne(t *testing.T) {
+	t.Parallel()
+
 	if previewDelay != 300*time.Millisecond {
 		t.Fatalf("preview delay %s", previewDelay)
 	}
@@ -1459,6 +1511,8 @@ func TestThePreviewPauseIsTheDocumentedOne(t *testing.T) {
 // the selection moved on and delivered after it is neither shown nor
 // filed. The generation of the area refuses it, not the cancellation.
 func TestAResultProducedBeforeTheMoveIsRefusedAfterIt(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -1485,6 +1539,8 @@ func TestAResultProducedBeforeTheMoveIsRefusedAfterIt(t *testing.T) {
 // ticket (title, project, creator, author, file name) cannot open a line of
 // its own in the pane, whatever it holds.
 func TestOneLineFieldsCannotOpenALineInThePane(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	forged := "x\nFORGED_LINE\r\nmore"
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
@@ -1517,6 +1573,8 @@ func TestOneLineFieldsCannotOpenALineInThePane(t *testing.T) {
 // and the ticket in the pane, and cancels a preview of the old page; a
 // second shrink stops with R; a total of zero shows an empty page 1.
 func TestAShrunkTicketListIsCorrectedOnce(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	total := 60
 	h.f.setTickets(func(q api.TicketQuery) transport.Answer {
@@ -1602,6 +1660,8 @@ func TestAShrunkTicketListIsCorrectedOnce(t *testing.T) {
 // Review round 2 probe: a ticket opened again starts at its top, however
 // far the pane was scrolled before.
 func TestAReopenedTicketStartsAtTheTop(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -1620,6 +1680,8 @@ func TestAReopenedTicketStartsAtTheTop(t *testing.T) {
 // (opened by the round 1 fix), or for the project's tickets (question 2),
 // leaves navigation mode behind: q quits, nothing of the line is offered.
 func TestTheSearchLineClosesWithItsList(t *testing.T) {
+	t.Parallel()
+
 	for _, removal := range []string{"projects", "tickets"} {
 		h := newHarness(t)
 		h.openTickets(website)
@@ -1661,6 +1723,8 @@ func TestTheSearchLineClosesWithItsList(t *testing.T) {
 // Review round 2, finding 2: no preview is read while the terminal is too
 // small to show the pane, whatever the geometry says about columns.
 func TestNoPreviewIsReadInATerminalTooSmallToShowIt(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -1691,6 +1755,8 @@ func TestNoPreviewIsReadInATerminalTooSmallToShowIt(t *testing.T) {
 // nothing with a ticket opened empties the pane; a correction with a
 // ticket opened closes it, remembers page 1 and drops page 2's cache.
 func TestAShrinkWithATicketOpened(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -1752,6 +1818,8 @@ func TestAShrinkWithATicketOpened(t *testing.T) {
 // on a focus change or a resize on the same row (no request per arrow
 // key); it is read again when the cursor returns to the row.
 func TestAFailedPreviewIsNotReReadOnAFocusChange(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -1788,6 +1856,8 @@ func TestAFailedPreviewIsNotReReadOnAFocusChange(t *testing.T) {
 // Review round 2, finding 8: an empty page within range says so, not "No
 // tickets"; with a search, that nothing matches.
 func TestAnEmptyPageWithinRangeSaysSo(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.setTickets(func(q api.TicketQuery) transport.Answer {
 		if q.Page == 2 {
@@ -1831,6 +1901,8 @@ func TestAnEmptyPageWithinRangeSaysSo(t *testing.T) {
 // the shared status: unreachable before anything was shown, possibly
 // stale after, a refusal with its message.
 func TestTheProjectsFailureStates(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.f.setProjects(func(string) transport.Answer { return failing(transport.Temporary, 503) })
@@ -1886,6 +1958,8 @@ func cachedThen(t *testing.T, reload transport.Answer) (*harness, *app) {
 // whose reload failed, temporarily or with a refusal, is not read again
 // on a focus change or a resize on the same row.
 func TestACachedRecordWhoseReloadFailedIsNotReReadOnAFocusChange(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name   string
 		reload transport.Answer
@@ -1930,6 +2004,8 @@ func TestACachedRecordWhoseReloadFailedIsNotReReadOnAFocusChange(t *testing.T) {
 // Review round 3, question 1: the list's reload does not take the focus
 // off a pane that holds a preview; it does off an empty pane.
 func TestTheListsReloadLeavesTheFocusOnAPreview(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -1960,6 +2036,8 @@ func TestTheListsReloadLeavesTheFocusOnAPreview(t *testing.T) {
 // pane is on the screen exactly when it is focused; a wake-up while the
 // cached record's reload is out adds no second waiter.
 func TestThePaneIsHiddenWhenTheHelpMakesTheTerminalSmall(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -2011,6 +2089,8 @@ func TestThePaneIsHiddenWhenTheHelpMakesTheTerminalSmall(t *testing.T) {
 }
 
 func TestInOneColumnThePaneIsOnTheScreenWhenFocused(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -2037,6 +2117,8 @@ func TestInOneColumnThePaneIsOnTheScreenWhenFocused(t *testing.T) {
 }
 
 func TestAWakeUpWhileTheReloadIsOutAddsNoWaiter(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -2073,6 +2155,8 @@ func TestAWakeUpWhileTheReloadIsOutAddsNoWaiter(t *testing.T) {
 // While a ticket loads for the first time, the pane names it from the row
 // the cursor is on, not "No item opened" (owner's report, 2026-10-29).
 func TestALoadingPreviewNamesItsTicket(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app
@@ -2097,6 +2181,8 @@ func TestALoadingPreviewNamesItsTicket(t *testing.T) {
 // Only while it loads: a first load that failed shows no row's title
 // beside its error.
 func TestAFailedFirstLoadNamesNoTicket(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	a := h.m.app

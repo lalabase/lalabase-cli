@@ -26,6 +26,8 @@ func renamedSix(h *harness) func(project, id string, o api.TicketOptions) transp
 // is outranked: it neither takes the title nor refuses a title read begun
 // after the newer read.
 func TestAnOutrankedListRemovalRefusesNoNewerRead(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.openSix()
@@ -58,6 +60,8 @@ func TestAnOutrankedListRemovalRefusesNoNewerRead(t *testing.T) {
 // ticket; once the list is left, the area keeps the new title, not the
 // older copy of the ticket in the cache.
 func TestANewerListTitleOutlivesTheListForANewAgent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.openSix() // #6 read and cached with its old title
@@ -91,6 +95,8 @@ func TestANewerListTitleOutlivesTheListForANewAgent(t *testing.T) {
 // The full text of the description is a read of the ticket too: its
 // accepted answer renews the title.
 func TestTheFullTextRenewsTheTitle(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.start()
@@ -119,6 +125,8 @@ func TestTheFullTextRenewsTheTitle(t *testing.T) {
 // from what the views hold, with the flight that brought it, so the older
 // answer is outranked and the pane's newer title stays.
 func TestAnOlderAnswerCannotSeedANewAgentsTitle(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.openTickets(website)
@@ -150,6 +158,8 @@ func TestAnOlderAnswerCannotSeedANewAgentsTitle(t *testing.T) {
 // views keep the flight of their data, so the newer of the two decides,
 // not the order pane before list.
 func TestTheNewerViewDecidesForANewAgent(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.openSix() // the pane: "Ticket 6"
@@ -180,6 +190,8 @@ func TestTheNewerViewDecidesForANewAgent(t *testing.T) {
 // pane's title keeps the flight of the answer that brought it, not the
 // older one filed for page 1, so an older list answer cannot outrank it.
 func TestACorrectedPageKeepsItsTitlesFlight(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.openSix()
@@ -218,6 +230,8 @@ func TestACorrectedPageKeepsItsTitlesFlight(t *testing.T) {
 // flight) does not outrank a newer read a view shows again from the
 // cache: the list, renamed, reopened from memory while its reload fails.
 func TestACachedTitleLosesToANewerViewFromTheCache(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher()
 	h.openSix() // the pane and the cache: "Ticket 6"

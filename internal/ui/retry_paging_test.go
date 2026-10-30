@@ -14,6 +14,8 @@ import (
 // of the resource was filed; it is the server's newest word and must not be
 // refused as older.
 func TestARetriedRequestIsTheNewerOne(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	page2 := func(q api.NotificationQuery) transport.Answer {
 		return pageAnswer(2, q.PerPage, 33, 33, h.d.rows(orgB, 101, 3), map[string]int{orgA: 30, orgB: 3})
@@ -83,6 +85,8 @@ func TestARetriedRequestIsTheNewerOne(t *testing.T) {
 // After a page that failed, the next page is not offered (its total is
 // unknown), the previous one is, and R reads the failed page again.
 func TestAFailedPageOffersNoNextPage(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
 		if q.Page == 2 {

@@ -16,6 +16,8 @@ import (
 // the lifecycle knows wins; a function the client does not know, or none,
 // leaves the status as the line around it.
 func TestAStatusIsDrawnInTheToneOfItsMeaning(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		functions []string
 		want      present.Style
@@ -61,6 +63,8 @@ func statusRows(h *harness) {
 // as every row of a server before the field, stays plain. A done row is
 // quiet, whatever else its status means; no other row is.
 func TestTheTicketListDrawsTheStatusInItsTone(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	statusRows(h)
@@ -89,6 +93,8 @@ func TestTheTicketListDrawsTheStatusInItsTone(t *testing.T) {
 // The ticket's head draws its status in its tone at the start of the faint
 // line of facts; without a meaning the status is as faint as the rest.
 func TestTheTicketHeadDrawsTheStatusInItsTone(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		functions []string
 		want      present.Style
@@ -113,6 +119,8 @@ func TestTheTicketHeadDrawsTheStatusInItsTone(t *testing.T) {
 // client gives a tone: a function renamed in the core
 // (SystemFunctions::Registry) turns red here, not grey on a screen.
 func TestTheClientKnowsEveryStatusFunctionTheCoreSends(t *testing.T) {
+	t.Parallel()
+
 	file, err := contract.Load()
 	if err != nil {
 		t.Fatal(err)

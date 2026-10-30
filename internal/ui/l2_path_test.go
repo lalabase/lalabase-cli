@@ -22,6 +22,8 @@ func line2(h *harness) string {
 // the search by " · ", in two and three columns alike; nothing else in it
 // carries an attribute.
 func TestTheSecondLineIsAPath(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []int{80, 120, 160} {
 		h := newHarness(t)
 		h.m.width = width
@@ -52,6 +54,8 @@ func TestTheSecondLineIsAPath(t *testing.T) {
 // In one column the second line is the path of the panes, with the same
 // separator.
 func TestOneColumnShowsThePanesAsAPath(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openTickets(website)
 	h.m.width = 79
