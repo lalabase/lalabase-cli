@@ -233,7 +233,7 @@ func TestDetailScrollIsBoundedAndOfferedOnlyWhenNeeded(t *testing.T) {
 	h.drive(h.choose(orgA))
 	h.drive(h.press("enter"))
 	a := h.m.app
-	if !h.m.allowed()[PageDown] || !strings.Contains(helpText(h.m), "b/space scroll") {
+	if !h.m.allowed()[PageDown] || !strings.Contains(helpText(h.m), "u/space scroll") {
 		t.Fatal("scrolling is not offered for long details")
 	}
 	before := ansi.Strip(h.m.View().Content)

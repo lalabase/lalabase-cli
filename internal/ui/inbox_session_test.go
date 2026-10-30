@@ -698,7 +698,7 @@ func keyLabel(key string) string {
 	case "up", "down":
 		return "up/down"
 	case "pgup", "pgdown":
-		return "b/space"
+		return "u/space"
 	case "[":
 		return "[ prev page"
 	case "]":

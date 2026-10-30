@@ -17,7 +17,7 @@ func TestR1HelpHasNoScrollForFullyVisibleDetails(t *testing.T) {
 	afterUp := ansi.Strip(h.m.View().Content)
 	down := h.press("pgdown")
 	afterDown := ansi.Strip(h.m.View().Content)
-	if strings.Contains(before, "b/space scroll") && up == nil && down == nil && before == afterUp && before == afterDown {
+	if strings.Contains(before, "u/space scroll") && up == nil && down == nil && before == afterUp && before == afterDown {
 		t.Fatalf("help advertises scroll but both keys leave a fully visible details pane unchanged (hidden offset=%d):\n%s", h.m.app.active.detailOffset, before)
 	}
 }
