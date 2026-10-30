@@ -178,3 +178,10 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
 * **Dependencies** must be permissive (MIT, Apache-2.0, BSD-2-Clause,
   BSD-3-Clause, ISC, 0BSD). CI checks the actual imports, including tests;
   a terminal library or its transitive dependency receives no exception.
+
+## Release
+
+Push a tag `v*` (a version: `v` plus digits, letters, `.`, `+`, `-`). The
+release workflow runs the whole CI on it first, then builds macOS (arm64,
+amd64) and Linux (amd64, arm64) without write access, and only the last job
+attaches the archives with `checksums.txt` to a GitHub release.

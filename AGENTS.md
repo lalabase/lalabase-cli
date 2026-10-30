@@ -1,8 +1,9 @@
 # AGENTS.md
 
 Working notes for coding agents in this repository (Claude Code reads this
-file through `CLAUDE.md`). The README says what the program does,
-`docs/development.md` how it is built; this file says how to change it
+file through `CLAUDE.md`). The README is the project's front page,
+`docs/reference.md` says what the program does in full, `docs/development.md`
+how it is built; this file says how to change it
 without repeating mistakes the reviews of C0 already found. What is done is
 in `git log`.
 
@@ -11,7 +12,7 @@ The plans live in a private repository: `doc/cli_rest_plan.md`
 the "As built" sections of finished slices are in
 `doc/terminal_client_as_built.md`. Read the section of the slice you work on,
 found with `grep -n '^##'`, not the whole file: these files are long, and so
-is the README.
+is the reference.
 
 ## Check before every push
 
@@ -85,8 +86,8 @@ on a Mac before every merge, by running the tests here.
    at most once.
 6. **One threat model per area, no exceptions.** For the client's own files
    (the config, its lock file, the disk cache, the launch files, the agents' files): another local user without
-   root, held in `internal/privatefs` for all of them (README "The config's
-   way"). Round 4 of C0c added exceptions (sticky directories, links, root)
+   root, held in `internal/privatefs` for all of them (`docs/reference.md`, "The
+   config's way"). Round 4 of C0c added exceptions (sticky directories, links, root)
    and each one opened the next hole; round 5 replaced them with the one
    model. When a case seems to need an exception, check it against the
    model instead. A new file the client keeps goes through that package,
@@ -201,5 +202,6 @@ A diff that touches both gets the stricter budget for those files alone.
   beside this one as a worktree (`../lalabase-cli-<slice>`).
 * Commits carry the GitHub noreply address (`git config user.email`), set in
   every new clone.
-* A change in behaviour updates the README in the same PR, and after the merge
+* A change in behaviour updates `docs/reference.md` in the same PR (the README
+  too when it changes what the program can or cannot do), and after the merge
   the plan's "As built" section for the slice.
