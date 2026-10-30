@@ -40,10 +40,17 @@ func TestTheLaunchReadsTheCommandsEnvironment(t *testing.T) {
 		// SHA-256 of "https://lalabase.com".
 		Agents: "/Users/anna/.cache/lalabase/cli/default/a/7e64fbe1cb7bbe56", Executable: "/opt/lalabase/bin/lalabase",
 		TermProgram: "iTerm.app", SessionID: "w0t1p2:FCB46015-2039-451D-82C2-59CE4353910D",
+		Server: "https://lalabase.com",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("config\n got %+v\nwant %+v", got, want)
 	}
+	// Over SSH a browser would open on a screen the person does not see.
+	vars["SSH_CONNECTION"] = "192.168.0.1 22 192.168.0.2 22"
+	if got := launchConfig(env, p, mcp, sup); !got.Remote {
+		t.Fatal("SSH_CONNECTION is not read")
+	}
+	delete(vars, "SSH_CONNECTION")
 	// XDG_CACHE_HOME moves the files with the disk cache; a profile name
 	// that cannot name a directory has none.
 	vars["XDG_CACHE_HOME"] = "/Users/anna/caches"

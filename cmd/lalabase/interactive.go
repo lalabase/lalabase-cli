@@ -135,6 +135,7 @@ func launchConfig(env Env, p profile.Profile, mcp string, sup *worker.Supervisor
 		Agents: agentsFiles(env, p), Executable: env.Executable,
 		TermProgram: env.Getenv("TERM_PROGRAM"), SessionID: env.Getenv("ITERM_SESSION_ID"),
 		Multiplexer: multiplexer,
+		Server:      p.URL, Remote: env.Getenv("SSH_CONNECTION") != "",
 	}
 }
 

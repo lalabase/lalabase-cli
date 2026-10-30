@@ -36,6 +36,16 @@ type fakeLauncher struct {
 	jumpKind, again launch.Kind
 	recorded        string
 	noITerm         bool
+	// C10: the files asked for, what they answer, and whether the answer
+	// is held back (the opener still runs).
+	opens    []openCall
+	openKind launch.Kind
+}
+
+type openCall struct {
+	ref    uint64
+	ticket launch.Ticket
+	file   launch.File
 }
 
 type jumpCall struct {
@@ -81,6 +91,22 @@ func (f *fakeLauncher) Again(ref uint64, t launch.Ticket, a launch.Again) tea.Cm
 	}
 }
 
+func (f *fakeLauncher) OpenFile(ref uint64, t launch.Ticket, file launch.File) tea.Cmd {
+	f.mu.Lock()
+	f.opens = append(f.opens, openCall{ref, t, file})
+	kind := f.openKind
+	f.mu.Unlock()
+	return func() tea.Msg {
+		return launch.Done{Ref: ref, Ticket: t, Kind: kind, Action: launch.OpenFileAction, Detail: file.Name}
+	}
+}
+
+func (f *fakeLauncher) opened() []openCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]openCall(nil), f.opens...)
+}
+
 func (f *fakeLauncher) Jumps() bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -94,7 +120,7 @@ func (f *fakeLauncher) launched() []launchCall {
 }
 
 func (h *harness) withLauncher() *fakeLauncher {
-	f := &fakeLauncher{kind: launch.Opened, jumpKind: launch.Jumped, again: launch.Opened}
+	f := &fakeLauncher{kind: launch.Opened, jumpKind: launch.Jumped, again: launch.Opened, openKind: launch.FileOpened}
 	h.m.app.deps.Launcher = f
 	return f
 }

@@ -193,6 +193,8 @@ const (
 	ExpandHelp
 	CollapseHelp
 	CommentHelp
+	FileHelp
+	OpenFileHelp
 	// C1f: mark as read, and the ticket opened from a notification.
 	MarkReadKey
 	MarkReadHelp
@@ -243,6 +245,11 @@ const (
 	IntoTicketHelp
 	// C9a: a launch whose agent's state cannot be shown.
 	LaunchUntracked
+	OpeningFile
+	FileOpened
+	FileNoOpener
+	FileNotHandedOver
+	FileOpenFailed
 	// C9a: the agent's line in the ticket's head, its states' words and
 	// the age of a state.
 	AgentLine
@@ -421,7 +428,7 @@ var english = map[ID]string{
 	TextAvailable: "text available", TextUnsupported: "text not supported", TextUnavailable: "text unavailable",
 	TextEmpty: "no text", TextStatusUnknown: "text status unknown",
 	TabKey: "tab", NextAreaHelp: "next section", OrderKey: "o", ExpandKey: "e", ExpandHelp: "expand",
-	CollapseHelp: "collapse", CommentHelp: "comment",
+	CollapseHelp: "collapse", CommentHelp: "comment", FileHelp: "file", OpenFileHelp: "open file",
 
 	MarkReadKey: "r", MarkReadHelp: "mark read", OpenLinkedTicketHelp: "open ticket", NotificationHelp: "notification",
 	LabelMarkRead: "Mark as read",
@@ -454,6 +461,11 @@ var english = map[ID]string{
 	LaunchSessionGone:   "iTerm did not find this session; nothing opened",
 	LaunchNoAnswer:      "iTerm did not answer within 5 s; a pane may still open. If macOS asks for permission, allow it",
 	LaunchUntracked:     "The state of Claude Code beside #%d cannot be shown: %s",
+	OpeningFile:         "Opening %s\u2026",
+	FileOpened:          "Opened %s in the browser",
+	FileNoOpener:        "No browser can be opened here",
+	FileNotHandedOver:   "The file's address did not pass its check",
+	FileOpenFailed:      "The browser could not be opened",
 	AgentLine:           "Agent %s · for %s",
 	AgentApproval:       "waiting for approval", AgentWaiting: "waiting for you", AgentLost: "lost",
 	AgentWorking: "working", AgentStarting: "starting", AgentEnded: "ended",
