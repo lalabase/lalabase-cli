@@ -10,9 +10,9 @@
 // against the shapes the server really sends. It accepts one synthetic
 // token, binds to the loopback address only, reads no profile and no
 // environment, and offers nothing but the reads of C1 and the writes of
-// C1f and C2, mark_notification_read (marks.go), update_ticket and
-// post_comment (writes.go): the other tools are refused, as a scenario to
-// see them refused.
+// C1f, C2 and K6, mark_notification_read (marks.go), update_ticket and
+// post_comment (writes.go), a booking of time over REST (bookings.go): the
+// other tools are refused, as a scenario to see them refused.
 //
 // The shipped lalabase does not import it (a source guard holds that).
 package inboxfixture
@@ -77,9 +77,9 @@ const (
 	// (deleted meanwhile), #4 is not allowed; on Website's tickets, #2
 	// refuses a status and an assignment (value_not_allowed), a title
 	// (validation_failed) and a comment (forbidden), #3 a status
-	// (no_status_field), #4 every write (forbidden), #5 every write as
-	// vanished, #7 an assignment (user_not_assignable); every other write
-	// succeeds.
+	// (no_status_field), #4 every write (forbidden), a booking included,
+	// #5 every write as vanished, #7 an assignment (user_not_assignable);
+	// every other write succeeds.
 	Refusals Scenario = "refusals"
 	// Lost: every write is carried out and its answer is lost (the
 	// connection closes after the request was read).
@@ -129,10 +129,12 @@ type Request struct {
 	RPC    string // the JSON-RPC method, for /api/mcp
 	Tool   string // the tool of a tools/call
 	// Route is the capability of a REST read of the ticket view (K1):
-	// tickets.list, tickets.show, tickets.by_number, posts.show.
+	// tickets.list, tickets.show, tickets.by_number, posts.show; or of a
+	// booking (K6), time_sessions.book.
 	Route string
 	// Args are the tool's arguments, or a REST read's path ids and query
-	// under the tools' names, numbers as numbers.
+	// under the tools' names, numbers as numbers; for a booking the ticket
+	// and what was sent of it, an empty note left out.
 	Args   map[string]any
 	Status int
 }
@@ -170,12 +172,17 @@ type Fixture struct {
 	// C1f (marks.go), C2a (writes.go): the changes carried out, the keys
 	// seen, the result each key answered first with the arguments it was
 	// used with, the changes on the tickets and the comments added, the
-	// number of the last comment.
+	// number of the last comment. K6 (bookings.go): the minutes booked per
+	// ticket, the number of the last booking, the row a booking answers
+	// with, as recorded.
 	mutations []Mutation
 	keys      []string
 	results   map[string]storedResult
 	edits     map[string]*ticketEdit
 	nextPost  int
+	booked    map[string]int
+	nextBook  int
+	bookRow   map[string]any
 }
 
 // contractFile is the part of the contract copy the fixture reads. It is
@@ -217,7 +224,7 @@ func New(scenario Scenario, contractJSON []byte, opts ...Option) (*Fixture, erro
 	if err := json.Unmarshal(contractJSON, &file); err != nil {
 		return nil, fmt.Errorf("inbox fixture: the contract copy does not read: %w", err)
 	}
-	f := &Fixture{scenario: scenario, attempts: map[string]int{}, rows: map[string][]map[string]any{}, results: map[string]storedResult{}, dropped: map[string]bool{}, edits: map[string]*ticketEdit{}}
+	f := &Fixture{scenario: scenario, attempts: map[string]int{}, rows: map[string][]map[string]any{}, results: map[string]storedResult{}, dropped: map[string]bool{}, edits: map[string]*ticketEdit{}, booked: map[string]int{}}
 	var initialize struct {
 		Result json.RawMessage `json:"result"`
 	}
@@ -335,6 +342,9 @@ func New(scenario Scenario, contractJSON []byte, opts ...Option) (*Fixture, erro
 		return nil, err
 	}
 	if f.people, f.meID, err = recordedPeople(f.me, f.ticketRow, f.ticketTmpl); err != nil {
+		return nil, err
+	}
+	if f.bookRow, err = recordedBooking(file); err != nil {
 		return nil, err
 	}
 	for _, opt := range opts {
@@ -513,6 +523,8 @@ func (f *Fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.rest(w, r, req)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/mcp":
 		f.rpc(w, r, req)
+	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/v1/tickets/"):
+		f.bookTime(w, r, req)
 	default:
 		// Everything else: not here.
 		req.Status = http.StatusNotFound
