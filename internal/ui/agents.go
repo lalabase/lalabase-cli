@@ -50,7 +50,8 @@ type agentsState struct {
 	// list is the newest read's agents, in the order read; empty after
 	// a failed read.
 	list []agents.Agent
-	// frame turns the glyph of working agents, one step per read.
+	// frame turns the glyph of working agents and pulses waiting ones,
+	// one step per read.
 	frame int
 	// cursor is the agent the list's cursor was put on, by its id, so it
 	// follows the agent when the order changes.
@@ -108,7 +109,7 @@ func (a *app) readAgents() tea.Cmd {
 
 // receiveAgents takes the newest read: its agents (none when it failed:
 // what cannot be read is not shown), the spinner one frame on while one
-// works, and the next read in agentsEvery by the model's clock, while
+// works or waits (the pulse), and the next read in agentsEvery by the model's clock, while
 // there is an agent, a launch runs or the read failed (the agents come
 // back once the directory reads again). Only a read that found none
 // lets reading sleep until the next launch.
@@ -129,7 +130,7 @@ func (a *app) receiveAgents(s agents.Snapshot) tea.Cmd {
 		a.clearAgentsNotice()
 	}
 	for _, ag := range a.agents.list {
-		if ag.State == agents.Working {
+		if ag.State == agents.Working || ag.State == agents.WaitingForYou {
 			a.agents.frame++
 			break
 		}
@@ -241,7 +242,7 @@ type agentLook struct {
 // the spinner.
 var agentLooks = map[agents.State]agentLook{
 	agents.WaitingForApproval: {"!", present.AgentApproval, uitext.AgentApproval},
-	agents.WaitingForYou:      {"⣿", present.AgentWaiting, uitext.AgentWaiting},
+	agents.WaitingForYou:      {"A", present.AgentWaiting, uitext.AgentWaiting},
 	agents.Lost:               {"✕", present.AgentLost, uitext.AgentLost},
 	agents.Working:            {"", present.AgentWorking, uitext.AgentWorking},
 	agents.Starting:           {"⠂", present.AgentStarting, uitext.AgentStarting},
@@ -249,11 +250,15 @@ var agentLooks = map[agents.State]agentLook{
 }
 
 // look is a state's look; working's glyph is the spinner's frame of this
-// read.
+// read, and an agent that waits for the person pulses: its A in full and
+// faint by turns, so that it is told from one at work at a glance.
 func (a *app) look(s agents.State) agentLook {
 	l := agentLooks[s]
 	if s == agents.Working {
 		l.glyph = spinner[a.agents.frame%len(spinner)]
+	}
+	if s == agents.WaitingForYou && a.agents.frame%2 == 1 {
+		l.style = present.AgentWaitingFaint
 	}
 	return l
 }

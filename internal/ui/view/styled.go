@@ -109,6 +109,8 @@ func styleOf(s present.Style) lipgloss.Style {
 		return style.Bold(true).Foreground(authorColor)
 	case present.AgentWaiting:
 		return style.Foreground(authorColor)
+	case present.AgentWaitingFaint:
+		return style.Faint(true).Foreground(authorColor)
 	case present.AgentLost:
 		return style.Foreground(redColor)
 	case present.AgentWorking:

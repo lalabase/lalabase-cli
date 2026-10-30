@@ -36,7 +36,7 @@ func TestEveryStateHasItsGlyphInTheList(t *testing.T) {
 		style present.Style
 	}{
 		{agents.WaitingForApproval, "!", present.AgentApproval},
-		{agents.WaitingForYou, "⣿", present.AgentWaiting},
+		{agents.WaitingForYou, "A", present.AgentWaiting},
 		{agents.Lost, "✕", present.AgentLost},
 		{agents.Working, "⠋", present.AgentWorking},
 		{agents.Starting, "⠂", present.AgentStarting},
@@ -113,7 +113,7 @@ func TestEveryStateHasALook(t *testing.T) {
 func TestTheColumnFitsEveryLayout(t *testing.T) {
 	t.Parallel()
 
-	glyphBeforeSix := regexp.MustCompile("⣿ +#6 ")
+	glyphBeforeSix := regexp.MustCompile("A +#6 ")
 	for _, width := range []int{60, 100, 160} {
 		for _, list := range [][]agents.Agent{nil, {}} {
 			h := newHarness(t)
@@ -142,5 +142,37 @@ func TestTheColumnFitsEveryLayout(t *testing.T) {
 				t.Errorf("width %d, agent %v: glyph before #6 %v\n%s", width, list != nil, got, screen)
 			}
 		}
+	}
+}
+
+// An agent that waits for the person pulses: its A in full and faint by
+// turns with the reads; the other states keep their tone.
+func TestAWaitingAgentPulsesWithTheReads(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.withWatcher(agentIn(1, orgA, 6, agents.WaitingForYou, h.now))
+	h.start()
+	a := h.m.app
+	seen := map[present.Style]bool{}
+	for i := 0; i < 2; i++ {
+		l := a.look(agents.WaitingForYou)
+		if l.glyph != "A" {
+			t.Fatalf("glyph %q", l.glyph)
+		}
+		seen[l.style] = true
+		if got := a.look(agents.WaitingForApproval).style; got != present.AgentApproval {
+			t.Fatalf("the approval's tone moved: %v", got)
+		}
+		before := a.agents.frame
+		ref := a.agents.ref + 1
+		a.agents.ref, a.agents.reading = ref, true
+		a.receiveAgents(agents.Snapshot{Ref: ref, Agents: a.agents.list})
+		if a.agents.frame != before+1 {
+			t.Fatalf("a read did not move the pulse: frame %d", a.agents.frame)
+		}
+	}
+	if !seen[present.AgentWaiting] || !seen[present.AgentWaitingFaint] {
+		t.Fatalf("no pulse: %v", seen)
 	}
 }

@@ -278,11 +278,11 @@ func TestTheSpinnerMovesWithEachReadWhileOneWorks(t *testing.T) {
 	if got := h.m.app.agents.frame; got != 3 {
 		t.Fatalf("frame %d after three reads", got)
 	}
-	f.set(agentOn(6, agents.WaitingForYou, h.now))
+	f.set(agentOn(6, agents.Ended, h.now))
 	h.due()
 	h.due()
 	if got := h.m.app.agents.frame; got != 3 {
-		t.Fatalf("frame %d without a working agent", got)
+		t.Fatalf("frame %d without an agent that works or waits", got)
 	}
 }
 

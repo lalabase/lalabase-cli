@@ -169,7 +169,7 @@ func TestOnlyAuthorsAndTheTwoWaitsDrawViolet(t *testing.T) {
 	t.Parallel()
 
 	for s := present.Plain; s <= present.AgentEnded; s++ {
-		violet := s == present.Author || s == present.AgentApproval || s == present.AgentWaiting
+		violet := s == present.Author || s == present.AgentApproval || s == present.AgentWaiting || s == present.AgentWaitingFaint
 		for _, out := range []string{styled("x", s), quieted("x", s)} {
 			if got := strings.Contains(out, "191;148;228"); got != violet {
 				t.Errorf("style %d draws violet: %v, want %v (%q)", s, got, violet, out)

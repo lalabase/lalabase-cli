@@ -84,7 +84,7 @@ func TestTheSummaryCountsPerState(t *testing.T) {
 		style present.Style
 		count int
 	}{
-		{"⣿", present.AgentWaiting, 2},
+		{"A", present.AgentWaiting, 2},
 		{"✕", present.AgentLost, 1},
 		{spinner[h.m.app.agents.frame%len(spinner)], present.AgentWorking, 1},
 		{"✓", present.AgentEnded, 1},
@@ -115,7 +115,7 @@ func TestTheHeaderSumsTheAgentsUp(t *testing.T) {
 	for _, c := range []struct {
 		width int
 		want  string
-	}{{120, "Agents ⣿ 1 · ✓ 1"}, {119, " ⣿ 1 · ✓ 1"}, {80, " ⣿ 1 · ✓ 1"}} {
+	}{{120, "Agents A 1 · ✓ 1"}, {119, " A 1 · ✓ 1"}, {80, " A 1 · ✓ 1"}} {
 		h.m.width = c.width
 		first := strings.Split(ansi.Strip(h.m.View().Content), "\n")[0]
 		if !strings.HasSuffix(first, c.want) || (c.width < 120 && strings.Contains(first, "Agents")) {

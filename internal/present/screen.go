@@ -152,6 +152,8 @@ const (
 	// word say the state; the tone only makes it seen.
 	AgentApproval
 	AgentWaiting
+	// AgentWaitingFaint is the pulse's other half (AgentWaiting by turns).
+	AgentWaitingFaint
 	AgentLost
 	AgentWorking
 	AgentStarting

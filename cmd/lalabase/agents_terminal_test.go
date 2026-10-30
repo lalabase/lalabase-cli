@@ -58,7 +58,7 @@ func TestPTYAgentsInTheListAndTheHead(t *testing.T) {
 				t.Fatalf("%v\n%s", err, c.bytes())
 			}
 			openWebsite(t, c, 120)
-			c.expect(t, "the glyph before #6", 120, "⣿  #6 Ticket 6", "     #7 Ticket 7")
+			c.expect(t, "the glyph before #6", 120, "A  #6 Ticket 6", "     #7 Ticket 7")
 			for n := 2; n <= 5; n++ {
 				title := fmt.Sprintf(">    #%d Ticket %d", n, n)
 				if n == 2 {
@@ -66,10 +66,10 @@ func TestPTYAgentsInTheListAndTheHead(t *testing.T) {
 				}
 				c.act(t, keyDown, 120, title)
 			}
-			c.act(t, keyDown, 120, "> ⣿  #6 Ticket 6")
+			c.act(t, keyDown, 120, "> A  #6 Ticket 6")
 			// The ticket in focus is wide enough for the meta bar (C9b):
 			// the agent's line stands there, under its label.
-			c.act(t, keyEnter, 120, "│ Agent", "│ ⣿ waiting for you", "│   · 4 min")
+			c.act(t, keyEnter, 120, "│ Agent", "│ A waiting for you", "│   · 4 min")
 			if err := c.send("q"); err != nil {
 				t.Fatal(err)
 			}
@@ -85,7 +85,7 @@ func TestPTYAgentsInTheListAndTheHead(t *testing.T) {
 				}
 				return
 			}
-			if !strings.Contains(out, "\x1b[38;5;140m⣿") {
+			if !strings.Contains(out, "\x1b[38;5;140mA") {
 				t.Fatalf("the glyph is not violet: %q", out)
 			}
 		})
