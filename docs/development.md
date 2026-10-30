@@ -107,7 +107,7 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   that sends it, so an older server keeps the base feature. A tool a
   slice brings whole (S2: `update_ticket`) is a feature of its own, on
   only when every argument its spec declares is in the schema. The
-  contract copy is at MCP 0.13.1, REST API 1.7.0; a 0.9.0 to 0.13.0
+  contract copy is at MCP 0.14.0, REST API 1.8.0; a 0.9.0 to 0.13.1
   server is shown as older than the tested version and works with what
   its schemas say. Fields a newer server sends are `Newer` in the spec:
   absent is fine, present they are checked like the required ones

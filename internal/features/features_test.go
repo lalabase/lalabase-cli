@@ -28,9 +28,9 @@ func contractTools(t *testing.T) ([]transport.Tool, *contract.File) {
 	return tools, file
 }
 
-var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.13.1"}
+var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.14.0"}
 
-// On the contract the client was built against (MCP 0.13.1, REST API 1.7.0,
+// On the contract the client was built against (MCP 0.14.0, REST API 1.8.0,
 // server slices S1, S2, S2b and S6 and the core's R6 included), every
 // feature is on.
 func TestOnTheContractEveryFeatureIsOn(t *testing.T) {
@@ -160,7 +160,7 @@ func TestAMissingToolSwitchesOffItsFeatures(t *testing.T) {
 func TestANewerServerWithMoreToolsIsANotice(t *testing.T) {
 	tools, _ := contractTools(t)
 	tools = append(tools, transport.Tool{Name: "delete_ticket", InputSchema: json.RawMessage(`{"type":"object","properties":{"ticket_id":{}}}`)})
-	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.13.1"}, tools, contractCapabilities(t))
+	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.14.0"}, tools, contractCapabilities(t))
 	for _, f := range All {
 		if !report.Enabled[f.Name] {
 			t.Errorf("%s went off on a newer server", f.Name)
@@ -411,7 +411,7 @@ func TestOnTheServerBeforeS2TheWriteFeaturesAreOff(t *testing.T) {
 		t.Errorf("missing %v / %v", report.Missing["ticket_update"], report.Missing["comment_plain"])
 	}
 	if !report.BelowTested {
-		t.Error("0.9.0 is not below the tested 0.13.1")
+		t.Error("0.9.0 is not below the tested 0.14.0")
 	}
 }
 

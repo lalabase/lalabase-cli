@@ -217,7 +217,7 @@ func TestAFixtureBeforeR1KeepsTheTools(t *testing.T) {
 		"S2 only":    {S2Only, nil, ""},
 		"read-only":  {ReadOnly, []Option{BeforeR1()}, "1.2.0"},
 		"refusals":   {Refusals, []Option{BeforeR1()}, "1.2.0"},
-		"the normal": {Normal, nil, "1.7.0"},
+		"the normal": {Normal, nil, "1.8.0"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f, err := New(c.scenario, contract.Raw(), c.opts...)
@@ -231,7 +231,7 @@ func TestAFixtureBeforeR1KeepsTheTools(t *testing.T) {
 			}
 			report := reportOf(t, a, cl)
 			want := features.MCP
-			if c.version == "1.7.0" {
+			if c.version == "1.8.0" {
 				want = features.REST
 			}
 			for _, name := range ticketView {

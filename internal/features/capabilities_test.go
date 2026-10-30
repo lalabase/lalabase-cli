@@ -145,7 +145,7 @@ func TestTheTicketViewTakesTheRESTWayWithTheCapabilitiesOfR1(t *testing.T) {
 		rest  map[string]Way // the features over REST; every other one is on over MCP
 		off   []string
 	}{
-		{"the contract's /me (API 1.7.0)", tools, caps, rest(ticketView...), nil},
+		{"the contract's /me (API 1.8.0)", tools, caps, rest(ticketView...), nil},
 		{"a /me of API 1.2.0, before R1", tools, meCapabilities(t, "testdata/me_1.2.0.json"), nil, nil},
 		{"no capabilities, before R0", tools, nil, nil, nil},
 		{"without tickets.paging", tools, without("tickets.paging"), nil, nil},
