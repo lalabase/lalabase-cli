@@ -10,6 +10,8 @@ import (
 )
 
 func TestR1DirectoryRemovalDoesNotRelabelActiveInbox(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -26,6 +28,8 @@ func TestR1DirectoryRemovalDoesNotRelabelActiveInbox(t *testing.T) {
 }
 
 func TestR1HelpNamesOnlyActivePageDirections(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -40,6 +44,8 @@ func TestR1HelpNamesOnlyActivePageDirections(t *testing.T) {
 }
 
 func TestR1MissingInboxBaseArgumentsAndRetry(t *testing.T) {
+	t.Parallel()
+
 	for _, arg := range []string{"status", "page", "per_page"} {
 		t.Run(arg, func(t *testing.T) {
 			h := newHarness(t)

@@ -23,6 +23,8 @@ func r3MissingComments(h *harness) {
 // A missing comment while a page turn is out: the reload reads the page
 // asked, and that page lands.
 func TestR3ReloadAfterMissingCommentReadsThePageAsked(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -48,6 +50,8 @@ func TestR3ReloadAfterMissingCommentReadsThePageAsked(t *testing.T) {
 // Between the missing comment and its reload the ticket loads: no page key
 // is offered, the marker shows.
 func TestR3TheTicketLoadsUntilTheReloadLands(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -64,6 +68,8 @@ func TestR3TheTicketLoadsUntilTheReloadLands(t *testing.T) {
 
 // A page shown from the cache keeps a selection on that page.
 func TestR3ACachedPageKeepsASelectionOnIt(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")
@@ -77,6 +83,8 @@ func TestR3ACachedPageKeepsASelectionOnIt(t *testing.T) {
 
 // A second expansion closes the first: its read is canceled.
 func TestR3ASecondExpansionCancelsTheFirst(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("e") // the description, not run
@@ -92,6 +100,8 @@ func TestR3ASecondExpansionCancelsTheFirst(t *testing.T) {
 
 // A ticket shown again from the cache has a comment selected at once.
 func TestR3ACachedTicketHasACommentSelected(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("esc")
@@ -110,6 +120,8 @@ func TestR3ACachedTicketHasACommentSelected(t *testing.T) {
 // while that page is on its way (round 3 backlog: the wording and the
 // behaviour agree).
 func TestR3TheDescriptionIsReadWithThePageAsked(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab")

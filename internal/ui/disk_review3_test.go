@@ -18,6 +18,8 @@ import (
 // than one batch applies, the read waits for the batch that holds its
 // predecessors, or the disk answers with an entry memory already removed.
 func TestR3ADiskReadWaitsForTheChangesBeforeIt(t *testing.T) {
+	t.Parallel()
+
 	h := newDiskHarness(t, t.TempDir(), nil)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -66,6 +68,8 @@ func TestR3ADiskReadWaitsForTheChangesBeforeIt(t *testing.T) {
 // Leaving and coming back must not drop the warning without a reload that
 // succeeded.
 func TestR3AFailedReloadBeforeADiskHitMarksTheEntryStale(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.start()
@@ -116,6 +120,8 @@ func TestR3AFailedReloadBeforeADiskHitMarksTheEntryStale(t *testing.T) {
 // A read waits for the changes before it, not for those after it: it goes
 // with the first batch, however many changes follow it.
 func TestR3ADiskReadDoesNotWaitForLaterChanges(t *testing.T) {
+	t.Parallel()
+
 	h := newDiskHarness(t, t.TempDir(), nil)
 	h.start()
 	h.drive(h.choose(orgA))

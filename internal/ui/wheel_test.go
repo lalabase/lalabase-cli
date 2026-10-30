@@ -44,6 +44,8 @@ func (h *harness) untilStill(scroll func()) int {
 
 // The interface asks for the mouse's buttons and wheel, never its motion.
 func TestTheViewReportsTheWheel(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	if mode := h.m.View().MouseMode; mode != tea.MouseModeCellMotion {
 		t.Fatalf("mouse mode %v", mode)
@@ -54,6 +56,8 @@ func TestTheViewReportsTheWheel(t *testing.T) {
 // stops at both ends where pgup and pgdown stop, and leaves the selected
 // comment as it is.
 func TestTheWheelScrollsTheTicket(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab") // comments: the anchor follows the section
@@ -101,6 +105,8 @@ func TestTheWheelScrollsTheTicket(t *testing.T) {
 // Only the object pane's body scrolls: the wheel over the list, the
 // header, the help, and the sideways wheel leave the ticket where it is.
 func TestTheWheelScrollsOnlyOverTheObjectPane(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	h.press("tab") // an anchor the wheel would let go
@@ -136,6 +142,8 @@ func TestTheWheelScrollsOnlyOverTheObjectPane(t *testing.T) {
 // The ticket in the pane beside the list scrolls under the wheel while the
 // focus stays on the list, in three columns and in two.
 func TestTheWheelScrollsThePreviewBesideTheList(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []int{120, 80} {
 		h := newHarness(t)
 		h.feed(tea.WindowSizeMsg{Width: width, Height: 24})
@@ -155,6 +163,8 @@ func TestTheWheelScrollsThePreviewBesideTheList(t *testing.T) {
 // In one column the pane fills the screen when it has the focus; with the
 // focus on the list it is not in sight and the wheel does nothing to it.
 func TestTheWheelInOneColumn(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.feed(tea.WindowSizeMsg{Width: 60, Height: 24})
 	h.openSix()
@@ -172,6 +182,8 @@ func TestTheWheelInOneColumn(t *testing.T) {
 
 // The details of a notification scroll under the wheel as well.
 func TestTheWheelScrollsTheDetails(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
 		rows := h.d.rows(orgA, 1, 2)
@@ -196,6 +208,8 @@ func TestTheWheelScrollsTheDetails(t *testing.T) {
 // Without a session (the shell) and on a small terminal the wheel does
 // nothing and does not panic.
 func TestTheWheelWithoutAPane(t *testing.T) {
+	t.Parallel()
+
 	m := New()
 	m.width, m.height = 120, 24
 	next, _ := m.Update(tea.MouseWheelMsg{X: 100, Y: 3, Button: tea.MouseWheelDown})

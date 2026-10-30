@@ -48,6 +48,8 @@ func (h *harness) startHolding() tea.Cmd {
 // order. A filtered answer touches its organisation alone; a global one is
 // a snapshot in which absence is unknown; an explicit zero stays zero.
 func TestCountersFollowTheRequestSequence(t *testing.T) {
+	t.Parallel()
+
 	global := map[string]int{orgA: 5, orgB: 3}
 	filteredA := 7
 	serve := func(h *harness) {
@@ -124,6 +126,8 @@ func TestCountersFollowTheRequestSequence(t *testing.T) {
 // Plan test 7: highlighting sends nothing; Enter chooses, and the read is
 // unread and scoped to the organisation.
 func TestHighlightingSendsNothingAndEnterChooses(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	before := len(h.f.inboxCalls())
@@ -161,6 +165,8 @@ func TestHighlightingSendsNothingAndEnterChooses(t *testing.T) {
 // Plan test 10: the last page from the total, and invalid metadata never
 // reaching the cache.
 func TestPagingTotalsAndInvalidMetadata(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		total, last int
 		next        bool
@@ -211,6 +217,8 @@ func TestPagingTotalsAndInvalidMetadata(t *testing.T) {
 // them, a resize keeps everything, a removal selects the first row and
 // closes the details.
 func TestSelectionIsByIDAcrossReorderAndResize(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -263,6 +271,8 @@ func TestSelectionIsByIDAcrossReorderAndResize(t *testing.T) {
 // Plan test 12: a page beyond the last after a shrink is corrected once;
 // a second shrink stops with R; a total of zero adds no request.
 func TestAShrunkInboxIsCorrectedOnce(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	total := 60
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
@@ -331,6 +341,8 @@ func TestAShrunkInboxIsCorrectedOnce(t *testing.T) {
 // exactly once; rendering, resizing, details and R while pending add no
 // request.
 func TestACacheHitShowsAtOnceAndReloadsOnce(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -387,6 +399,8 @@ func TestACacheHitShowsAtOnceAndReloadsOnce(t *testing.T) {
 // keeps the rows and the load time with "Possibly stale", a refusal keeps
 // them with its message, a removal clears rows and details.
 func TestTheCacheDecisionsOnTheScreen(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -429,6 +443,8 @@ func TestTheCacheDecisionsOnTheScreen(t *testing.T) {
 // after a newer reload, the late copy of the removal leaves the new rows,
 // the counters and the counters step alone, and invalidates nothing again.
 func TestALateCopyOfARemovalLeavesNewerDataAlone(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	gone := failing(transport.NotFound, 200)
 	h.f.set(func(api.NotificationQuery) transport.Answer { return gone })
@@ -508,6 +524,8 @@ func (v *inboxView) waiterFor(a *app) gateway.Waiter {
 // Plan test 18: nullable references, blanks, an invalid time and the zone
 // conversion, in the row and in the details; Enter adds no request.
 func TestRowsAndDetailsFallBackForMissingValues(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
 		rows := h.d.rows(orgA, 1, 4)
@@ -566,6 +584,8 @@ func TestRowsAndDetailsFallBackForMissingValues(t *testing.T) {
 // key acts (for a pair, one of its two keys). Every press starts from a
 // fresh model in the state, so nothing of one press leaks into the next.
 func TestHelpNamesExactlyTheKeysThatAct(t *testing.T) {
+	t.Parallel()
+
 	// C1f adds o (the ticket a notification names) and r (mark as read).
 	keys := map[string]Action{"up": Up, "down": Down, "pgup": PageUp, "pgdown": PageDown, "[": PrevPage, "]": NextPage, "R": Refresh, "enter": OpenList, "esc": Back, "left": Left, "right": Right, "o": Order, "r": MarkRead, "tab": NextArea, "e": Expand}
 	acted := func(h *harness, key string) bool {
@@ -714,6 +734,8 @@ const hostileText = "\x1b[2J\x1b[31mCSI\x1b[0m\x1b]8;;https://evil.invalid\x07LI
 // Plan test 20: hostile text from the server and from the cache reaches
 // the screen cleaned, in rows, details, counters, identity and errors.
 func TestHostileTextFromServerAndCacheIsCleaned(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	me := h.d.me
 	me.User.DisplayName = "NAME_START" + hostileText

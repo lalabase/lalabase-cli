@@ -29,6 +29,8 @@ func helpText(m Model) string {
 }
 
 func TestShellKeysAndHelpAgree(t *testing.T) {
+	t.Parallel()
+
 	m := New()
 	m.width, m.height = 120, 24
 	if help := helpText(m); !strings.Contains(help, "ctrl+c") || !strings.Contains(help, "left/right") || !strings.Contains(help, "q") {
@@ -96,6 +98,8 @@ func TestShellKeysAndHelpAgree(t *testing.T) {
 }
 
 func TestKeyRoutingHasOneMode(t *testing.T) {
+	t.Parallel()
+
 	for _, text := range []string{"q", "r", "R", "/", "[", "]", "?", " ", "é", "界"} {
 		if got := routeKey(TextEntry, press(text)); got.Kind != InsertText || got.Text != text {
 			t.Fatalf("text %q: %+v", text, got)
@@ -117,6 +121,8 @@ func TestKeyRoutingHasOneMode(t *testing.T) {
 }
 
 func TestRootRoutesTextWithoutNavigation(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []int{23, 79, 80, 120} {
 		for _, focus := range []view.Pane{view.Navigation, view.List, view.Object} {
 			m := NewWithContent("organisation", "list", "object")
@@ -139,6 +145,8 @@ func TestRootRoutesTextWithoutNavigation(t *testing.T) {
 }
 
 func TestTextEntryKeyPayload(t *testing.T) {
+	t.Parallel()
+
 	for _, key := range []tea.KeyPressMsg{
 		{Code: 'q'}, {Code: '界'}, {Code: 'Q', Mod: tea.ModShift},
 		{Code: 'é', Text: "é"}, {Code: 'Q', Text: "Q", Mod: tea.ModShift},
@@ -170,6 +178,8 @@ func TestTextEntryKeyPayload(t *testing.T) {
 // A Mac keyboard has no PgUp or PgDn: space and b turn the page as
 // they do in less, in navigation; in the search line they are text.
 func TestSpaceAndBTurnThePage(t *testing.T) {
+	t.Parallel()
+
 	space := tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
 	if got := routeKey(Navigate, space); got.Kind != PageDown {
 		t.Fatalf("space: %v", got)

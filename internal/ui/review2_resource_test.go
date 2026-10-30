@@ -8,6 +8,8 @@ import (
 )
 
 func TestReview2RemovalClearsAnotherPageOfActiveResource(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(""))
@@ -30,6 +32,8 @@ func TestReview2RemovalClearsAnotherPageOfActiveResource(t *testing.T) {
 }
 
 func TestReview2OtherResourceNewerPageDoesNotRefuseRemoval(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	a := h.m.app

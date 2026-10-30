@@ -20,6 +20,8 @@ import (
 // to the tickets section; its result still invalidates A's pages, makes
 // the counters unknown and reloads them, and reloads nothing of B's.
 func TestARunningOperationSurvivesLeavingTheInbox(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -86,6 +88,8 @@ func TestARunningOperationSurvivesLeavingTheInbox(t *testing.T) {
 // S2: a mark from page 2 of the global inbox reloads that page, not only
 // the counters.
 func TestAMarkFromTheGlobalInboxReloadsTheShownPage(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(""))
@@ -113,6 +117,8 @@ func TestAMarkFromTheGlobalInboxReloadsTheShownPage(t *testing.T) {
 // S4: the lock of an unknown outcome holds until BOTH clarifying reads
 // landed, the global one included.
 func TestTheLockHoldsUntilBothClarifyingReadsLanded(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.openLinked(orgA, 0)
@@ -178,6 +184,8 @@ func TestTheLockHoldsUntilBothClarifyingReadsLanded(t *testing.T) {
 // stood after the retry is "rate limited", a request canceled after it was
 // sent is unknown and reloads, one canceled before is not sent.
 func TestTheClassesUpdateTellsApart(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name    string
 		ans     transport.Answer
@@ -213,6 +221,8 @@ func TestTheClassesUpdateTellsApart(t *testing.T) {
 // S7: the pane's notice belongs to the ticket when the ticket has
 // something to say; the mark's outcome fills it only when it is empty.
 func TestAMarkOutcomeDoesNotHideTheTicketsOwnNotice(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.openLinked(orgA, 0)
@@ -233,6 +243,8 @@ func TestAMarkOutcomeDoesNotHideTheTicketsOwnNotice(t *testing.T) {
 // S8: a row shown as read offers no r from its ticket either, and the head
 // says "read".
 func TestAReadRowOffersNoMarkFromItsTicket(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
 		rows := slices2(h.d.rows(orgA, 1, 30), h.f.readIDs())
@@ -258,6 +270,8 @@ func TestAReadRowOffersNoMarkFromItsTicket(t *testing.T) {
 // S9: the key carries the clock: the same session number and operation
 // number in another run give another key.
 func TestTheIdempotencyKeyCarriesTheClock(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	a := h.m.app
@@ -272,6 +286,8 @@ func TestTheIdempotencyKeyCarriesTheClock(t *testing.T) {
 // S10: a result that names a replaced operation is dropped, also when a
 // newer operation on the same notification is running.
 func TestAResultOfAReplacedOperationIsDropped(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -303,6 +319,8 @@ func TestAResultOfAReplacedOperationIsDropped(t *testing.T) {
 // S11: the counters forget their value after the write, not their place
 // in the order of observations.
 func TestTheCountersKeepTheirSequenceAcrossTheWrite(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -323,6 +341,8 @@ func TestTheCountersKeepTheirSequenceAcrossTheWrite(t *testing.T) {
 // S12: a row confirmed as read that is still on the page is not marked
 // again: not from the list, the details or its ticket.
 func TestAConfirmedRowStillOnThePageIsNotMarkedAgain(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -356,6 +376,8 @@ func TestAConfirmedRowStillOnThePageIsNotMarkedAgain(t *testing.T) {
 // S13: an inbox the server took away (not found) takes the ticket opened
 // from one of its rows with it.
 func TestARemovedInboxTakesTheLinkedTicketWithIt(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.openLinked(orgA, 0)

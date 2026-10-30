@@ -44,6 +44,8 @@ func (h *harness) withViewer() *fakeViewer {
 }
 
 func TestEnterShowsTheTicketBesideTheAgents(t *testing.T) {
+	t.Parallel()
+
 	for _, c := range []struct {
 		width int
 		focus view.Pane
@@ -84,6 +86,8 @@ func TestEnterShowsTheTicketBesideTheAgents(t *testing.T) {
 // Leaving the list for the organisations empties the pane; leaving it
 // for the ticket pane it was opened from keeps the ticket there.
 func TestLeavingTheAgentsTakesTheirTicket(t *testing.T) {
+	t.Parallel()
+
 	for _, key := range []string{"A", "esc"} {
 		h := newHarness(t)
 		h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
@@ -121,6 +125,8 @@ func TestLeavingTheAgentsTakesTheirTicket(t *testing.T) {
 }
 
 func TestTheViewerFollowsTheTicketShown(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	six := agentIn(1, orgA, 6, agents.Working, h.now)
 	ended := agentIn(2, orgA, 7, agents.Ended, h.now)
@@ -155,6 +161,8 @@ func TestTheViewerFollowsTheTicketShown(t *testing.T) {
 
 // A launcher without a viewer is never asked.
 func TestNoViewerNoAsk(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
 	h.withLauncher()

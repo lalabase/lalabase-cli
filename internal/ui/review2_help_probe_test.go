@@ -12,6 +12,8 @@ import (
 )
 
 func TestR2ScrollBindingsUseFinalGeometry(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -45,6 +47,8 @@ func TestR2ScrollBindingsUseFinalGeometry(t *testing.T) {
 }
 
 func TestR2DetailsMessageIsCleanedAsBodyOnce(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	raw := "First line\nSecond line\tindented"
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
@@ -63,6 +67,8 @@ func TestR2DetailsMessageIsCleanedAsBodyOnce(t *testing.T) {
 }
 
 func TestR2AdvertisedMovementActuallyMoves(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))
@@ -87,6 +93,8 @@ func TestR2AdvertisedMovementActuallyMoves(t *testing.T) {
 }
 
 func TestR2FrameSweep(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))

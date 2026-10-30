@@ -156,6 +156,8 @@ func (h *harness) due() {
 }
 
 func TestTheAgentsAreReadAtTheStartAndSleepWithoutOne(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher()
 	h.start()
@@ -168,6 +170,8 @@ func TestTheAgentsAreReadAtTheStartAndSleepWithoutOne(t *testing.T) {
 }
 
 func TestTheAgentsAreReadEveryHalfSecondWhileThereIsOne(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(agentOn(6, agents.Starting, h.now))
 	h.start()
@@ -200,6 +204,8 @@ func TestTheAgentsAreReadEveryHalfSecondWhileThereIsOne(t *testing.T) {
 // A launch running keeps the reading going: its agent's record comes
 // with its end. Its end reads at once.
 func TestALaunchKeepsTheReadingGoing(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher()
 	h.withLauncher()
@@ -226,6 +232,8 @@ func TestALaunchKeepsTheReadingGoing(t *testing.T) {
 
 // One chain of reads at a time: a read out or due is not doubled.
 func TestOneReadAtATime(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(agentOn(6, agents.Working, h.now))
 	a := h.m.app
@@ -257,6 +265,8 @@ func TestOneReadAtATime(t *testing.T) {
 // The spinner moves one frame with every read while an agent works, and
 // stands still otherwise.
 func TestTheSpinnerMovesWithEachReadWhileOneWorks(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(agentOn(6, agents.Working, h.now), agentOn(7, agents.WaitingForYou, h.now))
 	h.start()
@@ -278,6 +288,8 @@ func TestTheSpinnerMovesWithEachReadWhileOneWorks(t *testing.T) {
 
 // A read that failed shows no agent.
 func TestAFailedReadShowsNone(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(agentOn(6, agents.Working, h.now))
 	h.start()
@@ -292,6 +304,8 @@ func TestAFailedReadShowsNone(t *testing.T) {
 
 // The most urgent agent at a ticket wins; of two equally urgent the first.
 func TestTheMostUrgentAgentWins(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	working := agentOn(6, agents.Working, h.now)
 	ended := agentOn(6, agents.Ended, h.now)
@@ -310,6 +324,8 @@ func TestTheMostUrgentAgentWins(t *testing.T) {
 // the directory before the launch's record. The read after it must still
 // come: a read asked for while one is out is owed, and comes when it ends.
 func TestALaunchsEndDuringAReadIsReadAgain(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher()
 	h.withLauncher()
@@ -338,6 +354,8 @@ func TestALaunchsEndDuringAReadIsReadAgain(t *testing.T) {
 // reading, so the agents come back once the directory reads again; only a
 // read that succeeds and finds none lets reading sleep.
 func TestAFailedReadKeepsReading(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	f := h.withWatcher(agentOn(6, agents.Working, h.now))
 	h.start()

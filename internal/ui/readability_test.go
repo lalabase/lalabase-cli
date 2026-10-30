@@ -14,6 +14,8 @@ import (
 // comment's author bold and its time faint, the texts indented, an
 // attachment's metadata faint.
 func TestTheTicketIsDrawnInItsStyles(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.openSix()
 	d := h.m.app.detail
@@ -66,6 +68,8 @@ func TestTheTicketIsDrawnInItsStyles(t *testing.T) {
 // A lead that cleaning would change is not drawn by a stale length: the
 // line falls back to one style.
 func TestALeadTheCleaningChangesFallsBackToOneStyle(t *testing.T) {
+	t.Parallel()
+
 	var tl ticketLines
 	tl.addLead("a\tb", present.Strong, " rest", present.Faint)
 	if tl.lines[0] != "a b rest" || tl.styles[0].Lead != 0 {
@@ -76,6 +80,8 @@ func TestALeadTheCleaningChangesFallsBackToOneStyle(t *testing.T) {
 // With three columns an open ticket takes the navigation's room; back in
 // the list the navigation returns.
 func TestTheNavigationGivesWayToAnOpenTicket(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.m.width, h.m.height = 120, 30
 	h.openSix()
@@ -97,6 +103,8 @@ func TestTheNavigationGivesWayToAnOpenTicket(t *testing.T) {
 
 // The inbox's count is faint at zero and bold above it.
 func TestTheInboxCountIsQuietAtZeroAndHighlightedAbove(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	// Südwind's notifications were all read meanwhile.

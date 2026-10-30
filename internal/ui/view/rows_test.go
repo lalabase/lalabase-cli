@@ -21,6 +21,8 @@ func entry(primary, trailing, secondary string, active bool) present.Row {
 // A row is a marker, the first line with its value at the end, and the
 // second line indented; the cursor row is marked, the active one bold.
 func TestRowsRenderMarkerValueAndSecondLine(t *testing.T) {
+	t.Parallel()
+
 	c := present.Column{
 		Title: present.NewInline("Organisations"),
 		Rows: []present.Row{
@@ -67,6 +69,8 @@ func TestRowsRenderMarkerValueAndSecondLine(t *testing.T) {
 // The cursor stays in sight: the offset follows it down and up, and an
 // offset beyond the end is clamped. A notice takes one line of the body.
 func TestRowsKeepTheCursorInSightAndCountTheNotice(t *testing.T) {
+	t.Parallel()
+
 	var list []present.Row
 	for i := range 10 {
 		list = append(list, entry(string(rune('a'+i)), "", "", false))
@@ -108,6 +112,8 @@ func TestRowsKeepTheCursorInSightAndCountTheNotice(t *testing.T) {
 // Free text scrolls by its offset; the last line is kept in sight and an
 // overflow is marked. The text keeps the last column free for the bar.
 func TestTextScrollsByOffset(t *testing.T) {
+	t.Parallel()
+
 	c := present.Column{Title: present.NewInline("Details"), Text: present.NewBody("one\ntwo\nthree\nfour\nfive")}
 	got := content(c, 8, 3, false, ansi.WcWidth)
 	if !reflect.DeepEqual(ansiStripAll(got), []string{"one    \u2503", "two    \u2503", "three… \u254e"}) {

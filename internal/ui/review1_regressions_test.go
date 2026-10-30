@@ -8,6 +8,8 @@ import (
 )
 
 func TestR1SharedFlightKeepsOriginalSequence(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.f.set(func(q api.NotificationQuery) transport.Answer {
 		n := 5
@@ -36,6 +38,8 @@ func TestR1SharedFlightKeepsOriginalSequence(t *testing.T) {
 }
 
 func TestR1QuickReturnCompletesAfterCanceledWaiter(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	oldA := h.choose(orgA)
@@ -52,6 +56,8 @@ func TestR1QuickReturnCompletesAfterCanceledWaiter(t *testing.T) {
 }
 
 func TestR1ReloadAfterZeroShrinkRequestsPageOne(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	h.start()
 	h.drive(h.choose(orgA))

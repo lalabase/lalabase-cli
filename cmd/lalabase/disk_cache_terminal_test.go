@@ -96,6 +96,8 @@ func (c *terminalProcess) noticeGone(t *testing.T, width uint16, notice string, 
 // disk at once while the slow reloads are out, then fresh; the start of
 // the second run asks /me again and makes the same five requests.
 func TestPTYDiskCacheRestartFlow(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []uint16{80, 120} {
 		t.Run(fmt.Sprintf("%d", width), func(t *testing.T) {
 			f, url := fixtureServer(t, inboxfixture.SlowReads)
@@ -204,6 +206,8 @@ func TestPTYDiskCacheRestartFlow(t *testing.T) {
 // A page whose reload fails is shown from disk as "Cached, possibly stale";
 // R reads it.
 func TestPTYDiskCacheStaleWhenTheReloadFails(t *testing.T) {
+	t.Parallel()
+
 	width := uint16(80)
 	f, url := fixtureServer(t, inboxfixture.Temporary)
 	home := t.TempDir()
@@ -237,6 +241,8 @@ func TestPTYDiskCacheStaleWhenTheReloadFails(t *testing.T) {
 // A 401 ends the session and clears the profile's directory; the next run
 // starts with /me and finds nothing to show from disk.
 func TestPTYDiskCache401ClearsTheDirectory(t *testing.T) {
+	t.Parallel()
+
 	width := uint16(120)
 	f, url := fixtureServer(t, inboxfixture.Unauthorized)
 	home := t.TempDir()
@@ -296,6 +302,8 @@ func countOf(reqs []inboxfixture.Request, tool string) int {
 // A directory that cannot be used, and one another lalabase holds: memory
 // alone, with one notice each, and the inbox loads as before.
 func TestPTYDiskCacheFallsBackToMemory(t *testing.T) {
+	t.Parallel()
+
 	width := uint16(120)
 	t.Run("unusable", func(t *testing.T) {
 		_, url := fixtureServer(t, inboxfixture.Normal)

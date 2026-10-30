@@ -96,6 +96,8 @@ func (c *terminalProcess) closes(t *testing.T, input string, width uint16, title
 // be refused, send again; the box goes, and the keys are the interface's
 // again.
 func TestPTYTheSmallDialog(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []uint16{80, 120, 50} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			c := startDialog(t, dialogSmall, width)
@@ -124,6 +126,8 @@ func TestPTYTheSmallDialog(t *testing.T) {
 // Enter breaks the line, Ctrl-S sends: the terminal's flow control must not
 // take it (raw mode clears IXON, seen here on Linux and macOS alike).
 func TestPTYTheLargeDialog(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []uint16{80, 120, 50} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			c := startDialog(t, dialogLarge, width)
@@ -148,6 +152,8 @@ func TestPTYTheLargeDialog(t *testing.T) {
 
 // Esc goes back to the keys of the screen, whatever was typed.
 func TestPTYEscClosesTheDialog(t *testing.T) {
+	t.Parallel()
+
 	c := startDialog(t, dialogSmall, 80)
 	c.act(t, "q30", 80, "q30"+boxCaret)
 	// A lone ESC waits for the decoder's timeout: the box closes without
@@ -162,6 +168,8 @@ func TestPTYEscClosesTheDialog(t *testing.T) {
 // Ctrl-C ends the program from the box like from anywhere, and the terminal
 // is what it was: termios, the screen, the modes (finish).
 func TestPTYCtrlCLeavesTheDialogRestored(t *testing.T) {
+	t.Parallel()
+
 	for _, scenario := range []string{dialogSmall, dialogLarge} {
 		t.Run(scenario, func(t *testing.T) {
 			c := startDialog(t, scenario, 80)
@@ -178,6 +186,8 @@ func TestPTYCtrlCLeavesTheDialogRestored(t *testing.T) {
 // a terminal too small for anything keeps it for later, and the terminal is
 // restored at the end.
 func TestPTYAResizeKeepsTheDialog(t *testing.T) {
+	t.Parallel()
+
 	c := startDialog(t, dialogSmall, 120)
 	c.act(t, "30", 120, "30"+boxCaret)
 	resize := func(cols, rows uint16) {

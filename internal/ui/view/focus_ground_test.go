@@ -11,6 +11,8 @@ import (
 // of its lines starts on it, takes it up again after every reset inside
 // and gives it back at its end. The other panes have none.
 func TestTheFocusedPaneHasItsGround(t *testing.T) {
+	t.Parallel()
+
 	g := geometryOf(120, 24)
 	s := areaScreen(agentRows(2, true), 0)
 	for _, focus := range []Pane{Navigation, List, Agents} {
@@ -52,6 +54,8 @@ func TestTheFocusedPaneHasItsGround(t *testing.T) {
 }
 
 func TestOnFocusGroundTakesTheGroundUpAfterResets(t *testing.T) {
+	t.Parallel()
+
 	got := onFocusGround([]string{"a\x1b[1mb\x1b[mc\x1b[0md\x1b[100me\x1b[49mf"})[0]
 	want := focusGround + "a\x1b[1mb\x1b[m" + focusGround + "c\x1b[m" + focusGround + "d\x1b[100me" + focusGround + "f\x1b[49m"
 	if got != want {

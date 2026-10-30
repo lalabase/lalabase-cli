@@ -29,6 +29,8 @@ func screenBar(content string) string {
 // Long details carry the bar: the thumb at the top before scrolling, at the
 // bottom after scrolling to the end, where the text's last words show.
 func TestLongDetailsShowWhereTheyAreOnTheBar(t *testing.T) {
+	t.Parallel()
+
 	h := newHarness(t)
 	const end = "ENDOFTHEMESSAGE"
 	h.f.set(func(q api.NotificationQuery) transport.Answer {

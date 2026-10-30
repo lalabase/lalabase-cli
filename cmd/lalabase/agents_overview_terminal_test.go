@@ -22,6 +22,8 @@ import (
 // tickets; Enter on #7 records it as seen, on disk. Two columns run with
 // NO_COLOR: the glyphs and counts stay, no colour is drawn.
 func TestPTYAgentsOverview(t *testing.T) {
+	t.Parallel()
+
 	for _, width := range []uint16{120, 100} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			_, url := fixtureServer(t, inboxfixture.Normal)
