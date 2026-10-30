@@ -175,22 +175,25 @@ func TestTextEntryKeyPayload(t *testing.T) {
 	}
 }
 
-// A Mac keyboard has no PgUp or PgDn: space and b turn the page as
-// they do in less, in navigation; in the search line they are text.
-func TestSpaceAndBTurnThePage(t *testing.T) {
+// A Mac keyboard has no PgUp or PgDn: space and u turn the page in
+// navigation, where b books time; in the search line they are text.
+func TestSpaceAndUTurnThePage(t *testing.T) {
 	t.Parallel()
 
 	space := tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
 	if got := routeKey(Navigate, space); got.Kind != PageDown {
 		t.Fatalf("space: %v", got)
 	}
-	if got := routeKey(Navigate, press("b")); got.Kind != PageUp {
+	if got := routeKey(Navigate, press("u")); got.Kind != PageUp {
+		t.Fatalf("u: %v", got)
+	}
+	if got := routeKey(Navigate, press("b")); got.Kind != BookTime {
 		t.Fatalf("b: %v", got)
 	}
 	if got := routeKey(TextEntry, space); got.Kind != InsertText || got.Text != " " {
 		t.Fatalf("space in the search line: %v", got)
 	}
-	if got := routeKey(TextEntry, press("b")); got.Kind != InsertText || got.Text != "b" {
-		t.Fatalf("b in the search line: %v", got)
+	if got := routeKey(TextEntry, press("u")); got.Kind != InsertText || got.Text != "u" {
+		t.Fatalf("u in the search line: %v", got)
 	}
 }
