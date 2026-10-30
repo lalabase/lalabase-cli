@@ -9,10 +9,10 @@
 // GET /api/v1/me lists them (the core's R0). A server that lists them all
 // gets the REST way; any other, the MCP way, while both exist. A server
 // without capabilities (before R0) keeps every feature it had. K1 names
-// them for the ticket view (the core's R1). K6 adds a feature with the REST
-// way alone, the booking of time: it has no tool, so a server that does not
-// list its capability has no such feature. Every other feature has the MCP
-// way alone.
+// them for the ticket view (the core's R1), K3a for a comment in plain text
+// (the core's R3a). K6 adds a feature with the REST way alone, the booking
+// of time: it has no tool, so a server that does not list its capability has
+// no such feature. Every other feature has the MCP way alone.
 package features
 
 import (
@@ -94,9 +94,10 @@ var All = []Feature{
 	{Name: "ticket_full_text", Spec: api.TicketSpec, ExtraArgs: []string{"full_text", "post_id"}, Since: "S1", Capabilities: wholeREST},
 	// C2: the writes on a ticket. ticket_update needs the whole tool, every
 	// argument its spec declares (a server with half of it keeps it off);
-	// comment_plain needs format on top of the base feature comment.
+	// comment_plain needs format on top of the base feature comment, or,
+	// since K3a and first, the REST capability that takes post[format].
 	{Name: "ticket_update", Spec: api.UpdateTicketSpec, Since: "S2"},
-	{Name: "comment_plain", Spec: api.CommentSpec, ExtraArgs: []string{"format"}, Since: "S2b"},
+	{Name: "comment_plain", Spec: api.CommentSpec, ExtraArgs: []string{"format"}, Since: "S2b", Capabilities: []string{"posts.plain"}},
 	// S6: the time the person booked on a ticket, in its meta bar.
 	{Name: "booked_time", Spec: api.BookedTimeSpec, Since: "S6"},
 	// K6: booking time on a ticket, the first write over REST.

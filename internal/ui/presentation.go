@@ -102,14 +102,14 @@ func (m Model) screen() present.Screen {
 // one is a hint, which the view draws in the path's place.
 func (m Model) status() (present.Inline, present.Style) {
 	a := m.app
-	booking, bookingTone, booked := a.bookStatus()
+	ends, endsTone, told := a.writeStatus()
 	switch {
 	case a.expired && a.disk != nil && a.disk.clearFailed:
 		return uitext.Inline(uitext.SessionExpiredDiskKept), present.NoticeProblem
 	case a.expired:
 		return uitext.Inline(uitext.SessionExpired), present.NoticeProblem
-	case booked:
-		return booking, bookingTone
+	case told:
+		return ends, endsTone
 	case a.pause.After(a.now()):
 		return uitext.Fill(uitext.RateLimited, a.pause.In(a.loc).Format("15:04:05")), present.NoticeWaiting
 	case a.diskStatus() != 0:

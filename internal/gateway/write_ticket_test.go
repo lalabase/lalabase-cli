@@ -131,7 +131,7 @@ func (c *jumpingClock) After(d time.Duration) <-chan time.Time {
 	return ch
 }
 
-func writeGateway(t *testing.T, a *api.API) *Gateway {
+func writeGateway(t *testing.T, a Source) *Gateway {
 	t.Helper()
 	sup := worker.New(context.Background())
 	t.Cleanup(func() { sup.Stop(wall) })

@@ -53,7 +53,7 @@ type Spec struct {
 var Specs = []Spec{
 	NotificationsSpec, MarkReadSpec, TicketsSpec, TicketSpec, UpdateTicketSpec, CommentSpec, KnowledgeSpec,
 	BookedTimeSpec, MeSpec, OrganisationsSpec, ProjectsSpec,
-	TicketsRESTSpec, TicketRESTSpec, TicketByNumberRESTSpec, PostRESTSpec, BookTimeSpec,
+	TicketsRESTSpec, TicketRESTSpec, TicketByNumberRESTSpec, PostRESTSpec, BookTimeSpec, PostCommentSpec,
 }
 
 // Missing returns the required paths the payload lacks, with list positions

@@ -65,6 +65,7 @@ func TestDraftFollowsTheRulesOfClean(t *testing.T) {
 		{"tag characters", "a\U000E0041b", "ab"},
 		{"byte order mark", "\ufeffab", "ab"},
 		{"a byte no terminal prints", "a\xffb", "ab"},
+		{"a non-character", "a\ufffeb\uffffc", "abc"},
 		{"a character cut in two", "a\xe2bc", "a\ufffdbc"},
 		{"the joiners stay", "a\u200cb\u200dc", "a\u200cb\u200dc"},
 		{"the soft hyphen stays", "a\u00adb", "a\u00adb"},
@@ -126,7 +127,7 @@ func TestDraftOfEveryCodePoint(t *testing.T) {
 			multi, single = "\n", " "
 		case r <= 0x1f || (r >= 0x7f && r <= 0x9f):
 			multi, single = " ", " "
-		case unicode.Is(unicode.Cf, r) && !allowedFormat[r]:
+		case (unicode.Is(unicode.Cf, r) && !allowedFormat[r]) || nothingDrawn(r):
 			multi, single = "", ""
 		default:
 			multi, single = in, in

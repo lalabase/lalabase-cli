@@ -104,8 +104,9 @@ var restCases = map[string]restExpected{
 	"ticket_view/post":                    {class: Object, legacyClass: Object},
 	"ticket_view/post_not_found":          {class: NotFound, code: "not_found", legacyClass: NotFound},
 
-	// A booking (core R6, sent since K6) and a comment (core R3a, not sent
-	// yet: K3) over REST. A read-only token was "no access" before the code.
+	// A booking (core R6, sent since K6) and a comment (core R3a, sent since
+	// K3a, in plain text alone) over REST. A read-only token was "no access"
+	// before the code.
 	"POST /api/v1/tickets/:ticket_id/time_sessions/ok_minutes_text":              {class: Object, legacyClass: Object},
 	"POST /api/v1/tickets/:ticket_id/time_sessions/ok_hours_text":                {class: Object, legacyClass: Object},
 	"POST /api/v1/tickets/:ticket_id/time_sessions/ok_minutes":                   {class: Object, legacyClass: Object},

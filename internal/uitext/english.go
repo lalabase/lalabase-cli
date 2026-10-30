@@ -351,6 +351,20 @@ const (
 	BookUnclearRead
 	BookUnclear
 	BookUnclearNotice
+	AddCommentKey
+	AddCommentHelp
+	CommentAction
+	CommentText
+	CommentHint
+	CommentDone
+	CommentNotPosted
+	CommentNotSent
+	CommentRateLimited
+	CommentForbidden
+	CommentBusy
+	CommentUnclearReading
+	CommentUnclear
+	CommentUnclearNotice
 	SendKey
 	SendHelp
 	NextFieldHelp
@@ -549,6 +563,13 @@ var english = map[ID]string{
 	BookUnclearRead:    "Not clear whether it was booked. Booked by you now: %s",
 	BookUnclear:        "Not clear whether it was booked",
 	BookUnclearNotice:  "Not clear whether it was booked on #%d; check the time on the ticket",
-	SendKey:            "ctrl+s", SendHelp: "send", NextFieldHelp: "next field", NewLineHelp: "new line",
+	AddCommentKey:      "k", AddCommentHelp: "add comment", CommentAction: "Comment", CommentText: "Text", CommentHint: "Plain text",
+	CommentDone: "Comment posted on #%d", CommentNotPosted: "Not posted on #%d: %s",
+	CommentNotSent: "Not posted; the server was not reached", CommentRateLimited: "Not posted; rate limited",
+	CommentForbidden: "You may not comment on this ticket", CommentBusy: "A comment on this ticket is still on its way",
+	CommentUnclearReading: "Not clear whether it was posted; reading the ticket\u2026",
+	CommentUnclear:        "Not clear whether it was posted; check the ticket behind this box",
+	CommentUnclearNotice:  "Not clear whether it was posted on #%d; check the ticket",
+	SendKey:               "ctrl+s", SendHelp: "send", NextFieldHelp: "next field", NewLineHelp: "new line",
 	Unlisted: "(not listed)",
 }

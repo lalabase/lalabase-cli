@@ -91,6 +91,60 @@ func restObject(w http.ResponseWriter, req Request, f *Fixture, body any) {
 	_, _ = w.Write(out)
 }
 
+// restCreated answers 201 with the row under data.
+func (f *Fixture) restCreated(w http.ResponseWriter, req Request, row map[string]any) {
+	req.Status = http.StatusCreated
+	f.record(req)
+	out, _ := json.Marshal(map[string]any{"data": row})
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write(out)
+}
+
+// restRefusal answers a write the input or the model refuses.
+func (f *Fixture) restRefusal(w http.ResponseWriter, req Request, messages ...string) {
+	req.Status = http.StatusUnprocessableEntity
+	f.record(req)
+	out, _ := json.Marshal(map[string]any{"error": "validation_failed", "code": "invalid_input", "errors": messages})
+	w.WriteHeader(http.StatusUnprocessableEntity)
+	_, _ = w.Write(out)
+}
+
+// restWriteGate is what every REST write meets first, in the core's order,
+// and says whether it answered: the key is logged; the token (a read-only one,
+// a revoked one, the rate limit at place); a key seen before gets its first
+// answer again, with other arguments the mismatch.
+func (f *Fixture) restWriteGate(w http.ResponseWriter, req Request, key, place string) bool {
+	f.mu.Lock()
+	f.keys = append(f.keys, key)
+	stored, seen := f.results[key]
+	f.mu.Unlock()
+	switch f.scenario {
+	case ReadOnly:
+		req.Status = http.StatusForbidden
+		f.record(req)
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"forbidden","code":"read_only"}`))
+		return true
+	case Unauthorized, RateLimited:
+		if f.scenarioOn(w, place, req) {
+			return true
+		}
+	}
+	if key == "" || !seen {
+		return false
+	}
+	if stored.fingerprint != fingerprint(req.Args) {
+		req.Status = http.StatusUnprocessableEntity
+		f.record(req)
+		out, _ := json.Marshal(map[string]any{"error": "idempotency_key_reused", "code": "invalid_input", "message": textKeyMismatch})
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write(out)
+		return true
+	}
+	f.restCreated(w, req, stored.result)
+	return true
+}
+
 // restNumbers are the query parameters that are whole numbers: the log
 // keeps them as numbers, as a tool's arguments are kept.
 var restNumbers = []string{"page", "per_page", "posts_page", "posts_per_page", "attachments_page"}

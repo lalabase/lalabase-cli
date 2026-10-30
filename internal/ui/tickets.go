@@ -666,14 +666,8 @@ func (m Model) refreshSection() tea.Cmd {
 		}
 		return tea.Batch(a.issue(gateway.Detail, d.key, forDetail, queue.User), booked)
 	}
-	if v := a.tickets; v != nil {
-		v.corrected = false
-		v.loading = true
-		groups := a.reloadGroups()
-		if a.pending(v.key) {
-			return groups
-		}
-		return tea.Batch(a.issue(gateway.Tickets, v.key, forTickets, queue.User), groups)
+	if a.tickets != nil {
+		return a.reloadTickets()
 	}
 	if p := a.projects; p != nil {
 		p.loading = true
@@ -683,6 +677,19 @@ func (m Model) refreshSection() tea.Cmd {
 		return a.issue(gateway.Projects, p.key, forProjects, queue.User)
 	}
 	return nil
+}
+
+// reloadTickets reads the page shown again, and the groups with it, unless
+// a read of it is out.
+func (a *app) reloadTickets() tea.Cmd {
+	v := a.tickets
+	v.corrected = false
+	v.loading = true
+	groups := a.reloadGroups()
+	if a.pending(v.key) {
+		return groups
+	}
+	return tea.Batch(a.issue(gateway.Tickets, v.key, forTickets, queue.User), groups)
 }
 
 // canRefreshSection mirrors refreshSection: R is offered only when it
