@@ -11,9 +11,9 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
-// Launcher starts Claude Code beside a ticket (C7) and opens a ticket's
-// file (C10): one command per launch, whose message is a launch.Done with
-// the same ref. The command gives the
+// Launcher starts Claude Code beside a ticket (C7) and opens a file of a
+// ticket or of a comment (C10, C12): one command per launch, whose message
+// is a launch.Done with the same ref. The command gives the
 // session one (launch.New); tests give a fake.
 type Launcher interface {
 	Launch(ref uint64, t launch.Ticket) tea.Cmd
@@ -24,8 +24,8 @@ type Launcher interface {
 	Jump(ref uint64, t launch.Ticket, agent, pane string) tea.Cmd
 	Again(ref uint64, t launch.Ticket, a launch.Again) tea.Cmd
 	Jumps() bool
-	// OpenFile opens a file of t in the browser (C10); its message is a
-	// launch.Done with the same ref.
+	// OpenFile opens a file of t or of one of its comments in the browser
+	// (C10, C12); its message is a launch.Done with the same ref.
 	OpenFile(ref uint64, t launch.Ticket, f launch.File) tea.Cmd
 }
 

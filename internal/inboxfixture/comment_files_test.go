@@ -47,6 +47,12 @@ func TestTheRecordedCommentCarriesItsFileOnBothWays(t *testing.T) {
 	if second := rest.Posts[1]; second.Attachments == nil || len(second.Attachments) != 0 {
 		t.Fatalf("the other comment: %+v", second)
 	}
+	// The recorded ticket alone: #1 of another project has the comment
+	// without the file.
+	other, ans := a.TicketWith(ctx, ProjectHandbuch, TicketID(ProjectHandbuch, 1), o)
+	if !ans.OK() || len(other.Posts[0].Attachments) != 0 || other.Posts[0].AttachmentsCount != 0 {
+		t.Fatalf("%v %q %+v", ans.Class, ans.Message, other.Posts)
+	}
 }
 
 func TestTicketNineHasACommentOfEveryKind(t *testing.T) {
