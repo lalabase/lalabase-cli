@@ -125,7 +125,7 @@ const statusSeparator = " | "
 // it.
 func contextLine(s present.Screen, g Geometry, focus Pane) string {
 	switch {
-	case focus == Agents && g.Columns < 3:
+	case focus == Agents && g.Columns == 1:
 		return s.Agents.Title.String()
 	case g.Columns == 1:
 		step := uitext.Inline(uitext.PathStep).String()
@@ -200,7 +200,7 @@ func column(s present.Screen, which Pane) present.Column {
 // while an agent exists, the Agents area in a frame of its own
 // (AgentsHeight), focused when the focus is in it.
 func navigation(s present.Screen, width, height int, focus Pane, method ansi.Method) []string {
-	area := AgentsHeight(s.Chooser, s.Agents, height)
+	area := AgentsHeight(s.Chooser, s.Agents, height, focus == Agents)
 	lines := pane(s.Chooser, width, height-area, focus == Navigation, method)
 	if area == 0 {
 		return lines
@@ -219,7 +219,7 @@ func agentsRowLines(c present.Column, height int) int {
 // AgentsCapacity is the number of agents the area shows at once in a
 // navigation pane of height lines; 0 without an area.
 func AgentsCapacity(chooser, c present.Column, height int) int {
-	body := AgentsHeight(chooser, c, height) - frameLines
+	body := AgentsHeight(chooser, c, height, true) - frameLines
 	if c.Notice.String() != "" {
 		body--
 	}
@@ -235,12 +235,18 @@ func AgentsCapacity(chooser, c present.Column, height int) int {
 // (its frame, its notice and one entry); 0 without rows, or where what is
 // left holds no frame with a row in it. Beyond that its rows scroll with
 // the cursor.
-func AgentsHeight(chooser, c present.Column, height int) int {
+//
+// Focused, the area takes all but a quarter of the pane: the
+// organisations stay in view, small, and A switches between the two.
+func AgentsHeight(chooser, c present.Column, height int, focused bool) int {
 	keep := frameLines + 1
 	if chooser.Notice.String() != "" {
 		keep++
 	}
 	limit := min(height/2, height-keep)
+	if focused {
+		limit = height - max(keep, height/4)
+	}
 	if len(c.Rows) == 0 || limit < frameLines+1 {
 		return 0
 	}
@@ -272,7 +278,7 @@ func FocusedCapacity(focused, chooser, agents present.Column, g Geometry, focus 
 // ChooserCapacity is the number of entries the chooser shows at once in a
 // navigation pane of height lines, the Agents area under it taken off.
 func ChooserCapacity(chooser, agents present.Column, height int) int {
-	return Capacity(chooser, Geometry{BodyHeight: height - AgentsHeight(chooser, agents, height)})
+	return Capacity(chooser, Geometry{BodyHeight: height - AgentsHeight(chooser, agents, height, false)})
 }
 
 // Capacity is the number of rows (or lines of text) a column of this
@@ -337,6 +343,33 @@ func paneOf(c present.Column, width, height int, focused bool, lines int, method
 	if height <= 0 {
 		return nil
 	}
+	if focused {
+		// The focused pane stands on a ground a little lighter
+		// than the terminal's black.
+		return onFocusGround(paneLines(c, width, height, focused, lines, method))
+	}
+	return paneLines(c, width, height, focused, lines, method)
+}
+
+// focusGround is the focused pane's background: 256-colour 234, a grey
+// just above black.
+const focusGround = "\x1b[48;5;234m"
+
+// onFocusGround puts every line on the focus ground: set at its start,
+// set again after every reset inside it (a styled word ends with one),
+// and given back to the terminal's own at its end.
+func onFocusGround(lines []string) []string {
+	for i, line := range lines {
+		line = strings.ReplaceAll(line, "\x1b[0m", "\x1b[m")
+		line = strings.ReplaceAll(line, "\x1b[m", "\x1b[m"+focusGround)
+		line = strings.ReplaceAll(line, "\x1b[49m", focusGround)
+		lines[i] = focusGround + line + "\x1b[49m"
+	}
+	return lines
+}
+
+// paneLines draws paneOf's lines, without the focus ground.
+func paneLines(c present.Column, width, height int, focused bool, lines int, method ansi.Method) []string {
 	if width <= frameCells || height <= frameLines {
 		return contentOf(c, width, height, focused, lines, method)
 	}

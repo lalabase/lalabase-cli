@@ -20,7 +20,10 @@ type Model struct {
 	focus         view.Pane
 	// agentsFrom is the pane the focus was on when A opened the agents
 	// (C9b): esc and a second A go back to it.
-	agentsFrom  view.Pane
+	agentsFrom view.Pane
+	// intoTicket: right went from the agents' list into the ticket it
+	// shows; esc goes back to the list.
+	intoTicket  bool
 	mode        Mode
 	widthMethod ansi.Method
 	// shell is the placeholder content (organisation, list, object), shown

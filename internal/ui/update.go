@@ -222,11 +222,19 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 	a := m.app
 	switch kind {
 	case Left:
+		m.intoTicket = false
 		if m.focus > view.Navigation {
 			m.focus--
 		}
 		return m, m.selectionChanged()
 	case Right:
+		if m.focus == view.Agents {
+			// Into the ticket the agents' list shows.
+			if a.detail != nil {
+				m.focus, m.intoTicket = view.Object, true
+			}
+			return m, nil
+		}
 		if m.focus < view.Object {
 			m.focus++
 		}
@@ -447,6 +455,16 @@ func (m Model) back() (Model, tea.Cmd) {
 		}
 		m.focus = view.Navigation
 	case view.Object:
+		if m.intoTicket {
+			// Back to the agents' list it came from; the
+			// expansion closes first.
+			if a.detail != nil && a.detail.expansion != nil {
+				a.closeExpansion()
+				return m, nil
+			}
+			m.focus, m.intoTicket = view.Agents, false
+			return m, nil
+		}
 		switch {
 		case a.origin != nil:
 			if a.detail != nil && a.detail.expansion != nil {

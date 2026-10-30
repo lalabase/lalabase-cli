@@ -36,7 +36,8 @@ func Visible(g Geometry, focus Pane) []Pane {
 	case Navigation:
 		return []Pane{Navigation, Object}
 	case Agents:
-		return []Pane{Agents, Object}
+		// The organisations stay above the agents.
+		return []Pane{Navigation, Object}
 	}
 	return []Pane{List, Object}
 }
@@ -47,6 +48,8 @@ func ColumnWidth(g Geometry, which Pane) int {
 	switch {
 	case g.Columns == 3 && (which == Navigation || which == Agents):
 		return g.NavigationWidth
+	case g.Columns == 2 && which == Agents:
+		return g.ListWidth
 	case g.Columns > 1 && which == Object:
 		return g.ObjectWidth
 	}

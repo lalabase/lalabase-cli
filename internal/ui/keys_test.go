@@ -166,3 +166,21 @@ func TestTextEntryKeyPayload(t *testing.T) {
 		}
 	}
 }
+
+// A Mac keyboard has no PgUp or PgDn: space and b turn the page as
+// they do in less, in navigation; in the search line they are text.
+func TestSpaceAndBTurnThePage(t *testing.T) {
+	space := tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
+	if got := routeKey(Navigate, space); got.Kind != PageDown {
+		t.Fatalf("space: %v", got)
+	}
+	if got := routeKey(Navigate, press("b")); got.Kind != PageUp {
+		t.Fatalf("b: %v", got)
+	}
+	if got := routeKey(TextEntry, space); got.Kind != InsertText || got.Text != " " {
+		t.Fatalf("space in the search line: %v", got)
+	}
+	if got := routeKey(TextEntry, press("b")); got.Kind != InsertText || got.Text != "b" {
+		t.Fatalf("b in the search line: %v", got)
+	}
+}

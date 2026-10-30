@@ -10,7 +10,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/worker"
 )
 
-// Prototype (tmux agents): with tmux on the PATH and the client in iTerm,
+// Agents in tmux: with tmux on the PATH and the client in iTerm,
 // a tracked agent runs in a tmux session of its own on the client's own
 // socket, detached, and goes on when nobody looks at it. Beside the
 // client stands at most one iTerm pane, the viewer: a tmux client

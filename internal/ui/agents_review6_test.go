@@ -27,6 +27,7 @@ func TestARemovalThroughTheExpansionForgetsTheTitle(t *testing.T) {
 	if got := h.areaRow(6).Primary.String(); got != "#6 Ticket 6" {
 		t.Fatalf("%q", got)
 	}
+	h.press("right") // into the ticket beside the agents' list
 	h.f.setTicket(notFound)
 	if !h.offers(Expand) {
 		t.Fatal("e is not offered on #6")

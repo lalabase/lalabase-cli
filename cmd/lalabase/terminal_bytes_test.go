@@ -88,11 +88,17 @@ func terminalOutputError(output string) error {
 					// a problem, blue for the focused pane's frame and the end
 					// of a colour, the grey ground of the cursor outside the
 					// focus and its end, and magenta, kept for an agent that
-					// waits for the person (C9): the view's own attributes. No
-					// other colour, no other attribute.
-					for _, n := range values {
-						switch n {
+					// waits for the person (C9), and the focused pane's ground
+					// (48;5;234, nothing else of 48): the view's own
+					// attributes. No other colour, no other attribute.
+					for i := 0; i < len(values); i++ {
+						switch n := values[i]; n {
 						case 0, 1, 2, 7, 22, 27, 31, 32, 33, 34, 35, 36, 39, 49, 100:
+						case 48:
+							if i+2 >= len(values) || values[i+1] != 5 || values[i+2] != 234 {
+								reject("SGR 48 other than the focus ground")
+							}
+							i += 2
 						default:
 							reject(fmt.Sprintf("SGR %d", n))
 						}

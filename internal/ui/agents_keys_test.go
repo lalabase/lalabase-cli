@@ -47,8 +47,8 @@ func TestAIsOfferedOnlyWithAnAgent(t *testing.T) {
 	}
 }
 
-// Three columns: the focus moves into the area; esc and a second A go
-// back to where it was. Two: the agents in the list's place. One: a
+// Three columns and two: the focus moves into the area under the
+// organisations; esc and a second A go back to where it was. One: a
 // screen of their own.
 func TestAInEveryLayout(t *testing.T) {
 	for _, c := range []struct {
@@ -57,7 +57,7 @@ func TestAInEveryLayout(t *testing.T) {
 		visible []view.Pane
 	}{
 		{120, 3, []view.Pane{view.Navigation, view.List, view.Object}},
-		{100, 2, []view.Pane{view.Agents, view.Object}},
+		{100, 2, []view.Pane{view.Navigation, view.Object}},
 		{60, 1, []view.Pane{view.Agents}},
 	} {
 		for _, back := range []string{"esc", "A"} {
@@ -128,7 +128,8 @@ func TestEnterOpensTheAgentsTicketInItsOrganisation(t *testing.T) {
 	if a.projects == nil || a.projects.org != orgA || a.active != nil || a.highlight != orgA || a.highlightSection != sectionTickets {
 		t.Fatalf("organisation not switched: projects %+v, inbox %v, highlight %s", a.projects, a.active != nil, a.highlight)
 	}
-	if a.detail == nil || a.detail.id != working.Ticket || !a.detail.known || h.m.focus != view.Object {
+	// The ticket shows beside the list, which keeps the focus.
+	if a.detail == nil || a.detail.id != working.Ticket || !a.detail.known || h.m.focus != view.Agents {
 		t.Fatalf("ticket not open: %+v, focus %d", a.detail, h.m.focus)
 	}
 	if got := h.m.context().String(); got != "Nordlicht GmbH › Tickets" {
@@ -137,17 +138,21 @@ func TestEnterOpensTheAgentsTicketInItsOrganisation(t *testing.T) {
 	if len(f.seen()) != 0 {
 		t.Fatalf("a working agent was marked: %v", f.seen())
 	}
-	// The ticket's own keys act on it: x knows its organisation.
+	// Right goes into it; its own keys act on it: x knows its
+	// organisation.
+	h.press("right")
+	if h.m.focus != view.Object {
+		t.Fatalf("right: focus %d", h.m.focus)
+	}
 	if tk, ok := h.m.launchTarget(); !ok || tk.Org != orgA {
 		t.Fatalf("x target %+v %v", tk, ok)
 	}
-	// Back: the projects, the ticket stays in the pane.
+	// Back: the agents' list, the ticket stays in the pane.
 	h.press("esc")
-	if h.m.focus != view.List || a.detail == nil {
+	if h.m.focus != view.Agents || a.detail == nil {
 		t.Fatalf("esc: focus %d", h.m.focus)
 	}
 	// The ended one.
-	h.drive(h.press("A"))
 	h.press("down")
 	if h.areaRow(6).Quiet {
 		t.Fatal("faint before it was opened")
@@ -381,7 +386,7 @@ func TestRIsNotOfferedForATitleKnownSince(t *testing.T) {
 	if got := h.areaRow(6).Primary.String(); got != "#6 Ticket 6" {
 		t.Fatalf("%q", got)
 	}
-	h.drive(h.press("A"))
+	// Still in the agents' list, the ticket beside it.
 	if h.offers(Refresh) {
 		t.Fatal("R offered for a title the session holds")
 	}

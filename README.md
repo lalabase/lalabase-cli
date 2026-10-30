@@ -60,7 +60,9 @@ navigation again.
 
 * **How it is drawn.** Every pane stands in a rounded frame with its title
   in the top border and a space inside either side; the pane in focus has a
-  blue, bold frame and a bold title, the others a faint frame. While an
+  blue, bold frame and a bold title and stands on a ground a little
+  lighter than black (256-colour 234), the others a faint frame on the
+  terminal's own. While an
   agent exists (C9b), the header's first line ends with a summary of the
   agents per state, the most urgent first, each glyph in its tone with its
   count, `Agents ! 1 · ⣿ 2 · ✕ 1 · ⠹ 1 · ✓ 1`; a state without an agent is
@@ -71,7 +73,8 @@ navigation again.
   glyph: an organisation shows its most urgent agent's, "All
   organisations" and the inbox and tickets entries none. Under the
   organisations stands the Agents area in a frame of its own, at most half
-  the column high, its rows scrolling beyond that: per agent its glyph,
+  the column high (all but a quarter while it has the focus), its rows
+  scrolling beyond that: per agent its glyph,
   `#<number>` and the ticket's title, and under it its organisation when
   that is not the one you are in; a seen agent that ended is faint. The line
   under the header is a path to where you are: the places parted by `›`,
@@ -170,12 +173,15 @@ navigation again.
   `Esc` discards it (a blank search clears the filter), and `Enter` on a
   ticket opens it. `Esc` goes back one level, `R` refreshes what is shown
   (the directory and the counters in the chooser, the open page, the open
-  ticket), `PgUp`/`PgDn` move by a screen, `←`/`→` move the focus, `q`
+  ticket), `PgUp`/`PgDn` (or `b`/space, for a keyboard without them)
+  move by a screen, `←`/`→` move the focus, `q`
   quits with 0, Ctrl-C and SIGINT with 130. While an agent exists, `A`
-  opens the agents (C9b): in three columns the focus moves into the
-  Agents area, in two the agents take the list's place, in one they are a
-  screen of their own; `↑`/`↓` choose one, `Enter` opens its ticket, `Esc`
-  or `A` again go back. (`a` is not this key: it is kept for "assign to
+  opens the agents (C9b): in three columns and in two the focus moves into
+  the Agents area under the organisations, in one they are a screen of
+  their own; `↑`/`↓` choose one, `Enter` shows its ticket beside the list,
+  which keeps the focus (in one column it opens the ticket), `→` goes into
+  the ticket and `Esc` from there back to the list, and `Esc` or `A` again
+  go back to where `A` was pressed. (`a` is not this key: it is kept for "assign to
   me".) `d` removes an agent that ended or is lost, or has been starting
   for over an hour (C9c), in the agents or in its ticket's pane; `x` there
   jumps to the agent's pane or starts it again (C9c, below). The help
@@ -308,13 +314,27 @@ navigation again.
     Elsewhere the interface gives the
     terminal to `claude` (from the `PATH`, no shell, the same arguments, no
     script) and comes back when it ends.
-    **tmux prototype:** with tmux on the client's `PATH` in iTerm,
-    tracked agents run in detached sessions on the `lalabase` tmux socket.
-    One viewer pane follows the active agent of the ticket shown and
-    closes when focus leaves the ticket and agents area; the agent keeps
-    running. A restart resumes the conversation in a new tmux session;
-    the old agent record stays until the new agent's first hook confirms
-    it started, as with a direct iTerm launch.
+  * **Agents in tmux.** In iTerm with `tmux` on the `PATH`, a launch whose
+    agent is tracked opens no pane: the launch script runs in a detached
+    tmux session named after the agent (`tmux -L lalabase -f /dev/null
+    new-session -d`, on a socket of the client's own in tmux's per-user
+    directory, apart from your own tmux server; no status line, no prefix
+    key, `Esc` without delay, the mouse on), and goes on when nobody looks
+    at it. Beside the client stands at most one pane, the viewer: while
+    the focus is on a ticket, or in the agents beside it, whose newest
+    agent still runs, the viewer shows that agent's session (the first
+    time the client's session is split and the pane types
+    `exec tmux -L lalabase attach -t '=<agent>'`, after that the pane's
+    tmux client is switched); anywhere else its client is detached and
+    the pane closes. An agent whose Claude Code ends takes its session
+    along. `tmux -L lalabase ls` lists the sessions that run. An agent
+    started before, in a pane of its own, keeps that pane. Known limits:
+    the viewer stays on the screen after `q`; a viewer closed by hand comes
+    back only when another ticket asks for one; two clients at once share
+    the one viewer.
+    A restart resumes the conversation in a new tmux session; the old
+    agent record stays until the new agent's first hook confirms it
+    started, as with a direct iTerm launch.
   * **Which folder.** `[profiles.<name>.folders]` in `config.toml` maps a
     project id to an absolute path or one under `~/`; without an entry,
     the folder `lalabase` was started in. The folder must exist; a path
@@ -484,7 +504,9 @@ navigation again.
     organisation's tickets (the projects of that organisation, its project
     selected, the ticket in the pane; or the list of its project, when
     that is the one shown and holds the ticket), as a notification's
-    ticket opens; `Esc` goes back to the projects. An agent that ended or
+    ticket opens, beside the agents' list. Leaving the list for anywhere
+    but the ticket pane takes the ticket it showed along: the pane is
+    empty again (or shows the list's preview of its row). An agent that ended or
     is lost is then seen: an ended one is drawn faint from then on. The
     client records it in `<id>.seen` (0600, created exclusively, never
     replaced; the hook neither reads nor writes it), so it stays seen

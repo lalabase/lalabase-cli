@@ -226,8 +226,8 @@ func launchNotice(d launch.Done) present.Inline {
 	return uitext.Inline(id)
 }
 
-// agentViewer shows an agent's tmux session beside the client (prototype,
-// launch.Launcher.View); a launcher without it has no viewer.
+// agentViewer shows an agent's tmux session beside the client
+// (launch.Launcher.View); a launcher without it has no viewer.
 type agentViewer interface {
 	View(agent string) tea.Cmd
 }

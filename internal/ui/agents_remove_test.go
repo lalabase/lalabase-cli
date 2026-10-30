@@ -83,6 +83,7 @@ func TestDInTheTicketsPaneAndTheLastAgent(t *testing.T) {
 	h.start()
 	h.drive(h.press("A"))
 	h.drive(h.press("enter")) // the ticket in the pane
+	h.press("right")
 	if h.m.focus != view.Object || !h.offers(RemoveAgent) {
 		t.Fatalf("focus %v, d offered %v", h.m.focus, h.offers(RemoveAgent))
 	}

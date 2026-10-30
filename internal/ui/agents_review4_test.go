@@ -25,7 +25,9 @@ func TestEnterAgainKeepsTheSelectedComment(t *testing.T) {
 		t.Fatalf("no comment selected: %+v", d)
 	}
 	selected := d.post
-	h.drive(h.press("A"))
+	// Into the ticket and back, then Enter on the same agent again.
+	h.press("right")
+	h.press("esc")
 	h.drive(h.press("enter"))
 	if d := h.m.app.detail; d == nil || d.post != selected {
 		t.Fatalf("selection %q, want %q", h.m.app.detail.post, selected)

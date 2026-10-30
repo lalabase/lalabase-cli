@@ -453,6 +453,9 @@ func (m Model) agentsBindings() []binding {
 		out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenTicketHelp})
 	}
 	out = append(out, m.xBinding()...)
+	if a.detail != nil && m.ticketBesideAgents() {
+		out = append(out, binding{Right, uitext.RightKey, uitext.IntoTicketHelp})
+	}
 	if _, ok := m.removeTarget(); ok {
 		out = append(out, binding{RemoveAgent, uitext.RemoveAgentKey, uitext.RemoveAgentHelp})
 	}
@@ -477,6 +480,7 @@ func (m Model) openAgents() (Model, tea.Cmd) {
 		return m, nil
 	}
 	a.agents.cursor = ag.ID
+	a.agents.opened = false
 	m.agentsFrom, m.focus = m.focus, view.Agents
 	return m, m.selectionChanged()
 }
@@ -502,6 +506,15 @@ func (m Model) closeAgents() (Model, tea.Cmd) {
 	}
 	m.focus = m.agentsFrom
 	m.app.leaveAgentsList()
+	if a := m.app; a.agents.opened && m.focus != view.Object {
+		// The ticket an agent showed goes with the list; the
+		// pane is empty where the person goes back to.
+		a.agents.opened = false
+		if v := a.tickets; v != nil && v.opened != "" {
+			v.opened = ""
+		}
+		a.dropDetail()
+	}
 	if a := m.app; m.focus == view.Object && a.detail == nil && (a.active == nil || a.active.opened == "") {
 		m.focus = view.List
 	}
@@ -565,7 +578,20 @@ func (m Model) openAgent() (Model, tea.Cmd) {
 	if ag.State == agents.Ended || ag.State == agents.Lost {
 		cmds = append(cmds, a.markSeen(ag))
 	}
+	a.agents.opened = true
+	if m.ticketBesideAgents() {
+		// The ticket shows beside the agents' list, which
+		// keeps the focus, so the next agent is one key away; right goes
+		// into the ticket.
+		m.focus = view.Agents
+	}
 	return m, tea.Batch(cmds...)
+}
+
+// ticketBesideAgents: the terminal shows the object pane beside the
+// agents' list (two columns or three).
+func (m Model) ticketBesideAgents() bool {
+	return layoutWith(m.width, m.height, 1, view.Agents).Columns > 1
 }
 
 // markSeen records an agent as seen: at once for this run, on disk for

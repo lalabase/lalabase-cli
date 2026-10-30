@@ -213,8 +213,8 @@ type app struct {
 	// launch is the launch of Claude Code beside a ticket (C7), outside
 	// reset: its numbering goes on, so a late answer frees nothing.
 	launch launchState
-	// viewing is the agent the viewer was last asked to show (prototype,
-	// tmux agents), "" for none.
+	// viewing is the agent the viewer was last asked to show (agents in
+	// tmux), "" for none.
 	viewing string
 
 	// agents is what the sessions x started do (C9a), outside reset: they

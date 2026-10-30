@@ -67,7 +67,7 @@ type Launcher struct {
 	session  string
 	deadline time.Duration
 	// tmux is the path of tmux when agents run in tmux sessions
-	// (prototype, tmux.go): in iTerm, with tmux on the PATH; "" otherwise.
+	// (tmux.go): in iTerm, with tmux on the PATH; "" otherwise.
 	tmux   string
 	viewer viewer
 	// The outside world, replaced in tests.
@@ -253,7 +253,7 @@ func (l *Launcher) launch(ref uint64, t Ticket, a Again) tea.Msg {
 	ctx, cancel := context.WithTimeout(l.cfg.Supervisor.Context(), l.deadline)
 	defer cancel()
 	if l.tmux != "" && agent != "" {
-		// Prototype: the agent runs in a tmux session of its own; the
+		// The agent runs in a tmux session of its own; the
 		// viewer shows it while its ticket is shown (View).
 		d := done(l.startInTmux(ctx, agent, folder, scriptPath), "")
 		if d.Kind == Opened || d.Kind == NoAnswer {

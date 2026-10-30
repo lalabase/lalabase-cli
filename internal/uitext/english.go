@@ -236,8 +236,11 @@ const (
 	LaunchSessionGone
 	LaunchNoAnswer
 	LaunchFailed
-	// Prototype: tmux could not start the agent's session.
+	// Agents in tmux: tmux could not start the agent's session.
 	LaunchTmuxFailed
+	// Right from the agents' list into the ticket.
+	RightKey
+	IntoTicketHelp
 	// C9a: a launch whose agent's state cannot be shown.
 	LaunchUntracked
 	// C9a: the agent's line in the ticket's head, its states' words and
@@ -365,7 +368,7 @@ var english = map[ID]string{
 	LabelLastEvent: "Last event", StateUnread: "unread", StateRead: "read",
 	UpDownKey: "up/down", HighlightHelp: "highlight", SelectHelp: "select", OpenHelp: "open inbox", DetailsHelp: "details",
 	PageKey: "[/]", PageHelp: "page", PrevPageKey: "[", PrevPageHelp: "prev page", NextPageKey: "]", NextPageHelp: "next page", RefreshKey: "R", RefreshHelp: "refresh", RetryHelp: "retry",
-	PageUpDownKey: "pgup/pgdn", ScrollHelp: "scroll", MoveHelp: "move", CloseHelp: "close",
+	PageUpDownKey: "b/space", ScrollHelp: "scroll", MoveHelp: "move", CloseHelp: "close",
 	OrganisationsHelp: "organisations", InboxHelp: "inbox",
 
 	Tickets: "Tickets", Projects: "Projects", Ticket: "Ticket",
@@ -438,6 +441,7 @@ var english = map[ID]string{
 	AgeSeconds: "%d s", AgeMinutes: "%d min", AgeHours: "%d h", AgeDays: "%d d",
 	LaunchFailed:     "iTerm could not open a pane",
 	LaunchTmuxFailed: "tmux could not start Claude Code",
+	RightKey:         "right", IntoTicketHelp: "into ticket",
 	// L2: the path in the second line, its places and their details.
 	PathStep: " › ", PathDetail: " · ",
 	// The mark after the name of the token's own person in a comment.

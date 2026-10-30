@@ -165,8 +165,9 @@ var fileSystemImports = map[string]map[string][]string{
 // launchImports are what the launch of Claude Code beside a ticket (C7)
 // may import beyond reachableImports, named one by one like
 // fileSystemImports. internal/launch is the client's one package that
-// starts a child process: osascript, which asks iTerm for a pane, and
-// claude in this terminal through Bubble Tea's exec. That is a decision
+// starts a child process: osascript, which asks iTerm for a pane, tmux,
+// which runs an agent's session and its one viewer, and claude in this
+// terminal through Bubble Tea's exec. That is a decision
 // about child processes, taken here, not a fix for a red guard: os/exec
 // copies a child's input and output on goroutines of its own, which end
 // with the child, and the launch runs under the supervisor. It may stat a

@@ -55,6 +55,10 @@ type agentsState struct {
 	// cursor is the agent the list's cursor was put on, by its id, so it
 	// follows the agent when the order changes.
 	cursor string
+	// opened: Enter showed an agent's ticket since A opened the list
+	// leaving the list for anywhere but the ticket empties
+	// the pane again.
+	opened bool
 	// seen are the agents the person opened in this run (C9b): faint at
 	// once, before their file is read back.
 	seen map[string]bool

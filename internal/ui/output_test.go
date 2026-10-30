@@ -91,9 +91,17 @@ func assertViewSafe(t *testing.T, text string) {
 			}
 			// The view's own attributes: reset, bold, faint, reversed
 			// (the cursor bar), the end of bold and faint, the three tones of a status (green, yellow,
-			// cyan) and their end. Foreign text brings none (it is cleaned).
-			for _, param := range params {
-				if !viewSGR[param.Param(0)] {
+			// cyan) and their end, and the focused pane's ground (48;5;234)
+			// and its end. Foreign text brings none (it is cleaned).
+			for i := 0; i < len(params); i++ {
+				if params[i].Param(0) == 48 {
+					if i+2 >= len(params) || params[i+1].Param(0) != 5 || params[i+2].Param(0) != 234 {
+						forbidden("unexpected background")
+					}
+					i += 2
+					continue
+				}
+				if !viewSGR[params[i].Param(0)] {
 					forbidden("unexpected SGR")
 				}
 			}

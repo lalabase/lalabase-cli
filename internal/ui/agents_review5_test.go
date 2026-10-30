@@ -22,6 +22,7 @@ func TestARemovedTicketForgetsItsTitle(t *testing.T) {
 	if got := h.areaRow(6).Primary.String(); got != "#6 Ticket 6" {
 		t.Fatalf("%q", got)
 	}
+	h.press("right") // into the ticket beside the agents' list
 	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
 		return transport.Answer{Class: transport.NotFound, Message: "No ticket found.", Status: 200, Sent: true}
 	})
@@ -86,7 +87,7 @@ func TestTheAreaLeavesTheChooserARow(t *testing.T) {
 		if mine := h.m.focusedCapacity(g); mine != got {
 			t.Fatalf("%d rows: the keys measure %d, the screen draws %d", height, mine, got)
 		}
-		if view.AgentsHeight(c, ag, g.BodyHeight) > 0 {
+		if view.AgentsHeight(c, ag, g.BodyHeight, false) > 0 {
 			split++
 		}
 	}
