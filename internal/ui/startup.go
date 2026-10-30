@@ -199,8 +199,11 @@ func (m *Model) expire() {
 	for _, w := range a.waiters {
 		w.cancel()
 	}
+	// The session's writes end with it: a late answer fills nothing.
 	for _, op := range a.marks {
-		// The session's writes end with it: a late answer fills nothing.
+		op.cancel()
+	}
+	for _, op := range a.bookings {
 		op.cancel()
 	}
 	confirmed := a.scope != nil

@@ -78,12 +78,13 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   The gateway confirms a success only when the answer carries the write:
   the notification asked for as read, the ticket asked for with the status
   or the title sent, the person among its assignees, a comment of that
-  ticket; anything else after a request that left is an unknown outcome.
+  ticket, a booking of that ticket with an id and minutes above zero;
+  anything else after a request that left is an unknown outcome.
   `update_ticket` sends exactly one change (a status key, a title, or
   `"me"` to add; nobody is ever removed) and refuses a change of none or
   two before sending; `post_comment` sends `format: plain` only when asked
   (feature `comment_plain`), so an older server gets the request it knows.
-  A REST write (K0, no feature of the interface uses one yet) is a POST or
+  A REST write (K0; the booking of K6 is the first) is a POST or
   PATCH under `/api/` with a JSON body and the key as its `Idempotency-Key`
   header; one with another method, no usable key or a body that is no JSON
   object is refused before sending, and its success is a JSON object
@@ -94,7 +95,7 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   client, which would send a request with that header again by itself
   after a broken connection, is kept from it, and only the queue decides
   a retry.
-* **Adapters** (`internal/api`): one per tool and REST reader, each with a
+* **Adapters** (`internal/api`): one per tool and REST route, each with a
   `Spec` naming the arguments it sends and the fields it needs back (present
   and not null; a field that may be null is marked `?`). The same
   spec drives feature detection (`internal/features`, from `tools/list` and the
@@ -106,7 +107,7 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   that sends it, so an older server keeps the base feature. A tool a
   slice brings whole (S2: `update_ticket`) is a feature of its own, on
   only when every argument its spec declares is in the schema. The
-  contract copy is at MCP 0.13.0 (the core with R0); a 0.9.0 to 0.12.0
+  contract copy is at MCP 0.13.1, REST API 1.7.0; a 0.9.0 to 0.13.0
   server is shown as older than the tested version and works with what
   its schemas say. Fields a newer server sends are `Newer` in the spec:
   absent is fine, present they are checked like the required ones
@@ -117,8 +118,10 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   features of the ticket view name theirs: the list and its search
   `tickets.list` with `tickets.paging` (the status catalogue of the list
   came with R1, `tickets.list` with R0), the ticket and its pages
-  `tickets.show` with `tickets.paging`, the texts whole `posts.show` too;
-  every other feature takes the MCP way. A REST reader's spec is its
+  `tickets.show` with `tickets.paging`, the texts whole `posts.show` too.
+  The booking (K6) is the first feature with the REST way alone: without
+  `time_sessions.book` it is off, whatever tools the server lists. Every
+  other feature takes the MCP way. A REST reader's spec is its
   tool's fields, under `data` for a ticket and one comment (the list has
   the tool's form as it is), so one rule serves both ways, and what a read
   files in the cache has the tool's form (a ticket's `data`; one comment

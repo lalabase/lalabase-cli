@@ -9,8 +9,10 @@
 // GET /api/v1/me lists them (the core's R0). A server that lists them all
 // gets the REST way; any other, the MCP way, while both exist. A server
 // without capabilities (before R0) keeps every feature it had. K1 names
-// them for the ticket view (the core's R1); every other feature has the
-// MCP way alone.
+// them for the ticket view (the core's R1). K6 adds a feature with the REST
+// way alone, the booking of time: it has no tool, so a server that does not
+// list its capability has no such feature. Every other feature has the MCP
+// way alone.
 package features
 
 import (
@@ -25,13 +27,15 @@ import (
 // MinTestedServerVersion is the MCP surface the client was tested against:
 // the version of the contract copy in internal/contract, server slices S1,
 // S2, S2b and S6 included (0.13.0 adds the people tools, which the client
-// does not use).
-const MinTestedServerVersion = "0.13.0"
+// does not use, and 0.13.1 the bound of an idempotency key, far above this
+// client's keys).
+const MinTestedServerVersion = "0.13.1"
 
 // Feature is one thing the client offers, and what it needs from the server.
 type Feature struct {
 	Name string
-	// Spec is the adapter the feature runs; its Args must be declared.
+	// Spec is the adapter the feature runs; its Args must be declared. A
+	// spec without a tool is a feature with the REST way alone.
 	Spec api.Spec
 	// ExtraArgs are arguments the feature needs beyond the adapter's base set.
 	ExtraArgs []string
@@ -94,6 +98,8 @@ var All = []Feature{
 	{Name: "comment_plain", Spec: api.CommentSpec, ExtraArgs: []string{"format"}, Since: "S2b"},
 	// S6: the time the person booked on a ticket, in its meta bar.
 	{Name: "booked_time", Spec: api.BookedTimeSpec, Since: "S6"},
+	// K6: booking time on a ticket, the first write over REST.
+	{Name: "time_book", Spec: api.BookTimeSpec, Since: "R6", Capabilities: []string{"time_sessions.book"}},
 }
 
 // Report is what one server supports.
@@ -132,6 +138,11 @@ func detect(all []Feature, server transport.ServerInfo, tools []transport.Tool, 
 		restMissing := lacking(f.Capabilities, capabilities)
 		if len(f.Capabilities) > 0 && len(restMissing) == 0 {
 			report.Enabled[f.Name], report.Via[f.Name] = true, REST
+			continue
+		}
+		if f.Spec.Tool == "" {
+			// The REST way alone (K6): no tool stands in for it.
+			report.Missing[f.Name] = restMissing
 			continue
 		}
 		missing := toolMissing(f, byName)

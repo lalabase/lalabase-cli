@@ -1,5 +1,5 @@
 // Package api is the client's view of the server: one adapter per MCP tool and
-// REST reader it uses, each with a Spec saying what it sends and what it needs
+// REST route it uses, each with a Spec saying what it sends and what it needs
 // back. The same Spec drives three checks, so there is one rule, not three:
 // feature detection (are the tool and its arguments there?), the runtime
 // check of every answer (are the fields there?), and the compatibility test
@@ -53,7 +53,7 @@ type Spec struct {
 var Specs = []Spec{
 	NotificationsSpec, MarkReadSpec, TicketsSpec, TicketSpec, UpdateTicketSpec, CommentSpec, KnowledgeSpec,
 	BookedTimeSpec, MeSpec, OrganisationsSpec, ProjectsSpec,
-	TicketsRESTSpec, TicketRESTSpec, TicketByNumberRESTSpec, PostRESTSpec,
+	TicketsRESTSpec, TicketRESTSpec, TicketByNumberRESTSpec, PostRESTSpec, BookTimeSpec,
 }
 
 // Missing returns the required paths the payload lacks, with list positions

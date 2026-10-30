@@ -42,6 +42,7 @@ const (
 	MutationStatus   = "status"
 	MutationAssign   = "assign"
 	MutationTitle    = "title"
+	MutationBook     = "book"
 )
 
 // writeStamp is the time every write stamps on what it changed.
@@ -246,11 +247,19 @@ func (f *Fixture) writeGate(w http.ResponseWriter, place string, reply func(int,
 	return false
 }
 
-// answerWrite answers a write that was carried out, as the scenario says:
-// lost (the connection closes after the request was read, as a server
-// that acted and then failed; status 0: no answer went out), slow (after
-// a pause), else at once.
+// answerWrite answers a write that was carried out, as the scenario says
+// (answerDue).
 func (f *Fixture) answerWrite(w http.ResponseWriter, r *http.Request, reply func(int, any, any), req Request, result map[string]any) {
+	if f.answerDue(w, r, req) {
+		reply(http.StatusOK, toolObject(result), nil)
+	}
+}
+
+// answerDue applies the scenarios that act on the answer of a write carried
+// out, and says whether an answer goes out: lost (the connection closes
+// after the request was read, as a server that acted and then failed;
+// status 0: no answer went out), slow (after a pause), else at once.
+func (f *Fixture) answerDue(w http.ResponseWriter, r *http.Request, req Request) bool {
 	switch f.scenario {
 	case Lost:
 		req.Status = 0
@@ -260,13 +269,11 @@ func (f *Fixture) answerWrite(w http.ResponseWriter, r *http.Request, reply func
 				_ = conn.Close()
 			}
 		}
-		return
+		return false
 	case Slow:
-		if !f.pause(w, r, req) {
-			return
-		}
+		return f.pause(w, r, req)
 	}
-	reply(http.StatusOK, toolObject(result), nil)
+	return true
 }
 
 // summary is the ticket summary update_ticket answers with: the row as it
