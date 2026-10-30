@@ -5,7 +5,8 @@
 // x also jumps to the pane of an agent that runs (Jump: an AppleScript that
 // selects it by the id the launch script returned) and starts an agent
 // whose session is over again (Again: a new agent that resumes its latest
-// session).
+// session). Since C10 it also hands the address of a ticket's file to the
+// system's opener, for the browser (OpenFile).
 //
 // Threat model. Foreign: everything the server sent (the ids and the number
 // are checked against a pattern before use, nothing else of the ticket is

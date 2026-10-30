@@ -462,7 +462,7 @@ var english = map[ID]string{
 	LaunchNoAnswer:      "iTerm did not answer within 5 s; a pane may still open. If macOS asks for permission, allow it",
 	LaunchUntracked:     "The state of Claude Code beside #%d cannot be shown: %s",
 	OpeningFile:         "Opening %s\u2026",
-	FileOpened:          "Opened %s in the browser",
+	FileOpened:          "Sent %s to the browser",
 	FileNoOpener:        "No browser can be opened here",
 	FileNotHandedOver:   "The file's address did not pass its check",
 	FileOpenFailed:      "The browser could not be opened",

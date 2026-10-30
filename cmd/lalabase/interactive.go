@@ -84,7 +84,7 @@ func runInteractive(name string, env Env) int {
 				// opened only after /me confirmed the identity.
 				Disk: &diskcache.Opener{Root: diskcache.Root(env.Getenv, env.Home)},
 				// Claude Code beside the ticket (C7).
-				Launcher: launch.New(launchConfig(env, p, client.MCPAddress(), sup)),
+				Launcher: launch.New(launchConfig(env, p, client.Address(), client.MCPAddress(), sup)),
 				// What the sessions x started do (C9a).
 				Agents: agents.NewWatcher(sup, agentsFiles(env, p)),
 			})), sup)
@@ -122,7 +122,7 @@ func runInteractive(name string, env Env) int {
 // files, the start folder, and the variables that say whether this is an
 // iTerm session and whether a multiplexer runs in between. The interface
 // reads no environment itself.
-func launchConfig(env Env, p profile.Profile, mcp string, sup *worker.Supervisor) launch.Config {
+func launchConfig(env Env, p profile.Profile, server, mcp string, sup *worker.Supervisor) launch.Config {
 	multiplexer := ""
 	for _, key := range []string{"TMUX", "STY", "ZELLIJ"} {
 		if env.Getenv(key) != "" {
@@ -135,7 +135,7 @@ func launchConfig(env Env, p profile.Profile, mcp string, sup *worker.Supervisor
 		Agents: agentsFiles(env, p), Executable: env.Executable,
 		TermProgram: env.Getenv("TERM_PROGRAM"), SessionID: env.Getenv("ITERM_SESSION_ID"),
 		Multiplexer: multiplexer,
-		Server:      p.URL, Remote: env.Getenv("SSH_CONNECTION") != "",
+		Server:      server, Remote: env.Getenv("SSH_CONNECTION") != "",
 	}
 }
 

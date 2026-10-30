@@ -33,7 +33,7 @@ func TestPTYOpenFileHandsTheAddressToTheOpener(t *testing.T) {
 	c.act(t, keyEnter, 120, "esc back")
 	c.act(t, keyTab, 120, "Comments")
 	c.act(t, keyTab, 120, "> design.pdf")
-	c.act(t, keyEnter, 120, "Opened design.pdf in the browser")
+	c.act(t, keyEnter, 120, "Sent design.pdf to the browser")
 	if err := c.send("q"); err != nil {
 		t.Fatal(err)
 	}

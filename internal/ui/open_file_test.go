@@ -60,7 +60,7 @@ func TestArrowsSelectAFileAndEnterOpensIt(t *testing.T) {
 		t.Fatalf("status %q", got)
 	}
 	h.drive(cmd)
-	if got := h.status(); got != "Opened six-02.txt in the browser" {
+	if got := h.status(); got != "Sent six-02.txt to the browser" {
 		t.Fatalf("status %q", got)
 	}
 	if h.m.focus != view.Object {
@@ -228,7 +228,7 @@ func TestNoFileThatCanBeOpened(t *testing.T) {
 
 func TestEveryOutcomeOfAFileHasItsNotice(t *testing.T) {
 	for kind, want := range map[launch.Kind]string{
-		launch.FileOpened:    "Opened six-01.txt in the browser",
+		launch.FileOpened:    "Sent six-01.txt to the browser",
 		launch.NoOpener:      "No browser can be opened here",
 		launch.OpenFailed:    "The browser could not be opened",
 		launch.NotHandedOver: "The file's address did not pass its check",

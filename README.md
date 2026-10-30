@@ -220,13 +220,15 @@ navigation again.
   attachments (`Tab`) the arrows select a file and `Enter` opens it in the
   default browser, on the server's own address for the file: the client
   builds that address from the profile's server and the ids, sends no request
-  for it, and the browser uses its own login. Logged out, the browser asks
-  for the login; logged in as someone else who may not read the file, it gets
-  an empty 404. Nothing is downloaded. Over SSH, or without a program to
-  open a browser (`open` on macOS, `xdg-open` elsewhere), a notice says so
-  and nothing starts. Only the ticket's own files are listed: files of
-  comments, and images inside a text, cannot be opened yet. A server that
-  sends no ids shows the names alone.
+  for it, and the browser uses its own login. The client downloads nothing;
+  the server lets the browser show images and PDFs, and the browser saves
+  every other type. Logged out, the browser asks for the login and lands on
+  the organisation's home, not on the file: `Enter` again opens it. Logged in
+  as someone who may not read the file, it gets an empty 404. Over SSH, or
+  without a program to open a browser (`open` on macOS, `xdg-open`
+  elsewhere), a notice says so and nothing starts. Only the ticket's own
+  files are listed: files of comments, and images inside a text, cannot be
+  opened yet. A server that sends no ids shows the names alone.
 * **Paging the ticket (C1d).** `Tab` moves between the description, the
   comments and the attachments and brings the section's heading into
   sight; `[`/`]` turn the page of that section, `o` switches the comments
