@@ -488,6 +488,19 @@ func TestOneFileWithoutAListIsOneFile(t *testing.T) {
 	mustContain(t, h.paneText(), "1 file, not listed by this server")
 }
 
+// A server before R7 on a comment without files: nothing to say.
+func TestNoListAndNoCountSayNothing(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.editSeven(func(posts []api.Post) []api.Post {
+		postAt(posts, 27).AttachmentsCount = 0
+		return posts
+	})
+	h.toComments()
+	mustNotContain(t, h.paneText(), "not listed")
+}
+
 // The list of a server since R7 is what there is, also when it is empty and
 // the count is not: only a comment without a list has the hint.
 func TestAnEmptyListBesideACountSaysNothing(t *testing.T) {

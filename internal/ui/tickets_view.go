@@ -377,9 +377,8 @@ func (a *app) ownID() string {
 func ticketText(d *detailView, c ticketContext) ticketLines {
 	r, paged, origin, when := d.record, c.paged, c.origin, c.when
 	t := ticketLines{posts: map[string]int{}, file: -1}
-	// The one selected file, of the active section; the place that shows it
-	// takes its id.
-	selected, chosen := d.selectedFile()
+	// The one selected file, of the active section; a kind of none without.
+	selected, _ := d.selectedFile()
 	// The head: the title, then one faint line of its facts, unless they
 	// stand in the meta bar, then the line of its agent, if it has one.
 	t.addLead(uitext.Fill(uitext.TicketNumber, r.Number).String()+" "+textOr(r.Title, uitext.UntitledTicket), present.Strong, "", present.Strong)
@@ -459,7 +458,7 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 		if c.me != "" && p.Author != nil && p.Author.ID == c.me {
 			author, tone = author+" "+uitext.Inline(uitext.You).String(), present.Own
 		}
-		if d.area == areaComments && p.ID == d.post && !chosen {
+		if d.area == areaComments && p.ID == d.post && selected.Kind != launch.CommentFile {
 			author = uitext.Inline(uitext.SelectedComment).String() + author
 		}
 		rest := "  " + when(p.CreatedAt)
@@ -483,7 +482,7 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 		}
 		if !d.hidden(p.ID) {
 			file := ""
-			if chosen && selected.Kind == launch.CommentFile && p.ID == d.post {
+			if selected.Kind == launch.CommentFile && p.ID == d.post {
 				file = selected.ID
 			}
 			t.addPostFiles(p, file)
@@ -496,13 +495,10 @@ func ticketText(d *detailView, c ticketContext) ticketLines {
 		t.add(noteLine, pageState(d))
 		return t
 	}
-	file := ""
-	if chosen && selected.Kind == launch.TicketFile {
-		file = selected.ID
-	}
 	for _, f := range r.Attachments {
+		// A comment's file, if that is the selected one, took the mark above.
 		name, rest := attachmentLine(f)
-		t.addFile(f, name, rest, file)
+		t.addFile(f, name, rest, selected.ID)
 	}
 	return t
 }
