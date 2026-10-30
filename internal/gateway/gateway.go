@@ -12,6 +12,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/api"
@@ -492,7 +494,9 @@ func CheckProjectsTicket(t Ticket) error {
 }
 
 // CheckTicketsTicket: one project's tickets, a page above zero of
-// TicketPageSize rows, a search or none, no status, in their own area.
+// TicketPageSize rows, a search or none, one status or none (C11), in their
+// own area. A status goes into a query as it came from the server: one that
+// is blank or holds a control character is no status of a project.
 func CheckTicketsTicket(t Ticket) error {
 	k := t.Key
 	switch {
@@ -504,12 +508,23 @@ func CheckTicketsTicket(t Ticket) error {
 		return errors.New("tickets: a page below 1")
 	case k.PerPage != TicketPageSize:
 		return fmt.Errorf("tickets: a page size of %d, not %d", k.PerPage, TicketPageSize)
-	case k.Status != "" || k.Organisation != "" || k.Global || k.Ticket != "":
+	case k.Organisation != "" || k.Global || k.Ticket != "":
 		return errors.New("tickets: an option the read does not have")
+	case !plainStatus(k.Status):
+		return errors.New("tickets: not a status")
 	case t.Area != Tickets:
 		return errors.New("tickets: another area")
 	}
 	return nil
+}
+
+// plainStatus: no status, or one with something to see and no control
+// character.
+func plainStatus(status string) bool {
+	if status != "" && strings.TrimSpace(status) == "" {
+		return false
+	}
+	return !strings.ContainsFunc(status, unicode.IsControl)
 }
 
 // CheckDetailTicket: one ticket of one project, in one of the forms C1

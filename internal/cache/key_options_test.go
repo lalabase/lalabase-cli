@@ -1,6 +1,9 @@
 package cache
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // C1c: the keys of a project's ticket list and of one ticket.
 
@@ -156,5 +159,38 @@ func TestResourceStripsTheOptionsOfOneRecord(t *testing.T) {
 	}
 	if _, ok := s.Get(ticketList(ns, "p-2", "a", 1)); !ok {
 		t.Fatal("the removal took another project")
+	}
+}
+
+// A status is a list of its own (C11), and a project's removal takes it:
+// the resource of a project's list has no status. The inbox keeps its own.
+func TestAStatusIsAKeyOfItsOwnButNoResourceOfItsOwn(t *testing.T) {
+	ns, ok := Confirmed("default", "https://example.invalid", "token")
+	if !ok {
+		t.Fatal("no namespace")
+	}
+	key := func(status string) Key {
+		k := ns.Key("list_tickets")
+		k.Project, k.Page, k.PerPage, k.Status = "p", 1, 25, status
+		return k
+	}
+	a, b := key("new"), key("closed")
+	if a == b || a.String() == b.String() || a.Record() == b.Record() {
+		t.Fatal("two statuses share an entry")
+	}
+	if a.Resource() != b.Resource() || a.Resource() != key("").Resource() {
+		t.Fatal("a status has a resource of its own")
+	}
+	s := NewStore()
+	s.Apply(a, Replace, []byte("{}"), time.Time{})
+	s.Apply(b, Replace, []byte("{}"), time.Time{})
+	s.Apply(key(""), Remove, nil, time.Time{})
+	if s.Len() != 0 {
+		t.Fatalf("%d entries survived the removal", s.Len())
+	}
+	inbox := ns.Key("list_notifications")
+	inbox.Global, inbox.Status = true, "unread"
+	if inbox.Resource().Status != "unread" {
+		t.Fatal("the inbox lost its status")
 	}
 }

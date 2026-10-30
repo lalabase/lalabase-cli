@@ -90,6 +90,10 @@ const (
 	// ticket read is answered after a pause (C1e: what the disk cache shows
 	// meanwhile); the start and the writes are as in Normal.
 	SlowReads Scenario = "slow-reads"
+	// Statuses gives Website's tickets several statuses for the grouped
+	// list (C11): #1 in progress, #2 resolved, #3 closed, #4 none, the 26
+	// others new, more than a page.
+	Statuses Scenario = "statuses"
 )
 
 // scenarioVersions are the versions the scenarios of older servers name
@@ -100,7 +104,7 @@ var scenarioVersions = map[Scenario]string{Older: "0.7.0", S1Only: "0.9.0", S2On
 
 // Scenarios lists them, for a tool's usage line.
 func Scenarios() []Scenario {
-	return []Scenario{Normal, Older, S1Only, S2Only, Temporary, RateLimited, Unauthorized, Vanished, ReadOnly, UnknownWrite, NoMarkRead, Refusals, Lost, Slow, SlowReads}
+	return []Scenario{Normal, Older, S1Only, S2Only, Temporary, RateLimited, Unauthorized, Vanished, ReadOnly, UnknownWrite, NoMarkRead, Refusals, Lost, Slow, SlowReads, Statuses}
 }
 
 // ResetAttempts forgets how often each place was tried, so a scenario that
