@@ -120,6 +120,12 @@ var toolCases = map[string]expected{
 	"summarize_time_sessions/invalid_date": {class: Refused, legacyClass: Refused},
 	"summarize_time_sessions/not_found":    {class: NotFound, legacyClass: NotFound},
 
+	// 0.13.1: the bound of an idempotency key, the same answer for every
+	// write tool. This client's keys are far inside it (transport.ValidKey).
+	"idempotency_key/too_long":           {class: InvalidInput, legacyClass: Refused},
+	"idempotency_key/too_long_multibyte": {class: InvalidInput, legacyClass: Refused},
+	"idempotency_key/nul":                {class: InvalidInput, legacyClass: Refused},
+
 	// 0.13.0: the people of an organisation. The client does not use the
 	// two tools yet; their cases are classified all the same, so a tool it
 	// adopts later starts from a decision. A server before 0.13.0 has
@@ -288,7 +294,7 @@ func TestTheRecordedServerAnswersInitializeAndToolsList(t *testing.T) {
 	}
 	srv := replay(t, 200, file.Contract.MCP.Initialize.Response.Body)
 	info, ans := newClient(t, srv.URL).Initialize(context.Background())
-	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.13.0" {
+	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.13.1" {
 		t.Fatalf("initialize: %v %+v", ans.Class, info)
 	}
 

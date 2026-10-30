@@ -305,6 +305,25 @@ const (
 	DialogSending
 	DialogRefused
 	DialogCut
+	DialogRequired
+	BookKey
+	BookHelp
+	BookAction
+	BookSendHelp
+	BookDuration
+	BookDurationHint
+	BookNote
+	BookDone
+	BookNotBooked
+	BookNotSent
+	BookRateLimited
+	BookForbidden
+	BookGone
+	BookBusy
+	BookUnclearReading
+	BookUnclearRead
+	BookUnclear
+	BookUnclearNotice
 	SendKey
 	SendHelp
 	NextFieldHelp
@@ -478,6 +497,17 @@ var english = map[ID]string{
 	// the box's error line, and the keys of a field.
 	DialogTitle: "%s · #%d %s", DialogCaret: "\u258f",
 	DialogSending: "Sending\u2026", DialogRefused: "Not sent", DialogCut: "%s cut at %d characters",
-	SendKey: "ctrl+s", SendHelp: "send", NextFieldHelp: "next field", NewLineHelp: "new line",
+	DialogRequired: "%s is required",
+	BookKey:        "b", BookHelp: "book time", BookAction: "Book time", BookSendHelp: "book",
+	BookDuration: "Duration", BookDurationHint: "30, 1:30 or 1.5", BookNote: "Note",
+	BookDone: "%s booked on #%d", BookNotBooked: "Not booked on #%d: %s",
+	BookNotSent: "Not booked; the server was not reached", BookRateLimited: "Not booked; rate limited",
+	BookForbidden: "You may not book time on this ticket", BookGone: "This ticket is gone, or no longer yours to see",
+	BookBusy:           "A booking of this ticket is still on its way",
+	BookUnclearReading: "Not clear whether it was booked; reading the time\u2026",
+	BookUnclearRead:    "Not clear whether it was booked. Booked by you now: %s",
+	BookUnclear:        "Not clear whether it was booked",
+	BookUnclearNotice:  "Not clear whether it was booked on #%d; check the time on the ticket",
+	SendKey:            "ctrl+s", SendHelp: "send", NextFieldHelp: "next field", NewLineHelp: "new line",
 	Unlisted: "(not listed)",
 }

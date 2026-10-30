@@ -331,7 +331,7 @@ func TestStatusShowsBothProfilesAndWhatTheServerSupports(t *testing.T) {
 		t.Fatalf("exit %d: %s %s", code, h.out.String(), h.err.String())
 	}
 	out := h.out.String()
-	for _, want := range []string{"default", "agent", "Anna Albers", "0.13.0", "inbox", "inbox_by_organisation", "ticket_update", "comment_plain", "lalab_pat_WR"} {
+	for _, want := range []string{"default", "agent", "Anna Albers", "0.13.1", "inbox", "inbox_by_organisation", "ticket_update", "comment_plain", "lalab_pat_WR"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status lacks %q:\n%s", want, out)
 		}
