@@ -103,6 +103,11 @@ func TestInvalidBytesBecomeTheReplacementCharacter(t *testing.T) {
 // these tests red, not pass because the test consults the same list.
 var allowedFormat = map[rune]bool{0x200c: true, 0x200d: true, 0x00ad: true}
 
+// nothingDrawn are the two non-characters, written out here for the reason
+// allowedFormat is: U+FFFE and U+FFFF take no cell, every other non-character
+// takes one and shows (a probe of ansi.WcWidth and GraphemeWidth, M1).
+func nothingDrawn(r rune) bool { return r == 0xfffe || r == 0xffff }
+
 // Every code point, one by one, against the rule the package documents. This
 // covers what the 22 golden cases cannot: a format character nobody thought
 // of, and any difference between Go's and Python's Unicode tables.
@@ -122,7 +127,7 @@ func TestEveryCodePointFollowsTheRule(t *testing.T) {
 			want, wantInline = " ", " "
 		case r <= 0x1f || (r >= 0x7f && r <= 0x9f):
 			want, wantInline = " ", " "
-		case unicode.Is(unicode.Cf, r) && !allowedFormat[r]:
+		case (unicode.Is(unicode.Cf, r) && !allowedFormat[r]) || nothingDrawn(r):
 			want, wantInline = "", ""
 		default:
 			want, wantInline = in, in
@@ -158,6 +163,8 @@ func assertTerminalSafe(t testing.TB, in, out string, inline bool) {
 			t.Fatalf("output of %q carries C1 control %U: %q", in, r, out)
 		case unicode.Is(unicode.Cf, r) && !allowedFormat[r]:
 			t.Fatalf("output of %q carries format character %U: %q", in, r, out)
+		case nothingDrawn(r):
+			t.Fatalf("output of %q carries %U, which takes no cell: %q", in, r, out)
 		case inline && (r == '\t' || r == '\n' || r == '\r'):
 			t.Fatalf("inline output of %q carries %q: %q", in, r, out)
 		}

@@ -48,6 +48,12 @@ var toolCases = map[string]expected{
 	"get_ticket/post_not_found": {class: NotFound, legacyClass: Refused},
 	"get_ticket/invalid_paging": {class: InvalidInput, legacyClass: Refused},
 
+	// 0.14.0 (core R7): a comment's files stand beside its count, on a page
+	// and on one comment, an empty list on a comment without any.
+	"comment_file/page":     {class: Object, legacyClass: Object},
+	"comment_file/one_post": {class: Object, legacyClass: Object},
+	"comment_file/no_file":  {class: Object, legacyClass: Object},
+
 	"search_knowledge/ok":            {class: Object, legacyClass: Object},
 	"search_knowledge/empty":         {class: Object, legacyClass: Object},
 	"search_knowledge/invalid_input": {class: InvalidInput, legacyClass: Refused},
@@ -294,7 +300,7 @@ func TestTheRecordedServerAnswersInitializeAndToolsList(t *testing.T) {
 	}
 	srv := replay(t, 200, file.Contract.MCP.Initialize.Response.Body)
 	info, ans := newClient(t, srv.URL).Initialize(context.Background())
-	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.13.1" {
+	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.14.0" {
 		t.Fatalf("initialize: %v %+v", ans.Class, info)
 	}
 

@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/api"
+	"github.com/gboyke/lalabase-cli/internal/features"
 	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/worker"
@@ -32,7 +33,8 @@ type WriteKind uint8
 const (
 	// MarkRead marks the notification as read (C1f).
 	MarkRead WriteKind = iota + 1
-	// Comment posts Value as a plain text comment on the ticket (C2b).
+	// Comment posts Value as a plain text comment on the ticket, by Way
+	// (K3a).
 	Comment
 	// Status sets the ticket's status to the key in Value (C2c).
 	Status
@@ -84,6 +86,9 @@ type WriteTicket struct {
 	// WriteKind). Note is a booking's note, empty for none.
 	Value string
 	Note  string
+	// Way is how a comment reaches the server (Routes.Comment); every other
+	// kind has one way.
+	Way features.Way
 }
 
 // WriteResult is the outcome of one write. The value of its kind is filled
@@ -220,8 +225,8 @@ func confirm(t WriteTicket, r WriteResult) error {
 // session, whatever becomes of this result). The closure assigns the
 // decoded value on every execution, the queue's retry included; the
 // result carries it only after a confirmed success. A comment goes out as
-// plain text (the feature comment_plain is the model's to check before
-// the key is offered).
+// plain text on either way (the feature comment_plain is the model's to
+// check before the key is offered).
 func (g *Gateway) Write(ctx context.Context, t WriteTicket) tea.Cmd {
 	if err := CheckWriteTicket(t); err != nil {
 		return func() tea.Msg { return WriteResult{WriteTicket: t, Answer: refusedTicket(err)} }
@@ -233,7 +238,11 @@ func (g *Gateway) Write(ctx context.Context, t WriteTicket) tea.Cmd {
 		case MarkRead:
 			r.State, ans = g.src.MarkNotificationRead(ctx, t.Notification, t.Key)
 		case Comment:
-			r.Comment, ans = g.src.PostComment(ctx, t.Project, t.Ticket, t.Value, api.CommentOptions{Plain: true}, t.Key)
+			if t.Way == features.REST {
+				r.Comment, ans = g.src.PostCommentREST(ctx, t.Ticket, t.Value, t.Key)
+			} else {
+				r.Comment, ans = g.src.PostComment(ctx, t.Project, t.Ticket, t.Value, api.CommentOptions{Plain: true}, t.Key)
+			}
 		case Status:
 			r.Summary, ans = g.src.UpdateTicket(ctx, t.Project, t.Ticket, api.TicketChange{Status: t.Value}, t.Key)
 		case Assign:

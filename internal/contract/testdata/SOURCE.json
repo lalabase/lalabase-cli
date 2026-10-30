@@ -1,8 +1,8 @@
 {
-  "contract_sha256": "8a85b28c00bd355eee3ae577db4757959078cc7a5f34d8e7c461bdfe2d26b73d",
-  "core_commit": "80d75a190772f8f15546fb4b7c200cc9a0b88de8",
+  "contract_sha256": "bce4a6d9eec92d9e35ccce8217316d3be5650ed01217ed6915125a1cf78790d2",
+  "core_commit": "e3ce0ff3135ed59656be134c204db4030393d486",
   "core_path": "spec/fixtures/mcp_contract.json",
   "core_repository": "lalabase/lalabase",
-  "file_sha256": "833a95295fa8d45210d18fd2a532d39fa60981ee347063e3f9c09876727f14cd",
-  "mcp_server_version": "0.13.1"
+  "file_sha256": "381dd63ea29fab8f7ffce43d9efc7d8ca341530b0caf0ce85aafdb0f0bc49bae",
+  "mcp_server_version": "0.14.0"
 }

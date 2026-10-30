@@ -117,7 +117,7 @@ func TestStartupCommandsAreUnsharedAndTyped(t *testing.T) {
 				t.Fatalf("me: %+v", r.Me)
 			}
 		case StepInitialize:
-			if r.Server.Name != "lalabase" || r.Server.Version != "0.13.1" {
+			if r.Server.Name != "lalabase" || r.Server.Version != "0.14.0" {
 				t.Fatalf("server: %+v", r.Server)
 			}
 		case StepTools:

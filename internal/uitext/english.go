@@ -207,6 +207,10 @@ const (
 	CommentHelp
 	FileHelp
 	OpenFileHelp
+	// C12: a comment's files.
+	CommentOrFileHelp
+	FileNotListed
+	FilesNotListed
 	// C1f: mark as read, and the ticket opened from a notification.
 	MarkReadKey
 	MarkReadHelp
@@ -348,6 +352,20 @@ const (
 	BookUnclearRead
 	BookUnclear
 	BookUnclearNotice
+	AddCommentKey
+	AddCommentHelp
+	CommentAction
+	CommentText
+	CommentHint
+	CommentDone
+	CommentNotPosted
+	CommentNotSent
+	CommentRateLimited
+	CommentForbidden
+	CommentBusy
+	CommentUnclearReading
+	CommentUnclear
+	CommentUnclearNotice
 	SendKey
 	SendHelp
 	NextFieldHelp
@@ -451,6 +469,8 @@ var english = map[ID]string{
 	TextEmpty: "no text", TextStatusUnknown: "text status unknown",
 	TabKey: "tab", NextAreaHelp: "next section", OrderKey: "o", ExpandKey: "e", ExpandHelp: "expand",
 	CollapseHelp: "collapse", CommentHelp: "comment", FileHelp: "file", OpenFileHelp: "open file",
+	CommentOrFileHelp: "comment or file", FileNotListed: "1 file, not listed by this server",
+	FilesNotListed: "%d files, not listed by this server",
 
 	MarkReadKey: "r", MarkReadHelp: "mark read", OpenLinkedTicketHelp: "open ticket", NotificationHelp: "notification",
 	LabelMarkRead: "Mark as read",
@@ -544,6 +564,13 @@ var english = map[ID]string{
 	BookUnclearRead:    "Not clear whether it was booked. Booked by you now: %s",
 	BookUnclear:        "Not clear whether it was booked",
 	BookUnclearNotice:  "Not clear whether it was booked on #%d; check the time on the ticket",
-	SendKey:            "ctrl+s", SendHelp: "send", NextFieldHelp: "next field", NewLineHelp: "new line",
+	AddCommentKey:      "k", AddCommentHelp: "add comment", CommentAction: "Comment", CommentText: "Text", CommentHint: "Plain text",
+	CommentDone: "Comment posted on #%d", CommentNotPosted: "Not posted on #%d: %s",
+	CommentNotSent: "Not posted; the server was not reached", CommentRateLimited: "Not posted; rate limited",
+	CommentForbidden: "You may not comment on this ticket", CommentBusy: "A comment on this ticket is still on its way",
+	CommentUnclearReading: "Not clear whether it was posted; reading the ticket\u2026",
+	CommentUnclear:        "Not clear whether it was posted; check the ticket behind this box",
+	CommentUnclearNotice:  "Not clear whether it was posted on #%d; check the ticket",
+	SendKey:               "ctrl+s", SendHelp: "send", NextFieldHelp: "next field", NewLineHelp: "new line",
 	Unlisted: "(not listed)",
 }

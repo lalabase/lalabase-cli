@@ -434,6 +434,52 @@ type Post struct {
 	BodyText  string `json:"body_text"`
 	IsPrivate bool   `json:"is_private"`
 	CreatedAt string `json:"created_at"`
+	// Attachments are the comment's files (core R7), each ID the comment
+	// document's; nil from a server that does not list them, which says
+	// how many there are in AttachmentsCount alone. An empty list is a
+	// list: it may stand beside a count above zero, of files whose content
+	// is gone.
+	Attachments      []Attachment `json:"attachments"`
+	AttachmentsCount int          `json:"attachments_count"`
+}
+
+// UnmarshalJSON reads what the spec names strictly and the files leniently,
+// as an attachment's metadata: neither is required, so what does not read
+// never refuses a ticket that is valid without it.
+func (p *Post) UnmarshalJSON(data []byte) error {
+	type fields Post // without this method
+	raw := struct {
+		*fields
+		Attachments      json.RawMessage `json:"attachments"`
+		AttachmentsCount json.RawMessage `json:"attachments_count"`
+	}{fields: new(fields)}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*p = Post(*raw.fields)
+	p.Attachments = postFiles(raw.Attachments)
+	// A count is a whole number, written as one, as a size is.
+	if n, err := strconv.Atoi(string(raw.AttachmentsCount)); err == nil && n >= 0 {
+		p.AttachmentsCount = n
+	}
+	return nil
+}
+
+// postFiles is a comment's list, nil for anything else: an entry that does
+// not read or has no name is left out.
+func postFiles(raw json.RawMessage) []Attachment {
+	var entries []json.RawMessage
+	if json.Unmarshal(raw, &entries) != nil || entries == nil {
+		return nil
+	}
+	files := make([]Attachment, 0, len(entries))
+	for _, entry := range entries {
+		var f Attachment
+		if json.Unmarshal(entry, &f) == nil && f.Filename != "" {
+			files = append(files, f)
+		}
+	}
+	return files
 }
 
 // Attachment is one file of a ticket. The file name is required; the
@@ -1040,6 +1086,42 @@ func (a *API) PostComment(ctx context.Context, projectID, ticketID, body string,
 	}
 	var c Comment
 	return c, a.call(ctx, CommentSpec, args, &c)
+}
+
+// PostCommentSpec is a comment over REST (the core's R3a): the tool's fields
+// under data, of which the id and the ticket confirm the write
+// (gateway.CheckPostedComment). The route is the core's posts.create; its
+// capability posts.plain says the route takes post[format].
+var PostCommentSpec = Spec{
+	Name: "POST /api/v1/tickets/:ticket_id/posts", Path: "/api/v1/tickets/:ticket_id/posts",
+	Method:   http.MethodPost,
+	Required: under("data", CommentSpec.Required),
+}
+
+// PostCommentREST writes a comment over REST, always as plain text: the
+// server turns it into markup, and escaping it here would be a second copy of
+// that. key is the idempotency key of the person's action, the same on every
+// retry of that action.
+func (a *API) PostCommentREST(ctx context.Context, ticketID, body, key string) (Comment, transport.Answer) {
+	id, ok := segment(ticketID)
+	if !ok {
+		return Comment{}, noSegment(PostCommentSpec, "ticket")
+	}
+	type post struct {
+		Format string `json:"format"`
+		Body   string `json:"body"`
+	}
+	sent := struct {
+		Post post `json:"post"`
+	}{post{Format: "plain", Body: body}}
+	var out struct {
+		Data Comment `json:"data"`
+	}
+	ans := a.write(ctx, PostCommentSpec, strings.Replace(PostCommentSpec.Path, ":ticket_id", id, 1), sent, key, &out)
+	if !ans.OK() {
+		return Comment{}, ans
+	}
+	return out.Data, ans
 }
 
 // --- knowledge ---------------------------------------------------------------

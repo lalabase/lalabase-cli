@@ -263,8 +263,9 @@ func (d recordedData) defaultTickets(q api.TicketQuery) transport.Answer {
 // ticketRecord is ticket n of a project as the server would send it: the
 // recorded ticket with the row's id, number and title. #2 has nothing (no
 // description, assignees, creator, status, comments); #3 has 30 comments
-// (two pages); #4 has 12 attachments (two pages); the rest the recorded
-// two comments and two attachments.
+// (two pages); #4 has 12 attachments (two pages); #7 has 30 comments with
+// their files (C12) and the files of #6; the rest the recorded two comments
+// and two attachments.
 func (d recordedData) ticketRecord(project string, n int, o api.TicketOptions) api.Ticket {
 	rows := d.ticketRows(project, max(n, 1))
 	row := rows[len(rows)-1]
@@ -292,6 +293,9 @@ func (d recordedData) ticketRecord(project string, n int, o api.TicketOptions) a
 	case 6:
 		t.DescriptionText = sixDescription
 		t.Posts = d.sixPosts(false)
+		t.Attachments = sixAttachments(d.sixFiles)
+	case 7:
+		t.Posts = d.sevenPosts(false)
 		t.Attachments = sixAttachments(d.sixFiles)
 	}
 	if o.FullText && n == 6 {
@@ -496,6 +500,67 @@ func (d recordedData) sixPosts(whole bool) []api.Post {
 	return out
 }
 
+// sevenPostID is the id of comment i (1 the oldest) of ticket #7.
+func sevenPostID(i int) string { return idOf(710000 + i) }
+
+// postFileID is the document id of the i-th file under the comments of #7.
+func postFileID(i int) string { return idOf(810000 + i) }
+
+func postFile(i int, name, kind string, size int64) api.Attachment {
+	id := postFileID(i)
+	return api.Attachment{ID: &id, Filename: name, ContentType: &kind, ByteSize: &size}
+}
+
+// sevenPosts are the comments of #7, oldest first, the newest of them what
+// the first page shows:
+//
+//	30     no files
+//	29     shortened, whole with post_id; seven-a.png and seven-b.log
+//	28     private; seven-private.pdf
+//	27     a count of 2 and no list, as from a server before R7
+//	26     a count of 1 and an empty list: the file's content is gone
+//	25     seven-noid.txt, without an id
+//	6      seven-last.png, the end of the first page
+//	3      seven-old.txt, on the second page
+func (d recordedData) sevenPosts(whole bool) []api.Post {
+	var out []api.Post
+	for i := 1; i <= 30; i++ {
+		p := d.recordedTicket.Posts[0]
+		p.ID, p.CreatedAt = sevenPostID(i), fmt.Sprintf("2026-01-07T10:%02d:00Z", i)
+		p.BodyText = fmt.Sprintf("Seven comment %d", i)
+		p.Attachments, p.AttachmentsCount = []api.Attachment{}, 0
+		switch i {
+		case 29:
+			p.BodyText = "Seven comment 29 begins" + api.TruncationMarker
+			if whole {
+				p.BodyText = "Seven comment 29 begins and ends here."
+			}
+			p.Attachments = []api.Attachment{postFile(1, "seven-a.png", "image/png", 2048), postFile(2, "seven-b.log", "text/plain", 512)}
+		case 28:
+			p.IsPrivate = true
+			p.Attachments = []api.Attachment{postFile(3, "seven-private.pdf", "application/pdf", 3072)}
+		case 27:
+			p.Attachments, p.AttachmentsCount = nil, 2
+		case 26:
+			p.AttachmentsCount = 1
+		case 25:
+			p.Attachments = []api.Attachment{{Filename: "seven-noid.txt"}}
+		case 6:
+			p.Attachments = []api.Attachment{postFile(4, "seven-last.png", "image/png", 1024)}
+		case 3:
+			p.Attachments = []api.Attachment{postFile(5, "seven-old.txt", "text/plain", 100)}
+		}
+		if len(p.Attachments) > 0 {
+			p.AttachmentsCount = len(p.Attachments)
+		}
+		out = append(out, p)
+	}
+	if d.sevenEdit != nil {
+		return d.sevenEdit(out)
+	}
+	return out
+}
+
 // fileID is the document id of the i-th file of a ticket.
 func fileID(i int) string { return fmt.Sprintf("00000000-0000-4000-8000-%012d", 800000+i) }
 
@@ -526,8 +591,11 @@ func sixAttachments(n int) []api.Attachment {
 func (d recordedData) onePost(project string, n int, postID string) transport.Answer {
 	t := d.ticketRecord(project, n, api.TicketOptions{})
 	posts := t.Posts
-	if n == 6 {
+	switch n {
+	case 6:
 		posts = d.sixPosts(true)
+	case 7:
+		posts = d.sevenPosts(true)
 	}
 	for _, p := range posts {
 		if p.ID != postID {

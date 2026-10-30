@@ -18,7 +18,8 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
 * **Foreign text** (titles, comments, names, server error texts) goes through
   `internal/clean` before it reaches the terminal, in every mode. Its test
   cases are those of `bin/lala` in the core repository, byte for byte, plus a
-  test over every code point. The output is valid UTF-8 for a **UTF-8
+  test over every code point; beyond the port it drops U+FFFE and U+FFFF, the
+  two non-characters that take no cell. The output is valid UTF-8 for a **UTF-8
   terminal**; an 8-bit terminal that reads C1 controls from single bytes cannot
   be protected by cleaning (ordinary letters carry such bytes once encoded).
   The interface therefore refuses a locale that is not UTF-8. The existing
@@ -84,7 +85,8 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   `"me"` to add; nobody is ever removed) and refuses a change of none or
   two before sending; `post_comment` sends `format: plain` only when asked
   (feature `comment_plain`), so an older server gets the request it knows.
-  A REST write (K0; the booking of K6 is the first) is a POST or
+  A REST write (K0; the booking of K6 is the first, the comment of K3a the
+  second, in plain text alone) is a POST or
   PATCH under `/api/` with a JSON body and the key as its `Idempotency-Key`
   header; one with another method, no usable key or a body that is no JSON
   object is refused before sending, and its success is a JSON object
@@ -107,11 +109,14 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   that sends it, so an older server keeps the base feature. A tool a
   slice brings whole (S2: `update_ticket`) is a feature of its own, on
   only when every argument its spec declares is in the schema. The
-  contract copy is at MCP 0.13.1, REST API 1.7.0; a 0.9.0 to 0.13.0
+  contract copy is at MCP 0.14.0, REST API 1.8.0; a 0.9.0 to 0.13.1
   server is shown as older than the tested version and works with what
   its schemas say. Fields a newer server sends are `Newer` in the spec:
   absent is fine, present they are checked like the required ones
   (`/api/v1/me` names `api_version` and `capabilities` since R0). A
+  comment's files (core R7, C12) are in no spec: a server before them
+  sends the count alone, the client takes the list's presence as the
+  signal, and an entry that does not read is left out, the ticket stays. A
   feature may name the REST capabilities its REST way needs; a server
   whose `/me` lists them all gets that way, any other the MCP way, so a
   server without capabilities keeps every feature. Since K1 the five
@@ -120,8 +125,10 @@ go-licenses check ./... --include_tests --allowed_licenses=MIT,Apache-2.0,BSD-2-
   came with R1, `tickets.list` with R0), the ticket and its pages
   `tickets.show` with `tickets.paging`, the texts whole `posts.show` too.
   The booking (K6) is the first feature with the REST way alone: without
-  `time_sessions.book` it is off, whatever tools the server lists. Every
-  other feature takes the MCP way. A REST reader's spec is its
+  `time_sessions.book` it is off, whatever tools the server lists. A comment
+  in plain text (K3a) takes REST with `posts.plain`, else the tool with
+  `format`; the way goes on its write (`WriteTicket.Way`). Every other
+  feature takes the MCP way. A REST reader's spec is its
   tool's fields, under `data` for a ticket and one comment (the list has
   the tool's form as it is), so one rule serves both ways, and what a read
   files in the cache has the tool's form (a ticket's `data`; one comment

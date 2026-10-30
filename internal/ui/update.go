@@ -85,6 +85,9 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case gateway.MarkReadResult:
 		return m.receiveMark(msg)
 	case gateway.WriteResult:
+		if msg.Kind == gateway.Comment && m.app != nil {
+			return m.endOnTicket(m.app.commentWrites(), msg)
+		}
 		return m.receiveBooking(msg)
 	case launch.Done:
 		return m, m.receiveLaunch(msg)
@@ -124,7 +127,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case gateway.Wake:
 		return m.wake(msg)
 	case gateway.Expired:
-		// The deadline of a pause or of a hint or of a booking's notice:
+		// The deadline of a pause or of a hint or of a write's notice:
 		// whichever still shows it is over; or of the next read of the agents.
 		if a := m.app; a != nil && msg.Session == a.session {
 			if msg.Until.Equal(a.pause) {
@@ -310,6 +313,8 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		return m.removeAgent()
 	case BookTime:
 		return m.pressB(), nil
+	case AddComment:
+		return m.pressK(), nil
 	}
 	return m, nil
 }

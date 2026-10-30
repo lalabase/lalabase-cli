@@ -6,10 +6,10 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/features"
 )
 
-// Routes say which way each read of the ticket view takes (K1): the way
-// the session's feature report gives the feature whose read it is. The
-// zero value takes the tools, as every read did before K1; every read
-// outside the ticket view does.
+// Routes say which way each read of the ticket view takes (K1), and a
+// comment (K3a): the way the session's feature report gives the feature whose
+// read or write it is. The zero value takes the tools, as every read did
+// before K1; every read outside the ticket view does.
 type Routes struct {
 	// List is the ticket list and its search (feature tickets; its
 	// search, tickets_search, needs the same capabilities).
@@ -20,12 +20,15 @@ type Routes struct {
 	// Whole is a text read whole: the description or one comment
 	// (feature ticket_full_text).
 	Whole features.Way
+	// Comment is a comment in plain text (feature comment_plain). The model
+	// puts it on the write: a write has no scope.
+	Comment features.Way
 }
 
 // RoutesOf reads the routes from a report. A feature that is off has no
 // way and keeps the tools: its reads are not offered.
 func RoutesOf(r features.Report) Routes {
-	return Routes{List: r.Via["tickets"], Ticket: r.Via["ticket"], Whole: r.Via["ticket_full_text"]}
+	return Routes{List: r.Via["tickets"], Ticket: r.Via["ticket"], Whole: r.Via["ticket_full_text"], Comment: r.Via["comment_plain"]}
 }
 
 // way is the way the read of a key takes.

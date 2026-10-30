@@ -93,18 +93,20 @@ var restCases = map[string]restExpected{
 	// looked up), a ticket by its number, one comment. A missing number
 	// and one in a project the token cannot read answer alike, as do a
 	// missing and a hidden comment.
-	"ticket_view/list":                {class: Object, legacyClass: Object},
-	"ticket_view/show":                {class: Object, legacyClass: Object},
-	"ticket_view/show_paged":          {class: Object, legacyClass: Object},
-	"ticket_view/show_invalid_paging": {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
-	"ticket_view/by_number":           {class: Object, legacyClass: Object},
-	"ticket_view/by_number_not_found": {class: NotFound, code: "not_found", legacyClass: NotFound},
-	"ticket_view/by_number_hidden":    {class: NotFound, code: "not_found", legacyClass: NotFound},
-	"ticket_view/post":                {class: Object, legacyClass: Object},
-	"ticket_view/post_not_found":      {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"ticket_view/list":                    {class: Object, legacyClass: Object},
+	"ticket_view/show":                    {class: Object, legacyClass: Object},
+	"ticket_view/show_paged":              {class: Object, legacyClass: Object},
+	"ticket_view/show_paged_comment_file": {class: Object, legacyClass: Object}, // core R7
+	"ticket_view/show_invalid_paging":     {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"ticket_view/by_number":               {class: Object, legacyClass: Object},
+	"ticket_view/by_number_not_found":     {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"ticket_view/by_number_hidden":        {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"ticket_view/post":                    {class: Object, legacyClass: Object},
+	"ticket_view/post_not_found":          {class: NotFound, code: "not_found", legacyClass: NotFound},
 
-	// A booking (core R6, sent since K6) and a comment (core R3a, not sent
-	// yet: K3) over REST. A read-only token was "no access" before the code.
+	// A booking (core R6, sent since K6) and a comment (core R3a, sent since
+	// K3a, in plain text alone) over REST. A read-only token was "no access"
+	// before the code.
 	"POST /api/v1/tickets/:ticket_id/time_sessions/ok_minutes_text":              {class: Object, legacyClass: Object},
 	"POST /api/v1/tickets/:ticket_id/time_sessions/ok_hours_text":                {class: Object, legacyClass: Object},
 	"POST /api/v1/tickets/:ticket_id/time_sessions/ok_minutes":                   {class: Object, legacyClass: Object},

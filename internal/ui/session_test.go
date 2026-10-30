@@ -51,6 +51,9 @@ type recordedData struct {
 	sixComments int
 	// sixFiles is the number of attachments of ticket #6, 12 when zero.
 	sixFiles int
+	// sevenEdit changes the comments of ticket #7 (C12), oldest first: a
+	// test sets it on its copy.
+	sevenEdit func(posts []api.Post) []api.Post
 	// capabilities are what the recorded /me lists (K1). me lists none: a
 	// session takes the tools unless a test gives it these
 	// (newRESTHarness).
@@ -229,6 +232,9 @@ type fakes struct {
 	writes markFakes
 	// K6: the booking of time (book_harness_test.go).
 	bookings bookFakes
+	// K3a: the comment (comment_test.go).
+	commentLog    []commentCall
+	commentAnswer func(c commentCall) (api.Comment, transport.Answer)
 	// K1: the ticket view over REST (rest_harness_test.go); the gates hold
 	// these as they hold the tools' reads.
 	restTickets func(q api.TicketQuery) transport.Answer

@@ -66,6 +66,8 @@ const (
 	BookTime
 	// C11: the ticket list chronological or grouped by status.
 	ToggleGroups
+	// K3a: a comment on the ticket in the pane.
+	AddComment
 )
 
 type keyAction struct {
@@ -152,6 +154,8 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: RemoveAgent}
 	case "b":
 		return keyAction{Kind: BookTime}
+	case "k":
+		return keyAction{Kind: AddComment}
 	}
 	return keyAction{}
 }
@@ -518,13 +522,17 @@ func (m Model) ticketBindings() []binding {
 		return nil
 	}
 	out := []binding{{NextArea, uitext.TabKey, uitext.NextAreaHelp}}
-	switch {
+	switch stops := len(d.stops()); {
 	case !d.arrowsSelect():
 		out = append(out, binding{Up, uitext.UpDownKey, uitext.ScrollHelp})
-	case d.area == areaComments:
-		out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentHelp})
 	case d.area == areaAttachments:
 		out = append(out, binding{Up, uitext.UpDownKey, uitext.FileHelp})
+	case stops > len(d.record.Posts):
+		// The help says what the page has, not where the cursor stands: it
+		// does not change on every move.
+		out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentOrFileHelp})
+	default:
+		out = append(out, binding{Up, uitext.UpDownKey, uitext.CommentHelp})
 	}
 	if _, _, ok := m.fileTarget(); ok {
 		out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenFileHelp})
@@ -548,6 +556,9 @@ func (m Model) ticketBindings() []binding {
 	out = append(out, m.xBinding()...)
 	if _, ok := m.bookTarget(); ok {
 		out = append(out, binding{BookTime, uitext.BookKey, uitext.BookHelp})
+	}
+	if _, ok := m.commentTarget(); ok {
+		out = append(out, binding{AddComment, uitext.AddCommentKey, uitext.AddCommentHelp})
 	}
 	out = append(out, m.dBinding()...)
 	return append(out, binding{PageUp, uitext.PageUpDownKey, uitext.PageScrollHelp})

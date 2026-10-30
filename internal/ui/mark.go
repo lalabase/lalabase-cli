@@ -192,28 +192,9 @@ func (a *app) markBlocks(notification string) bool {
 	case markRunning, markConfirmed:
 		return true
 	case markUnknown:
-		return a.clarifying(op)
+		return a.clarifying(op.clarifiers)
 	}
 	return false
-}
-
-// clarifying: one of the reads issued for the operation's outcome is still
-// out for somebody. A read the person canceled since (a page turn, another
-// inbox) clears nothing up any more.
-func (a *app) clarifying(op *markOp) bool {
-	for _, id := range op.clarifiers {
-		if w := a.waiters[id]; w != nil && !w.canceled {
-			return true
-		}
-	}
-	return false
-}
-
-// touchedResources are the inbox variants a write on a notification of
-// org changes: the organisation's own inbox and the inbox of all
-// organisations, every page of each.
-func (a *app) touchedResources(op *markOp) []cache.Key {
-	return []cache.Key{a.inboxKey(op.org, 1).Resource(), a.inboxKey("", 1).Resource()}
 }
 
 // markRead is r: the target captured, the lock set, the command made. The
@@ -274,40 +255,33 @@ func (m Model) receiveMark(r gateway.MarkReadResult) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// afterMark follows a confirmed write and an unknown outcome alike: the
-// inbox variants the write touched leave the cache and their epochs move
-// on, so a read begun before brings nothing old back; their counters are
-// unknown until the server says; then the counters and the page shown are
-// read again, each once, the person's priority. The ticket, if one is
-// shown, stays as it is: the answer to a write replaces no record.
+// afterMark follows a confirmed write and an unknown outcome alike
+// (rereadInbox). The ticket, if one is shown, stays as it is: the answer to a
+// write replaces no record.
 func (a *app) afterMark(op *markOp) tea.Cmd {
 	if a.expired || a.scope == nil {
 		return nil
 	}
-	now := a.now()
-	for _, res := range a.touchedResources(op) {
-		a.cancelResource(res)
-		a.store.Apply(res, cache.Remove, nil, now)
-		a.scope.Invalidate(res)
-	}
-	a.counters[op.org] = count{seq: a.counters[op.org].seq}
+	read, issued := a.issuedBy(func() tea.Cmd { return tea.Batch(a.rereadInbox(op.org)...) })
+	// The reads just issued are the operation's clarifiers.
+	op.clarifiers = issued
+	return read
+}
+
+// rereadInbox follows a write that changed the unread rows of org: the
+// organisation's inbox and the inbox of all organisations, every page of
+// each, leave the cache; their counters are unknown until the server says;
+// the counters and the page shown are read again, each once, the person's
+// priority.
+func (a *app) rereadInbox(org string) []tea.Cmd {
+	a.dropResources(a.inboxKey(org, 1).Resource(), a.inboxKey("", 1).Resource())
+	a.counters[org] = count{seq: a.counters[org].seq}
 	a.global = count{seq: a.global.seq}
-	before := make(map[gateway.Waiter]bool, len(a.waiters))
-	for id := range a.waiters {
-		before[id] = true
-	}
 	cmds := []tea.Cmd{a.issueCounters()}
-	if v := a.active; v != nil && (v.org == op.org || v.org == "") {
+	if v := a.active; v != nil && (v.org == org || v.org == "") {
 		cmds = append(cmds, a.refreshActive())
 	}
-	// The reads just issued are the operation's clarifiers.
-	op.clarifiers = nil
-	for id := range a.waiters {
-		if !before[id] {
-			op.clarifiers = append(op.clarifiers, id)
-		}
-	}
-	return tea.Batch(cmds...)
+	return cmds
 }
 
 // cancelResource cancels every read of the resource still out: its answer
@@ -408,7 +382,7 @@ func (a *app) markText(notification string, unread bool) string {
 		case markConfirmed:
 			return uitext.Inline(uitext.Marked).String()
 		case markUnknown:
-			if a.clarifying(op) {
+			if a.clarifying(op.clarifiers) {
 				return uitext.Inline(uitext.MarkUnknownRefreshing).String()
 			}
 			return uitext.Inline(uitext.MarkUnknown).String()

@@ -119,7 +119,7 @@ var ticketView = []string{"tickets", "tickets_search", "ticket", "ticket_posts_p
 // ticket view over REST, feature by feature; one before R1 (its /me of
 // API 1.2.0 recorded beside the tests) or before R0 (no capabilities)
 // keeps the tools. Every other feature takes the tools whatever the
-// server lists.
+// server lists, but the two writes with a test of their own.
 func TestTheTicketViewTakesTheRESTWayWithTheCapabilitiesOfR1(t *testing.T) {
 	tools, _ := contractTools(t)
 	caps := contractCapabilities(t)
@@ -145,7 +145,7 @@ func TestTheTicketViewTakesTheRESTWayWithTheCapabilitiesOfR1(t *testing.T) {
 		rest  map[string]Way // the features over REST; every other one is on over MCP
 		off   []string
 	}{
-		{"the contract's /me (API 1.7.0)", tools, caps, rest(ticketView...), nil},
+		{"the contract's /me (API 1.8.0)", tools, caps, rest(ticketView...), nil},
 		{"a /me of API 1.2.0, before R1", tools, meCapabilities(t, "testdata/me_1.2.0.json"), nil, nil},
 		{"no capabilities, before R0", tools, nil, nil, nil},
 		{"without tickets.paging", tools, without("tickets.paging"), nil, nil},
@@ -160,8 +160,8 @@ func TestTheTicketViewTakesTheRESTWayWithTheCapabilitiesOfR1(t *testing.T) {
 	for _, tc := range cases {
 		report := Detect(contractServer, tc.tools, tc.caps)
 		for _, f := range All {
-			if f.Name == bookFeature {
-				continue // TestABookingTakesTheRESTWayAlone
+			if f.Name == bookFeature || f.Name == commentFeature {
+				continue // TestABookingTakesTheRESTWayAlone, TestACommentTakesRESTOrTheToolWithItsFormat
 			}
 			off := slices.Contains(tc.off, f.Name)
 			if report.Enabled[f.Name] == off {
@@ -252,17 +252,48 @@ func TestCapabilitiesChangeNothingForTheOtherFeatures(t *testing.T) {
 	a := Detect(contractServer, tools, contractCapabilities(t))
 	b := Detect(contractServer, tools, nil)
 	for _, f := range All {
-		if slices.Contains(ticketView, f.Name) || f.Name == bookFeature {
+		if slices.Contains(ticketView, f.Name) || f.Name == bookFeature || f.Name == commentFeature {
 			if len(f.Capabilities) == 0 {
 				t.Errorf("%s names no capability", f.Name)
 			}
 			continue
 		}
 		if len(f.Capabilities) > 0 {
-			t.Errorf("%s names capabilities %v; K1 switched the ticket view, K6 added the booking, nothing else", f.Name, f.Capabilities)
+			t.Errorf("%s names capabilities %v; K1 switched the ticket view, K6 added the booking, K3a the comment, nothing else", f.Name, f.Capabilities)
 		}
 		if a.Enabled[f.Name] != b.Enabled[f.Name] || a.Via[f.Name] != b.Via[f.Name] || !slices.Equal(a.Missing[f.Name], b.Missing[f.Name]) {
 			t.Errorf("%s differs: %v/%v/%v and %v/%v/%v", f.Name, a.Enabled[f.Name], a.Via[f.Name], a.Missing[f.Name], b.Enabled[f.Name], b.Via[f.Name], b.Missing[f.Name])
+		}
+	}
+}
+
+// commentFeature is the feature of a comment in plain text (K3a).
+const commentFeature = "comment_plain"
+
+// K3a: a comment takes REST when /me lists posts.plain, whatever the tools
+// say; without it the tool, once its schema has format; without both there is
+// none: escaping the text here would be a second copy of the server's
+// converter.
+func TestACommentTakesRESTOrTheToolWithItsFormat(t *testing.T) {
+	tools, _ := contractTools(t)
+	caps := contractCapabilities(t)
+	noPlain := slices.DeleteFunc(slices.Clone(caps), func(c string) bool { return c == "posts.plain" })
+	noTool := slices.DeleteFunc(slices.Clone(tools), func(tool transport.Tool) bool { return tool.Name == "post_comment" })
+	for _, tc := range []struct {
+		name  string
+		tools []transport.Tool
+		caps  []string
+		on    bool
+		via   Way
+	}{
+		{"posts.plain and the tool", tools, caps, true, REST},
+		{"posts.plain, the tool gone", noTool, caps, true, REST},
+		{"the tool, no posts.plain", tools, noPlain, true, MCP},
+		{"neither", noTool, noPlain, false, MCP},
+	} {
+		report := Detect(contractServer, tc.tools, tc.caps)
+		if report.Enabled[commentFeature] != tc.on || report.Via[commentFeature] != tc.via {
+			t.Errorf("%s: on %v via %v (missing %v)", tc.name, report.Enabled[commentFeature], report.Via[commentFeature], report.Missing[commentFeature])
 		}
 	}
 }

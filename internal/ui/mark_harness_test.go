@@ -56,15 +56,11 @@ func (f *fakes) MarkNotificationRead(ctx context.Context, id, key string) (api.N
 	return answer(id, key)
 }
 
-// The writes of C2 (C2a): the gateway's Source names them, the model does
-// not call them yet. They answer a refusal, so a test that reaches one by
-// mistake sees it.
+// The change of a ticket (C2a): the gateway's Source names it, the model does
+// not call it yet. It answers a refusal, so a test that reaches it by mistake
+// sees it.
 func (f *fakes) UpdateTicket(context.Context, string, string, api.TicketChange, string) (api.TicketRow, transport.Answer) {
 	return api.TicketRow{}, transport.Answer{Class: transport.Refused, Message: "not in C2a", Sent: true}
-}
-
-func (f *fakes) PostComment(context.Context, string, string, string, api.CommentOptions, string) (api.Comment, transport.Answer) {
-	return api.Comment{}, transport.Answer{Class: transport.Refused, Message: "not in C2a", Sent: true}
 }
 
 // markCalls are the attempts so far.

@@ -668,20 +668,30 @@ func (f *Fixture) postComment(w http.ResponseWriter, r *http.Request, args map[s
 	}
 	private := args["is_private"] == true || args["is_private"] == "true"
 	f.mu.Lock()
+	result := copyMap(f.addComment(id, key, text, body, private))
+	delete(result, "body_html")
+	f.remember(key, args, result)
+	f.mu.Unlock()
+	f.answerWrite(w, r, reply, req, result)
+}
+
+// addComment files a comment of the person of /me on a ticket, on either
+// way: the ticket is touched, and the author's unread rows that name it are
+// read (core #989). Called with f.mu held.
+func (f *Fixture) addComment(id, key, text, html string, private bool) map[string]any {
 	f.nextPost++
 	post := map[string]any{
 		"id":         fmt.Sprintf("00000000-0000-4000-8000-%012d", 900000+f.nextPost),
 		"ticket_id":  id,
 		"author":     map[string]any{"id": f.meID, "name": f.people[f.meID]},
 		"body_text":  text,
-		"body_html":  body,
+		"body_html":  html,
 		"is_private": private,
 		"created_at": writeStamp,
 	}
 	e := f.edit(id)
 	e.posts = append(e.posts, post)
 	e.row["updated_at"] = writeStamp
-	// Core #989: the author's unread rows that name the ticket are read.
 	for _, org := range []string{OrgA, OrgB} {
 		for _, row := range f.rows[org] {
 			ticket, _ := row["ticket"].(map[string]any)
@@ -691,11 +701,7 @@ func (f *Fixture) postComment(w http.ResponseWriter, r *http.Request, args map[s
 		}
 	}
 	f.mutations = append(f.mutations, Mutation{Kind: MutationComment, Ticket: id, Key: key})
-	result := copyMap(post)
-	delete(result, "body_html")
-	f.remember(key, args, result)
-	f.mu.Unlock()
-	f.answerWrite(w, r, reply, req, result)
+	return post
 }
 
 // recordedPeople reads the people the fixture knows (the person of /me,

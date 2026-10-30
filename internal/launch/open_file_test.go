@@ -15,11 +15,16 @@ import (
 // C10: Enter on a file of the ticket opens it in the browser, on the
 // core's file proxy, at an address built here from the profile's server
 // and two checked ids. No string of a server's answer becomes an address.
+// C12: a comment's file too; the word of the path comes from the file's
+// kind, the client's own, never from an answer.
 
 const (
 	fileOrg = "00000000-0000-4000-8000-000000000001"
 	fileDoc = "00000000-0000-4000-8000-000000000002"
 )
+
+// ticketFile is a file of the ticket with nothing else to it.
+var ticketFile = File{Kind: TicketFile, ID: fileDoc}
 
 func TestFileAddressIsBuiltFromTheServerAndTheIDs(t *testing.T) {
 	for _, tc := range []struct{ server, want string }{
@@ -28,9 +33,30 @@ func TestFileAddressIsBuiltFromTheServerAndTheIDs(t *testing.T) {
 		{"https://app.example.com:8443/base/", "https://app.example.com:8443/base/org/" + fileOrg + "/files/ticket_document/" + fileDoc},
 		{"http://localhost:3000", "http://localhost:3000/org/" + fileOrg + "/files/ticket_document/" + fileDoc},
 	} {
-		got, ok := fileAddress(tc.server, fileOrg, fileDoc)
+		got, ok := fileAddress(tc.server, fileOrg, TicketFile, fileDoc)
 		if !ok || got != tc.want {
 			t.Fatalf("%s: %q, %v", tc.server, got, ok)
+		}
+	}
+}
+
+func TestACommentsFileHasItsOwnWordInTheAddress(t *testing.T) {
+	for _, tc := range []struct{ server, want string }{
+		{"https://app.example.com", "https://app.example.com/org/" + fileOrg + "/files/post_document/" + fileDoc},
+		{"https://app.example.com:8443/base/", "https://app.example.com:8443/base/org/" + fileOrg + "/files/post_document/" + fileDoc},
+		{"http://localhost:3000", "http://localhost:3000/org/" + fileOrg + "/files/post_document/" + fileDoc},
+	} {
+		got, ok := fileAddress(tc.server, fileOrg, CommentFile, fileDoc)
+		if !ok || got != tc.want {
+			t.Fatalf("%s: %q, %v", tc.server, got, ok)
+		}
+	}
+}
+
+func TestFileAddressRefusesAKindItDoesNotKnow(t *testing.T) {
+	for _, kind := range []FileKind{0, CommentFile + 1, 255} {
+		if got, ok := fileAddress("https://app.example.com", fileOrg, kind, fileDoc); ok {
+			t.Fatalf("kind %d gave %q", kind, got)
 		}
 	}
 }
@@ -38,15 +64,17 @@ func TestFileAddressIsBuiltFromTheServerAndTheIDs(t *testing.T) {
 func TestFileAddressRefuses(t *testing.T) {
 	bad := []string{"", "a", "..", "../..", "a/b", "a%2fb", "a\nb", "a b", "a?b", "a#b", fileDoc + "/", fileDoc + "\n", " " + fileDoc, "-" + fileDoc[1:] + "/x"}
 	for _, id := range bad {
-		if got, ok := fileAddress("https://app.example.com", fileOrg, id); ok {
-			t.Fatalf("document %q gave %q", id, got)
-		}
-		if got, ok := fileAddress("https://app.example.com", id, fileDoc); ok {
-			t.Fatalf("organisation %q gave %q", id, got)
+		for _, kind := range []FileKind{TicketFile, CommentFile} {
+			if got, ok := fileAddress("https://app.example.com", fileOrg, kind, id); ok {
+				t.Fatalf("document %q gave %q", id, got)
+			}
+			if got, ok := fileAddress("https://app.example.com", id, kind, fileDoc); ok {
+				t.Fatalf("organisation %q gave %q", id, got)
+			}
 		}
 	}
 	for _, server := range []string{"", "file:///etc", "javascript:alert(1)", "ftp://example.com", "x-app://open", "example.com", "HTTPS://", "https://", "http://"} {
-		if got, ok := fileAddress(server, fileOrg, fileDoc); ok {
+		if got, ok := fileAddress(server, fileOrg, CommentFile, fileDoc); ok {
 			t.Fatalf("server %q gave %q", server, got)
 		}
 	}
@@ -93,7 +121,7 @@ func openDone(t *testing.T, l *Launcher, f File) Done {
 
 func TestOpenFileStartsTheOpenerWithOneArgument(t *testing.T) {
 	l, calls := openLauncher(t, Config{}, nil)
-	d := openDone(t, l, File{ID: fileDoc, Name: "shot.png"})
+	d := openDone(t, l, File{Kind: TicketFile, ID: fileDoc, Name: "shot.png"})
 	if d.Kind != FileOpened || d.Action != OpenFileAction || d.Ref != 7 || d.Detail != "shot.png" || d.Ticket.ID != "tid" {
 		t.Fatalf("done = %+v", d)
 	}
@@ -106,9 +134,24 @@ func TestOpenFileStartsTheOpenerWithOneArgument(t *testing.T) {
 	}
 }
 
+func TestOpenFileHandsTheOpenerACommentsFile(t *testing.T) {
+	l, calls := openLauncher(t, Config{}, nil)
+	d := openDone(t, l, File{Kind: CommentFile, ID: fileDoc, Name: "shot.png"})
+	if d.Kind != FileOpened || d.Detail != "shot.png" {
+		t.Fatalf("done = %+v", d)
+	}
+	want := "https://app.example.com/org/" + fileOrg + "/files/post_document/" + fileDoc
+	if len(*calls) != 1 || len((*calls)[0].args) != 1 || (*calls)[0].args[0] != want {
+		t.Fatalf("calls = %+v", *calls)
+	}
+	if strings.Contains((*calls)[0].args[0], "secret-token") {
+		t.Fatal("the token is in the address")
+	}
+}
+
 func TestOpenFileNameNeverReachesTheAddress(t *testing.T) {
 	l, calls := openLauncher(t, Config{}, nil)
-	openDone(t, l, File{ID: fileDoc, Name: "evil.command"})
+	openDone(t, l, File{Kind: TicketFile, ID: fileDoc, Name: "evil.command"})
 	if strings.Contains((*calls)[0].args[0], "evil") {
 		t.Fatalf("args = %v", (*calls)[0].args)
 	}
@@ -116,8 +159,22 @@ func TestOpenFileNameNeverReachesTheAddress(t *testing.T) {
 
 func TestOpenFileWithABadIDStartsNothing(t *testing.T) {
 	l, calls := openLauncher(t, Config{}, nil)
-	if d := openDone(t, l, File{ID: "../x"}); d.Kind != NotHandedOver || d.Action != OpenFileAction {
-		t.Fatalf("done = %+v", d)
+	for _, kind := range []FileKind{TicketFile, CommentFile} {
+		if d := openDone(t, l, File{Kind: kind, ID: "../x"}); d.Kind != NotHandedOver || d.Action != OpenFileAction {
+			t.Fatalf("done = %+v", d)
+		}
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("calls = %+v", *calls)
+	}
+}
+
+func TestOpenFileWithoutAKnownKindStartsNothing(t *testing.T) {
+	l, calls := openLauncher(t, Config{}, nil)
+	for _, kind := range []FileKind{0, CommentFile + 1} {
+		if d := openDone(t, l, File{Kind: kind, ID: fileDoc}); d.Kind != NotHandedOver {
+			t.Fatalf("done = %+v", d)
+		}
 	}
 	if len(*calls) != 0 {
 		t.Fatalf("calls = %+v", *calls)
@@ -126,7 +183,7 @@ func TestOpenFileWithABadIDStartsNothing(t *testing.T) {
 
 func TestOpenFileOverSSHStartsNothing(t *testing.T) {
 	l, calls := openLauncher(t, Config{Remote: true}, nil)
-	if d := openDone(t, l, File{ID: fileDoc}); d.Kind != NoOpener {
+	if d := openDone(t, l, ticketFile); d.Kind != NoOpener {
 		t.Fatalf("done = %+v", d)
 	}
 	if len(*calls) != 0 {
@@ -137,7 +194,7 @@ func TestOpenFileOverSSHStartsNothing(t *testing.T) {
 func TestOpenFileWithoutAnOpener(t *testing.T) {
 	l, calls := openLauncher(t, Config{}, nil)
 	l.opener = func() (string, bool) { return "", false }
-	if d := openDone(t, l, File{ID: fileDoc}); d.Kind != NoOpener {
+	if d := openDone(t, l, ticketFile); d.Kind != NoOpener {
 		t.Fatalf("done = %+v", d)
 	}
 	if len(*calls) != 0 {
@@ -147,7 +204,7 @@ func TestOpenFileWithoutAnOpener(t *testing.T) {
 
 func TestOpenFileWhoseOpenerFails(t *testing.T) {
 	l, _ := openLauncher(t, Config{}, errors.New("exit status 1"))
-	if d := openDone(t, l, File{ID: fileDoc}); d.Kind != OpenFailed {
+	if d := openDone(t, l, ticketFile); d.Kind != OpenFailed {
 		t.Fatalf("done = %+v", d)
 	}
 }
@@ -161,7 +218,7 @@ func TestOpenFileHasADeadline(t *testing.T) {
 		<-ctx.Done()
 		return ctx.Err()
 	}
-	if d := openDone(t, l, File{ID: fileDoc}); d.Kind != NoAnswer {
+	if d := openDone(t, l, ticketFile); d.Kind != NoAnswer {
 		t.Fatalf("done = %+v", d)
 	}
 }
@@ -175,7 +232,7 @@ func TestOpenFileEndedWithTheSession(t *testing.T) {
 		<-ctx.Done()
 		return ctx.Err()
 	}
-	if d := l.openFile(1, Ticket{Org: fileOrg}, File{ID: fileDoc}); d.Kind != Canceled {
+	if d := l.openFile(1, Ticket{Org: fileOrg}, ticketFile); d.Kind != Canceled {
 		t.Fatalf("done = %+v", d)
 	}
 }
@@ -198,7 +255,7 @@ func TestAnOpenerThatLeavesAProgramBehindHasOpened(t *testing.T) {
 	l, _ := openLauncher(t, Config{}, nil)
 	l.runOpener = New(l.cfg).runOpener
 	l.opener = func() (string, bool) { return stub, true }
-	if d := openDone(t, l, File{ID: fileDoc}); d.Kind != FileOpened {
+	if d := openDone(t, l, ticketFile); d.Kind != FileOpened {
 		t.Fatalf("done = %+v", d)
 	}
 }

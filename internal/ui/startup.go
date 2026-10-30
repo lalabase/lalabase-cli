@@ -206,6 +206,9 @@ func (m *Model) expire() {
 	for _, op := range a.bookings {
 		op.cancel()
 	}
+	for _, op := range a.comments {
+		op.cancel()
+	}
 	confirmed := a.scope != nil
 	if confirmed {
 		// The store tells the journal: the namespace leaves the disk too.

@@ -32,7 +32,8 @@ the core's REST API when its `/me` lists the capabilities of the core's R1,
 and through the MCP tools on an older server; the screen is the same
 either way. M1 lays the ground for what a person writes: a box over the
 screen with input fields (see "The dialog"). Since K6 `b` on a ticket books
-time through it, the first write over REST (see "Booking time").
+time through it, the first write over REST (see "Booking time"), and since
+K3a `k` writes a comment (see "A comment").
 
 ## Setting up
 
@@ -85,8 +86,8 @@ navigation again.
   Code opened or ended) takes the path's place for 5 seconds, then the path
   is back. A notice of a problem or a wait (an expired session, a
   rate-limit pause, the disk cache, an `x` running or failed) stands beside
-  the path as long as its state holds. What became of a booking comes
-  first but for an expired session: it has a deadline and no second telling. A notice or hint that does not fit
+  the path as long as its state holds. What became of a booking or a comment
+  comes first but for an expired session: it has a deadline and no second telling. A notice or hint that does not fit
   takes the lines under it, from the panes,
   wrapped and whole. Only where that would leave the pane in focus no row
   is it cut, marked with "…". Its tone comes from the state it reports,
@@ -249,27 +250,35 @@ navigation again.
   creator, last change); every section's heading is bold and ends in a
   rule; a comment is its author in bold, its time faint, and its text
   indented below; an attachment's type, size and text status are faint.
-* **Opening a file (C10).** The client shows no images. In the section of
+* **Opening a file (C10, C12).** The client shows no images. In the section of
   attachments (`Tab`) the arrows select a file and `Enter` opens it in the
   default browser, on the server's own address for the file: the client
   builds that address from the profile's server and the ids, sends no request
-  for it, and the browser uses its own login. The client downloads nothing;
-  the server lets the browser show images (not SVG) and PDFs, and the
+  for it, and the browser uses its own login. A comment's files stand under
+  its text, each with its type and size, and come with the page. In the
+  comments the arrows walk a comment, its files, the next comment; `Enter` on
+  a file opens it the same way and on a comment does nothing, `e` on a file
+  expands its comment, and `b` and `x` act on the ticket from anywhere. A file
+  that leaves the page (another page, the other order, a refresh without it)
+  gives way to its comment, or to the page's first. The client downloads
+  nothing; the server lets the browser show images (not SVG) and PDFs, and the
   browser saves every other type. Logged out, the browser asks for the login and lands on
   the organisation's home, not on the file: `Enter` again opens it. Logged in
   as someone who may not read the file, it usually gets an empty 404. With
   `SSH_CONNECTION` set (a tmux started locally and attached over SSH does
   not have it), or without a program to open a browser (`open` on macOS, `xdg-open`
-  elsewhere), a notice says so and nothing starts. Only the ticket's own
-  files are listed: files of comments, and images inside a text, cannot be
-  opened yet. A server that sends no ids shows the names alone.
+  elsewhere), a notice says so and nothing starts. Images inside a text cannot
+  be opened yet. A server that sends no ids shows the names alone. A server
+  before REST API 1.8.0 sends a comment's count without its files, and a page
+  kept from one has no more: the comment says "2 files, not listed by this
+  server", with nothing to select.
 * **Paging the ticket (C1d).** `Tab` moves between the description, the
   comments and the attachments and brings the section's heading into
   sight; `[`/`]` turn the page of that section, `o` switches the comments
   between newest and oldest first (back to their page 1; the attachments'
-  page stays), `↑`/`↓` select a comment (kept by its id across a reload,
-  else the first). A text the server shortened ends with "Text shortened
-  by server"; `e` reads it whole: the description (`full_text`, with the
+  page stays), `↑`/`↓` select a comment or one of its files (kept by its id
+  across a reload, else the first comment). A text the server shortened
+  ends with "Text shortened by server"; `e` reads it whole: the description (`full_text`, with the
   options of the page asked) or the selected comment (`post_id`). One
   expansion at a time; it is a read of its own and replaces no page; `Esc`
   closes it first, without a request, and a late answer does not open it
@@ -376,6 +385,29 @@ navigation again.
     a quick loss a second press would be a second booking. The way on is
     `Esc`, looking at the time, and `b`, which is a new action with a new key
     once the read has landed.
+* **A comment (K3a).** `k` on the ticket in the focused pane opens the large
+  box: `Enter` breaks the line, `ctrl+s` sends, `Esc` closes. It is plain text
+  of up to 10,000 characters, and the server makes the markup: what you write
+  is what the comment says, less the blank lines around it. A text of blanks
+  sends nothing. It goes over REST when `/me` lists `posts.plain`, else
+  through `post_comment` with `format`; a server with neither, a read-only
+  token and a token that does not say have no `k`.
+  * **The draft.** `Esc` keeps the text with its ticket, in memory alone: `k`
+    brings it back. Quitting loses it, and so does an expired session: a new
+    login is a new program.
+  * **How it ends.** As a booking does: one operation per `ctrl+s`, a lock per
+    ticket and kind (a booking runs beside a comment, a second comment waits),
+    the ends told on the status line after `Esc`. Confirmed, when the answer
+    names the ticket and an id: the box and the draft go, the ticket shows its
+    first page of comments, newest first, with the comment selected, and the
+    ticket, the project's list and both inboxes leave the cache and are read
+    again, the counters unknown until then, since the server marks your rows
+    of the ticket read. A refusal or an unsent comment stands in the box, the
+    text kept; a refusal drops nothing from the cache.
+  * **When nobody knows.** The box holds and nothing is sent again. What a
+    confirmed comment reads is read, and `k` is back once those reads have
+    landed, with the text as a draft: sending it is a new action with a new
+    key, by a person who has seen the ticket as it stands.
 * **Claude Code beside the ticket (C7).** `x` in the ticket view (the
   focus on the ticket, the ticket shown whole) starts Claude Code with the
   ticket as its task. It gets the ticket's **address only**: a fixed German
@@ -716,7 +748,7 @@ navigation again.
   Without `full_text` and `post_id` there is no `e`; without the paging
   arguments no `[`/`]`/`o` in the ticket; each works without the other.
 * **The dialog (M1).** The box a person writes in, for the time booked on a
-  ticket first (`b`, see "Booking time"), then for a comment and a title. It
+  ticket first (`b`, see "Booking time"), for a comment (`k`), then for a title. It
   sends nothing by itself; what a send does is its user's. To see it with no
   server, run `tools/dialog-fixture` (below).
   * **How it looks.** A box in the frame of the focused pane, in the middle
@@ -928,15 +960,18 @@ navigation again.
 contract copy: two organisations, two pages of unread notifications for the
 first, rows without a project, a ticket or an actor among them; the first
 organisation's four recorded projects (the second has none), 30 tickets in
-Website-Relaunch (two pages; #1 is the recorded ticket, #2 has nothing, #3
+Website-Relaunch (two pages; #1 is the recorded ticket, its first comment
+with the recorded file, #2 has nothing, #3
 has 30 comments, #4 twelve attachments, #6 everything C1d pages and
 expands, #8 a description and a newest comment of 9,000 characters,
-longer than the pane shows), 3 in Handbuch, 5 in Archiv; the first organisation's rows name
+longer than the pane shows, #9 a comment of every kind of files: two
+files, a private comment's, a count without a list, an empty list beside
+a count), 3 in Handbuch, 5 in Archiv; the first organisation's rows name
 Website-Relaunch's tickets (row 6 names ticket #6), the second's name
 tickets the fixture does not have. It
 binds to 127.0.0.1 only, accepts one synthetic token (`inboxfixture.Token`)
-and refuses everything but the reads of C1 and the writes of C1f, C2 and
-K6.
+and refuses everything but the reads of C1 and the writes of C1f, C2, K6 and
+K3a.
 The ticket view is served on both ways (K1): its `/me` is the contract's,
 with R1's capabilities, so the client reads the list and the tickets over
 REST (`/api/v1/projects/:id/tickets`, `/api/v1/tickets/:id` with or
@@ -945,7 +980,8 @@ tickets as the tools' answers; `-before-r1` (`inboxfixture.BeforeR1`)
 serves a server before R1, whose `/me` lists the capabilities of API
 1.2.0 and whose REST ticket answers lack the status catalogue and the
 pages, and the client takes the tools. The scenarios of older servers
-(`older`, `s1-only`, `s2-only`) list no capabilities at all. Writes:
+(`older`, `s1-only`, `s2-only`) list no capabilities at all; these and
+`-before-r1` send a comment's count without its files. Writes:
 `mark_notification_read` (a marked row leaves the unread pages and the
 counts), `update_ticket` (one change per call, validated in the server's
 order with its texts and its trimming, ASCII and NUL as `String#strip`,
@@ -968,7 +1004,11 @@ before, the ticket, what the input lacks, the right, the duration; so an
 empty duration without the right is a 422 and a bad one a 403. It reads what
 the core's form lets through as the core's model does (`1,5x` is refused for
 its form, `0` for its minutes; of other text the form refuses the first
-message may differ) and keeps the minutes: the sum of `summarize_time_sessions` reads them afterwards. The
+message may differ) and keeps the minutes: the sum of `summarize_time_sessions` reads them afterwards. A
+comment over REST (K3a, `POST /api/v1/tickets/:id/posts`, only with R1's
+capabilities) keeps what `post_comment` keeps and answers in the core's order:
+the token, a key seen before, the ticket, the input, the right; a format other
+than plain is refused here, since this client writes no other. The
 fixture logs attempts (`Requests`), keys (`Keys`) and the changes it
 carried out (`Mutations`, with their kind) apart, for the tests. A tool a
 scenario took out of `tools/list` is unknown to the fixture, as to the
