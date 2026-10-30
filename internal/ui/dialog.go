@@ -113,10 +113,11 @@ func (m Model) openDialog(spec DialogSpec) Model {
 }
 
 // insert puts text into a field, on the field's terms; what does not fit is
-// said in the error line.
+// said in the error line, by the field's name: it may not be the active one.
 func (d *dialog) insert(field int, text string) {
 	if d.entries[field].Insert(text) {
-		d.cut = uitext.Fill(uitext.DialogCut, d.spec.Fields[field].Limit)
+		f := d.spec.Fields[field]
+		d.cut = uitext.Fill(uitext.DialogCut, f.Label.String(), f.Limit)
 	}
 }
 

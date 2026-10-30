@@ -70,10 +70,14 @@ func inspectDialogState(name string, file *ast.File) []string {
 		case *ast.AssignStmt:
 			for i, lhs := range n.Lhs {
 				sel, ok := lhs.(*ast.SelectorExpr)
-				if !ok || len(n.Rhs) != len(n.Lhs) {
+				if !ok {
 					continue
 				}
-				value, _ := n.Rhs[i].(*ast.Ident)
+				// Several values from one call name none of them.
+				var value *ast.Ident
+				if len(n.Rhs) == len(n.Lhs) {
+					value, _ = n.Rhs[i].(*ast.Ident)
+				}
 				switch {
 				case sel.Sel.Name == "dialog" && (value == nil || value.Name != "nil"):
 					findings = append(findings, name+": a dialog set outside "+dialogFile)
@@ -114,6 +118,9 @@ func TestTheDialogGuardSeesAWayIn(t *testing.T) {
 		"internal/ui/mark.go":    `package ui; func (m Model) press() Model { m.mode, m.dialog = Dialog, new(dialog); return m }`,
 		"internal/ui/agents.go":  `package ui; func (m Model) press() Model { m.mode = DialogLines; return m }`,
 		"internal/ui/inbox.go":   `package ui; func make() *dialog { return &dialog{} }`,
+		"internal/ui/status.go":  `package ui; func (m Model) press() Model { m.dialog = build(); return m }`,
+		"internal/ui/time.go":    `package ui; func (m Model) press() Model { m.dialog, err = build(); return m }`,
+		"internal/ui/counts.go":  `package ui; func make() *dialog { return new(dialog) }`,
 	} {
 		file, err := parser.ParseFile(token.NewFileSet(), name, source, 0)
 		if err != nil {

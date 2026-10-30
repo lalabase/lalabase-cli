@@ -164,12 +164,63 @@ func TestAMarkThatStandsOnNothingIsNotKept(t *testing.T) {
 	e.Home()
 	e.Insert("\u0301")
 	assertEntry(t, e, "ab", 0)
-	// One a deletion leaves without its letter is impossible (a grapheme
-	// goes whole), but a line break can go from under one that was kept.
-	e = filled(t, "a\nb", true)
-	e.Left()
-	e.Backspace()
-	assertEntry(t, e, "ab", 1)
+	// One a deletion leaves without its letter: a soft hyphen is a grapheme
+	// of its own, and goes when the letter before it does, the caret stays.
+	e = filled(t, "x\na\u00adb", true)
+	e.Move(-1)
+	e.Move(1)
+	e.Home()
+	e.Delete()
+	assertEntry(t, e, "x\nb", 2)
+	// Before and behind the caret at once: a line break typed before the
+	// hyphen orphans it, the caret keeps its place in what is left.
+	e = filled(t, "a\u00adb", true)
+	e.Home()
+	e.Right()
+	e.Insert("\n")
+	assertEntry(t, e, "a\nb", 2)
+}
+
+// What stands on nothing takes no room: it goes before the limit counts.
+func TestALoneMarkTakesNoRoomFromTheLimit(t *testing.T) {
+	e := New(5, false)
+	if e.Insert("\u0301abcde") {
+		t.Fatal("cut, though it fits")
+	}
+	assertEntry(t, e, "abcde", 5)
+	e = New(5, false)
+	if e.Insert(strings.Repeat("\u0301", 6) + "abc") {
+		t.Fatal("cut, though it fits")
+	}
+	assertEntry(t, e, "abc", 3)
+	// At the start of a line of its own, too; on a letter a mark counts.
+	e = New(5, true)
+	e.Insert("ab\n")
+	if e.Insert("\u0301\u0301cd") {
+		t.Fatal("cut, though it fits")
+	}
+	assertEntry(t, e, "ab\ncd", 5)
+	e = New(3, false)
+	e.Insert("ab")
+	if !e.Insert("\u0301\u0301") {
+		t.Fatal("a mark on a letter took no room")
+	}
+}
+
+// Whether a grapheme stands on nothing is a matter of what it is, not of how
+// a terminal counts it: a change of the width method takes nothing away.
+func TestAChangeOfTheWidthMethodDeletesNothing(t *testing.T) {
+	for _, text := range []string{"\U0001171Ex", "\u0cf3y", "\U0001D165z"} {
+		for _, first := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
+			e := New(100, false)
+			e.Size(40, 1, first)
+			e.Insert(text)
+			for _, method := range []ansi.Method{ansi.GraphemeWidth, ansi.WcWidth, ansi.GraphemeWidth} {
+				e.Size(40, 1, method)
+				assertEntry(t, e, text, utf8.RuneCountInString(text))
+			}
+		}
+	}
 }
 
 // A paste of nothing but lone marks costs its length once.

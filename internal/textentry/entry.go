@@ -21,6 +21,7 @@ package textentry
 import (
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
@@ -77,6 +78,10 @@ func (e *Entry) Value() string { return string(e.text) }
 // that does not fit: half a character is no text.
 func (e *Entry) Insert(text string) (cut bool) {
 	text = clean.Draft(text, e.multiline)
+	if e.caret == 0 || e.text[e.caret-1] == '\n' {
+		// What would stand on nothing takes no room.
+		text = strings.TrimLeftFunc(text, lone)
+	}
 	room := e.limit - len(e.text)
 	if utf8.RuneCountInString(text) > room {
 		text, cut = fitted(text, room), true
@@ -297,24 +302,27 @@ func (e *Entry) segment() {
 	e.clusters = append(e.clusters, cluster{start: start})
 }
 
-// dropLone takes the graphemes of no cells out of the text that stand on
-// nothing, at its start or a line's: a mark, a joiner or a selector with no
-// letter before it. The screen would show nothing of them, so they would
-// leave a field that looks empty and is not. Once through the text, however
-// many there are.
+// lone reports what stands on nothing without a letter before it: a mark
+// that takes no room of its own, a joiner, a selector, a soft hyphen. It goes
+// by what the character is, never by its cells, so that a terminal that
+// counts otherwise takes nothing out of a field.
+func lone(r rune) bool { return unicode.In(r, unicode.Mn, unicode.Me, unicode.Cf) }
+
+// dropLone takes out of the text what stands on nothing, at its start or a
+// line's. The screen would show nothing of it, so it would leave a field
+// that looks empty and is not. Once through the text, however many there are.
 func (e *Entry) dropLone() (dropped bool) {
 	kept := e.text[:0]
 	caret := e.caret
 	lineStart := true
 	for i, c := range e.clusters[:len(e.clusters)-1] {
 		runes := e.text[c.start:e.clusters[i+1].start]
-		newline := runes[0] == '\n'
-		if lineStart && c.cells == 0 && !newline {
+		if lineStart && lone(runes[0]) {
 			dropped = true
 			caret -= max(0, min(e.caret, c.start+len(runes))-c.start)
 			continue
 		}
-		lineStart = newline
+		lineStart = runes[0] == '\n'
 		kept = append(kept, runes...)
 	}
 	e.text, e.caret = kept, caret

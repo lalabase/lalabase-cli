@@ -446,21 +446,43 @@ func TestAPasteOverTheLimitSaysSo(t *testing.T) {
 	if got := dialogValues(m); got[0] != "xxxxx" {
 		t.Fatalf("value %q", got)
 	}
-	if text := boxed(m); !strings.Contains(text, "Cut at 5 characters") {
+	if text := boxed(m); !strings.Contains(text, "Duration cut at 5 characters") {
 		t.Fatalf("no notice:\n%s", text)
 	}
 	// A paste that fits (nothing, here) says nothing of the one before it.
 	m, _ = step(t, m, tea.PasteMsg{Content: "\u202e"})
-	if text := boxed(m); strings.Contains(text, "Cut at") {
+	if text := boxed(m); strings.Contains(text, "cut at") {
 		t.Fatalf("the notice outlived a paste:\n%s", text)
 	}
 	m, _ = step(t, m, tea.PasteMsg{Content: "more"})
-	if text := boxed(m); !strings.Contains(text, "Cut at 5 characters") {
+	if text := boxed(m); !strings.Contains(text, "Duration cut at 5 characters") {
 		t.Fatalf("no notice:\n%s", text)
 	}
 	m, _ = step(t, m, key(tea.KeyBackspace))
-	if text := boxed(m); strings.Contains(text, "Cut at") {
+	if text := boxed(m); strings.Contains(text, "cut at") {
 		t.Fatalf("the notice stayed:\n%s", text)
+	}
+}
+
+// What went wrong just now goes before what went wrong at the last send: a
+// cut stands over a refusal, and when it goes the refusal is there again.
+func TestACutStandsOverARefusal(t *testing.T) {
+	var l sendLog
+	spec := oneLineSpec(&l)
+	spec.Fields[0].Limit = 3
+	m := dialogModel(t, spec, 80, 24)
+	m = typeInto(t, m, "1")
+	m, _ = step(t, m, press("enter"))
+	m, _ = step(t, m, DialogOutcome{Dialog: m.dialog.id, Refusal: present.NewInline("Refused by the server")})
+	m, _ = step(t, m, tea.PasteMsg{Content: "too long"})
+	text := boxed(m)
+	if !strings.Contains(text, "Duration cut at 3 characters") || strings.Contains(text, "Refused by the server") {
+		t.Fatalf("after the paste:\n%s", text)
+	}
+	m, _ = step(t, m, key(tea.KeyBackspace))
+	text = boxed(m)
+	if strings.Contains(text, "cut at") || !strings.Contains(text, "Refused by the server") {
+		t.Fatalf("after the key:\n%s", text)
 	}
 }
 
@@ -485,11 +507,12 @@ func TestAPrefilledValueOverTheLimitSaysSo(t *testing.T) {
 	if got := dialogValues(m); got[1] != "too " {
 		t.Fatalf("value %q", got)
 	}
-	if text := boxed(m); !strings.Contains(text, "Cut at 4 characters") {
+	// The notice names the field: the focus is on another one.
+	if text := boxed(m); !strings.Contains(text, "Note cut at 4 characters") {
 		t.Fatalf("no notice:\n%s", text)
 	}
 	m = typeInto(t, m, "3")
-	if text := boxed(m); strings.Contains(text, "Cut at") {
+	if text := boxed(m); strings.Contains(text, "cut at") {
 		t.Fatalf("the notice stayed:\n%s", text)
 	}
 }

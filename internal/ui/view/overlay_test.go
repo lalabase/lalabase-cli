@@ -191,13 +191,17 @@ func TestALowLargeBoxGivesWayInOrder(t *testing.T) {
 // The last line of the screen stays the screen's: it names ctrl+c, the one
 // key the box does not.
 func TestTheBoxLeavesTheLastLineFree(t *testing.T) {
+	long := strings.Repeat("The server refused this. ", 12)
 	for _, d := range []present.Dialog{smallDialog(), largeDialog()} {
-		for height := 8; height <= 42; height++ {
-			for width := 24; width <= 130; width += 7 {
-				box := dialogBox(d, sizeOf(width, height), ansi.WcWidth)
-				y := (height - len(box)) / 2
-				if y+len(box) > height-1 {
-					t.Fatalf("%dx%d: %d lines from line %d", width, height, len(box), y)
+		for _, text := range []string{"", "Refused.", long} {
+			d.Error, d.ErrorStyle = inlineOf(text), present.NoticeProblem
+			for height := 8; height <= 42; height++ {
+				for width := 24; width <= 130; width += 7 {
+					box := dialogBox(d, sizeOf(width, height), ansi.WcWidth)
+					y := (height - len(box)) / 2
+					if y+len(box) > height-1 {
+						t.Fatalf("%dx%d with %q: %d lines from line %d", width, height, text, len(box), y)
+					}
 				}
 			}
 		}

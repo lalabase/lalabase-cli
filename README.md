@@ -638,9 +638,9 @@ navigation again.
     (bracketed paste), so a line break in it sends nothing; a terminal
     without bracketed paste types it, `Enter` included. Each field has a
     limit in runes: what does not fit is left out from the first grapheme
-    that does not, and the error line says "Cut at 200 characters" until the
-    next key, for a value a field starts with too. A ticket's title in the
-    top border and a server's text in the
+    that does not, and the error line says "Note cut at 200 characters"
+    until the next key, for a value a field starts with too. A ticket's
+    title in the top border and a server's text in the
     error line are foreign text and are cleaned on their way there.
   * **Sending.** The dialog keeps the ticket it was opened on: a reload that
     moves the selection behind the box does not change where a send goes.

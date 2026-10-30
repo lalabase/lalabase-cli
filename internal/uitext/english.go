@@ -473,7 +473,7 @@ var english = map[ID]string{
 	// M1: the box's title, the caret of the active field, what stands in
 	// the box's error line, and the keys of a field.
 	DialogTitle: "%s · #%d %s", DialogCaret: "\u258f",
-	DialogSending: "Sending\u2026", DialogRefused: "Not sent", DialogCut: "Cut at %d characters",
+	DialogSending: "Sending\u2026", DialogRefused: "Not sent", DialogCut: "%s cut at %d characters",
 	SendKey: "ctrl+s", SendHelp: "send", NextFieldHelp: "next field", NewLineHelp: "new line",
 	Unlisted: "(not listed)",
 }
