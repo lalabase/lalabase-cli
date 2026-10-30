@@ -1217,6 +1217,17 @@ func TestHelpNamesExactlyTheKeysThatActInTheTicketsSection(t *testing.T) {
 	check(t, "projects, chooser focused", func() *harness { h := projects(); h.m.focus = view.Navigation; return h })
 	check(t, "no projects", func() *harness { h := newHarness(t); h.start(); h.drive(h.chooseTickets(orgB)); return h })
 	check(t, "tickets page 1", tickets)
+	grouped := func() *harness {
+		h := tickets()
+		h.drive(h.press("g"))
+		return h
+	}
+	check(t, "grouped, on a row", grouped)
+	check(t, "grouped, on a head", func() *harness {
+		h := grouped()
+		h.m.app.tickets.selected, h.m.app.tickets.heading = "", h.m.app.tickets.groups[0].name
+		return h
+	})
 	check(t, "tickets page 2", func() *harness { h := tickets(); h.drive(h.press("]")); return h })
 	check(t, "tickets, object focused, nothing shown", func() *harness { h := tickets(); h.m.focus = view.Object; return h })
 	check(t, "tickets, preview shown", previewed)

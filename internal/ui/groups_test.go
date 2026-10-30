@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gboyke/lalabase-cli/internal/api"
+	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
@@ -216,7 +217,7 @@ func TestAGroupPagesAloneAndTheOtherGroupsKeepTheirPage(t *testing.T) {
 	first := v.group(v.groups[0].key)
 	h.drive(h.press("]"))
 	g := v.groups[1]
-	if g.page() != 2 || len(g.rows) != 5 || first.page() != 1 || v.page != 1 {
+	if g.page() != 2 || len(g.rows) != 5 || first.page() != 1 || len(first.rows) != 2 || v.page != 1 {
 		t.Fatalf("group page %d with %d rows, the first %d, the list %d", g.page(), len(g.rows), first.page(), v.page)
 	}
 	if got := statusReads(h); got[len(got)-1] != "new:2" || len(got) != 5 {
@@ -315,7 +316,7 @@ func TestAFailedGroupSaysSoAndTheOthersStayUsable(t *testing.T) {
 			})
 			h.drive(h.press("g"))
 			v := h.m.app.tickets
-			if got := rowOf(h, "new"); !got.Heading || got.Note.String() == "" {
+			if got := rowOf(h, "new"); !got.Heading || !strings.Contains(got.Note.String(), " · ") {
 				t.Fatalf("the failed group: %+v", got)
 			}
 			if len(v.groups[0].rows) != 2 {
@@ -490,6 +491,343 @@ func TestAHostileStatusIsCleaned(t *testing.T) {
 	screen := h.m.View().Content
 	if strings.ContainsAny(screen, "\u202e\x07") {
 		t.Fatalf("not cleaned: %q", screen)
+	}
+}
+
+// baseFirst feeds the list's own answer before the groups', the order that
+// makes a shrink of the list land while their reads are out.
+func baseFirst(msgs []tea.Msg) []tea.Msg {
+	slices.SortStableFunc(msgs, func(a, b tea.Msg) int {
+		rank := func(m tea.Msg) int {
+			if r, ok := m.(gateway.TicketsResult); ok && r.Key.Status == "" {
+				return 0
+			}
+			return 1
+		}
+		return rank(a) - rank(b)
+	})
+	return msgs
+}
+
+// A ticket that moved stands in two groups while one of them is old. It is
+// drawn once, where the newer read has it, and the cursor passes it.
+func TestATicketInTwoGroupsIsDrawnOnceAndTheCursorPassesIt(t *testing.T) {
+	t.Parallel()
+	h, s := groupHarness(t)
+	h.drive(h.press("g"))
+	moved := s.rows[30] // the first in_progress
+	done := "new"
+	s.rows[30].Status, s.rows[30].StatusFunctions = &done, []string{"is_new"}
+	s.rows = append(s.rows[:30:30], append([]api.TicketRow{}, s.rows[30:]...)...)
+	slices.SortStableFunc(s.rows, func(a, b api.TicketRow) int { return b.Number - a.Number })
+	answer := s.answer
+	h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+		if q.Status == "in_progress" {
+			return failing(transport.Temporary, 503)
+		}
+		return answer(q)
+	})
+	h.drive(h.press("R"))
+	lines, count := h.m.app.tickets.entries(), 0
+	for _, l := range lines {
+		if l.row != groupHead && l.group.rows[l.row].ID == moved.ID {
+			count++
+			if l.group.name != "new" {
+				t.Fatalf("drawn in %q", l.group.name)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("the ticket stands %d times", count)
+	}
+	seen := map[int]bool{}
+	for range 60 {
+		h.drive(h.press("down"))
+		seen[h.m.ticketsColumn().Cursor] = true
+	}
+	if len(seen) < len(lines)-3 {
+		t.Fatalf("the cursor reached %d of %d lines", len(seen), len(lines))
+	}
+}
+
+func TestAGroupWhoseReloadFailedSaysItMayBeOld(t *testing.T) {
+	t.Parallel()
+	h, s := groupHarness(t)
+	h.drive(h.press("g"))
+	h.f.setTickets(func(q api.TicketQuery) transport.Answer {
+		if q.Status == "new" {
+			return failing(transport.Temporary, 503)
+		}
+		return s.answer(q)
+	})
+	h.drive(h.press("R"))
+	if note := rowOf(h, "new").Note.String(); !strings.Contains(note, "stale") {
+		t.Fatalf("the head says %q", note)
+	}
+	if note := rowOf(h, "in_progress").Note.String(); strings.Contains(note, "stale") {
+		t.Fatalf("the other head says %q", note)
+	}
+}
+
+// The chronological list was read again meanwhile: the groups are older
+// than its total, and g reads them.
+func TestGAfterAChronologicalReloadReadsTheGroupsAgain(t *testing.T) {
+	t.Parallel()
+	h, s := groupHarness(t)
+	h.drive(h.press("g"))
+	h.drive(h.press("g"))
+	s.add(strPtr("new"), []string{"is_new"}, 5)
+	h.drive(h.press("R"))
+	h.drive(h.press("g"))
+	c := h.m.ticketsColumn()
+	if end := c.Rows[len(c.Rows)-1].Primary.String(); strings.Contains(end, "without a listed") {
+		t.Fatalf("a rest of old groups: %q", end)
+	}
+	if !strings.Contains(rowOf(h, "new").Note.String(), "35") {
+		t.Fatalf("the head: %q", rowOf(h, "new").Note.String())
+	}
+}
+
+func TestAShrinkOfTheListReadsTheGroupsAgain(t *testing.T) {
+	t.Parallel()
+	shrink := func(t *testing.T, keep int) (*harness, []tea.Cmd) {
+		t.Helper()
+		h, s := groupHarness(t)
+		h.drive(h.press("]"))
+		h.drive(h.press("g"))
+		s.rows = s.rows[:keep]
+		return h, h.feed(baseFirst(messages(h.t, h.press("R")))...)
+	}
+	t.Run("to nothing", func(t *testing.T) {
+		t.Parallel()
+		h, cmds := shrink(t, 0)
+		h.drive(cmds...)
+		if v := h.m.app.tickets; v.groups[1].total != 0 || v.groups[1].loading {
+			t.Fatalf("the group kept %d", v.groups[1].total)
+		}
+	})
+	t.Run("to one page", func(t *testing.T) {
+		t.Parallel()
+		h, cmds := shrink(t, 10)
+		h.drive(cmds...)
+		if v := h.m.app.tickets; v.page != 1 || v.groups[1].total != 10 {
+			t.Fatalf("page %d, the group kept %d", v.page, v.groups[1].total)
+		}
+	})
+	t.Run("a second time", func(t *testing.T) {
+		t.Parallel()
+		h, s := groupHarness(t)
+		s.add(strPtr("new"), []string{"is_new"}, 40) // 74 rows, three pages
+		h.drive(h.press("R"))
+		h.drive(h.press("]"))
+		h.drive(h.press("]"))
+		h.drive(h.press("g"))
+		s.rows = s.rows[:30]
+		correction := h.feed(baseFirst(messages(h.t, h.press("R")))...)
+		s.rows = s.rows[:10]
+		h.drive(correction...)
+		v := h.m.app.tickets
+		if v.err.String() == "" || v.groups[1].total != 10 {
+			t.Fatalf("%q, the group kept %d", v.err.String(), v.groups[1].total)
+		}
+	})
+}
+
+// The list's page is out of sight while grouped: its shrink closes nothing.
+func TestAShrinkOfTheHiddenPageLeavesTheOpenTicket(t *testing.T) {
+	t.Parallel()
+	h, s := groupHarness(t)
+	h.drive(h.press("]"))
+	h.drive(h.press("g"))
+	v := h.m.app.tickets
+	toHead(h, "new")
+	h.drive(h.press("down"))
+	h.drive(h.press("enter"))
+	opened := v.opened
+	if opened == "" {
+		t.Fatal("no ticket opened")
+	}
+	h.m.focus = view.List
+	s.rows = slices.DeleteFunc(s.rows, func(r api.TicketRow) bool { return r.Number > 2 && r.Number <= 30 })
+	h.drive(h.press("R"))
+	if v.opened != opened || v.page != 1 {
+		t.Fatalf("opened %q, page %d", v.opened, v.page)
+	}
+}
+
+func TestTurningAGroupKeepsATicketOfAnotherGroupOpen(t *testing.T) {
+	t.Parallel()
+	h, s := groupHarness(t)
+	s.add(strPtr("in_progress"), []string{"is_in_progress"}, 0)
+	h.drive(h.press("g"))
+	v := h.m.app.tickets
+	id := v.groups[1].rows[0].ID
+	other := v.groups[0].rows[0].ID
+	v.opened, v.selected = other, other
+	_ = id
+	toHead(h, "new")
+	v.opened = other
+	h.drive(h.press("]"))
+	if v.opened != other {
+		t.Fatal("the other group's ticket closed")
+	}
+	v.opened = v.groups[1].rows[0].ID
+	h.drive(h.press("["))
+	if v.opened != "" {
+		t.Fatal("the ticket of the page that left stayed open")
+	}
+}
+
+func TestARestOfEverythingDoesNotSayThereAreNoTickets(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	s := &groupServer{h: h, statuses: []string{"new"}}
+	s.add(nil, nil, 3)
+	h.f.setTickets(s.answer)
+	h.openTickets(website)
+	h.drive(h.press("g"))
+	c := h.m.ticketsColumn()
+	if c.Notice.String() != "" || !strings.Contains(c.Rows[len(c.Rows)-1].Primary.String(), "3 more") {
+		t.Fatalf("notice %q, %d rows", c.Notice.String(), len(c.Rows))
+	}
+}
+
+func TestASecondShrinkOfAGroupStopsAndROffersAgain(t *testing.T) {
+	t.Parallel()
+	h, s := groupHarness(t)
+	s.add(strPtr("new"), []string{"is_new"}, 40) // new: 70, three pages
+	h.drive(h.press("R"))
+	h.drive(h.press("g"))
+	v := h.m.app.tickets
+	toHead(h, "new")
+	h.drive(h.press("]"))
+	h.drive(h.press("]"))
+	g := v.groups[1]
+	keep := func(n int) {
+		kept := 0
+		s.rows = slices.DeleteFunc(s.rows, func(r api.TicketRow) bool {
+			if *r.Status != "new" {
+				return false
+			}
+			kept++
+			return kept > n
+		})
+	}
+	keep(30)
+	correction := h.feed(messages(h.t, h.press("R"))...)
+	keep(10)
+	h.drive(correction...)
+	if g.page() != 2 || g.err.String() == "" || len(g.rows) != 0 {
+		t.Fatalf("page %d, %q, %d rows", g.page(), g.err.String(), len(g.rows))
+	}
+	h.drive(h.press("R"))
+	if g.page() != 1 || g.err.String() != "" || len(g.rows) != 10 {
+		t.Fatalf("after R: page %d, %q, %d rows", g.page(), g.err.String(), len(g.rows))
+	}
+}
+
+func TestTwoSpellingsOfAStatusAreOneGroup(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	s := &groupServer{h: h, statuses: []string{"New", "new", ""}}
+	s.add(strPtr("new"), nil, 2)
+	h.f.setTickets(s.answer)
+	h.openTickets(website)
+	h.drive(h.press("g"))
+	if got := statusReads(h); len(got) != 1 {
+		t.Fatalf("reads %v", got)
+	}
+	if c := h.m.ticketsColumn(); strings.Contains(c.Rows[len(c.Rows)-1].Primary.String(), "without a listed") {
+		t.Fatal("a rest of none")
+	}
+}
+
+func TestAGroupInMemoryShowsAtOnce(t *testing.T) {
+	t.Parallel()
+	h, _ := groupHarness(t)
+	h.drive(h.press("g"))
+	h.drive(h.press("esc"))
+	h.drive(h.openProject(website))
+	cmd := h.press("g")
+	v := h.m.app.tickets
+	if len(v.groups) == 0 || !v.groups[0].known || !v.groups[0].cached {
+		t.Fatalf("not at once: %+v", v.groups)
+	}
+	h.drive(cmd)
+}
+
+func TestReloadingDoesNotReadAGroupTwice(t *testing.T) {
+	t.Parallel()
+	h, _ := groupHarness(t)
+	h.drive(h.press("g"))
+	before := len(statusReads(h))
+	first := h.press("R")
+	second := h.press("R")
+	h.drive(first, second)
+	if got := len(statusReads(h)) - before; got != 4 {
+		t.Fatalf("%d reads for two R", got)
+	}
+}
+
+func TestAnOpenTicketThatLeftEveryGroupCloses(t *testing.T) {
+	t.Parallel()
+	h, s := groupHarness(t)
+	h.drive(h.press("g"))
+	v := h.m.app.tickets
+	id := v.selected
+	v.opened = id
+	s.rows = slices.DeleteFunc(s.rows, func(r api.TicketRow) bool { return r.ID == id })
+	h.drive(h.press("R"))
+	if v.opened != "" || v.selected == id {
+		t.Fatalf("opened %q", v.opened)
+	}
+}
+
+func TestGBackLeavesTheHead(t *testing.T) {
+	t.Parallel()
+	h, _ := groupHarness(t)
+	h.drive(h.press("g"))
+	toHead(h, "new")
+	h.drive(h.press("g"))
+	if v := h.m.app.tickets; v.heading != "" || v.selected == "" {
+		t.Fatalf("heading %q, selected %q", v.heading, v.selected)
+	}
+}
+
+func TestAGroupsTitlesAreKnownToTheAgentsLine(t *testing.T) {
+	t.Parallel()
+	h, _ := groupHarness(t)
+	h.drive(h.press("]"))
+	h.drive(h.press("g"))
+	v := h.m.app.tickets
+	id := v.groups[0].rows[0].ID // on page 1 of the list at no time
+	text, _, ok := h.m.app.viewTitle(id)
+	if !ok || text != v.groups[0].rows[0].Title {
+		t.Fatalf("%q %v", text, ok)
+	}
+}
+
+func TestGroupKeysAreOfferedExactlyWhereTheyAct(t *testing.T) {
+	t.Parallel()
+	h, _ := groupHarness(t)
+	h.drive(h.press("g"))
+	has := func(kind Action) bool { return h.m.allowed()[kind] }
+	toHead(h, "new")
+	if !has(OpenList) || !has(Expand) || !has(NextPage) || has(PrevPage) {
+		t.Fatalf("on a head: %v", h.m.allowed())
+	}
+	h.drive(h.press("]"))
+	if !has(PrevPage) || has(NextPage) {
+		t.Fatalf("on the last page: %v", h.m.allowed())
+	}
+	h.drive(h.press("enter"))
+	if has(NextPage) || has(PrevPage) {
+		t.Fatalf("folded: %v", h.m.allowed())
+	}
+	h.drive(h.press("enter"))
+	h.drive(h.press("down"))
+	if has(Expand) && h.m.app.detail == nil {
+		t.Fatalf("on a row: %v", h.m.allowed())
 	}
 }
 

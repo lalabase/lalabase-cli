@@ -82,9 +82,25 @@ func (v *ticketsView) folded(g *ticketGroup) bool {
 	return g.done()
 }
 
-// entries are the lines the cursor can stand on, in order.
+// owners says which group holds a ticket: groups are read apart, so one
+// that moved stands in two until the older is read again, and the newer
+// read knows.
+func (v *ticketsView) owners() map[string]*ticketGroup {
+	out := map[string]*ticketGroup{}
+	for _, g := range v.groups {
+		for _, r := range g.rows {
+			if o := out[r.ID]; o == nil || g.flight > o.flight {
+				out[r.ID] = g
+			}
+		}
+	}
+	return out
+}
+
+// entries are the lines the cursor can stand on, in order, each ticket once.
 func (v *ticketsView) entries() []groupLine {
 	var out []groupLine
+	owners := v.owners()
 	for _, g := range v.groups {
 		if !g.shown() {
 			continue
@@ -93,8 +109,10 @@ func (v *ticketsView) entries() []groupLine {
 		if v.folded(g) {
 			continue
 		}
-		for i := range g.rows {
-			out = append(out, groupLine{g, i})
+		for i, r := range g.rows {
+			if owners[r.ID] == g {
+				out = append(out, groupLine{g, i})
+			}
 		}
 	}
 	return out
@@ -449,7 +467,7 @@ func (m Model) turnGroup(delta int) (Model, tea.Cmd) {
 	if target < 1 || (delta > 0 && (!g.known || target > lastPage(g.total, g.perPage))) {
 		return m, nil
 	}
-	if v.opened != "" {
+	if slices.ContainsFunc(g.rows, func(r api.TicketRow) bool { return r.ID == v.opened }) {
 		v.opened = ""
 		a.dropDetail()
 	}
@@ -495,7 +513,7 @@ func (v *ticketsView) groupsNotice(empty uitext.ID) present.Inline {
 	s := v.status
 	s.known = slices.ContainsFunc(v.groups, func(g *ticketGroup) bool { return g.known })
 	s.loading = s.loading || slices.ContainsFunc(v.groups, func(g *ticketGroup) bool { return g.loading })
-	return s.notice(empty, len(v.entries()) == 0)
+	return s.notice(empty, len(v.entries()) == 0 && v.rest() == 0)
 }
 
 // rest is the number of tickets no group holds: without a status, or with
@@ -522,8 +540,11 @@ func (v *ticketsView) groupHeadRow(g *ticketGroup) present.Row {
 	} else if last := lastPage(g.total, g.perPage); last > 1 {
 		note = append(note, uitext.Fill(uitext.PageOf, g.page(), last).String())
 	}
-	if text := g.err.String(); text != "" {
-		note = append(note, text)
+	switch {
+	case g.err.String() != "":
+		note = append(note, g.err.String())
+	case g.stale:
+		note = append(note, uitext.Inline(uitext.PossiblyStale).String())
 	}
 	return present.Row{
 		Heading:      true,

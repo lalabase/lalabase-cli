@@ -115,8 +115,6 @@ func (m Model) status() (present.Inline, present.Style) {
 		return a.bookNotice.text, a.bookNotice.tone
 	case a.groupNotice.until.After(a.now()):
 		return a.groupNotice.text, a.groupNotice.tone
-	case a.groupNotice.until.After(a.now()):
-		return a.groupNotice.text, a.groupNotice.tone
 	case a.agentsNoticeShown():
 		// Of the agents' notice and the launch's the newer shows: a
 		// launch's start and its answer clear the agents' notice.

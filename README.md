@@ -199,8 +199,11 @@ navigation again.
   tickets has none. A status that means done (`is_completed`, `is_closed`,
   from the rows, never from its name) starts folded; `Enter` or `e` on a
   head folds and opens. The cursor stands on heads and rows and stays on
-  its ticket through `g` when that ticket is shown. `/` searches in every
-  group, `R` reads them all again, a group that fails says so in its head
+  its ticket through `g` when that ticket is shown; after the chronological
+  list was read again, `g` reads the groups again too, and a ticket that
+  moved between two groups stands once, where the newer read has it. `/` searches in every
+  group, `R` reads them all again, a group that fails says so in its head,
+  one that keeps old rows as "Possibly stale",
   and leaves the others usable. Tickets without a status, or with one the
   project no longer lists, can be found by no status: once every group has
   landed, a faint last line counts them, and `g` shows them. A project

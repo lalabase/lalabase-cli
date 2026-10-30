@@ -750,6 +750,10 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 	case cache.Replace:
 		v.rows, v.total, v.perPage = r.Page.Data, r.Page.Meta.Total, r.Page.Meta.PerPage
 		v.statuses = r.Page.Meta.AvailableStatuses
+		if !v.grouped {
+			// Groups kept for the next g are now older than the total.
+			v.groups = nil
+		}
 		v.flight = uint64(r.Flight)
 		for _, row := range r.Page.Data {
 			a.learnTitle(row.ID, row.Title, uint64(r.Flight))
@@ -761,9 +765,12 @@ func (m Model) receiveTickets(r gateway.TicketsResult) (Model, tea.Cmd) {
 			// preview the person may be reading keeps it.
 			m.focus = view.List
 		}
-		synced := a.syncGroups()
+		// After the correction: a removal there refuses what began before.
 		m, cmd := m.correctTicketPage()
-		return m, tea.Batch(cmd, synced)
+		if synced := a.syncGroups(); synced != nil {
+			cmd = tea.Batch(cmd, synced, m.selectionChanged())
+		}
+		return m, cmd
 	case cache.Remove:
 		// The project is gone: every page, the ticket shown with it and
 		// the search line (a search of it would answer the same).
@@ -794,10 +801,17 @@ func (m Model) correctTicketPage() (Model, tea.Cmd) {
 	}
 	a.store.Apply(v.key, cache.Remove, nil, a.now())
 	a.scope.Invalidate(v.key)
-	a.dropDetail()
-	v.rows, v.selected, v.opened, v.offset = nil, "", "", 0
-	if m.focus == view.Object {
-		m.focus = view.List
+	if v.isGrouped() {
+		// The page is out of sight and the ticket shown is a group's. The
+		// groups' reads out were refused just now: reloadGroups starts anew.
+		a.cancelArea(gateway.Tickets)
+		v.rows = nil
+	} else {
+		a.dropDetail()
+		v.rows, v.selected, v.opened, v.offset = nil, "", "", 0
+		if m.focus == view.Object {
+			m.focus = view.List
+		}
 	}
 	if v.total == 0 {
 		v.page, v.key.Page = 1, 1
