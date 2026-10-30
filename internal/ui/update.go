@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -130,9 +131,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			if msg.Until.Equal(a.agents.noticeUntil) {
 				a.clearAgentsNotice()
 			}
-			if msg.Until.Equal(a.bookNotice.until) {
-				a.bookNotice = bookNotice{}
-			}
+			a.bookNotices = slices.DeleteFunc(a.bookNotices, func(n bookNotice) bool { return n.until.Equal(msg.Until) })
 			return m, a.agentsDue(msg.Until)
 		}
 		return m, nil

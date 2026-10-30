@@ -58,7 +58,10 @@ func bookingOf(path string) string {
 }
 
 // Ruby's to_i and to_f read the number a text starts with, sign included,
-// and stop at the first character that is none of it.
+// and stop at the first character that is none of it. That is enough for
+// what the form lets through and for a typo beside it; odd text the form
+// refuses anyway may get another first message here (underscores, a blank
+// after the colon, more digits than an int holds).
 var (
 	leadingInt   = regexp.MustCompile(`^[+-]?\d+`)
 	leadingFloat = regexp.MustCompile(`^[+-]?\d*(\.\d+)?`)

@@ -187,11 +187,12 @@ func TestTheNoticeOfABookingGoesAtItsDeadline(t *testing.T) {
 
 	h := bookingHarness(t)
 	h.sendBooking("30", "")()
-	until := h.m.app.bookNotice.until
-	if !until.After(h.now) {
-		t.Fatalf("no deadline: %v", until)
+	notices := h.m.app.bookNotices
+	if len(notices) != 1 {
+		t.Fatalf("notices %+v", notices)
 	}
-	if _, tone := h.m.status(); tone != present.Plain || !until.Equal(h.now.Add(hintFor)) {
+	until := notices[0].until
+	if _, tone := h.m.status(); tone != present.Plain || !until.Equal(h.now.Add(5*time.Second)) {
 		t.Fatalf("tone %v, until %v", tone, until)
 	}
 	h.now = until
@@ -199,8 +200,8 @@ func TestTheNoticeOfABookingGoesAtItsDeadline(t *testing.T) {
 		t.Fatalf("status %q past its deadline", got)
 	}
 	h.feed(gateway.Expired{Session: h.m.app.session, Until: until})
-	if got := h.m.app.bookNotice.text.String(); got != "" {
-		t.Fatalf("notice kept %q", got)
+	if got := h.m.app.bookNotices; len(got) != 0 {
+		t.Fatalf("notices kept %+v", got)
 	}
 }
 
@@ -727,8 +728,9 @@ func (h *harness) isAProblemOnTheLine() {
 	if _, tone := h.m.status(); tone != present.NoticeProblem {
 		h.t.Fatalf("tone %v", tone)
 	}
-	if got := h.m.app.bookNotice.until; !got.Equal(h.now.Add(problemFor)) {
-		h.t.Fatalf("until %v", got)
+	notices := h.m.app.bookNotices
+	if len(notices) != 1 || !notices[0].until.Equal(h.now.Add(30*time.Second)) {
+		h.t.Fatalf("notices %+v", notices)
 	}
 }
 
@@ -744,6 +746,9 @@ func TestA401OnABookingEndsTheSession(t *testing.T) {
 	}
 	if len(h.m.app.bookings) != 0 {
 		t.Fatalf("bookings %d", len(h.m.app.bookings))
+	}
+	if got := h.status(); !strings.Contains(got, "Session expired") {
+		t.Fatalf("status %q", got)
 	}
 }
 
@@ -928,6 +933,8 @@ func TestLocksAreByTicket(t *testing.T) {
 // disk in use by another run, too many agents) does not go, so one below it
 // would never be read, and after an unclear end b is free again.
 func TestALastingNoticeHidesNoBooking(t *testing.T) {
+	t.Parallel()
+
 	for name, set := range map[string]func(a *app){
 		"the disk":        func(a *app) { a.disk.notice = uitext.DiskBusy },
 		"too many agents": func(a *app) { a.agents.tooMany = true },
@@ -954,6 +961,8 @@ func TestALastingNoticeHidesNoBooking(t *testing.T) {
 // Finding 2: a pause outlasts a problem's deadline, and the booking it held
 // up was refused by the same limit: told first, the pause after it.
 func TestAPauseHidesNoBooking(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.m.app.pause = h.now.Add(time.Minute)
 	h.fillBooking("30", "")
@@ -968,43 +977,129 @@ func TestAPauseHidesNoBooking(t *testing.T) {
 	if got := h.status(); !strings.Contains(got, "Not booked on #6") {
 		t.Fatalf("status %q", got)
 	}
-	h.now = a.bookNotice.until
+	h.now = a.bookNotices[0].until
 	if got := h.status(); !strings.Contains(got, "Rate limited") {
 		t.Fatalf("status %q after the notice", got)
 	}
 }
 
-// Finding 3: one place on the line, and a hint is not worth a problem's: the
-// problem of #6 stays when #7 books. A problem takes a hint's place, the
-// newer problem an older one's. Would miss: the last end always winning.
-func TestAHintDoesNotTakeAProblemsPlace(t *testing.T) {
+// Review round 2 of #50, finding 1: the line tells the newest end of a
+// ticket. "Not booked on #6" over the booking that went through is a lie that
+// books a third time. Would miss: an old end kept for being a problem.
+func TestANewEndOfATicketReplacesItsOldOne(t *testing.T) {
+	t.Parallel()
+
+	for name, old := range map[string]struct {
+		ans  transport.Answer
+		want string
+	}{
+		"refused": {recordedRefusal(t, "invalid_input_over_a_day", transport.InvalidInput), "Not booked on #6"},
+		"unclear": {transport.Answer{Class: transport.Temporary, Message: "lost", Sent: true}, "Not clear"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := bookingHarness(t)
+			h.f.bookFails(old.ans)
+			h.fillBooking("30", "")
+			send := h.press("enter")
+			h.press("esc")
+			h.drive(send)
+			if got := h.status(); !strings.Contains(got, old.want) {
+				t.Fatalf("status %q", got)
+			}
+			h.now = h.now.Add(2 * time.Second)
+			h.f.setBook(nil)
+			h.sendBooking("30", "")()
+			got, tone := h.m.status()
+			if got.String() != "0:30 booked on #6" || tone != present.Plain {
+				t.Fatalf("status %q, tone %v", got.String(), tone)
+			}
+		})
+	}
+}
+
+// A press on the ticket is the person's answer to what the line said of it:
+// the old end goes at once, whatever the new one brings. Would miss: "Not
+// booked" standing over "Sending" and over a box held on the new booking.
+func TestAPressTakesTheOldEndOfItsTicketAway(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
-	h.f.setBook(func(c bookCall) (api.TimeBooking, transport.Answer) {
-		if c.ticket == six() {
-			return api.TimeBooking{}, transport.Answer{Class: transport.Temporary, Message: "lost", Sent: true}
-		}
-		return bookedOf(c.ticket, 30)
-	})
-	h.fillBooking("30", "")
-	unclear := h.press("enter")
+	h.f.bookFails(recordedRefusal(t, "invalid_input_over_a_day", transport.InvalidInput))
+	h.fillBooking("24:01", "")
+	send := h.press("enter")
 	h.press("esc")
-	h.reopen(7)
-	h.fillBooking("15", "")
-	booked := h.press("enter")
-	h.drive(unclear)
-	until := h.m.app.bookNotice.until
-	h.drive(booked)
-	if got := h.status(); !strings.Contains(got, "Not clear") || !strings.Contains(got, "#6") {
-		t.Fatalf("status %q", got)
+	h.drive(send)
+	h.fillBooking("30", "")
+	if got := h.status(); !strings.Contains(got, "Not booked on #6") {
+		t.Fatalf("the box alone took it: %q", got)
 	}
-	if got := h.m.app.bookNotice.until; !got.Equal(until) {
-		t.Fatalf("until %v, want %v", got, until)
+	h.press("enter")
+	if got := h.status(); got != "" {
+		t.Fatalf("status %q while the new send is out", got)
 	}
-	// Past its deadline the place is free again.
-	h.now = until
-	h.sendBooking("15", "")()
-	if got := h.status(); !strings.Contains(got, "0:30 booked on #7") {
-		t.Fatalf("status %q", got)
+}
+
+// Finding 2: the ends of two tickets stand side by side, each with its tone
+// and its deadline: a refusal of #7 does not take the only warning about #6
+// away, nor does a problem swallow a success. Would miss: one place for all.
+func TestTheEndsOfTwoTicketsStandSideBySide(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		second bookCall
+		answer func(c bookCall) (api.TimeBooking, transport.Answer)
+		want   string
+		until  time.Duration
+	}{
+		"a success beside a problem": {
+			answer: func(c bookCall) (api.TimeBooking, transport.Answer) { return bookedOf(c.ticket, 30) },
+			want:   "0:30 booked on #7", until: 5 * time.Second,
+		},
+		"a problem beside a problem": {
+			answer: func(bookCall) (api.TimeBooking, transport.Answer) {
+				return api.TimeBooking{}, recordedRefusal(t, "invalid_input_over_a_day", transport.InvalidInput)
+			},
+			want: "Not booked on #7", until: 30 * time.Second,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := bookingHarness(t)
+			h.f.setBook(func(c bookCall) (api.TimeBooking, transport.Answer) {
+				if c.ticket == six() {
+					return api.TimeBooking{}, transport.Answer{Class: transport.Temporary, Message: "lost", Sent: true}
+				}
+				return tc.answer(c)
+			})
+			h.fillBooking("30", "")
+			unclear := h.press("enter")
+			h.press("esc")
+			h.drive(unclear)
+			h.reopen(7)
+			h.now = h.now.Add(time.Second)
+			h.fillBooking("15", "")
+			second := h.press("enter")
+			h.press("esc")
+			h.drive(second)
+			got, tone := h.m.status()
+			if !strings.Contains(got.String(), "Not clear whether it was booked on #6") || !strings.Contains(got.String(), tc.want) || tone != present.NoticeProblem {
+				t.Fatalf("status %q, tone %v", got.String(), tone)
+			}
+			// Each goes at its own deadline, the second a second after the
+			// first if it is a problem too.
+			first := h.m.app.bookNotices[0].until
+			h.now = h.now.Add(5 * time.Second)
+			if text := h.status(); !strings.Contains(text, "#6") || strings.Contains(text, tc.want) != (tc.until > 5*time.Second) {
+				t.Fatalf("status %q after 5 s", text)
+			}
+			h.now = first
+			if text := h.status(); strings.Contains(text, "#6") || strings.Contains(text, tc.want) != (tc.until > 5*time.Second) {
+				t.Fatalf("status %q at the first's deadline", text)
+			}
+			h.feed(gateway.Expired{Session: h.m.app.session, Until: first})
+			if got := h.m.app.bookNotices; len(got) != 1 || strings.Contains(got[0].text.String(), "#6") {
+				t.Fatalf("notices %+v", got)
+			}
+		})
 	}
 }
 
@@ -1012,6 +1107,8 @@ func TestAHintDoesNotTakeAProblemsPlace(t *testing.T) {
 // the end of the first is told on the line, whichever it is, and the box
 // stays as it is. Would miss: any open box taken for the booking's own.
 func TestTheEndOfABookingLeavesAnotherTicketsBoxAlone(t *testing.T) {
+	t.Parallel()
+
 	for name, tc := range map[string]struct {
 		ans  transport.Answer
 		want string
@@ -1050,14 +1147,14 @@ func TestTheEndOfABookingLeavesAnotherTicketsBoxAlone(t *testing.T) {
 }
 
 // Finding 5: the close of the box is the close esc gives: a preview that
-// fell due behind it is set again, so its command is among the booking's.
-// Would miss: the command dropped. Without the tool of the sum nothing is
-// read back, so only the notice's deadline comes with it.
+// fell due behind it is set again, and its timer comes back from the
+// booking's command. Would miss: the command dropped, or another in its place.
 func TestTheCloseOfABookingSetsAPreviewAgain(t *testing.T) {
+	t.Parallel()
+
 	h := newRESTHarness(t)
 	h.openTickets(website)
 	a := h.m.app
-	a.report.Enabled["booked_time"] = false
 	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
 	h.press("right")
 	if !h.offers(BookTime) || a.tickets.opened != "" {
@@ -1069,12 +1166,31 @@ func TestTheCloseOfABookingSetsAPreviewAgain(t *testing.T) {
 	a.tickets.selected = ticketID(website, 7)
 	op := a.bookings[a.detail.id]
 	booking, ans := bookedOf(op.ticket, 30)
+	a.deps.Events = gateway.NewEvents(h.live) // a mailbox whose timers run
 	_, cmd := h.m.receiveBooking(gateway.WriteResult{
 		WriteTicket: gateway.WriteTicket{Session: a.session, Op: op.id, Kind: gateway.BookTime, Project: op.project, Ticket: op.ticket},
 		Booking:     booking, Answer: ans,
 	})
-	if _, ok := cmd().(tea.BatchMsg); !ok {
-		t.Fatal("the close's command did not come along")
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok {
+		t.Fatal("one command came back")
+	}
+	due := make(chan gateway.Due, len(batch))
+	for _, c := range batch {
+		h.background(func() tea.Msg {
+			if d, ok := c().(gateway.Due); ok {
+				due <- d
+			}
+			return nil
+		})
+	}
+	select {
+	case d := <-due:
+		if d.Token != a.previewToken {
+			t.Fatalf("token %d, want %d", d.Token, a.previewToken)
+		}
+	case <-time.After(wall):
+		t.Fatal("no timer of a preview came back")
 	}
 }
 
@@ -1082,6 +1198,8 @@ func TestTheCloseOfABookingSetsAPreviewAgain(t *testing.T) {
 // another project neither takes the time nor reads it, nor does the box
 // held on a booking show it.
 func TestTheSameIDInAnotherProjectIsAnotherTicket(t *testing.T) {
+	t.Parallel()
+
 	h := bookingHarness(t)
 	h.f.bookFails(transport.Answer{Class: transport.Temporary, Message: "lost", Sent: true})
 	h.fillBooking("30", "")

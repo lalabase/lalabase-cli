@@ -149,7 +149,7 @@ func TestABookingAnswersInTheRecordedShape(t *testing.T) {
 // hours with a point or a comma, blanks around; refused with its texts,
 // each from the core's locale.
 func TestTheFixtureReadsADurationAsTheServerDoes(t *testing.T) {
-	for typed, minutes := range map[string]int{"30": 30, "90": 90, "1:30": 90, "1:5": 65, "1.5": 90, "1,5": 90, "  30 ": 30, "0:15": 15, "24:00": 1440} {
+	for typed, minutes := range map[string]int{"30": 30, "90": 90, "1:30": 90, "1:5": 65, "1.5": 90, "1,5": 90, "  30 ": 30, "0:15": 15, "24:00": 1440, "0.999": 59} {
 		_, a, _ := serve(t, Normal)
 		booking, ans := a.BookTime(context.Background(), TicketID(ProjectWebsite, 6), typed, "", "key-00000004")
 		if !ans.OK() || booking.Minutes != minutes {
@@ -165,12 +165,14 @@ func TestTheFixtureReadsADurationAsTheServerDoes(t *testing.T) {
 		"1.5.5": format,
 		"1,5,5": format,
 		"+5":    format,
+		"+1.5":  format,
 		"1.5x":  format,
 		".5":    format,
 		"abc":   zero,
 		"0":     zero,
 		"0:00":  zero,
 		"-5":    zero,
+		"-1:30": zero,
 		"24:01": textDurationOverDay,
 		"1441":  textDurationOverDay,
 		"":      textDurationMissing,
