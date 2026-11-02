@@ -157,6 +157,22 @@ var toolCases = map[string]expected{
 	"get_person/not_found":               {class: NotFound, legacyClass: Refused},
 	"get_person/not_found_project_token": {class: NotFound, legacyClass: Refused},
 	"get_person/refused":                 {class: Refused, reason: "people_directory", legacyClass: Refused},
+
+	// 0.15.0 and 0.16.0: tools the client does not call yet. The cases are
+	// classified so a change to their outcomes still turns this table red.
+	"list_organisations/ok": {class: Object, legacyClass: Object},
+
+	"list_projects/ok":                     {class: Object, legacyClass: Object},
+	"list_projects/one_organisation":       {class: Object, legacyClass: Object},
+	"list_projects/include_archived":       {class: Object, legacyClass: Object},
+	"list_projects/invalid_input":          {class: InvalidInput, legacyClass: Refused},
+	"list_projects/invalid_input_per_page": {class: InvalidInput, legacyClass: Refused},
+	"list_projects/not_found":              {class: NotFound, legacyClass: Refused},
+
+	"create_meeting/refused_no_inbox": {class: Refused, reason: "meeting_inbox_missing", legacyClass: Refused},
+	"create_meeting/read_only":        {class: ReadOnly, legacyClass: ReadOnly},
+	"create_meeting/invalid_input":    {class: InvalidInput, legacyClass: Refused},
+	"create_meeting/not_found":        {class: NotFound, legacyClass: Refused},
 }
 
 // The tools that address one record, and the argument naming it. Their empty
@@ -300,13 +316,13 @@ func TestTheRecordedServerAnswersInitializeAndToolsList(t *testing.T) {
 	}
 	srv := replay(t, 200, file.Contract.MCP.Initialize.Response.Body)
 	info, ans := newClient(t, srv.URL).Initialize(context.Background())
-	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.14.0" {
+	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.16.0" {
 		t.Fatalf("initialize: %v %+v", ans.Class, info)
 	}
 
 	srv = replay(t, 200, file.Contract.MCP.ToolsList.Response.Body)
 	tools, ans := newClient(t, srv.URL).ListTools(context.Background())
-	if ans.Class != Object || len(tools) != 17 || tools[0].Name != "search_code_symbols" {
+	if ans.Class != Object || len(tools) != 20 || tools[0].Name != "search_code_symbols" {
 		t.Fatalf("tools/list: %v, %d tools", ans.Class, len(tools))
 	}
 	if _, ok := tools[6].Properties()["ticket_id"]; !ok || tools[6].Name != "get_ticket" {
