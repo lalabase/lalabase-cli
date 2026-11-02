@@ -244,6 +244,7 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 			// Into the ticket the agents' list shows.
 			if a.detail != nil {
 				m.focus, m.intoTicket = view.Object, true
+				return m, a.timeOnFocus()
 			}
 			return m, nil
 		}

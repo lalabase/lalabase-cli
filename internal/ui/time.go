@@ -39,8 +39,8 @@ func (a *app) timeKey(project, id string) cache.Key {
 }
 
 // readTime asks the time on the ticket in the pane, unless a read of it is
-// out; a time the memory cache holds shows at once, and on an open the
-// disk is asked beside (not on R: the network read is out by then).
+// out; a time the memory cache holds shows at once, and on an open or a
+// focus the disk is asked beside (not on R: the network read is out by then).
 func (a *app) readTime(d *detailView, open bool) tea.Cmd {
 	if d == nil || !a.on("booked_time") {
 		return nil
@@ -53,7 +53,7 @@ func (a *app) readTime(d *detailView, open bool) tea.Cmd {
 		return nil
 	}
 	// The person's priority, as the ticket's own read: one request per
-	// open or R the person made, never a stream of them, and no budget
+	// open, focus or R the person made, never a stream of them, and no budget
 	// to wait for (the agents' titles, many and unasked, are idle work).
 	return a.issue(gateway.Time, key, forTime, queue.User)
 }

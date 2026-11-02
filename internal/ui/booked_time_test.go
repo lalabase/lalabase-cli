@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/queue"
@@ -356,6 +357,28 @@ func TestAPreviewArrivingBehindTheFocusReadsTheTime(t *testing.T) {
 	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
 	if got := h.f.bookedReads(); len(got) != 1 {
 		t.Fatalf("time reads %v", got)
+	}
+	if got := h.metaText(); !strings.Contains(got, "Booked by you\n2:30") {
+		t.Fatalf("meta bar:\n%s", got)
+	}
+}
+
+// The right arrow from the agents' list reaches a preview that stands in
+// the pane the same way.
+func TestTheRightArrowFromTheAgentsIntoAPreviewReadsTheTime(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.withWatcher(agentOn(5, agents.WaitingForYou, h.now))
+	h.previewFirst()
+	h.due()
+	h.drive(h.press("A"))
+	if h.m.focus != view.Agents || len(h.f.bookedReads()) != 0 {
+		t.Fatalf("setup: focus %d, reads %v", h.m.focus, h.f.bookedReads())
+	}
+	h.drive(h.press("right"))
+	if h.m.focus != view.Object || len(h.f.bookedReads()) != 1 {
+		t.Fatalf("focus %d, reads %v", h.m.focus, h.f.bookedReads())
 	}
 	if got := h.metaText(); !strings.Contains(got, "Booked by you\n2:30") {
 		t.Fatalf("meta bar:\n%s", got)
