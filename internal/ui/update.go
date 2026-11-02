@@ -244,11 +244,16 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 			// Into the ticket the agents' list shows.
 			if a.detail != nil {
 				m.focus, m.intoTicket = view.Object, true
+				return m, a.timeOnFocus()
 			}
 			return m, nil
 		}
 		if m.focus < view.Object {
 			m.focus++
+			if m.focus == view.Object {
+				cmd := m.selectionChanged()
+				return m, tea.Batch(cmd, a.timeOnFocus())
+			}
 		}
 		return m, m.selectionChanged()
 	case Up, Down:

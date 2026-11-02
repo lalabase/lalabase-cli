@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/cache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/queue"
@@ -292,5 +294,226 @@ func TestTheTimeComesBackFromTheDisk(t *testing.T) {
 	h2.openSix()
 	if got := h2.metaText(); !strings.Contains(got, "Booked by you\n2:30") {
 		t.Fatalf("the time did not come from the disk:\n%s", got)
+	}
+}
+
+// previewFirst opens the list of Website and reads the preview of its row
+// under the cursor, the focus still on the list.
+func (h *harness) previewFirst() string {
+	h.t.Helper()
+	h.openTickets(website)
+	a := h.m.app
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if a.detail == nil || !a.detail.known || h.m.focus != view.List {
+		h.t.Fatalf("no preview: focus %d, detail %+v", h.m.focus, a.detail)
+	}
+	return a.tickets.selected
+}
+
+// A ticket with the focus reads the time, though the right arrow only moved
+// the focus into its preview: it looks as an opened one does, and nothing
+// else would read it but R. The preview stays a preview.
+func TestTheRightArrowIntoAPreviewReadsTheTime(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	id := h.previewFirst()
+	if got := h.f.bookedReads(); len(got) != 0 {
+		t.Fatalf("time reads before the focus: %v", got)
+	}
+	h.drive(h.press("right"))
+	if got := h.f.bookedReads(); len(got) != 1 || got[0] != id {
+		t.Fatalf("time reads %v", got)
+	}
+	if got := h.metaText(); !strings.Contains(got, "Booked by you\n2:30") {
+		t.Fatalf("meta bar:\n%s", got)
+	}
+	a := h.m.app
+	if a.tickets.opened != "" {
+		t.Fatalf("the preview was opened: %q", a.tickets.opened)
+	}
+	// Right again moves nothing, so it reads nothing.
+	h.drive(h.press("right"))
+	if got := h.f.bookedReads(); len(got) != 1 {
+		t.Fatalf("right in the pane read again: %v", got)
+	}
+	h.drive(h.press("esc"))
+	if h.m.focus != view.List {
+		t.Fatalf("esc: focus %d", h.m.focus)
+	}
+}
+
+// A preview that arrives behind the focus reads the time with it, once.
+func TestAPreviewArrivingBehindTheFocusReadsTheTime(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	h.drive(h.press("right"))
+	if got := h.f.bookedReads(); len(got) != 0 || a.detail != nil {
+		t.Fatalf("before the preview: reads %v, detail %+v", got, a.detail)
+	}
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if got := h.f.bookedReads(); len(got) != 1 {
+		t.Fatalf("time reads %v", got)
+	}
+	if got := h.metaText(); !strings.Contains(got, "Booked by you\n2:30") {
+		t.Fatalf("meta bar:\n%s", got)
+	}
+}
+
+// The right arrow from the agents' list reaches a preview that stands in
+// the pane the same way.
+func TestTheRightArrowFromTheAgentsIntoAPreviewReadsTheTime(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.withWatcher(agentOn(5, agents.WaitingForYou, h.now))
+	h.previewFirst()
+	h.due()
+	h.drive(h.press("A"))
+	if h.m.focus != view.Agents || len(h.f.bookedReads()) != 0 {
+		t.Fatalf("setup: focus %d, reads %v", h.m.focus, h.f.bookedReads())
+	}
+	h.drive(h.press("right"))
+	if h.m.focus != view.Object || len(h.f.bookedReads()) != 1 {
+		t.Fatalf("focus %d, reads %v", h.m.focus, h.f.bookedReads())
+	}
+	if got := h.metaText(); !strings.Contains(got, "Booked by you\n2:30") {
+		t.Fatalf("meta bar:\n%s", got)
+	}
+}
+
+// In one column the pane comes on the screen with the focus: the preview is
+// always read behind it.
+func TestInOneColumnTheFocusedPreviewReadsTheTime(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.openTickets(website)
+	a := h.m.app
+	h.feed(tea.WindowSizeMsg{Width: 79, Height: 24})
+	h.drive(h.press("right"))
+	if h.m.focus != view.Object {
+		t.Fatalf("focus %d", h.m.focus)
+	}
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if got := h.f.bookedReads(); len(got) != 1 {
+		t.Fatalf("time reads %v", got)
+	}
+	if got := h.paneText(); !strings.Contains(got, "booked by you 2:30") {
+		t.Fatalf("pane:\n%s", got)
+	}
+}
+
+// A cached preview still awaiting its reload: the arrow reads the time, and
+// the reload's wake-up behind it does not read it a second time.
+func TestTheReloadOfAFocusedPreviewDoesNotReadTheTimeAgain(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.previewFirst()
+	a := h.m.app
+	h.press("esc") // the projects
+	reload := h.openProject(website)
+	if a.detail == nil || !a.detail.cached {
+		t.Fatalf("setup: detail %+v", a.detail)
+	}
+	h.drive(reload)
+	h.drive(h.press("right"))
+	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+	if got := h.f.bookedReads(); len(got) != 1 {
+		t.Fatalf("time reads %v", got)
+	}
+}
+
+// Back and forth while the read is out starts no second one; moving through
+// the list after a visit to the pane reads nothing.
+func TestTheFocusGoingBackAndForthReadsNoMoreThanOneTime(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.previewFirst()
+	first := h.press("right")
+	h.press("left")
+	second := h.press("right")
+	h.drive(first)
+	h.drive(second)
+	if got := h.f.bookedReads(); len(got) != 1 {
+		t.Fatalf("time reads %v", got)
+	}
+	h.press("left")
+	h.drive(h.press("down"))
+	h.drive(h.press("down"))
+	if got := h.f.bookedReads(); len(got) != 1 {
+		t.Fatalf("the list read the time: %v", got)
+	}
+}
+
+// A time the server refused is not asked again by the arrows; R still does.
+func TestARefusedTimeIsNotReadAgainOnAFocusChange(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.previewFirst()
+	h.setBooked(func(string, string) transport.Answer {
+		return transport.Answer{Class: transport.Refused, Message: "no access", Status: 200, Sent: true}
+	})
+	for _, key := range []string{"right", "left", "right", "left", "right"} {
+		h.drive(h.press(key))
+	}
+	if got := h.f.bookedReads(); len(got) != 1 {
+		t.Fatalf("time reads %v", got)
+	}
+	h.drive(h.press("R"))
+	if got := h.f.bookedReads(); len(got) != 2 {
+		t.Fatalf("R: time reads %v", got)
+	}
+}
+
+// The time the cache holds stands there at once, before any answer.
+func TestTheCachedTimeShowsOnTheRightArrowAtOnce(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.previewFirst()
+	h.drive(h.press("right"))
+	h.press("left")
+	h.drive(h.press("down"))
+	h.drive(h.press("up"))
+	a := h.m.app
+	if a.detail == nil || a.detail.booked.known {
+		t.Fatalf("setup: detail %+v", a.detail)
+	}
+	h.press("right") // its command, the read, is not run
+	if got := h.metaText(); !strings.Contains(got, "Booked by you\n2:30") {
+		t.Fatalf("meta bar:\n%s", got)
+	}
+}
+
+// No access, no such ticket, or a server without the tool: no line, and
+// the ticket stays in the pane.
+func TestAFocusedPreviewWithoutTheTimeKeepsTheTicket(t *testing.T) {
+	t.Parallel()
+
+	for name, answer := range map[string]transport.Answer{
+		"no access": {Class: transport.Refused, Message: "no access to the time sessions of this project", Status: 200, Sent: true},
+		"not found": {Class: transport.NotFound, Message: "No ticket found.", Status: 200, Sent: true},
+	} {
+		h := newHarness(t)
+		h.previewFirst()
+		h.setBooked(func(string, string) transport.Answer { return answer })
+		h.drive(h.press("right"))
+		if d := h.m.app.detail; d == nil || !d.known || strings.Contains(h.metaText(), "Booked") {
+			t.Fatalf("%s: detail %+v, meta\n%s", name, d, h.metaText())
+		}
+	}
+	h := newHarness(t)
+	h.previewFirst()
+	h.withoutBookedTime()
+	h.drive(h.press("right"))
+	if got := h.f.bookedReads(); len(got) != 0 || strings.Contains(h.metaText(), "Booked") {
+		t.Fatalf("an older server: reads %v, meta\n%s", got, h.metaText())
 	}
 }
