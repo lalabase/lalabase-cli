@@ -15,9 +15,11 @@ import (
 
 // The time the person booked on the ticket in the pane (S6): in its meta
 // bar, under "Booked by you", in hours and minutes. It is read when the
-// ticket opens (never for a preview, so moving through a list costs no
-// request more), again with R, beside the ticket's own read and with the
-// person's priority, and after a booking (book.go). The cache shows it at once when the ticket
+// ticket gets the focus: when it opens, or when the right arrow or a wake-up
+// brings a preview and the focus together. A preview without the focus never
+// reads it, so moving through a list costs no request more. It is read again
+// with R, beside the ticket's own read and with the person's priority, and
+// after a booking (book.go). The cache shows it at once when the ticket
 // opened before: from memory, else from the disk (C1e), as every read.
 // The time is extra: no access to the project's time, no such
 // ticket or a server without the tool shows no line, and nothing else of
@@ -54,6 +56,19 @@ func (a *app) readTime(d *detailView, open bool) tea.Cmd {
 	// open or R the person made, never a stream of them, and no budget
 	// to wait for (the agents' titles, many and unasked, are idle work).
 	return a.issue(gateway.Time, key, forTime, queue.User)
+}
+
+// timeOnFocus reads the time of a preview that has the focus: it looks as an
+// opened ticket does, and nothing but R would read it. Once per ticket in the
+// pane, so going back and forth costs no request per arrow key (R and an open
+// always read); a ticket whose own read failed asks nothing either.
+func (a *app) timeOnFocus() tea.Cmd {
+	d := a.detail
+	if d == nil || d.timeAsked || d.booked.known || d.stale || d.err.String() != "" {
+		return nil
+	}
+	d.timeAsked = true
+	return a.readTime(d, true)
 }
 
 // timeFromCache shows the time the memory entry of key holds, if it still

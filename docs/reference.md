@@ -99,9 +99,10 @@ navigation again.
   the ticket has no agent, whose lines name it already. The
   head then drops its line of facts and its agent's line. In a
   narrower pane they stay in one faint line under the title, the time last
-  ("booked by you 2:30"). The time is read when a ticket opens, with
-  `R` and after a booking, with the person's priority beside the ticket's
-  own read, never for a preview; the cache (memory, else the disk) shows it at once when the
+  ("booked by you 2:30"). The time is read when a ticket gets the focus
+  (`Enter`, or `→` into its preview), with `R` and after a booking, with
+  the person's priority beside the ticket's own read, never for a preview
+  without the focus; the cache (memory, else the disk) shows it at once when the
   ticket opened before, and a refusal takes it from there too. Without access to the project's time, for a ticket that is not
   there, or against an older server there is no such line.
   Comments by the token's own

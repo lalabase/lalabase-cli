@@ -153,6 +153,8 @@ type detailView struct {
 	uncut bool
 	// booked is the person's time on the ticket (S6, time.go).
 	booked bookedTime
+	// timeAsked: the focus has read the time of this preview (timeOnFocus).
+	timeAsked bool
 	// flight is the request whose answer the record is, as the list's;
 	// a page corrected without a read keeps it (correctDetailPage).
 	flight uint64
@@ -558,7 +560,11 @@ func (m Model) due(msg gateway.Due) (Model, tea.Cmd) {
 	}
 	d := a.ensureDetail(v.project, v.selected)
 	d.loading = true
-	return m, a.issue(gateway.Detail, d.key, forDetail, queue.Preview)
+	read := a.issue(gateway.Detail, d.key, forDetail, queue.Preview)
+	if m.focus == view.Object {
+		return m, tea.Batch(read, a.timeOnFocus()) // it came behind the focus
+	}
+	return m, read
 }
 
 // openTicket is Enter on a ticket row: the ticket is opened, the focus

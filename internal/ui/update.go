@@ -249,6 +249,10 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		}
 		if m.focus < view.Object {
 			m.focus++
+			if m.focus == view.Object {
+				cmd := m.selectionChanged()
+				return m, tea.Batch(cmd, a.timeOnFocus())
+			}
 		}
 		return m, m.selectionChanged()
 	case Up, Down:
