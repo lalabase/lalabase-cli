@@ -369,15 +369,26 @@ func (a *app) meetingLines(d *meetingDetail, c present.Column, width int, meta b
 	if d.wrap.lines != nil && d.wrap.key == key {
 		return d.wrap.lines, d.wrap.styles
 	}
-	text := d.texts()[d.area]
-	if text == "" {
-		text = uitext.Inline(uitext.NothingWritten).String()
+	lines, styles := head, headStyles
+	if text := d.texts()[d.area]; text != "" {
+		body, bodyStyles := meetingBody(text, a.ownName())
+		lines, styles = append(lines, body...), append(styles, bodyStyles...)
+	} else {
+		lines, styles = append(lines, uitext.Inline(uitext.NothingWritten).String()), append(styles, plainLine)
 	}
-	c.Text, c.Styles = present.NewBody(strings.Join(append(head, text), "\n")), headStyles
+	// Cleaned again with the head, as the ticket's text is; the cleaning
+	// keeps clean text as it is, so the lines and styles stay in step.
+	c.Text, c.Styles = present.NewBody(strings.Join(lines, "\n")), styles
 	d.wrap.key = key
 	d.wrap.lines, d.wrap.styles = view.Wrap(c, width, method)
 	d.wraps++
 	return d.wrap.lines, d.wrap.styles
+}
+
+// ownName is the person's own name, cleaned, "" for none: a speaker of
+// that name is shown in the person's tone.
+func (a *app) ownName() string {
+	return present.NewInline(a.me.User.DisplayName).String()
 }
 
 // meetingHead is the head of the pane, cleaned: the title, the facts when

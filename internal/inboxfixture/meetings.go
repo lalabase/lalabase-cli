@@ -17,7 +17,7 @@ import (
 // meeting capability and has no route here.
 //
 // One meeting, whole (K7b): Website #1 has a summary, notes and a
-// transcript of a few screens, #2 notes alone, #3 nothing written, #4 a
+// transcript of a few screens with its speakers as the recorder writes them, #2 notes alone, #3 nothing written, #4 a
 // transcript that tries to reach the terminal, #5 is gone (404), #6 has a
 // transcript of 500 KB and #7 one above the client's bound of 8 MiB.
 
@@ -106,6 +106,13 @@ const (
 	meetingTranscriptRow = "Anna: Wir starten im März mit allen Seiten, dann die Texte, dann das Logo.\n"
 )
 
+// speakersOf is a transcript of at least n bytes as the core's recorder
+// writes it: each turn a line "**Name**" with the words below it.
+func speakersOf(n int) string {
+	turn := "**Anna Albers**\nWir starten im März mit allen Seiten, dann die Texte.\n\n**Erika Beispiel**\nGut, dann das Logo zuletzt.\n\n"
+	return strings.Repeat(turn, n/len(turn)+1) + "**Anna Albers**\nEnde."
+}
+
 // transcriptOf is a transcript of at least n bytes, its last line "Ende.".
 func transcriptOf(n int) string {
 	return strings.Repeat(meetingTranscriptRow, n/len(meetingTranscriptRow)+1) + "Ende."
@@ -128,7 +135,7 @@ func (f *Fixture) restMeeting(w http.ResponseWriter, req Request, id string) {
 	switch n {
 	case 1:
 		summary, notes = "**Ergebnis:** Start im März.\n\n- Seiten-Vorlagen\n- Logo", "Termin im März halten."
-		transcript = transcriptOf(4 << 10)
+		transcript = speakersOf(4 << 10)
 	case 2:
 		notes = "Nur Notizen."
 	case 4:

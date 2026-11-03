@@ -1,0 +1,137 @@
+package ui
+
+import (
+	"strings"
+	"unicode/utf8"
+
+	"github.com/gboyke/lalabase-cli/internal/present"
+)
+
+// The text of a meeting's section laid out for reading (K7c). The core
+// sends Markdown: a summary written by a model, notes and transcripts as
+// people pasted them, a speaker's turn mostly as a line "**Name**" with
+// the words below it. The pane shows a small part of Markdown and leaves
+// the rest as written:
+//
+//   - a speaker's line becomes a head, the name bold in the tone of an
+//     author (the person's own name in theirs), the turn indented below
+//     it, an empty line before the next head;
+//   - a heading ("# ...") is bold, a list item ("- ", "* ", "+ ") starts
+//     with a bullet, a line that starts bold keeps that part bold;
+//   - the markers of bold text ("**") are dropped where they pair up.
+//
+// The text is cleaned before it is read (rule 1): the layout works on what
+// is shown, so the lines and their styles stay in step.
+
+// maxSpeaker bounds a speaker's name: a longer bold line is a sentence.
+const maxSpeaker = 60
+
+// indentTurn is the indent of a speaker's words below their name.
+const indentTurn = 2
+
+// meetingBody lays out one section's raw text; me is the person's own
+// name, "" for none.
+func meetingBody(raw, me string) ([]string, []present.LineStyle) {
+	var lines []string
+	var styles []present.LineStyle
+	add := func(line string, st present.LineStyle) {
+		lines = append(lines, line)
+		styles = append(styles, st)
+	}
+	turn := false
+	for _, line := range strings.Split(present.NewBody(raw).String(), "\n") {
+		if name, ok := speakerOf(line); ok {
+			if n := len(lines); n > 0 && strings.TrimSpace(lines[n-1]) != "" {
+				add("", present.LineStyle{})
+			}
+			tone := present.Author
+			if me != "" && name == me {
+				tone = present.Own
+			}
+			add(name, present.LineStyle{Lead: len(name), LeadStyle: tone, RestStyle: tone})
+			turn = true
+			continue
+		}
+		indent := 0
+		if turn {
+			indent = indentTurn
+		}
+		if heading, ok := headingOf(line); ok {
+			add(heading, present.LineStyle{Lead: len(heading), LeadStyle: present.Strong, RestStyle: present.Strong})
+			turn = false
+			continue
+		}
+		bullet := ""
+		if item, depth, ok := listItemOf(line); ok {
+			bullet, line, indent = "• ", item, indent+depth
+		}
+		lead, rest := leadingBold(line)
+		text := bullet + lead + unbold(rest)
+		st := present.LineStyle{Indent: indent}
+		if lead != "" {
+			st.Lead, st.LeadStyle = len(bullet)+len(lead), present.Strong
+		}
+		add(text, st)
+	}
+	return lines, styles
+}
+
+// speakerOf reads a line that is a bold name alone ("**Name**", a colon
+// inside or after the markers allowed).
+func speakerOf(line string) (string, bool) {
+	s := strings.TrimSuffix(strings.TrimSpace(line), ":")
+	if !strings.HasPrefix(s, "**") || !strings.HasSuffix(s, "**") || len(s) <= 4 {
+		return "", false
+	}
+	name := strings.TrimSpace(strings.TrimSuffix(s[2:len(s)-2], ":"))
+	if name == "" || strings.Contains(name, "**") || utf8.RuneCountInString(name) > maxSpeaker {
+		return "", false
+	}
+	return name, true
+}
+
+// headingOf reads a Markdown heading: one to six "#", a space, the text.
+func headingOf(line string) (string, bool) {
+	s := strings.TrimSpace(line)
+	n := len(s) - len(strings.TrimLeft(s, "#"))
+	if n < 1 || n > 6 || !strings.HasPrefix(s[n:], " ") {
+		return "", false
+	}
+	text := unbold(strings.TrimSpace(s[n:]))
+	return text, text != ""
+}
+
+// listItemOf reads a list item: its text and the indent of its nesting
+// (the spaces before the marker, at most 8).
+func listItemOf(line string) (string, int, bool) {
+	s := strings.TrimLeft(line, " ")
+	depth := min(len(line)-len(s), 8)
+	for _, marker := range []string{"- ", "* ", "+ "} {
+		if strings.HasPrefix(s, marker) && strings.TrimSpace(s[len(marker):]) != "" {
+			return strings.TrimLeft(s[len(marker):], " "), depth, true
+		}
+	}
+	return "", 0, false
+}
+
+// leadingBold splits a line that starts bold ("**Ergebnis:** Start im
+// März.") into the bold part without its markers and the rest.
+func leadingBold(line string) (string, string) {
+	if !strings.HasPrefix(line, "**") {
+		return "", line
+	}
+	end := strings.Index(line[2:], "**")
+	if end <= 0 {
+		return "", line
+	}
+	return line[2 : 2+end], line[2+end+2:]
+}
+
+// unbold drops the markers of bold text where they pair up; a lone marker
+// stays as written.
+func unbold(s string) string {
+	if n := strings.Count(s, "**"); n == 0 || n%2 != 0 {
+		return s
+	}
+	return strings.ReplaceAll(s, "**", "")
+}
