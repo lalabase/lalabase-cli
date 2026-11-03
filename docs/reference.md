@@ -966,8 +966,15 @@ a count), 3 in Handbuch, 5 in Archiv; the first organisation's rows name
 Website-Relaunch's tickets (row 6 names ticket #6), the second's name
 tickets the fixture does not have. It
 binds to 127.0.0.1 only, accepts one synthetic token (`inboxfixture.Token`)
-and refuses everything but the reads of C1 and the writes of C1f, C2, K6 and
-K3a.
+and refuses everything but the reads of C1 and K7a and the writes of C1f,
+C2, K6 and K3a.
+Meetings (K7a) are listed over REST (`/api/v1/projects/:id/meetings`)
+when R1's capabilities are on: 30 in Website-Relaunch (two pages of 25,
+newest first; #2 has no duration, #3 a creator who is gone, #4 a title
+with a colour, a title change and a right-to-left override), none in
+Intern, an empty list in Handbuch (a reader without the meetings area),
+and Archiv out of reach (404). The fixture searches the titles alone; the
+core searches title, notes, transcript and summary.
 The ticket view is served on both ways (K1): its `/me` is the contract's,
 with R1's capabilities, so the client reads the list and the tickets over
 REST (`/api/v1/projects/:id/tickets`, `/api/v1/tickets/:id` with or

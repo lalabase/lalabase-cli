@@ -267,9 +267,11 @@ func TestAMeetingPageIsShownOnlyAfterTheScopeAcceptedIt(t *testing.T) {
 	}
 }
 
-// Meetings stay off the disk: a session that showed pages, a search and a
-// removal leaves none of them there, while the tickets beside them are
-// written; the next session reads them from the server again.
+// Meetings stay off the disk: a session that showed two pages and a search
+// leaves none of them there, while the tickets beside them are written;
+// the next session shows none before the server answers (the disk is
+// never asked for them; the store's refusal to promote one is tested in
+// internal/cache).
 func TestNoMeetingReachesTheDisk(t *testing.T) {
 	t.Parallel()
 
