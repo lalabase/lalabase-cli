@@ -303,6 +303,38 @@ func TestSpeakersAreMatchedAsTheCoreMatchesThem(t *testing.T) {
 	}
 }
 
+// Review round 3 of #9: the person's own tone says who spoke, so a label
+// takes it only when it names one participant and that one is the person.
+// A first name the person shares with another participant, or with a
+// participant when the person took no part, is someone else's. With no
+// participants known, the person's full name alone is theirs.
+func TestOnlyThePersonsOwnTurnsTakeTheirTone(t *testing.T) {
+	t.Parallel()
+
+	raw := "**Karl**\nHallo.\n**Karl Krause**\nIch."
+	cases := []struct {
+		name     string
+		speakers []string
+		want     []string
+	}{
+		{"a shared first name", []string{"Karl Krause", "Karl Meier"}, []string{"Karl|lead Karl author", "Karl Krause|lead Karl Krause own"}},
+		{"the person took no part", []string{"Karl Meier", "Anna Ananas"}, []string{"Karl|lead Karl author"}},
+		{"the person's first name alone", []string{"Karl Krause", "Anna Ananas"}, []string{"Karl|lead Karl own", "Karl Krause|lead Karl Krause own"}},
+		{"no participants known", nil, []string{"Karl|lead Karl author", "Karl Krause|lead Karl Krause own"}},
+	}
+	for _, c := range cases {
+		var heads []string
+		for _, line := range laidOutAs(raw, meetingLayout{transcript: true, me: "Karl Krause", speakers: c.speakers}) {
+			if strings.Contains(line, "|lead ") && !strings.Contains(line, " strong") {
+				heads = append(heads, line)
+			}
+		}
+		if strings.Join(heads, "\n") != strings.Join(c.want, "\n") {
+			t.Errorf("%s: heads\n%s\nwant\n%s", c.name, strings.Join(heads, "\n"), strings.Join(c.want, "\n"))
+		}
+	}
+}
+
 // A list item is no speaker's head, and either an address or code alone
 // keeps a line's markers (findings 2 and 3).
 func TestAListItemAndAnAddressOrCodeAloneStayAsWritten(t *testing.T) {

@@ -239,7 +239,11 @@ navigation again.
   bold line. A name matches as the core matches a speaker
   (`Meetings::SpeakerMarkup`): case, spaces and umlauts do not count, a
   note like `(Speaker 2)`, `(Sprecher 3)` or `(?)` is left out, and a
-  participant's first name is enough; the head shows the name as written. In the summary and the notes a bold line is bold, nothing
+  participant's first name is enough; the head shows the name as written.
+  Your tone needs more: the name must point to one participant alone, and
+  that one has your name, so a first name you share with someone else in
+  the meeting is theirs; with no participants known, only your full name is
+  yours. In the summary and the notes a bold line is bold, nothing
   more. Everywhere a heading is bold, a list item starts with a bullet, a
   line that starts bold keeps that part bold, and the markers of bold text
   are dropped where they pair up, but not in a line with an address or

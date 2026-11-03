@@ -73,16 +73,30 @@ func (l meetingLayout) speaker(name string, inline bool) bool {
 	return false
 }
 
-// own says whether a speaker's name is the person's: the same name, matched
-// as a speaker is, the first name alone too.
+// own says whether a speaker's name is the person's. The tone says who
+// spoke, so unlike speaker it must name one person (review round 3 of
+// #9): the label names exactly one participant, by the full name or the
+// first, and that participant has the person's name. A first name shared
+// by two participants, or one the person shares with a participant while
+// taking no part, is nobody's. With no participants known, only the
+// person's full name is theirs.
 func (l meetingLayout) own(name string) bool {
 	me := nameKey(l.me)
 	if me == "" {
 		return false
 	}
 	key := nameKey(withoutSuffix(name))
-	first, _, _ := strings.Cut(me, " ")
-	return key == me || key == first
+	if len(l.speakers) == 0 {
+		return key == me
+	}
+	named := map[string]bool{}
+	for _, s := range l.speakers {
+		full := nameKey(s)
+		if first, _, _ := strings.Cut(full, " "); key == full || key == first {
+			named[full] = true
+		}
+	}
+	return len(named) == 1 && named[me]
 }
 
 // nameKey is a name as the core normalises one (PersonName.normalize):
