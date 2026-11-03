@@ -1,6 +1,7 @@
 package view
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -197,5 +198,62 @@ func TestTheHeaderOpensWithTheBrand(t *testing.T) {
 func TestAFilledRunIsReversed(t *testing.T) {
 	if got := capStyle.Render("q"); got != "\x1b[7;38;2;216;218;223mq\x1b[m" {
 		t.Fatalf("%q", got)
+	}
+}
+
+// K7b: a text the model wrapped once (Wrap, Column.Wrapped) draws as the
+// view draws the text itself, at every width and every offset: leads,
+// indents, a heading's rule, long words, hyphens, wide graphemes, tabs.
+func TestAWrappedTextDrawsAsTheTextItself(t *testing.T) {
+	t.Parallel()
+
+	text := strings.Join([]string{
+		"Kickoff Relaunch",
+		"Anna Albers 4 Jan 09:00 · 45 min",
+		"",
+		"» Transcript",
+		"Anna: Wir starten im März, mit allen Seiten-Vorlagen und dem neuen Logo.\tDanach die Texte.",
+		"Supercalifragilisticexpialidocious-und-so-weiter ein langes Wort",
+		"日本語のテキストも折り返す 😀😀😀 und weiter",
+		"   eingerückt mit Leerzeichen   ",
+		"",
+	}, "\n")
+	styles := []present.LineStyle{
+		{Lead: len("Kickoff Relaunch"), LeadStyle: present.Strong, RestStyle: present.Strong},
+		{Lead: len("Anna Albers"), LeadStyle: present.Author, RestStyle: present.Faint},
+		{},
+		{Lead: len("» Transcript"), LeadStyle: present.Strong, Rule: true},
+		{Indent: 2},
+		{Lead: 10, LeadStyle: present.Strong, RestStyle: present.Faint},
+		{Indent: 4, RestStyle: present.Faint},
+	}
+	c := present.Column{Text: present.NewBody(text), Styles: styles, Cursor: -1}
+	for _, width := range []int{6, 14, 23, 40, 81, 120} {
+		lines, st := Wrap(c, textWidth(width), ansi.WcWidth)
+		w := present.Column{Wrapped: lines, Styles: st, Cursor: -1}
+		total := len(textLines(c, textWidth(width), ansi.WcWidth))
+		if len(lines) != total {
+			t.Fatalf("width %d: %d lines wrapped, %d drawn", width, len(lines), total)
+		}
+		for offset := 0; offset <= total; offset++ {
+			c.Offset, w.Offset = offset, offset
+			for _, height := range []int{1, 3, 7} {
+				want, got := content(c, width, height, true, ansi.WcWidth), content(w, width, height, true, ansi.WcWidth)
+				if !slices.Equal(want, got) {
+					t.Fatalf("width %d, offset %d, height %d:\nwant %q\ngot  %q", width, offset, height, want, got)
+				}
+			}
+		}
+	}
+	// TextWidth is the width the pane wraps at, with the meta bar or
+	// without: a text wrapped at it measures as the text itself.
+	for _, meta := range [][]present.MetaLine{nil, {{Text: present.NewInline("Status")}}} {
+		c.Meta = meta
+		g := Geometry{Width: 160, Height: 24, BodyHeight: 20, Columns: 2, ListWidth: 60, ObjectWidth: 100}
+		lines, st := Wrap(c, TextWidth(c, g, Object), ansi.WcWidth)
+		w := present.Column{Wrapped: lines, Styles: st, Meta: meta, Cursor: -1}
+		if got, want := Extent(w, g, Object, ansi.WcWidth), Extent(c, g, Object, ansi.WcWidth); got != want || got != len(lines) {
+			t.Fatalf("meta %v: extent %d, want %d", meta != nil, got, want)
+		}
 	}
 }

@@ -50,6 +50,7 @@ type Source interface {
 	BookTime(ctx context.Context, ticketID, duration, note, key string) (api.TimeBooking, transport.Answer)
 	BookedTimeAnswer(ctx context.Context, projectID, ticketID string) transport.Answer
 	MeetingsRESTAnswer(ctx context.Context, q api.MeetingQuery) transport.Answer
+	MeetingRESTAnswer(ctx context.Context, id string) transport.Answer
 }
 
 // Gateway turns tickets into commands.
@@ -151,6 +152,8 @@ func (g *Gateway) Read(ctx context.Context, t Ticket) tea.Cmd {
 		return g.BookedTime(ctx, t)
 	case api.MeetingsRESTSpec.Name:
 		return g.Meetings(ctx, t)
+	case api.MeetingRESTSpec.Name:
+		return g.Meeting(ctx, t)
 	}
 	return func() tea.Msg {
 		err := fmt.Errorf("gateway: no read of %q", t.Key.Operation)
@@ -452,6 +455,8 @@ func CheckReadTicket(t Ticket) error {
 		return CheckBookedTimeTicket(t)
 	case api.MeetingsRESTSpec.Name:
 		return CheckMeetingsTicket(t)
+	case api.MeetingRESTSpec.Name:
+		return CheckMeetingTicket(t)
 	}
 	return fmt.Errorf("gateway: no read of %q", t.Key.Operation)
 }

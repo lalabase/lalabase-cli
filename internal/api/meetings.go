@@ -24,6 +24,21 @@ var MeetingsRESTSpec = Spec{
 		"data[].creator.id", "data[].creator.name?",
 		"meta.page", "meta.per_page", "meta.total",
 	},
+	MemoryOnly: true,
+}
+
+// MeetingRESTSpec is one meeting, whole (K7b): the row's fields, the
+// participants, the summary (Markdown, shown as written), the notes and
+// the transcript, never cut. A meeting may have no summary, notes or
+// transcript, and a participant no name.
+var MeetingRESTSpec = Spec{
+	Name: "GET /api/v1/meetings/:id", Path: "/api/v1/meetings/:id",
+	Required: []string{
+		"data.id", "data.project_id", "data.title", "data.occurred_at", "data.duration_minutes?",
+		"data.creator.id", "data.creator.name?", "data.participants[].display_name?",
+		"data.generated_summary?", "data.notes?", "data.transcript?", "data.updated_at",
+	},
+	MemoryOnly: true,
 }
 
 // MeetingRow is one meeting of a list.
@@ -120,4 +135,46 @@ func CheckMeetingPage(p MeetingPage) error {
 			}
 		}
 	})
+}
+
+// Meeting is one meeting, whole.
+type Meeting struct {
+	MeetingRow
+	Participants []struct {
+		DisplayName *string `json:"display_name"`
+	} `json:"participants"`
+	Summary    *string `json:"generated_summary"`
+	Notes      *string `json:"notes"`
+	Transcript *string `json:"transcript"`
+	UpdatedAt  string  `json:"updated_at"`
+}
+
+// MeetingRESTAnswer sends the read of one meeting and returns the answer
+// undecoded (DecodeMeetingREST).
+func (a *API) MeetingRESTAnswer(ctx context.Context, id string) transport.Answer {
+	meeting, ok := segment(id)
+	if !ok {
+		return noSegment(MeetingRESTSpec, "meeting")
+	}
+	return a.c.Get(ctx, "/api/v1/meetings/"+meeting)
+}
+
+// DecodeMeetingREST checks an answer of MeetingRESTAnswer and decodes the
+// meeting from it; the payload stays as it came.
+func DecodeMeetingREST(ans transport.Answer) (Meeting, transport.Answer) {
+	var out struct {
+		Data Meeting `json:"data"`
+	}
+	if ans = decode(MeetingRESTSpec, ans, &out); !ans.OK() {
+		return Meeting{}, ans
+	}
+	return out.Data, ans
+}
+
+// CheckMeeting checks what the spec cannot say: no duration below zero.
+func CheckMeeting(m Meeting) error {
+	if m.DurationMinutes != nil && *m.DurationMinutes < 0 {
+		return errors.New("meeting: it lasts less than nothing")
+	}
+	return nil
 }

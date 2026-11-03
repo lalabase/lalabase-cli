@@ -34,6 +34,9 @@ const (
 	Time
 	// Meetings are the meetings of one project (K7a): one page, one search.
 	Meetings
+	// Meeting is the meeting in the object pane (K7b), previewed or
+	// opened, as Detail is for a ticket.
+	Meeting
 	areas
 )
 

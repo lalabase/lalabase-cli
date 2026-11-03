@@ -96,3 +96,67 @@ func CheckMeetingsPage(k cache.Key, p api.MeetingPage) error {
 	}
 	return nil
 }
+
+// MeetingResult is one waiter's meeting, whole (K7b).
+type MeetingResult struct {
+	Ticket
+	Meeting api.Meeting
+	Answer  transport.Answer
+	Flight  queue.Flight
+}
+
+func (r MeetingResult) Header() Result {
+	return Result{Ticket: r.Ticket, Answer: r.Answer, Flight: r.Flight}
+}
+
+// Meeting reads the meeting t names, the one id of its key.
+func (g *Gateway) Meeting(ctx context.Context, t Ticket) tea.Cmd {
+	if err := CheckMeetingTicket(t); err != nil {
+		return func() tea.Msg { return MeetingResult{Ticket: t, Answer: refusedTicket(err)} }
+	}
+	id := t.Key.Ticket
+	return shared(g, ctx, t, "gateway: meeting", func(shared context.Context) transport.Answer {
+		return g.src.MeetingRESTAnswer(shared, id)
+	}, func(ans transport.Answer, flight queue.Flight) MeetingResult {
+		m, ans := api.DecodeMeetingREST(ans)
+		if ans.OK() {
+			if err := CheckMeeting(t.Key, m); err != nil {
+				m, ans = api.Meeting{}, contradiction(ans, err)
+			}
+		}
+		return MeetingResult{Ticket: t, Meeting: m, Answer: ans, Flight: flight}
+	})
+}
+
+// CheckMeetingTicket: one meeting of one project, its id in the key's
+// Ticket, no other option, in its own area.
+func CheckMeetingTicket(t Ticket) error {
+	k := t.Key
+	switch {
+	case k.Operation != api.MeetingRESTSpec.Name:
+		return fmt.Errorf("meeting: a ticket of %q", k.Operation)
+	case k.Project == "" || k.Ticket == "":
+		return errors.New("meeting: no project or no meeting")
+	case k.Organisation != "" || k.Global || k.Status != "" || k.Query != "" || k.Page != 0 || k.PerPage != 0 ||
+		k.PostsPage != 0 || k.PostsPerPage != 0 || k.Newest || k.AttachmentsPage != 0 || k.FullText || k.Post != "":
+		return errors.New("meeting: an option the read does not have")
+	case t.Area != Meeting:
+		return errors.New("meeting: another area")
+	}
+	return nil
+}
+
+// CheckMeeting: the meeting is the one asked for, of the project asked
+// about (api.CheckMeeting for the rest).
+func CheckMeeting(k cache.Key, m api.Meeting) error {
+	if err := api.CheckMeeting(m); err != nil {
+		return err
+	}
+	if m.ID != k.Ticket {
+		return errors.New("meeting: another meeting answered")
+	}
+	if m.ProjectID != k.Project {
+		return errors.New("meeting: a meeting of another project")
+	}
+	return nil
+}

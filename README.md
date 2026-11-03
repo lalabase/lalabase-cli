@@ -52,7 +52,7 @@ but the daily work on tickets.
 | Creating tickets, changing status, title or assignee | yes | not yet |
 | Boards, time reports, exports | yes | no |
 | Meetings of a project: list and search | yes | yes |
-| Reading a meeting's summary, notes and transcript | yes | not yet |
+| Reading a meeting's summary, notes and transcript | yes | yes |
 | Docs, the AI assistant | yes | no |
 | Clients, roles, settings, administration | yes | no |
 | Starting and watching Claude Code on a ticket | no | yes |
@@ -73,8 +73,8 @@ what it is doing.
   its own login. The client downloads nothing.
 * **No offline mode.** Pages you have seen are shown at once from a cache,
   but every start needs the server.
-* **Meetings are listed, not opened yet**, and never written to disk: they
-  are read again in every session.
+* **Meetings are read only**, and never written to disk: they are read
+  again in every session.
 * **Claude Code only.** `x` starts no other agent.
 * **No Windows.** Release builds cover macOS and Linux. Opening panes and
   jumping to them works in iTerm on macOS; elsewhere Claude Code takes over
@@ -141,7 +141,7 @@ The help line at the bottom always names the keys that work right now.
 | `/` | search the ticket or meeting list |
 | `g` | group the list by status |
 | `[` `]` | previous and next page |
-| `Tab` | description, comments, attachments of a ticket |
+| `Tab` | description, comments, attachments of a ticket; summary, notes, transcript of a meeting |
 | `e` | read a long text whole, or fold a group |
 | `R` | refresh what is shown |
 | `r` | mark a notification as read |

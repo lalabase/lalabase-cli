@@ -16,11 +16,11 @@ import (
 
 // The meetings section (K7a): the projects of one organisation, as the
 // tickets section has them (projectsView, opened for this section), and
-// the meetings of one project page by page with a search. Read only: no
-// meeting is opened yet, the object pane shows the selected row's facts.
-// The memory keeps the pages for this session alone: the store never
-// journals them (cache.WithMemoryOnly in startup.go), and nothing here
-// asks the disk.
+// the meetings of one project page by page with a search. Read only: the
+// object pane shows the selected row's facts until the meeting is read
+// whole (meeting.go, K7b). The memory keeps the pages for this session
+// alone: the store never journals them (api.Spec.MemoryOnly, set where
+// startup.go builds the store), and nothing here asks the disk.
 //
 // It copies the shape of the ticket list on purpose instead of sharing an
 // abstraction with it: the ticket's state is too specific to generalise
@@ -98,6 +98,7 @@ func (a *app) leaveMeetings() {
 	if v := a.meetings; v != nil {
 		a.rememberMeetings()
 		a.cancelArea(gateway.Meetings)
+		a.dropMeeting()
 		a.meetings = nil
 	}
 }
@@ -123,7 +124,7 @@ func (m Model) openMeetings(project string) (Model, tea.Cmd) {
 	v.key = a.meetingsKey(project, v.query, v.page)
 	a.meetings = v
 	m.focus = view.List
-	return m, a.loadMeetings()
+	return m, tea.Batch(a.loadMeetings(), m.selectionChanged())
 }
 
 // loadMeetings shows the page from memory, if it is there and still
@@ -165,12 +166,13 @@ func (m Model) showMeetingPage(page int, query string) (Model, tea.Cmd) {
 	a := m.app
 	v := a.meetings
 	a.cancelArea(gateway.Meetings)
+	a.dropMeeting()
 	v.page, v.query, v.key = page, query, a.meetingsKey(v.project, query, page)
 	v.rows, v.status = nil, status{}
 	v.selected, v.offset, v.corrected = "", 0, false
 	a.rememberMeetings()
 	m.focus = view.List
-	return m, a.loadMeetings()
+	return m, tea.Batch(a.loadMeetings(), m.selectionChanged())
 }
 
 // --- the search line ---------------------------------------------------------
@@ -200,6 +202,7 @@ func (m Model) meetingSearchKey(kind Action, text string) (Model, tea.Cmd) {
 	case Cancel:
 		v.entry = ""
 		m.mode = Navigate
+		return m, m.selectionChanged()
 	case Submit:
 		query := strings.TrimSpace(v.entry)
 		v.entry = ""
@@ -207,6 +210,7 @@ func (m Model) meetingSearchKey(kind Action, text string) (Model, tea.Cmd) {
 		if query != v.query {
 			return m.showMeetingPage(1, query)
 		}
+		return m, m.selectionChanged()
 	}
 	return m, nil
 }
@@ -217,6 +221,14 @@ func (m Model) meetingSearchKey(kind Action, text string) (Model, tea.Cmd) {
 // projects; not again while a read of it is out.
 func (m Model) refreshMeetings() tea.Cmd {
 	a := m.app
+	if d := a.meeting; d != nil && m.focus == view.Object && a.meetingSelected() {
+		// The meeting in the focused pane (K7b), a failed one too.
+		d.loading, d.requested = true, true
+		if a.pending(d.key) {
+			return nil
+		}
+		return a.issue(gateway.Meeting, d.key, forMeeting, queue.User)
+	}
 	if v := a.meetings; v != nil {
 		v.corrected = false
 		v.loading = true
@@ -231,6 +243,9 @@ func (m Model) refreshMeetings() tea.Cmd {
 // canRefreshMeetings mirrors refreshMeetings.
 func (m Model) canRefreshMeetings() bool {
 	a := m.app
+	if d := a.meeting; d != nil && m.focus == view.Object && a.meetingSelected() {
+		return !a.pending(d.key)
+	}
 	if v := a.meetings; v != nil {
 		return !a.pending(v.key)
 	}
@@ -260,7 +275,8 @@ func (m Model) receiveMeetings(r gateway.MeetingsResult) (Model, tea.Cmd) {
 		v.rows, v.total, v.perPage = r.Page.Data, r.Page.Meta.Total, r.Page.Meta.PerPage
 		v.fresh(a.now())
 		v.reselect()
-		return m.correctMeetingPage()
+		m, cmd := m.correctMeetingPage()
+		return m, tea.Batch(cmd, m.selectionChanged())
 	case cache.Remove:
 		// The project is gone or out of reach: every page goes, and the
 		// search line with it.
@@ -269,6 +285,7 @@ func (m Model) receiveMeetings(r gateway.MeetingsResult) (Model, tea.Cmd) {
 		}
 		v.rows, v.total, v.selected = nil, 0, ""
 		v.removed()
+		a.dropMeeting()
 	default:
 		v.failed(d, r.Answer)
 	}

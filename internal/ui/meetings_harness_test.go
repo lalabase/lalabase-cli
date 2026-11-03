@@ -126,3 +126,78 @@ func (h *harness) meetingLines() []string {
 	}
 	return out
 }
+
+// K7b: one meeting, whole. Website #1 has all three sections, #2 notes
+// alone, #3 nothing written but blanks; Handbuch #2 a transcript that tries to reach
+// the terminal; Handbuch #3 is out of reach, though it is listed.
+
+func (f *fakes) MeetingRESTAnswer(ctx context.Context, id string) transport.Answer {
+	f.mu.Lock()
+	f.meetingIDs = append(f.meetingIDs, id)
+	answer, held := f.meeting, f.gateMeeting
+	f.mu.Unlock()
+	if !f.hold(ctx, held) {
+		return transport.Answer{Class: transport.Canceled, Message: "canceled"}
+	}
+	return answer(id)
+}
+
+func (f *fakes) meetingShows() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.meetingIDs)
+}
+
+func (f *fakes) setMeeting(fn func(id string) transport.Answer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.meeting = fn
+}
+
+// hostileTranscript is a transcript with terminal sequences in it.
+const hostileTranscript = "Anna: \x1b]52;c;cGF3bmVk\x07copied \x1b[2Jcleared \u202egone"
+
+// fullMeeting is a listed meeting, whole, with the texts given ("" for
+// none).
+func fullMeeting(r api.MeetingRow, summary, notes, transcript string) map[string]any {
+	opt := func(s string) any {
+		if s == "" {
+			return nil
+		}
+		return s
+	}
+	return map[string]any{"data": map[string]any{
+		"id": r.ID, "project_id": r.ProjectID, "title": r.Title, "occurred_at": r.OccurredAt,
+		"duration_minutes": r.DurationMinutes, "creator": map[string]any{"id": r.Creator.ID, "name": r.Creator.Name},
+		"participants":      []map[string]any{{"display_name": "Anna Albers"}, {"display_name": nil}},
+		"generated_summary": summary, "notes": opt(notes), "transcript": opt(transcript),
+		"updated_at": r.OccurredAt, "path": "/org/x/projects/" + r.ProjectID + "/meetings/" + r.ID,
+	}}
+}
+
+// defaultMeeting answers a listed meeting whole; any other is out of reach.
+func defaultMeeting(id string) transport.Answer {
+	for _, project := range []string{website, handbuch} {
+		for n, r := range meetingRows(project) {
+			if r.ID != id {
+				continue
+			}
+			switch {
+			case project == handbuch && n+1 == 3:
+				return restNotFound()
+			case project == handbuch && n+1 == 2:
+				return objectAnswer(fullMeeting(r, "", "", hostileTranscript))
+			case n+1 == 1 && project == website:
+				return objectAnswer(fullMeeting(r, "**Ergebnis:** Start im März.", "Termin im März halten.", "Anna: Wir starten im März.\nErika: Gut."))
+			case n+1 == 2:
+				return objectAnswer(fullMeeting(r, "", "Nur Notizen.", ""))
+			case n+1 == 3:
+				// A summary of blanks is nothing written.
+				return objectAnswer(fullMeeting(r, " \n\t ", "", ""))
+			default:
+				return objectAnswer(fullMeeting(r, "Summary of "+r.Title, "", "Anna: "+r.Title))
+			}
+		}
+	}
+	return restNotFound()
+}

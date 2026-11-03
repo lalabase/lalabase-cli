@@ -209,12 +209,37 @@ navigation again.
   projects, and a return finds the remembered page, row and search. An
   empty project, a search without a match and a reader without the
   meetings area each say so in a line; a project out of reach says it is
-  gone. The object pane shows the selected row's facts (title, date,
-  duration, creator, project) from the row alone; no meeting opens yet,
-  and `x`, `b` and `k` do nothing here. Every text of a meeting is foreign
-  and cleaned where it is shown. Meetings stay in memory for the session
-  alone: no page of them reaches the disk cache, so every start reads them
-  from the server again.
+  gone. Until a meeting is read the object pane shows the selected row's
+  facts (title, date, duration, creator, project) from the row alone. Every
+  text of a meeting is foreign and cleaned where it is shown. Meetings stay
+  in memory for the session alone: no page and no meeting reaches the disk
+  cache (the rule is the reader's, `api.Spec.MemoryOnly`), so every start
+  reads them from the server again.
+* **A meeting (K7b).** On a server that also lists `meetings.show`,
+  `Enter` or the right arrow reads the selected meeting
+  (`/api/v1/meetings/:id`) into the object pane at once; a row selected
+  without the focus there is read after the pause, as a ticket's preview.
+  Opening a queued preview gives it the person's priority, so the preview
+  budget cannot hold it back. Closing a search without changing it starts
+  the preview timer again; returning to a cached page restores its cached
+  meeting and schedules its reload without waiting for the list's reload.
+  The head has the title; the date, duration, project, creator and
+  participants stand in the bar on the right where the pane is wide enough,
+  else in two faint lines under the title. Below them one section at a
+  time, its name marked, the others named faint after it: the summary (the
+  server's Markdown, shown as written), the notes and the transcript, `Tab`
+  to the next; a section with nothing in it is left out, and a meeting with
+  nothing written says so. The arrows, `u`/`space` and the wheel scroll,
+  `R` reads the meeting again, `Esc` goes back to the list and the pane
+  keeps the meeting. `R` retries a failed meeting too, without reading the
+  list; resizing the terminal does not retry a failed read.
+  No key acts on a meeting: `x`, `b` and `k` do nothing
+  and stand nowhere in the help. The pane wraps its text once per width and
+  section, not per frame, so a long transcript scrolls without delay. A
+  meeting gone or out of reach, a refusal and an answer above the client's
+  bound of 8 MiB are a line in the pane, never a cut text; the list beside
+  it stays as it is. Without `meetings.show` the pane keeps the row's
+  facts.
 * **The mouse wheel** scrolls the object pane (a ticket, the details of a
   notification) by three lines when the pointer is over it, whether the
   pane has the focus or stands beside the list; like `PgUp`/`PgDn` it lets
@@ -832,8 +857,8 @@ navigation again.
   on disk shows as "Cached" and is reloaded once like a page from memory; a
   hit, a restart or a failed reload extends no lifetime. The start makes
   its five requests as before; the disk adds none and saves none. Meetings
-  never reach it (K7a): the memory keeps their pages for the session, and
-  no change of theirs is written or read back.
+  never reach it (K7a, K7b): the memory keeps their pages and the meetings
+  read whole for the session, and no change of theirs is written or read back.
   * **Bounds:** 64 MiB per profile directory, 24 hours since the last
     successful network read (an entry stamped in the future is expired),
     2 MiB per payload, 2 MiB plus 64 KiB per file with its metadata, 1,024
@@ -966,7 +991,7 @@ a count), 3 in Handbuch, 5 in Archiv; the first organisation's rows name
 Website-Relaunch's tickets (row 6 names ticket #6), the second's name
 tickets the fixture does not have. It
 binds to 127.0.0.1 only, accepts one synthetic token (`inboxfixture.Token`)
-and refuses everything but the reads of C1 and K7a and the writes of C1f,
+and refuses everything but the reads of C1, K7a and K7b and the writes of C1f,
 C2, K6 and K3a.
 Meetings (K7a) are listed over REST (`/api/v1/projects/:id/meetings`)
 when R1's capabilities are on: 30 in Website-Relaunch (two pages of 25,
@@ -974,7 +999,13 @@ newest first; #2 has no duration, #3 a creator who is gone, #4 a title
 with a colour, a title change and a right-to-left override), none in
 Intern, an empty list in Handbuch (a reader without the meetings area),
 and Archiv out of reach (404). The fixture searches the titles alone; the
-core searches title, notes, transcript and summary.
+core searches title, notes, transcript and summary. One meeting (K7b,
+`/api/v1/meetings/:id`) is served for Website-Relaunch's: #1 with a
+summary, notes and a transcript of a few screens, #2 with notes alone, #3
+with nothing written, #4 with a transcript that tries to reach the terminal
+(a copy to the clipboard, a cleared screen, a right-to-left override), #5
+gone (404), #6 with a transcript of 500 KB and #7 with one above the
+client's bound of 8 MiB.
 The ticket view is served on both ways (K1): its `/me` is the contract's,
 with R1's capabilities, so the client reads the list and the tickets over
 REST (`/api/v1/projects/:id/tickets`, `/api/v1/tickets/:id` with or

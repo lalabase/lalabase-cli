@@ -73,6 +73,8 @@ const (
 	forGroup
 	// forMeetings: a page of a project's meetings (K7a).
 	forMeetings
+	// forMeeting: the meeting in the object pane (K7b).
+	forMeeting
 )
 
 // waiter is one consumer of a read in flight: its ticket, how to cancel it,
@@ -199,6 +201,9 @@ type app struct {
 	// search per project.
 	meetings           *meetingsView
 	rememberedMeetings map[string]meetingPosition
+	// meeting is the meeting in the object pane (K7b), of the list's
+	// selected row.
+	meeting *meetingDetail
 	// previewToken names the timer of the row the cursor rests on: only the
 	// wake-up with the current token reads a preview.
 	previewToken uint64
@@ -261,7 +266,7 @@ func (a *app) reset() {
 	a.directory, a.counters, a.global, a.countersSeq, a.snapshot = nil, map[string]count{}, count{}, 0, 0
 	a.waiters, a.filed = map[gateway.Waiter]*waiter{}, map[cache.Key]uint64{}
 	a.highlight, a.highlightSection, a.active, a.remembered = "", sectionInbox, nil, map[string]position{}
-	a.projects, a.tickets, a.detail, a.meetings = nil, nil, nil, nil
+	a.projects, a.tickets, a.detail, a.meetings, a.meeting = nil, nil, nil, nil, nil
 	a.rememberedProject, a.rememberedTickets, a.previewToken = map[string]string{}, map[string]ticketPosition{}, 0
 	a.rememberedMeetings = map[string]meetingPosition{}
 	a.titles = map[string]*title{}

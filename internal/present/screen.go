@@ -56,6 +56,11 @@ type Column struct {
 	Cursor int
 	// Text is free text, wrapped by the view, when Rows is nil.
 	Text Body
+	// Wrapped, when set, stands for Text: the text already wrapped at the
+	// pane's text width (view.Wrap), one screen line each, Styles one per
+	// line. The view draws the lines in sight alone and wraps none of the
+	// others again: a model wraps a long text once per width (K7b).
+	Wrapped []string
 	// Styles says how each line of Text is drawn, one per line; a line
 	// without one is plain.
 	Styles []LineStyle

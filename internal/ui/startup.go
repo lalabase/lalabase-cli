@@ -127,7 +127,7 @@ func (m Model) confirmIdentity(me api.Me) (Model, tea.Cmd) {
 		return m, nil
 	}
 	a.me, a.ns = me, ns
-	a.scope, a.store = gateway.NewScope(ns), cache.NewStore(cache.WithJournal(a.disk.journal), cache.WithMemoryOnly(api.MeetingsRESTSpec.Name))
+	a.scope, a.store = gateway.NewScope(ns), cache.NewStore(cache.WithJournal(a.disk.journal), cache.WithMemoryOnly(api.MemoryOnly()...))
 	// The disk cache opens now and not before: nothing of it is read or
 	// made for an identity the server did not confirm (C1e).
 	return m, tea.Batch(a.startStep(stepInitialize), a.startStep(stepOrganisations), a.openDisk())

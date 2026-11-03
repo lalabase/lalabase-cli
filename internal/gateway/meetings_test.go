@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -190,5 +191,152 @@ func TestAMeetingListOutOfReachIsRemoved(t *testing.T) {
 	}
 	if _, ok := store.Get(search); ok {
 		t.Fatal("the search of a project out of reach stayed")
+	}
+}
+
+// K7b: one meeting, whole, in the object pane.
+
+const (
+	meetingGroup = "GET /api/v1/meetings/:id"
+	kickoff      = "00000000-0000-4000-8000-000000000101"
+)
+
+func serveMeeting(t *testing.T, name string, edit func(data map[string]any), opts ...transport.Option) *meetingsServer {
+	t.Helper()
+	file, err := contract.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex, ok := file.Contract.REST[meetingGroup][name]
+	if !ok {
+		t.Fatalf("the contract has no %s", name)
+	}
+	s := &meetingsServer{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		s.sent = append(s.sent, r.Method+" "+r.URL.RequestURI())
+		s.mu.Unlock()
+		out := []byte(ex.Response.Body)
+		if edit != nil {
+			var body map[string]any
+			_ = json.Unmarshal(out, &body)
+			edit(body["data"].(map[string]any))
+			out, _ = json.Marshal(body)
+		}
+		w.WriteHeader(ex.Response.Status)
+		_, _ = w.Write(out)
+	}))
+	t.Cleanup(srv.Close)
+	c, err := transport.New(srv.URL, "lalab_pat_synthetic", opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.api = api.New(c)
+	return s
+}
+
+func meetingKey(ns cache.Namespace, project, id string) cache.Key {
+	k := ns.Key(api.MeetingRESTSpec.Name)
+	k.Project, k.Ticket = project, id
+	return k
+}
+
+func TestAMeetingIsReadOverRESTAndFiledThroughTheScope(t *testing.T) {
+	srv := serveMeeting(t, "ok", nil) // a meeting of website
+	gw, scope, ns := meetingsGateway(t, srv)
+	key := meetingKey(ns, website, kickoff)
+	ticket := scope.Begin(Meeting, key, queue.User)
+	if ticket.Way != features.REST {
+		t.Fatalf("a meeting read via %v", ticket.Way)
+	}
+	r := result(t, run(gw.Read(context.Background(), ticket))).(MeetingResult)
+	if !r.Answer.OK() || r.Meeting.Title != "Kickoff Relaunch" || *r.Meeting.Transcript != "Anna: Wir starten im März." {
+		t.Fatalf("%v %q %+v", r.Answer.Class, r.Answer.Message, r.Meeting)
+	}
+	if got := srv.requests(); len(got) != 1 || got[0] != "GET /api/v1/meetings/"+kickoff {
+		t.Fatalf("sent %q", got)
+	}
+	store := cache.NewStore()
+	if d, ok := scope.Receive(store, r, time.Now()); !ok || d != cache.Replace {
+		t.Fatalf("%v %v", d, ok)
+	}
+	if _, ok := store.Get(key); !ok {
+		t.Fatal("nothing filed")
+	}
+}
+
+// Another meeting, or one of another project, is a contradiction.
+func TestAMeetingThatIsNotTheOneAskedForIsRefused(t *testing.T) {
+	for name, edit := range map[string]func(map[string]any){
+		"another meeting": func(d map[string]any) { d["id"] = login },
+		"another project": func(d map[string]any) { d["project_id"] = orgA },
+		"a negative time": func(d map[string]any) { d["duration_minutes"] = -5 },
+	} {
+		srv := serveMeeting(t, "ok", edit)
+		gw, scope, ns := meetingsGateway(t, srv)
+		r := result(t, run(gw.Read(context.Background(), scope.Begin(Meeting, meetingKey(ns, website, kickoff), queue.User)))).(MeetingResult)
+		if r.Answer.Class != transport.Protocol || r.Meeting.ID != "" {
+			t.Errorf("%s: %v %q", name, r.Answer.Class, r.Answer.Message)
+		}
+	}
+}
+
+func TestAMeetingTicketOutsideItsShapeSendsNothing(t *testing.T) {
+	srv := serveMeeting(t, "ok", nil)
+	gw, scope, ns := meetingsGateway(t, srv)
+	good := meetingKey(ns, website, kickoff)
+	for name, c := range map[string]struct {
+		area Area
+		edit func(k *cache.Key)
+	}{
+		"no meeting":   {Meeting, func(k *cache.Key) { k.Ticket = "" }},
+		"a page":       {Meeting, func(k *cache.Key) { k.Page = 1 }},
+		"a search":     {Meeting, func(k *cache.Key) { k.Query = "x" }},
+		"another area": {Meetings, func(*cache.Key) {}},
+	} {
+		k := good
+		c.edit(&k)
+		r := result(t, run(gw.Read(context.Background(), scope.Begin(c.area, k, queue.User))))
+		if h := r.(Received).Header(); h.Answer.Class != transport.InvalidInput {
+			t.Errorf("%s: %v %q", name, h.Answer.Class, h.Answer.Message)
+		}
+	}
+	if got := srv.requests(); len(got) != 0 {
+		t.Fatalf("sent %q", got)
+	}
+}
+
+// A meeting gone or out of reach is removed, and only the meeting: the
+// list it was picked from stays.
+func TestAMeetingOutOfReachIsRemovedAndTheListStays(t *testing.T) {
+	srv := serveMeeting(t, "not_found", nil)
+	gw, scope, ns := meetingsGateway(t, srv)
+	store := cache.NewStore()
+	list := meetingsKey(ns, website, "", 1)
+	store.Apply(list, cache.Replace, []byte(`{"data":[],"meta":{"page":1,"per_page":25,"total":0}}`), time.Now())
+	key := meetingKey(ns, website, kickoff)
+	store.Apply(key, cache.Replace, []byte(`{}`), time.Now())
+	r := result(t, run(gw.Read(context.Background(), scope.Begin(Meeting, key, queue.User)))).(MeetingResult)
+	if d, ok := scope.Receive(store, r, time.Now()); !ok || d != cache.Remove {
+		t.Fatalf("%v %v", d, ok)
+	}
+	if _, ok := store.Get(key); ok {
+		t.Fatal("the meeting stayed")
+	}
+	if _, ok := store.Get(list); !ok {
+		t.Fatal("the list went with the meeting")
+	}
+}
+
+// An answer above the transport's bound is an error that says so, never a
+// meeting with its text cut.
+func TestAMeetingLargerThanTheBoundIsAnErrorNotACutText(t *testing.T) {
+	srv := serveMeeting(t, "ok", func(d map[string]any) {
+		d["transcript"] = strings.Repeat("Anna: Wir starten im März. ", 200)
+	}, transport.WithMaxBody(2048))
+	gw, scope, ns := meetingsGateway(t, srv)
+	r := result(t, run(gw.Read(context.Background(), scope.Begin(Meeting, meetingKey(ns, website, kickoff), queue.User)))).(MeetingResult)
+	if r.Answer.Class != transport.Protocol || !strings.Contains(r.Answer.Message, "larger than 2048 bytes") || r.Meeting.Transcript != nil {
+		t.Fatalf("%v %q %+v", r.Answer.Class, r.Answer.Message, r.Meeting.Transcript)
 	}
 }

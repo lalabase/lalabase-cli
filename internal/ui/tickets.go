@@ -497,6 +497,9 @@ func (m Model) searchKey(kind Action, text string) (Model, tea.Cmd) {
 // opened the pane keeps that ticket.
 func (m Model) selectionChanged() tea.Cmd {
 	a := m.app
+	if a.meetings != nil {
+		return m.meetingSelectionChanged()
+	}
 	v := a.tickets
 	if v == nil || v.opened != "" {
 		return nil
@@ -553,6 +556,9 @@ func (d *detailView) holds() bool { return d.known && !d.cached && !d.stale && d
 // state still previewable, the selected ticket is read as background work.
 func (m Model) due(msg gateway.Due) (Model, tea.Cmd) {
 	a := m.app
+	if a != nil && a.meetings != nil {
+		return m.meetingDue(msg)
+	}
 	if a == nil || a.expired || msg.Session != a.session || msg.Token != a.previewToken || !m.previewable() {
 		return m, nil
 	}

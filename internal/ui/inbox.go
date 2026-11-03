@@ -141,6 +141,9 @@ func (a *app) settleLoading() {
 	if v := a.meetings; v != nil {
 		v.loading = a.pending(v.key)
 	}
+	if d := a.meeting; d != nil {
+		d.loading = a.pending(d.key)
+	}
 	if v := a.tickets; v != nil {
 		v.loading = a.pending(v.key)
 		for _, g := range v.groups {
