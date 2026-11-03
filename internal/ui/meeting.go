@@ -360,9 +360,8 @@ func (m Model) meetingColumn() present.Column {
 // meetingLines is the pane's text wrapped at width: from the wrap before
 // when the width, the record, the section and the head are the same, else
 // wrapped once more. The head is small and built for every frame; the
-// section's text is cleaned and wrapped only here, cleaned once, with the
-// whole text (present.NewBody): its lines are plain, so a line the
-// cleaning adds or takes changes no style.
+// section's text is laid out (meetingBody, which cleans it first) and
+// wrapped only here.
 func (a *app) meetingLines(d *meetingDetail, c present.Column, width int, meta bool, method ansi.Method) ([]string, []present.LineStyle) {
 	head, headStyles := a.meetingHead(d, meta)
 	key := meetingWrapKey{width: width, method: method, gen: d.gen, area: d.area, head: strings.Join(head, "\n")}
@@ -371,7 +370,7 @@ func (a *app) meetingLines(d *meetingDetail, c present.Column, width int, meta b
 	}
 	lines, styles := head, headStyles
 	if text := d.texts()[d.area]; text != "" {
-		body, bodyStyles := meetingBody(text, a.ownName())
+		body, bodyStyles := meetingBody(text, meetingLayout{me: a.ownName(), speakers: namedParticipants(d.record), transcript: d.area == meetingTranscript})
 		lines, styles = append(lines, body...), append(styles, bodyStyles...)
 	} else {
 		lines, styles = append(lines, uitext.Inline(uitext.NothingWritten).String()), append(styles, plainLine)
@@ -464,6 +463,20 @@ func createdBy(r api.MeetingRow) string {
 		return creatorOf(r)
 	}
 	return uitext.Fill(uitext.MetaCreator, creatorOf(r)).String()
+}
+
+// namedParticipants are the names of the participants who have one,
+// cleaned: who may speak in the transcript.
+func namedParticipants(r api.Meeting) []string {
+	var out []string
+	for _, p := range r.Participants {
+		if p.DisplayName != nil {
+			if name := present.NewInline(*p.DisplayName).String(); name != "" {
+				out = append(out, name)
+			}
+		}
+	}
+	return out
 }
 
 // participantsOf are the names of the meeting's participants, cleaned; a

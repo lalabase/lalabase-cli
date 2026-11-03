@@ -13,15 +13,23 @@ import (
 // the words below it. The pane shows a small part of Markdown and leaves
 // the rest as written:
 //
-//   - a speaker's line becomes a head, the name bold in the tone of an
-//     author (the person's own name in theirs), the turn indented below
-//     it, an empty line before the next head;
-//   - a heading ("# ...") is bold, a list item ("- ", "* ", "+ ") starts
-//     with a bullet, a line that starts bold keeps that part bold;
-//   - the markers of bold text ("**") are dropped where they pair up.
+//   - in the transcript alone, a speaker's line becomes a head, the name
+//     bold in the tone of an author (the person's own name in theirs), the
+//     turn indented below it, an empty line before the next head. A
+//     speaker is a bold name alone on a line ("**Name**"), or a bold name
+//     with a colon before their words ("**Name:** words") when it is one
+//     of the meeting's participants. With participants known, a bold line
+//     alone names one of them too: "**Fazit**" is no person. In a summary
+//     or notes such a line is bold, nothing more (review round 1 of #9);
+//   - a heading ("# ...") is bold and ends a turn, a list item ("- ", "* ",
+//     "+ ") starts with a bullet, a line that starts bold keeps that part
+//     bold;
+//   - the markers of bold text ("**") are dropped where they pair up, but
+//     not in a line with an address or code ("://", "`").
 //
-// The text is cleaned before it is read (rule 1): the layout works on what
-// is shown, so the lines and their styles stay in step.
+// The text is cleaned before it is read (rule 1) and its tabs widened as
+// the view widens them: the layout works on what is shown, so the lines
+// and their styles stay in step.
 
 // maxSpeaker bounds a speaker's name: a longer bold line is a sentence.
 const maxSpeaker = 60
@@ -29,9 +37,37 @@ const maxSpeaker = 60
 // indentTurn is the indent of a speaker's words below their name.
 const indentTurn = 2
 
-// meetingBody lays out one section's raw text; me is the person's own
-// name, "" for none.
-func meetingBody(raw, me string) ([]string, []present.LineStyle) {
+// meetingLayout is what the layout of a section knows of its meeting.
+type meetingLayout struct {
+	// me is the person's own name, "" for none.
+	me string
+	// speakers are the names of the meeting's participants, cleaned; none
+	// known, any short bold name alone on a line is a speaker.
+	speakers []string
+	// transcript: the section is the transcript, the one with speakers.
+	transcript bool
+}
+
+// speaker says whether a name is a speaker's: a bold name alone on a line,
+// or one with their words after it (inline), which must name a
+// participant.
+func (l meetingLayout) speaker(name string, inline bool) bool {
+	if !l.transcript || name == "" || utf8.RuneCountInString(name) > maxSpeaker {
+		return false
+	}
+	if len(l.speakers) == 0 {
+		return !inline
+	}
+	for _, s := range l.speakers {
+		if strings.EqualFold(s, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// meetingBody lays out one section's raw text.
+func meetingBody(raw string, l meetingLayout) ([]string, []present.LineStyle) {
 	var lines []string
 	var styles []present.LineStyle
 	add := func(line string, st present.LineStyle) {
@@ -39,17 +75,21 @@ func meetingBody(raw, me string) ([]string, []present.LineStyle) {
 		styles = append(styles, st)
 	}
 	turn := false
-	for _, line := range strings.Split(present.NewBody(raw).String(), "\n") {
-		if name, ok := speakerOf(line); ok {
-			if n := len(lines); n > 0 && strings.TrimSpace(lines[n-1]) != "" {
-				add("", present.LineStyle{})
-			}
-			tone := present.Author
-			if me != "" && name == me {
-				tone = present.Own
-			}
-			add(name, present.LineStyle{Lead: len(name), LeadStyle: tone, RestStyle: tone})
-			turn = true
+	head := func(name string) {
+		if n := len(lines); n > 0 && strings.TrimSpace(lines[n-1]) != "" {
+			add("", present.LineStyle{})
+		}
+		tone := present.Author
+		if l.me != "" && name == l.me {
+			tone = present.Own
+		}
+		add(name, present.LineStyle{Lead: len(name), LeadStyle: tone, RestStyle: tone})
+		turn = true
+	}
+	text := strings.ReplaceAll(present.NewBody(raw).String(), "\t", "    ")
+	for _, line := range strings.Split(text, "\n") {
+		if name, ok := speakerOf(line); ok && l.speaker(name, false) {
+			head(name)
 			continue
 		}
 		indent := 0
@@ -66,6 +106,13 @@ func meetingBody(raw, me string) ([]string, []present.LineStyle) {
 			bullet, line, indent = "• ", item, indent+depth
 		}
 		lead, rest := leadingBold(line)
+		if name, words, ok := inlineSpeaker(lead, rest); ok && bullet == "" && l.speaker(name, true) {
+			head(name)
+			if words != "" {
+				add(words, present.LineStyle{Indent: indentTurn})
+			}
+			continue
+		}
 		text := bullet + lead + unbold(rest)
 		st := present.LineStyle{Indent: indent}
 		if lead != "" {
@@ -88,6 +135,20 @@ func speakerOf(line string) (string, bool) {
 		return "", false
 	}
 	return name, true
+}
+
+// inlineSpeaker reads a bold start that names a speaker before their
+// words: "**Name:** words" or "**Name**: words".
+func inlineSpeaker(lead, rest string) (string, string, bool) {
+	switch {
+	case lead == "":
+		return "", "", false
+	case strings.HasSuffix(lead, ":"):
+		return strings.TrimSpace(strings.TrimSuffix(lead, ":")), strings.TrimSpace(rest), true
+	case strings.HasPrefix(rest, ":"):
+		return strings.TrimSpace(lead), strings.TrimSpace(rest[1:]), true
+	}
+	return "", "", false
 }
 
 // headingOf reads a Markdown heading: one to six "#", a space, the text.
@@ -128,9 +189,9 @@ func leadingBold(line string) (string, string) {
 }
 
 // unbold drops the markers of bold text where they pair up; a lone marker
-// stays as written.
+// stays as written, and so does a line with an address or code in it.
 func unbold(s string) string {
-	if n := strings.Count(s, "**"); n == 0 || n%2 != 0 {
+	if n := strings.Count(s, "**"); n == 0 || n%2 != 0 || strings.Contains(s, "://") || strings.Contains(s, "`") {
 		return s
 	}
 	return strings.ReplaceAll(s, "**", "")

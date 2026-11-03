@@ -229,13 +229,18 @@ navigation again.
   time, its name marked, the others named faint after it: the summary, the
   notes and the transcript, `Tab` to the next; a section with nothing in it
   is left out, and a meeting with nothing written says so. The server sends
-  Markdown, and the pane lays a little of it out (K7c): a speaker's line
-  (`**Name**` alone on a line) becomes a head, the name bold in an author's
-  tone (your own name in yours, as on your comments), the words indented
-  below it and an empty line before the next speaker; a heading is bold, a
-  list item starts with a bullet, a line that starts bold keeps that part
-  bold, and the markers of bold text are dropped where they pair up. The
-  rest stands as written. The arrows, `u`/`space` and the wheel scroll,
+  Markdown, and the pane lays a little of it out (K7c). In the transcript a
+  speaker becomes a head, the name bold in an author's tone (your own name
+  in yours, as on your comments), the words indented below it and an empty
+  line before the next speaker. A speaker is a bold name alone on a line
+  (`**Name**`), or a bold name with a colon before the words (`**Name:**
+  words`) when it is one of the meeting's participants; with participants
+  known, a bold line alone must name one of them too, so `**Fazit**` stays a
+  bold line. In the summary and the notes a bold line is bold, nothing
+  more. Everywhere a heading is bold, a list item starts with a bullet, a
+  line that starts bold keeps that part bold, and the markers of bold text
+  are dropped where they pair up, but not in a line with an address or
+  code. The rest stands as written. The arrows, `u`/`space` and the wheel scroll,
   `R` reads the meeting again, `Esc` goes back to the list and the pane
   keeps the meeting. `R` retries a failed meeting too, without reading the
   list; resizing the terminal does not retry a failed read.
