@@ -15,6 +15,11 @@ import (
 // whose reader lacks the meetings area (an empty list, as the core
 // answers); Archiv is out of reach (404). A fixture before R1 lists no
 // meeting capability and has no route here.
+//
+// One meeting, whole (K7b): Website #1 has a summary, notes and a
+// transcript of a few screens, #2 notes alone, #3 nothing written, #4 a
+// transcript that tries to reach the terminal, #5 is gone (404), #6 has a
+// transcript of 500 KB and #7 one above the client's bound of 8 MiB.
 
 // MeetingCount is the number of meetings of a project.
 var MeetingCount = map[string]int{ProjectWebsite: 30, ProjectIntern: 0, ProjectHandbuch: 0}
@@ -88,4 +93,57 @@ func (f *Fixture) restMeetings(w http.ResponseWriter, r *http.Request, req Reque
 		"data": rows[from:min(len(rows), from+perPage)],
 		"meta": map[string]any{"page": page, "per_page": perPage, "total": len(rows)},
 	})
+}
+
+// HostileTranscript is the transcript of Website's meeting #4: a copy to
+// the clipboard, a cleared screen and a right-to-left override.
+const HostileTranscript = "Anna: \x1b]52;c;cGF3bmVk\x07copied \x1b[2Jcleared \u202egone"
+
+// Sizes of the long transcripts of Website's #6 and #7.
+const (
+	LongTranscriptBytes  = 500 << 10
+	HugeTranscriptBytes  = 9 << 20
+	meetingTranscriptRow = "Anna: Wir starten im März mit allen Seiten, dann die Texte, dann das Logo.\n"
+)
+
+// transcriptOf is a transcript of at least n bytes, its last line "Ende.".
+func transcriptOf(n int) string {
+	return strings.Repeat(meetingTranscriptRow, n/len(meetingTranscriptRow)+1) + "Ende."
+}
+
+// restMeeting is GET /api/v1/meetings/:id: a listed meeting of Website,
+// whole; any other is out of reach, as the core answers every failure.
+func (f *Fixture) restMeeting(w http.ResponseWriter, req Request, id string) {
+	n := 0
+	for i := 1; i <= MeetingCount[ProjectWebsite]; i++ {
+		if MeetingID(ProjectWebsite, i) == id {
+			n = i
+		}
+	}
+	if n == 0 || n == 5 {
+		restError(w, req, f, http.StatusNotFound, "not_found", "")
+		return
+	}
+	var summary, notes, transcript any = "", nil, nil
+	switch n {
+	case 1:
+		summary, notes = "**Ergebnis:** Start im März.\n\n- Seiten-Vorlagen\n- Logo", "Termin im März halten."
+		transcript = transcriptOf(4 << 10)
+	case 2:
+		notes = "Nur Notizen."
+	case 4:
+		transcript = HostileTranscript
+	case 6:
+		transcript = transcriptOf(LongTranscriptBytes)
+	case 7:
+		transcript = transcriptOf(HugeTranscriptBytes)
+	default:
+		summary, transcript = fmt.Sprintf("Zusammenfassung von Meeting %d.", n), fmt.Sprintf("Anna: Meeting %d.", n)
+	}
+	m := meetingRow(ProjectWebsite, n)
+	m["participants"] = []map[string]any{{"display_name": "Anna Albers"}, {"display_name": "Erika Beispiel"}}
+	m["generated_summary"], m["notes"], m["transcript"] = summary, notes, transcript
+	m["updated_at"] = m["occurred_at"]
+	m["path"] = "/org/" + OrgA + "/projects/" + ProjectWebsite + "/meetings/" + id
+	restObject(w, req, f, map[string]any{"data": m})
 }

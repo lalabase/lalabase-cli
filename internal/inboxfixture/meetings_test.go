@@ -76,3 +76,43 @@ func TestTheMeetingListWorksAgainstTheFixture(t *testing.T) {
 		t.Fatalf("before R1: %v %q", ans.Class, ans.Message)
 	}
 }
+
+// K7b: one meeting, whole, as the core's R8 answers it, through the
+// client's own adapter and checks; the transcript above the client's bound
+// is refused by the transport, never cut.
+func TestOneMeetingWorksAgainstTheFixture(t *testing.T) {
+	_, a, c := serve(t, Normal)
+	ctx := context.Background()
+	if report := reportOf(t, a, c); report.Via["meeting"] != features.REST {
+		t.Fatalf("meeting via %v (missing %v)", report.Via["meeting"], report.Missing["meeting"])
+	}
+	show := func(n int) (api.Meeting, transport.Answer) {
+		t.Helper()
+		m, ans := api.DecodeMeetingREST(a.MeetingRESTAnswer(ctx, MeetingID(ProjectWebsite, n)))
+		if ans.OK() && (api.CheckMeeting(m) != nil || m.ID != MeetingID(ProjectWebsite, n) || m.ProjectID != ProjectWebsite) {
+			t.Fatalf("#%d is not itself: %+v", n, m.MeetingRow)
+		}
+		return m, ans
+	}
+	if m, ans := show(1); !ans.OK() || *m.Summary == "" || *m.Notes == "" || !strings.HasSuffix(*m.Transcript, "Ende.") || len(m.Participants) != 2 {
+		t.Fatalf("#1: %v %+v", ans.Class, m)
+	}
+	if m, ans := show(2); !ans.OK() || *m.Summary != "" || m.Transcript != nil || *m.Notes != "Nur Notizen." {
+		t.Fatalf("#2: %v %+v", ans.Class, m)
+	}
+	if m, ans := show(4); !ans.OK() || *m.Transcript != HostileTranscript {
+		t.Fatalf("#4: %v", ans.Class)
+	}
+	if _, ans := show(5); ans.Class != transport.NotFound {
+		t.Fatalf("#5: %v", ans.Class)
+	}
+	if m, ans := show(6); !ans.OK() || len(*m.Transcript) < LongTranscriptBytes {
+		t.Fatalf("#6: %v", ans.Class)
+	}
+	if _, ans := show(7); ans.Class != transport.Protocol || !strings.Contains(ans.Message, "larger than") {
+		t.Fatalf("#7: %v %q", ans.Class, ans.Message)
+	}
+	if _, ans := api.DecodeMeetingREST(a.MeetingRESTAnswer(ctx, MeetingID(ProjectIntern, 1))); ans.Class != transport.NotFound {
+		t.Fatalf("a meeting of no list: %v", ans.Class)
+	}
+}

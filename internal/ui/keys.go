@@ -460,11 +460,14 @@ func (m Model) listBindings() []binding {
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.ProjectsHelp})
 	case a.meetings != nil:
-		// K7a: read only, no meeting opens yet; the page keys each only
-		// where its page exists.
+		// K7a, K7b: read only; Enter reads the meeting into the pane, the
+		// page keys each only where its page exists.
 		v := a.meetings
 		if len(v.rows) > 1 {
 			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
+		}
+		if v.index(v.selected) >= 0 && a.meetingOn() {
+			out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenTicketHelp})
 		}
 		if !v.loading {
 			if v.page > 1 {
@@ -531,6 +534,16 @@ func (m Model) objectBindings() []binding {
 			help = uitext.BackHelp
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, help})
+	case a.meetingsSection():
+		// The meeting (K7b): its sections and the scroll, no key that acts
+		// on it; Esc to the list.
+		if a.meetingInPane() {
+			if len(a.meeting.areas()) > 1 {
+				out = append(out, binding{NextArea, uitext.TabKey, uitext.NextAreaHelp})
+			}
+			out = append(out, binding{Up, uitext.UpDownKey, uitext.ScrollHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.PageScrollHelp})
+		}
+		out = append(out, binding{Back, uitext.EscapeKey, uitext.ListHelp})
 	case a.agentTicket():
 		// The ticket an agent opened (C9b): its keys, Esc to the projects.
 		out = append(out, m.ticketBindings()...)

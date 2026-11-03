@@ -166,8 +166,9 @@ func restArgs(r *http.Request, ids map[string]string) map[string]any {
 	return args
 }
 
-// rest serves the REST routes of the ticket view; anything else under
-// /api/v1/projects/ and /api/v1/tickets/ is not here.
+// rest serves the REST routes of the ticket view and the meetings; anything
+// else under /api/v1/projects/, /api/v1/tickets/ and /api/v1/meetings/ is
+// not here.
 func (f *Fixture) rest(w http.ResponseWriter, r *http.Request, req Request) {
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/"), "/")
 	switch {
@@ -177,6 +178,9 @@ func (f *Fixture) rest(w http.ResponseWriter, r *http.Request, req Request) {
 	case len(parts) == 3 && parts[0] == "projects" && parts[2] == "meetings" && f.r1:
 		req.Route, req.Args = "meetings.list", restArgs(r, map[string]string{"project_id": parts[1]})
 		f.restMeetings(w, r, req, parts[1])
+	case len(parts) == 2 && parts[0] == "meetings" && f.r1:
+		req.Route, req.Args = "meetings.show", restArgs(r, map[string]string{"id": parts[1]})
+		f.restMeeting(w, req, parts[1])
 	case len(parts) == 2 && parts[0] == "tickets":
 		req.Route, req.Args = "tickets.show", restArgs(r, map[string]string{"ticket_id": parts[1]})
 		project, n := ticketByID(parts[1])

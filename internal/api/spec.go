@@ -47,6 +47,23 @@ type Spec struct {
 	// "?", the right shape), and what leads to it must be there. The
 	// caller reads an absent one as "the server does not say".
 	Newer []string
+	// MemoryOnly: what this reader answers is kept in memory for the
+	// session alone, never on the disk (MemoryOnly). Meetings are (K7a):
+	// a transcript holds what people said, and a copy on a laptop would
+	// outlive a meeting deleted in the core.
+	MemoryOnly bool
+}
+
+// MemoryOnly names the readers whose answers stay off the disk, for the
+// one place the store is built.
+func MemoryOnly() []string {
+	var out []string
+	for _, s := range Specs {
+		if s.MemoryOnly {
+			out = append(out, s.Name)
+		}
+	}
+	return out
 }
 
 // Specs are all adapters, for the compatibility test and feature detection.
@@ -54,7 +71,7 @@ var Specs = []Spec{
 	NotificationsSpec, MarkReadSpec, TicketsSpec, TicketSpec, UpdateTicketSpec, CommentSpec, KnowledgeSpec,
 	BookedTimeSpec, MeSpec, OrganisationsSpec, ProjectsSpec,
 	TicketsRESTSpec, TicketRESTSpec, TicketByNumberRESTSpec, PostRESTSpec, BookTimeSpec, PostCommentSpec,
-	MeetingsRESTSpec,
+	MeetingsRESTSpec, MeetingRESTSpec,
 }
 
 // Missing returns the required paths the payload lacks, with list positions

@@ -532,7 +532,7 @@ func (f *Fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(out)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects":
 		f.projects(w, r, req)
-	case r.Method == http.MethodGet && (strings.HasPrefix(r.URL.Path, "/api/v1/projects/") || strings.HasPrefix(r.URL.Path, "/api/v1/tickets/")):
+	case r.Method == http.MethodGet && (strings.HasPrefix(r.URL.Path, "/api/v1/projects/") || strings.HasPrefix(r.URL.Path, "/api/v1/tickets/") || strings.HasPrefix(r.URL.Path, "/api/v1/meetings/")):
 		f.rest(w, r, req)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/mcp":
 		f.rpc(w, r, req)

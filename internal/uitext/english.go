@@ -390,6 +390,16 @@ const (
 	LabelDuration
 	LabelCreator
 	NoDuration
+	// K7b: the meeting in the object pane, its sections and its facts.
+	MeetingSummary
+	MeetingNotes
+	MeetingTranscript
+	NothingWritten
+	BarDate
+	BarDuration
+	BarParticipants
+	UnknownParticipant
+	MetaParticipants
 	count
 )
 
@@ -594,4 +604,8 @@ var english = map[ID]string{
 	NoMeetings: "No meetings.", NoMeetingMatches: "No meetings match the search.", NoneOnMeetingPage: "No meetings on this page.",
 	UntitledMeeting: "Untitled meeting", UnknownCreator: "Creator unknown",
 	LabelTitle: "Title", LabelDate: "Date", LabelDuration: "Duration", LabelCreator: "Created by", NoDuration: "No duration",
+	MeetingSummary: "Summary", MeetingNotes: "Notes", MeetingTranscript: "Transcript",
+	NothingWritten: "Nothing written down for this meeting.",
+	BarDate:        "Date", BarDuration: "Duration", BarParticipants: "Participants", UnknownParticipant: "Name unknown",
+	MetaParticipants: "with %s",
 }

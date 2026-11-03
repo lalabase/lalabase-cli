@@ -74,6 +74,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.receiveTickets(msg)
 	case gateway.MeetingsResult:
 		return m.receiveMeetings(msg)
+	case gateway.MeetingResult:
+		return m.receiveMeeting(msg)
 	case gateway.TicketResult:
 		switch msg.Area {
 		case gateway.Expansion:
@@ -299,6 +301,9 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		}
 		return m.startSearch(), nil
 	case NextArea:
+		if a.meetingsSection() {
+			return m.nextMeetingArea(), nil
+		}
 		return m.nextArea(), nil
 	case Order:
 		// o is contextual: in the details of a notification it opens the
@@ -362,6 +367,7 @@ func (m Model) move(delta int) (Model, tea.Cmd) {
 			return m, m.selectionChanged()
 		case a.meetings != nil:
 			a.meetings.moveSelection(delta)
+			return m, m.selectionChanged()
 		case a.projects != nil:
 			a.projects.moveSelection(delta)
 		}
@@ -385,6 +391,7 @@ func (m Model) movePage(delta int) (Model, tea.Cmd) {
 			return m, m.selectionChanged()
 		case a.meetings != nil:
 			a.meetings.moveSelection(rows)
+			return m, m.selectionChanged()
 		case a.projects != nil:
 			a.projects.moveSelection(rows)
 		}
@@ -440,6 +447,10 @@ func (m Model) scrollObject(g view.Geometry, lines int) {
 	c := m.objectColumn()
 	top := max(0, view.Extent(c, g, view.Object, m.widthMethod)-max(1, view.Capacity(c, g)))
 	switch {
+	case a.meetingsSection():
+		if d := a.meeting; d != nil {
+			d.offset = max(0, min(top, min(top, c.Offset)+lines))
+		}
 	case a.detail != nil:
 		// From where the pane is now, the anchor's place included; the
 		// scroll is the person's, the anchor is let go.
@@ -480,7 +491,7 @@ func (m Model) open() (Model, tea.Cmd) {
 			}
 			return m.openTicket()
 		case a.meetings != nil:
-			// K7a: no meeting opens yet; the pane shows the row's facts.
+			return m.openMeeting()
 		case a.projects != nil:
 			if a.projects.section == sectionMeetings {
 				return m.openMeetings(a.projects.selected)

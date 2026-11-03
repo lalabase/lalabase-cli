@@ -179,3 +179,73 @@ func TestTheMeetingListSpecIsARESTRead(t *testing.T) {
 func firstRow(body map[string]any) map[string]any {
 	return body["data"].([]any)[0].(map[string]any)
 }
+
+// K7b: one meeting, whole, over REST.
+
+const meetingGroup = "GET /api/v1/meetings/:id"
+
+func TestOneMeetingIsReadWholeFromTheRecordedAnswer(t *testing.T) {
+	ctx := context.Background()
+	api, sent := restRecorded(t, meetingGroup, "ok")
+	ans := api.MeetingRESTAnswer(ctx, "00000000-0000-4000-8000-000000000101")
+	sentOnce(t, *sent, "/api/v1/meetings/00000000-0000-4000-8000-000000000101")
+	m, decoded := DecodeMeetingREST(ans)
+	if !decoded.OK() || CheckMeeting(m) != nil {
+		t.Fatalf("%v %s", decoded.Class, decoded.Message)
+	}
+	if m.Title != "Kickoff Relaunch" || m.ProjectID != relaunch || len(m.Participants) != 2 || *m.Participants[1].DisplayName != "Erika Beispiel" ||
+		*m.Summary != "**Ergebnis:** Start im März." || *m.Notes != "Termin im März halten." || *m.Transcript != "Anna: Wir starten im März." {
+		t.Fatalf("%+v", m)
+	}
+	if string(decoded.Payload) != string(ans.Payload) {
+		t.Fatal("the meeting's payload changed")
+	}
+	// A meeting with nothing written is a meeting.
+	api, _ = restRecorded(t, meetingGroup, "ok_bare")
+	bare, decoded := DecodeMeetingREST(api.MeetingRESTAnswer(ctx, "00000000-0000-4000-8000-000000000102"))
+	if !decoded.OK() || bare.Notes != nil || bare.Transcript != nil || *bare.Summary != "" || len(bare.Participants) != 0 {
+		t.Fatalf("%v %+v", decoded.Class, bare)
+	}
+	// An id that is no path segment sends nothing.
+	api, sent = restRecorded(t, meetingGroup, "ok")
+	if got := api.MeetingRESTAnswer(ctx, "../me"); got.Class != transport.InvalidInput || len(*sent) != 0 {
+		t.Fatalf("%v, sent %q", got.Class, *sent)
+	}
+}
+
+func TestEveryRecordedMeetingReads(t *testing.T) {
+	ctx := context.Background()
+	for name, want := range map[string]transport.Class{
+		"ok": transport.Object, "ok_bare": transport.Object, "ok_creator_gone": transport.Object,
+		"not_found": transport.NotFound, "not_found_malformed": transport.NotFound, "not_found_no_area": transport.NotFound,
+		"not_found_reach": transport.NotFound, "not_found_foreign": transport.NotFound, "unauthorized": transport.Unauthenticated,
+	} {
+		api, _ := restRecorded(t, meetingGroup, name)
+		m, ans := DecodeMeetingREST(api.MeetingRESTAnswer(ctx, "00000000-0000-4000-8000-000000000101"))
+		if ans.Class != want || (want != transport.Object && m.ID != "") {
+			t.Errorf("%s: %v %q", name, ans.Class, ans.Message)
+		}
+	}
+}
+
+func TestAMeetingLastingLessThanNothingIsRefused(t *testing.T) {
+	n := -1
+	var m Meeting
+	m.DurationMinutes = &n
+	if CheckMeeting(m) == nil {
+		t.Fatal("a negative duration passed")
+	}
+}
+
+// Every reader of meetings keeps its answers off the disk: the rule is
+// the spec's, so a new meeting reader cannot forget it.
+func TestEveryMeetingReaderStaysInMemory(t *testing.T) {
+	for _, s := range Specs {
+		if strings.Contains(s.Path, "meetings") != s.MemoryOnly {
+			t.Errorf("%s: memory only %v", s.Name, s.MemoryOnly)
+		}
+	}
+	if got := MemoryOnly(); !slices.Equal(got, []string{MeetingsRESTSpec.Name, MeetingRESTSpec.Name}) {
+		t.Fatalf("%q", got)
+	}
+}

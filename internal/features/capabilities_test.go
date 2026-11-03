@@ -160,7 +160,7 @@ func TestTheTicketViewTakesTheRESTWayWithTheCapabilitiesOfR1(t *testing.T) {
 	for _, tc := range cases {
 		report := Detect(contractServer, tc.tools, tc.caps)
 		for _, f := range All {
-			if f.Name == bookFeature || f.Name == commentFeature || f.Name == meetingsFeature {
+			if f.Name == bookFeature || f.Name == commentFeature || f.Name == meetingsFeature || f.Name == meetingFeature {
 				continue // TestABookingTakesTheRESTWayAlone, TestACommentTakesRESTOrTheToolWithItsFormat, TestMeetingsTakeTheRESTWayAlone
 			}
 			off := slices.Contains(tc.off, f.Name)
@@ -243,6 +243,27 @@ func TestMeetingsTakeTheRESTWayAlone(t *testing.T) {
 	}
 }
 
+// meetingFeature is the feature of one meeting, whole (K7b).
+const meetingFeature = "meeting"
+
+// K7b: one meeting has the REST way alone; meetings.show turns it on, and
+// a server without it keeps the list.
+func TestOneMeetingTakesTheRESTWayAlone(t *testing.T) {
+	tools, _ := contractTools(t)
+	caps := contractCapabilities(t)
+	if on := Detect(contractServer, tools, caps); !on.Enabled[meetingFeature] || on.Via[meetingFeature] != REST {
+		t.Fatalf("on %v via %v, missing %v", on.Enabled[meetingFeature], on.Via[meetingFeature], on.Missing[meetingFeature])
+	}
+	without := slices.DeleteFunc(slices.Clone(caps), func(c string) bool { return c == "meetings.show" })
+	report := Detect(contractServer, tools, without)
+	if report.Enabled[meetingFeature] || !report.Enabled[meetingsFeature] {
+		t.Fatalf("meeting %v, meetings %v", report.Enabled[meetingFeature], report.Enabled[meetingsFeature])
+	}
+	if !slices.Equal(report.Missing[meetingFeature], []string{"capability meetings.show"}) {
+		t.Fatalf("missing %v", report.Missing[meetingFeature])
+	}
+}
+
 // A list and its search are one read: they need the same capabilities,
 // or a search would go over REST while the list stays on the tools.
 // Likewise a ticket and its pages.
@@ -287,14 +308,14 @@ func TestCapabilitiesChangeNothingForTheOtherFeatures(t *testing.T) {
 	a := Detect(contractServer, tools, contractCapabilities(t))
 	b := Detect(contractServer, tools, nil)
 	for _, f := range All {
-		if slices.Contains(ticketView, f.Name) || f.Name == bookFeature || f.Name == commentFeature || f.Name == meetingsFeature {
+		if slices.Contains(ticketView, f.Name) || f.Name == bookFeature || f.Name == commentFeature || f.Name == meetingsFeature || f.Name == meetingFeature {
 			if len(f.Capabilities) == 0 {
 				t.Errorf("%s names no capability", f.Name)
 			}
 			continue
 		}
 		if len(f.Capabilities) > 0 {
-			t.Errorf("%s names capabilities %v; K1 switched the ticket view, K6 added the booking, K3a the comment, K7a the meetings, nothing else", f.Name, f.Capabilities)
+			t.Errorf("%s names capabilities %v; K1 switched the ticket view, K6 added the booking, K3a the comment, K7a the meetings, K7b the meeting, nothing else", f.Name, f.Capabilities)
 		}
 		if a.Enabled[f.Name] != b.Enabled[f.Name] || a.Via[f.Name] != b.Via[f.Name] || !slices.Equal(a.Missing[f.Name], b.Missing[f.Name]) {
 			t.Errorf("%s differs: %v/%v/%v and %v/%v/%v", f.Name, a.Enabled[f.Name], a.Via[f.Name], a.Missing[f.Name], b.Enabled[f.Name], b.Via[f.Name], b.Missing[f.Name])

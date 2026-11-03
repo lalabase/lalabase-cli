@@ -434,7 +434,7 @@ func (a *app) when(raw string) string { return timeOf(raw, a.now(), a.loc) }
 func (m Model) objectColumn() present.Column {
 	a := m.app
 	if a.meetingsSection() && !a.expired {
-		return m.meetingFactsColumn()
+		return m.meetingColumn()
 	}
 	if (a.projects != nil || a.origin != nil) && !a.expired {
 		return m.detailColumn()

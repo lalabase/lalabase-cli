@@ -319,7 +319,20 @@ func Extent(c present.Column, g Geometry, which Pane, method ansi.Method) int {
 	if width <= 0 {
 		return 0
 	}
+	if c.Wrapped != nil {
+		return len(c.Wrapped)
+	}
 	return len(textLines(c, textWidth(width), method))
+}
+
+// TextWidth is the width a column's free text is wrapped at in the pane:
+// the one Wrap takes for Column.Wrapped.
+func TextWidth(c present.Column, g Geometry, which Pane) int {
+	width := textArea(c, InnerWidth(g, which))
+	if width <= 0 {
+		return 0
+	}
+	return textWidth(width)
 }
 
 // compactBelow is the body height below which rows show their first line
@@ -720,10 +733,19 @@ func scrolledAt(c present.Column, width, body int, method ansi.Method) (lines []
 	if width <= 0 || body <= 0 {
 		return nil, 0, 0
 	}
-	all := textLines(c, width, method)
-	total = len(all)
-	offset = max(0, min(c.Offset, max(0, len(all)-body)))
-	all = all[offset:]
+	var all []screenLine
+	if c.Wrapped != nil {
+		// Wrapped once by the model: the lines in sight alone, and the
+		// one after them, whose being there marks the overflow.
+		total = len(c.Wrapped)
+		offset = max(0, min(c.Offset, max(0, total-body)))
+		all = wrappedLines(c, offset, min(total, offset+body+1), width, method)
+	} else {
+		all = textLines(c, width, method)
+		total = len(all)
+		offset = max(0, min(c.Offset, max(0, len(all)-body)))
+		all = all[offset:]
+	}
 	overflow := len(all) > body
 	all = all[:min(len(all), body)]
 	lines = make([]string, len(all))

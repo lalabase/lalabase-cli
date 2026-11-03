@@ -107,6 +107,9 @@ var All = []Feature{
 	// K7a: a project's meetings, read only, the REST way alone; the search
 	// is part of the list.
 	{Name: "meetings", Spec: api.MeetingsRESTSpec, Since: "R8", Capabilities: []string{"meetings.list"}},
+	// K7b: one meeting, whole, in the object pane; without it the pane
+	// shows the row's facts as in K7a.
+	{Name: "meeting", Spec: api.MeetingRESTSpec, Since: "R8", Capabilities: []string{"meetings.show"}},
 }
 
 // Report is what one server supports.

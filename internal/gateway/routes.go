@@ -41,8 +41,8 @@ func (r Routes) way(k cache.Key) features.Way {
 			return r.Whole
 		}
 		return r.Ticket
-	case api.MeetingsRESTSpec.Name:
-		// The meetings have no tool (K7a): REST is their one way.
+	case api.MeetingsRESTSpec.Name, api.MeetingRESTSpec.Name:
+		// The meetings have no tool (K7a, K7b): REST is their one way.
 		return features.REST
 	}
 	return features.MCP
