@@ -721,12 +721,14 @@ func TestA429WithoutAWindowPausesTheDefault(t *testing.T) {
 func TestALateEndOfAnOldReadDoesNotRemoveItsSuccessor(t *testing.T) {
 	q := New(WithClock(newClock()))
 	var calls atomic.Int32
+	startedOld := make(chan struct{}, 1)
 	releaseOld := make(chan struct{})
 	startedNew := make(chan struct{}, 1)
 	releaseNew := make(chan struct{})
 	run := func(context.Context) transport.Answer {
 		// Ignores its context, so the order of the two ends is the test's.
 		if calls.Add(1) == 1 {
+			startedOld <- struct{}{}
 			<-releaseOld
 		} else {
 			startedNew <- struct{}{}
@@ -739,6 +741,13 @@ func TestALateEndOfAnOldReadDoesNotRemoveItsSuccessor(t *testing.T) {
 	ctx, leave := context.WithCancel(context.Background())
 	first := do(q, ctx, job)
 	waitJoined(t, q, "k", 1)
+	// The old read must be running before its waiter leaves: left earlier,
+	// it never runs, and the second read becomes the first call.
+	select {
+	case <-startedOld:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the old read did not start")
+	}
 	leave()
 	answer(t, first)
 
