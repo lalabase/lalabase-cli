@@ -93,6 +93,8 @@ func (c *meetingFrozenClock) After(time.Duration) <-chan time.Time {
 	return make(chan time.Time)
 }
 
+// R on a meeting whose first read failed reads the meeting again, not
+// the list.
 func TestMeetingRefreshRetriesDetailAfterFirstFailure(t *testing.T) {
 	t.Parallel()
 	h := newRESTHarness(t)
@@ -112,6 +114,8 @@ func TestMeetingRefreshRetriesDetailAfterFirstFailure(t *testing.T) {
 	}
 }
 
+// Closing the search line without a new search sets the preview timer
+// again: one that fired while the line was open read nothing.
 func TestMeetingSearchCloseRearmsConsumedPreview(t *testing.T) {
 	t.Parallel()
 	for _, key := range []string{"esc", "enter"} {
@@ -125,10 +129,17 @@ func TestMeetingSearchCloseRearmsConsumedPreview(t *testing.T) {
 			if cmd == nil || h.m.app.previewToken == token {
 				t.Fatalf("closing search with %s left no new preview timer; token %d, reads %v, mode %v", key, token, h.f.meetingShows(), h.m.mode)
 			}
+			h.drive(cmd)
+			h.previewDue()
+			if !h.m.app.meetingInPane() || len(h.f.meetingShows()) != 1 {
+				t.Fatalf("preview was not read after closing search: %v", h.f.meetingShows())
+			}
 		})
 	}
 }
 
+// A page turned to from memory shows its selected meeting from memory at
+// once and reads it again on its own, whatever becomes of the list's reload.
 func TestMeetingCachedPageRestoresDetailWithoutListReload(t *testing.T) {
 	t.Parallel()
 	h := newRESTHarness(t)
@@ -158,6 +169,50 @@ func TestMeetingCachedPageRestoresDetailWithoutListReload(t *testing.T) {
 	h.previewDue()
 	if d.cached || len(h.f.meetingShows()) != reads+1 {
 		t.Fatalf("cached detail was not refreshed independently of the list: cached=%v, reads=%v", d.cached, h.f.meetingShows())
+	}
+}
+
+// A stale cache entry remembers an earlier selection's failure. Opening
+// it again reads it once; if that read fails, resizing does not retry it.
+func TestTheArrowReloadsARevisitedStaleMeeting(t *testing.T) {
+	t.Parallel()
+	for _, recovered := range []bool{true, false} {
+		name := "unavailable"
+		if recovered {
+			name = "recovered"
+		}
+		t.Run(name, func(t *testing.T) {
+			h := newRESTHarness(t)
+			h.openMeetings(website)
+			h.drive(h.press("enter"))
+			h.f.setMeeting(func(string) transport.Answer {
+				return transport.Answer{Class: transport.Temporary, Message: "connection reset", Sent: true}
+			})
+			h.drive(h.press("R"))
+			if recovered {
+				h.f.setMeeting(defaultMeeting)
+			}
+			h.press("esc")
+			h.drive(h.press("down"))
+			h.drive(h.press("up"))
+			d := h.m.app.meeting
+			if d == nil || !d.cached || !d.stale {
+				t.Fatal("the revisited meeting is not stale cached data")
+			}
+			before := len(h.f.meetingShows())
+			h.drive(h.press("right"))
+			reads := 2 // a temporary failure is retried once by the queue
+			if recovered {
+				reads = 1
+			}
+			if len(h.f.meetingShows()) != before+reads || d.holds() != recovered {
+				t.Fatalf("right did not reload the stale meeting: reads %d -> %d, fresh %v", before, len(h.f.meetingShows()), d.holds())
+			}
+			h.drive(h.feed(tea.WindowSizeMsg{Width: 130, Height: 24})...)
+			if len(h.f.meetingShows()) != before+reads {
+				t.Fatal("resizing retried the revisited meeting")
+			}
+		})
 	}
 }
 
@@ -595,6 +650,7 @@ func TestTheArrowJoinsAPreviewOnceAsThePersons(t *testing.T) {
 	for _, cmd := range cmds {
 		results = append(results, h.background(cmd))
 	}
+	h.waitFor("the arrow joining the preview", func() bool { return h.q.Sharers(share) == 2 })
 	close(gate)
 	h.feed(h.receive(previewResult))
 	for _, r := range results {

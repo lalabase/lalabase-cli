@@ -172,7 +172,7 @@ func (m Model) showMeetingPage(page int, query string) (Model, tea.Cmd) {
 	v.selected, v.offset, v.corrected = "", 0, false
 	a.rememberMeetings()
 	m.focus = view.List
-	return m, a.loadMeetings()
+	return m, tea.Batch(a.loadMeetings(), m.selectionChanged())
 }
 
 // --- the search line ---------------------------------------------------------
@@ -202,6 +202,7 @@ func (m Model) meetingSearchKey(kind Action, text string) (Model, tea.Cmd) {
 	case Cancel:
 		v.entry = ""
 		m.mode = Navigate
+		return m, m.selectionChanged()
 	case Submit:
 		query := strings.TrimSpace(v.entry)
 		v.entry = ""
@@ -209,6 +210,7 @@ func (m Model) meetingSearchKey(kind Action, text string) (Model, tea.Cmd) {
 		if query != v.query {
 			return m.showMeetingPage(1, query)
 		}
+		return m, m.selectionChanged()
 	}
 	return m, nil
 }
@@ -221,7 +223,7 @@ func (m Model) refreshMeetings() tea.Cmd {
 	a := m.app
 	if d := a.meeting; d != nil && m.focus == view.Object && a.meetingSelected() {
 		// The meeting in the focused pane (K7b), a failed one too.
-		d.loading = true
+		d.loading, d.requested = true, true
 		if a.pending(d.key) {
 			return nil
 		}

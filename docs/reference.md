@@ -219,6 +219,10 @@ navigation again.
   `Enter` or the right arrow reads the selected meeting
   (`/api/v1/meetings/:id`) into the object pane at once; a row selected
   without the focus there is read after the pause, as a ticket's preview.
+  Opening a queued preview gives it the person's priority, so the preview
+  budget cannot hold it back. Closing a search without changing it starts
+  the preview timer again; returning to a cached page restores its cached
+  meeting and schedules its reload without waiting for the list's reload.
   The head has the title; the date, duration, project, creator and
   participants stand in the bar on the right where the pane is wide enough,
   else in two faint lines under the title. Below them one section at a
@@ -227,7 +231,9 @@ navigation again.
   to the next; a section with nothing in it is left out, and a meeting with
   nothing written says so. The arrows, `u`/`space` and the wheel scroll,
   `R` reads the meeting again, `Esc` goes back to the list and the pane
-  keeps the meeting. No key acts on a meeting: `x`, `b` and `k` do nothing
+  keeps the meeting. `R` retries a failed meeting too, without reading the
+  list; resizing the terminal does not retry a failed read.
+  No key acts on a meeting: `x`, `b` and `k` do nothing
   and stand nowhere in the help. The pane wraps its text once per width and
   section, not per frame, so a long transcript scrolls without delay. A
   meeting gone or out of reach, a refusal and an answer above the client's

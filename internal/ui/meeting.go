@@ -45,9 +45,12 @@ type meetingDetail struct {
 	// gen counts the records shown: a new one is wrapped again.
 	gen uint64
 	status
-	offset int
-	area   meetingArea
-	wrap   meetingWrap
+	// requested belongs to this selection: a stale cache entry alone is
+	// not a failed read of the meeting now in the pane.
+	requested bool
+	offset    int
+	area      meetingArea
+	wrap      meetingWrap
 	// wraps counts the wraps of the text, for the tests of the cache.
 	wraps int
 }
@@ -123,11 +126,10 @@ func (d *meetingDetail) settleArea() {
 // meetingSelectionChanged follows what may have changed the meeting
 // selection, the focus or the panes shown (a resize too): the pane shows
 // the selected meeting from memory at once, if it is there. With the
-// focus on the pane a meeting new to it is read now, a preview on the
-// wire joined as the person's read, once; else it is read after the
-// pause. A meeting the pane holds already, fresh or failed, is read again
-// by R alone, as the preview's rule has it: a resize or an arrow is no
-// request.
+// focus on the pane a meeting not yet requested for this selection is
+// read now, a pending preview joined as the person's read, once; else it
+// is read after the pause. After a read completes, a resize or an arrow
+// does not retry it: R or an explicit open can retry a failure.
 func (m Model) meetingSelectionChanged() tea.Cmd {
 	a := m.app
 	v := a.meetings
@@ -140,14 +142,13 @@ func (m Model) meetingSelectionChanged() tea.Cmd {
 	if v.index(v.selected) < 0 {
 		return nil
 	}
-	held := a.meeting != nil
-	if !held {
-		held = a.showCachedMeeting(v.project, v.selected)
+	if a.meeting == nil {
+		a.showCachedMeeting(v.project, v.selected)
 	}
 	if m.focus != view.Object {
 		return m.scheduleMeetingPreview()
 	}
-	if d := a.meeting; held && (a.personWaits(d.key) || !d.loading && !d.awaitingReload()) {
+	if d := a.meeting; d != nil && (a.personWaits(d.key) || d.requested && !d.loading) {
 		return nil
 	}
 	return a.readMeetingUnlessFresh(v.project, v.selected)
@@ -197,7 +198,7 @@ func (m Model) meetingDue(msg gateway.Due) (Model, tea.Cmd) {
 		return m, nil
 	}
 	d := a.ensureMeeting(v.project, v.selected)
-	d.loading = true
+	d.loading, d.requested = true, true
 	return m, a.issue(gateway.Meeting, d.key, forMeeting, queue.Preview)
 }
 
@@ -224,7 +225,7 @@ func (a *app) readMeetingUnlessFresh(project, id string) tea.Cmd {
 	if d.holds() && !d.loading {
 		return nil
 	}
-	d.loading = true
+	d.loading, d.requested = true, true
 	return a.issue(gateway.Meeting, d.key, forMeeting, queue.User)
 }
 
