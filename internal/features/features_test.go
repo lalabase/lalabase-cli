@@ -30,7 +30,7 @@ func contractTools(t *testing.T) ([]transport.Tool, *contract.File) {
 
 var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.16.0"}
 
-// On the contract the client was built against (MCP 0.16.0, REST API 1.9.0,
+// On the contract the client was built against (MCP 0.16.0, REST API 1.10.0,
 // server slices S1, S2, S2b and S6 and the core's R6 included), every
 // feature is on.
 func TestOnTheContractEveryFeatureIsOn(t *testing.T) {

@@ -1,9 +1,9 @@
 {
   "header": {
     "regenerate": "RAILS_ENV=test bin/rails mcp:contract",
-    "core_commit": "9d5713e64258818e8a30252d744c23f2c2862643",
-    "core_dirty": false,
-    "contract_sha256": "3c2a9bb917338f78ae481cd9d2d5d294d2da4993e201186af2a7c6bedad82d1c"
+    "core_commit": "e084716a38a4f204d844af7dc7ebf40a94411781",
+    "core_dirty": true,
+    "contract_sha256": "f662e324577e9c86ae8fb19d8c53f804051917a7315514cfa66cab103a1e32e4"
   },
   "contract": {
     "mcp": {
@@ -4350,13 +4350,15 @@
                     "all_projects": true
                   }
                 ],
-                "api_version": "1.9.0",
+                "api_version": "1.10.0",
                 "capabilities": [
                   "error_codes",
                   "idempotency",
                   "knowledge.search",
                   "me.show",
                   "meetings.create",
+                  "meetings.list",
+                  "meetings.show",
                   "notifications.archive",
                   "notifications.list",
                   "notifications.mark_all_as_read",
@@ -4417,13 +4419,15 @@
                     "all_projects": true
                   }
                 ],
-                "api_version": "1.9.0",
+                "api_version": "1.10.0",
                 "capabilities": [
                   "error_codes",
                   "idempotency",
                   "knowledge.search",
                   "me.show",
                   "meetings.create",
+                  "meetings.list",
+                  "meetings.show",
                   "notifications.archive",
                   "notifications.list",
                   "notifications.mark_all_as_read",
@@ -7403,6 +7407,418 @@
               "error": "idempotency_key_reused",
               "code": "invalid_input",
               "message": "idempotency_key already used with different parameters"
+            }
+          }
+        }
+      },
+      "GET /api/v1/projects/:project_id/meetings": {
+        "ok": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/meetings"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000101",
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "title": "Kickoff Relaunch",
+                  "occurred_at": "2026-01-04T09:00:00Z",
+                  "duration_minutes": 45,
+                  "creator": {
+                    "id": "00000000-0000-4000-8000-000000000011",
+                    "name": "Anna Albers"
+                  }
+                },
+                {
+                  "id": "00000000-0000-4000-8000-000000000102",
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "title": "Kurze Abstimmung",
+                  "occurred_at": "2026-01-03T09:00:00Z",
+                  "duration_minutes": null,
+                  "creator": {
+                    "id": "00000000-0000-4000-8000-000000000012",
+                    "name": "Ben Berger"
+                  }
+                }
+              ],
+              "meta": {
+                "page": 1,
+                "per_page": 10,
+                "total": 2
+              }
+            }
+          }
+        },
+        "ok_search": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/meetings?q=M%C3%A4rz"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000101",
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "title": "Kickoff Relaunch",
+                  "occurred_at": "2026-01-04T09:00:00Z",
+                  "duration_minutes": 45,
+                  "creator": {
+                    "id": "00000000-0000-4000-8000-000000000011",
+                    "name": "Anna Albers"
+                  }
+                }
+              ],
+              "meta": {
+                "page": 1,
+                "per_page": 10,
+                "total": 1
+              }
+            }
+          }
+        },
+        "ok_page": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/meetings?page=2&per_page=1"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000102",
+                  "project_id": "00000000-0000-4000-8000-000000000031",
+                  "title": "Kurze Abstimmung",
+                  "occurred_at": "2026-01-03T09:00:00Z",
+                  "duration_minutes": null,
+                  "creator": {
+                    "id": "00000000-0000-4000-8000-000000000012",
+                    "name": "Ben Berger"
+                  }
+                }
+              ],
+              "meta": {
+                "page": 2,
+                "per_page": 1,
+                "total": 2
+              }
+            }
+          }
+        },
+        "ok_creator_gone": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000032/meetings"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000104",
+                  "project_id": "00000000-0000-4000-8000-000000000032",
+                  "title": "Interne Runde",
+                  "occurred_at": "2026-01-01T09:00:00Z",
+                  "duration_minutes": null,
+                  "creator": {
+                    "id": "00000000-0000-4000-8000-000000000011",
+                    "name": "Anna Albers"
+                  }
+                },
+                {
+                  "id": "00000000-0000-4000-8000-000000000106",
+                  "project_id": "00000000-0000-4000-8000-000000000032",
+                  "title": "Altes Gespräch",
+                  "occurred_at": "2025-12-30T09:00:00Z",
+                  "duration_minutes": null,
+                  "creator": {
+                    "id": "00000000-0000-4000-8000-000000000107",
+                    "name": null
+                  }
+                }
+              ],
+              "meta": {
+                "page": 1,
+                "per_page": 10,
+                "total": 2
+              }
+            }
+          }
+        },
+        "empty": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/meetings?q=Gibt%20es%20nicht"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": [],
+              "meta": {
+                "page": 1,
+                "per_page": 10,
+                "total": 0
+              }
+            }
+          }
+        },
+        "empty_no_area": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000033/meetings"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": [],
+              "meta": {
+                "page": 1,
+                "per_page": 10,
+                "total": 0
+              }
+            }
+          }
+        },
+        "invalid_input_per_page": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/meetings?per_page=101"
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "invalid_input",
+              "code": "invalid_input",
+              "message": "per_page must be a whole number from 1 to 100"
+            }
+          }
+        },
+        "invalid_input_page": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/meetings?page=0"
+          },
+          "response": {
+            "status": 422,
+            "body": {
+              "error": "invalid_input",
+              "code": "invalid_input",
+              "message": "page must be a whole number from 1 to 100000"
+            }
+          }
+        },
+        "not_found": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000034/meetings"
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "not_found_reach": {
+          "token": "limited",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000032/meetings"
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "unauthorized": {
+          "token": "invalid",
+          "request": {
+            "path": "/api/v1/projects/00000000-0000-4000-8000-000000000031/meetings"
+          },
+          "response": {
+            "status": 401,
+            "body": {
+              "error": "unauthorized",
+              "code": "unauthorized"
+            }
+          }
+        }
+      },
+      "GET /api/v1/meetings/:id": {
+        "ok": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/meetings/00000000-0000-4000-8000-000000000101"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000101",
+                "project_id": "00000000-0000-4000-8000-000000000031",
+                "title": "Kickoff Relaunch",
+                "occurred_at": "2026-01-04T09:00:00Z",
+                "duration_minutes": 45,
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000011",
+                  "name": "Anna Albers"
+                },
+                "participants": [
+                  {
+                    "display_name": "Anna Albers"
+                  },
+                  {
+                    "display_name": "Erika Beispiel"
+                  }
+                ],
+                "generated_summary": "**Ergebnis:** Start im März.",
+                "notes": "Termin im März halten.",
+                "transcript": "Anna: Wir starten im März.",
+                "updated_at": "2026-01-05T09:36:00Z",
+                "path": "/org/00000000-0000-4000-8000-000000000001/projects/00000000-0000-4000-8000-000000000031/meetings/00000000-0000-4000-8000-000000000101"
+              }
+            }
+          }
+        },
+        "ok_bare": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/meetings/00000000-0000-4000-8000-000000000102"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000102",
+                "project_id": "00000000-0000-4000-8000-000000000031",
+                "title": "Kurze Abstimmung",
+                "occurred_at": "2026-01-03T09:00:00Z",
+                "duration_minutes": null,
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000012",
+                  "name": "Ben Berger"
+                },
+                "participants": [],
+                "generated_summary": "",
+                "notes": null,
+                "transcript": null,
+                "updated_at": "2026-01-05T09:36:00Z",
+                "path": "/org/00000000-0000-4000-8000-000000000001/projects/00000000-0000-4000-8000-000000000031/meetings/00000000-0000-4000-8000-000000000102"
+              }
+            }
+          }
+        },
+        "ok_creator_gone": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/meetings/00000000-0000-4000-8000-000000000106"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "data": {
+                "id": "00000000-0000-4000-8000-000000000106",
+                "project_id": "00000000-0000-4000-8000-000000000032",
+                "title": "Altes Gespräch",
+                "occurred_at": "2025-12-30T09:00:00Z",
+                "duration_minutes": null,
+                "creator": {
+                  "id": "00000000-0000-4000-8000-000000000107",
+                  "name": null
+                },
+                "participants": [],
+                "generated_summary": "",
+                "notes": null,
+                "transcript": null,
+                "updated_at": "2026-01-05T09:36:00Z",
+                "path": "/org/00000000-0000-4000-8000-000000000001/projects/00000000-0000-4000-8000-000000000032/meetings/00000000-0000-4000-8000-000000000106"
+              }
+            }
+          }
+        },
+        "not_found": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/meetings/00000000-0000-4000-8000-000000000999"
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "not_found_malformed": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/meetings/not-a-uuid"
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "not_found_no_area": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/meetings/00000000-0000-4000-8000-000000000103"
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "not_found_reach": {
+          "token": "limited",
+          "request": {
+            "path": "/api/v1/meetings/00000000-0000-4000-8000-000000000104"
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "not_found_foreign": {
+          "token": "read",
+          "request": {
+            "path": "/api/v1/meetings/00000000-0000-4000-8000-000000000105"
+          },
+          "response": {
+            "status": 404,
+            "body": {
+              "error": "not_found",
+              "code": "not_found"
+            }
+          }
+        },
+        "unauthorized": {
+          "token": "invalid",
+          "request": {
+            "path": "/api/v1/meetings/00000000-0000-4000-8000-000000000101"
+          },
+          "response": {
+            "status": 401,
+            "body": {
+              "error": "unauthorized",
+              "code": "unauthorized"
             }
           }
         }
