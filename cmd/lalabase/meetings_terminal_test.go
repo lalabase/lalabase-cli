@@ -78,9 +78,13 @@ func TestPTYMeetingPaneFlow(t *testing.T) {
 			c.act(t, keyDown, width, "> Intern")
 			c.act(t, keyDown, width, "> Website-Relaunch")
 			c.act(t, keyEnter, width, "Meeting 1", "page 1 of 2")
-			c.act(t, keyEnter, width, "» Summary  Notes · Transcript", "**Ergebnis:** Start im März.", "tab next section")
+			c.act(t, keyEnter, width, "» Summary  Notes · Transcript", "Ergebnis: Start im März.", "• Seiten-Vorlagen", "tab next section")
 			c.act(t, "\t", width, "» Notes  Summary · Transcript", "Termin im März halten.")
-			c.act(t, "\t", width, "» Transcript  Summary · Notes", "Anna: Wir starten im März")
+			// K7c: the speakers as heads, their words indented below.
+			c.act(t, "\t", width, "» Transcript  Summary · Notes", "│ Anna Albers", "│   Wir starten im März", "│ Erika Beispiel")
+			if c.screenShows(width, "**Anna") {
+				t.Fatal("a speaker's markers reached the screen")
+			}
 			c.act(t, keyEsc, width, "enter open")
 			c.act(t, keyDown+keyDown+keyDown, width, "Title: Plan")
 			c.act(t, keyEnter, width, "copied", "cleared")

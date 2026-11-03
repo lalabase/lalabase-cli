@@ -227,7 +227,9 @@ func TestEnterAndTheArrowShowTheMeetingAtOnce(t *testing.T) {
 		t.Fatalf("focus %d, reads %v", h.m.focus, h.f.meetingShows())
 	}
 	text := h.meetingText()
-	for _, want := range []string{"Meeting 1", "» Summary  Notes · Transcript", "**Ergebnis:** Start im März."} {
+	// The summary's Markdown is laid out (K7c): its bold lead without the
+	// markers.
+	for _, want := range []string{"Meeting 1", "» Summary  Notes · Transcript", "Ergebnis: Start im März."} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("no %q in %q", want, text)
 		}

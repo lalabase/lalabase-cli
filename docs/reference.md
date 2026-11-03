@@ -226,10 +226,28 @@ navigation again.
   The head has the title; the date, duration, project, creator and
   participants stand in the bar on the right where the pane is wide enough,
   else in two faint lines under the title. Below them one section at a
-  time, its name marked, the others named faint after it: the summary (the
-  server's Markdown, shown as written), the notes and the transcript, `Tab`
-  to the next; a section with nothing in it is left out, and a meeting with
-  nothing written says so. The arrows, `u`/`space` and the wheel scroll,
+  time, its name marked, the others named faint after it: the summary, the
+  notes and the transcript, `Tab` to the next; a section with nothing in it
+  is left out, and a meeting with nothing written says so. The server sends
+  Markdown, and the pane lays a little of it out (K7c). In the transcript a
+  speaker becomes a head, the name bold in an author's tone (your own name
+  in yours, as on your comments), the words indented below it and an empty
+  line before the next speaker. A speaker is a bold name alone on a line
+  (`**Name**`), or a bold name with a colon before the words (`**Name:**
+  words`) when it is one of the meeting's participants; with participants
+  known, a bold line alone must name one of them too, so `**Fazit**` stays a
+  bold line. A name matches as the core matches a speaker
+  (`Meetings::SpeakerMarkup`): case, spaces and umlauts do not count, a
+  note like `(Speaker 2)`, `(Sprecher 3)` or `(?)` is left out, and a
+  participant's first name is enough; the head shows the name as written.
+  Your tone needs more: the name must point to one participant alone, and
+  that one has your name, so a first name you share with someone else in
+  the meeting is theirs; with no participants known, only your full name is
+  yours. In the summary and the notes a bold line is bold, nothing
+  more. Everywhere a heading is bold, a list item starts with a bullet, a
+  line that starts bold keeps that part bold, and the markers of bold text
+  are dropped where they pair up, but not in a line with an address or
+  code. The rest stands as written. The arrows, `u`/`space` and the wheel scroll,
   `R` reads the meeting again, `Esc` goes back to the list and the pane
   keeps the meeting. `R` retries a failed meeting too, without reading the
   list; resizing the terminal does not retry a failed read.
@@ -1001,7 +1019,8 @@ Intern, an empty list in Handbuch (a reader without the meetings area),
 and Archiv out of reach (404). The fixture searches the titles alone; the
 core searches title, notes, transcript and summary. One meeting (K7b,
 `/api/v1/meetings/:id`) is served for Website-Relaunch's: #1 with a
-summary, notes and a transcript of a few screens, #2 with notes alone, #3
+summary in Markdown, notes and a transcript of a few screens with its
+speakers as the recorder writes them, #2 with notes alone, #3
 with nothing written, #4 with a transcript that tries to reach the terminal
 (a copy to the clipboard, a cleared screen, a right-to-left override), #5
 gone (404), #6 with a transcript of 500 KB and #7 with one above the
