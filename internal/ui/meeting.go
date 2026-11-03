@@ -120,10 +120,14 @@ func (d *meetingDetail) settleArea() {
 
 // --- the preview and the open ------------------------------------------------
 
-// meetingSelectionChanged follows a change of the meeting selection, of
-// the focus or of the panes shown: the pane shows the selected meeting
-// from memory at once, if it is there; with the focus on the pane it is
-// read now, else after the pause.
+// meetingSelectionChanged follows what may have changed the meeting
+// selection, the focus or the panes shown (a resize too): the pane shows
+// the selected meeting from memory at once, if it is there. With the
+// focus on the pane a meeting new to it is read now, a preview on the
+// wire joined as the person's read, once; else it is read after the
+// pause. A meeting the pane holds already, fresh or failed, is read again
+// by R alone, as the preview's rule has it: a resize or an arrow is no
+// request.
 func (m Model) meetingSelectionChanged() tea.Cmd {
 	a := m.app
 	v := a.meetings
@@ -136,13 +140,27 @@ func (m Model) meetingSelectionChanged() tea.Cmd {
 	if v.index(v.selected) < 0 {
 		return nil
 	}
-	if a.meeting == nil {
-		a.showCachedMeeting(v.project, v.selected)
+	held := a.meeting != nil
+	if !held {
+		held = a.showCachedMeeting(v.project, v.selected)
 	}
-	if m.focus == view.Object {
-		return a.readMeetingUnlessFresh(v.project, v.selected)
+	if m.focus != view.Object {
+		return m.scheduleMeetingPreview()
 	}
-	return m.scheduleMeetingPreview()
+	if d := a.meeting; held && (a.personWaits(d.key) || !d.loading && !d.awaitingReload()) {
+		return nil
+	}
+	return a.readMeetingUnlessFresh(v.project, v.selected)
+}
+
+// personWaits: a read of the key is out as the person's.
+func (a *app) personWaits(k cache.Key) bool {
+	for _, w := range a.waiters {
+		if !w.canceled && w.ticket.Key == k && w.ticket.Priority == queue.User {
+			return true
+		}
+	}
+	return false
 }
 
 // scheduleMeetingPreview starts the timer for the preview of the selected
@@ -197,17 +215,16 @@ func (m Model) openMeeting() (Model, tea.Cmd) {
 	return m, a.readMeetingUnlessFresh(v.project, v.selected)
 }
 
-// readMeetingUnlessFresh reads the meeting as the person's, joining a
-// pending preview, unless the pane holds it fresh.
+// readMeetingUnlessFresh reads the meeting as the person's unless the
+// pane holds it fresh. A pending preview under the same key is joined:
+// the queue shares the request and raises it to the person's priority,
+// so the preview's budget never holds what the person opened.
 func (a *app) readMeetingUnlessFresh(project, id string) tea.Cmd {
 	d := a.ensureMeeting(project, id)
 	if d.holds() && !d.loading {
 		return nil
 	}
 	d.loading = true
-	if a.pending(d.key) {
-		return nil
-	}
 	return a.issue(gateway.Meeting, d.key, forMeeting, queue.User)
 }
 
@@ -276,8 +293,13 @@ func (m Model) nextMeetingArea() Model {
 
 // meetingInPane: the pane shows the selected meeting's record.
 func (a *app) meetingInPane() bool {
+	return a.meetingSelected() && a.meeting.known
+}
+
+// meetingSelected: the pane holds the selected meeting, read or not.
+func (a *app) meetingSelected() bool {
 	d, v := a.meeting, a.meetings
-	return d != nil && v != nil && d.id == v.selected && d.known
+	return d != nil && v != nil && d.id == v.selected
 }
 
 // --- results -----------------------------------------------------------------

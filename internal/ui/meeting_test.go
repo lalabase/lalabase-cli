@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"context"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/api"
@@ -36,6 +38,127 @@ func (h *harness) previewDue() {
 	h.t.Helper()
 	a := h.m.app
 	h.drive(h.feed(gateway.Due{Session: a.session, Token: a.previewToken})...)
+}
+
+// A preview held by the queue budget must become the person's request on Enter.
+func TestMeetingOpenPromotesPreviewAtBudget(t *testing.T) {
+	t.Parallel()
+	h := newRESTHarness(t)
+	h.openMeetings(website)
+	clock := &meetingFrozenClock{now: h.now, scheduled: make(chan struct{}, 1)}
+	q := queue.New(queue.WithLifetime(h.live), queue.WithClock(clock), queue.WithRetryDelay(0))
+	h.m.app.deps.Gateway = gateway.New(h.live, q, h.f, gateway.WithEvents(h.events))
+	ctx, cancel := context.WithTimeout(context.Background(), wall)
+	defer cancel()
+	for range queue.PreviewBudget {
+		answer := q.Do(ctx, queue.Job{Priority: queue.Preview, Run: func(context.Context) transport.Answer {
+			return transport.Answer{Class: transport.Object}
+		}})
+		if !answer.OK() {
+			t.Fatalf("filling preview budget: %v", answer.Class)
+		}
+	}
+	cmds := h.feed(gateway.Due{Session: h.m.app.session, Token: h.m.app.previewToken})
+	if len(cmds) != 1 {
+		t.Fatalf("preview commands: %d", len(cmds))
+	}
+	preview := h.background(cmds[0])
+	select {
+	case <-clock.scheduled:
+	case <-ctx.Done():
+		t.Fatal("preview did not reach the spent budget")
+	}
+	open := h.press("enter")
+	if open == nil {
+		t.Fatalf("Enter issued no user request; meeting remains at preview priority behind exhausted %d/min budget (server reads: %v)", queue.PreviewBudget, h.f.meetingShows())
+	}
+	h.drive(open)
+	h.drive(h.feed(h.receive(preview))...)
+	if len(h.f.meetingShows()) != 1 || !h.m.app.meeting.known {
+		t.Fatalf("open did not read exactly once: reads %v, known %v", h.f.meetingShows(), h.m.app.meeting.known)
+	}
+}
+
+type meetingFrozenClock struct {
+	now       time.Time
+	scheduled chan struct{}
+}
+
+func (c *meetingFrozenClock) Now() time.Time { return c.now }
+func (c *meetingFrozenClock) After(time.Duration) <-chan time.Time {
+	select {
+	case c.scheduled <- struct{}{}:
+	default:
+	}
+	return make(chan time.Time)
+}
+
+func TestMeetingRefreshRetriesDetailAfterFirstFailure(t *testing.T) {
+	t.Parallel()
+	h := newRESTHarness(t)
+	h.openMeetings(website)
+	h.f.setMeeting(func(string) transport.Answer {
+		return transport.Answer{Class: transport.Temporary, Message: "connection reset", Sent: true}
+	})
+	h.drive(h.press("enter"))
+	detailBefore, listBefore := len(h.f.meetingShows()), len(h.f.meetingReads())
+	h.f.setMeeting(defaultMeeting)
+	h.f.setMeetings(func(api.MeetingQuery) transport.Answer {
+		return transport.Answer{Class: transport.Temporary, Message: "list unavailable", Sent: true}
+	})
+	h.drive(h.press("R"))
+	if !h.m.app.meeting.known || len(h.f.meetingReads()) != listBefore || len(h.f.meetingShows()) != detailBefore+1 {
+		t.Fatalf("R did not retry recovered meeting endpoint: detail calls %d -> %d, list calls %d -> %d", detailBefore, len(h.f.meetingShows()), listBefore, len(h.f.meetingReads()))
+	}
+}
+
+func TestMeetingSearchCloseRearmsConsumedPreview(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{"esc", "enter"} {
+		t.Run(key, func(t *testing.T) {
+			h := newRESTHarness(t)
+			h.openMeetings(website)
+			token := h.m.app.previewToken
+			h.press("/")
+			h.previewDue()
+			cmd := h.press(key)
+			if cmd == nil || h.m.app.previewToken == token {
+				t.Fatalf("closing search with %s left no new preview timer; token %d, reads %v, mode %v", key, token, h.f.meetingShows(), h.m.mode)
+			}
+		})
+	}
+}
+
+func TestMeetingCachedPageRestoresDetailWithoutListReload(t *testing.T) {
+	t.Parallel()
+	h := newRESTHarness(t)
+	h.openMeetings(website)
+	h.drive(h.press("]"))
+	h.drive(h.press("enter"))
+	detailKey := h.m.app.meeting.key
+	h.drive(h.press("esc"))
+	h.drive(h.press("["))
+	h.previewDue()
+	if _, ok := h.m.app.store.Get(detailKey); !ok {
+		t.Fatal("detail on page two not cached")
+	}
+	oldToken := h.m.app.previewToken
+	h.f.setMeetings(func(api.MeetingQuery) transport.Answer {
+		return transport.Answer{Class: transport.Object, Payload: []byte("{"), Status: 200, Sent: true}
+	})
+	h.drive(h.press("]"))
+	if !h.m.app.meetings.cached || h.m.app.meetings.err.String() == "" {
+		t.Fatal("cached page with failed reload not established")
+	}
+	d := h.m.app.meeting
+	if d == nil || !d.known || d.key != detailKey || h.m.app.previewToken == oldToken {
+		t.Fatalf("cached detail not restored or preview not scheduled: token=%d, pane=%q", h.m.app.previewToken, h.meetingText())
+	}
+	reads := len(h.f.meetingShows())
+	h.previewDue()
+	if d.cached || len(h.f.meetingShows()) != reads+1 {
+		t.Fatalf("cached detail was not refreshed independently of the list: cached=%v, reads=%v", d.cached, h.f.meetingShows())
+	}
 }
 
 func TestEnterAndTheArrowShowTheMeetingAtOnce(t *testing.T) {
@@ -329,5 +452,155 @@ func TestAMeetingWhoseCreatorIsGoneSaysSo(t *testing.T) {
 	}
 	if got := strings.Join(bar, "|"); !strings.Contains(got, "People|Creator unknown") {
 		t.Fatalf("bar %q", got)
+	}
+}
+
+// Enter on a meeting whose preview is on the wire joins it as the
+// person's read: one request, at the person's priority (review round 1 of
+// #8, finding 1).
+func TestOpeningAMeetingJoinsItsPreviewAsThePersons(t *testing.T) {
+	t.Parallel()
+
+	h := newRESTHarness(t)
+	h.openMeetings(website)
+	a := h.m.app
+	gate := make(chan struct{})
+	h.f.gate, h.f.gateMeeting = gate, true
+	preview := h.feed(gateway.Due{Session: a.session, Token: a.previewToken})
+	if len(preview) != 1 {
+		t.Fatalf("%d preview commands", len(preview))
+	}
+	previewResult := h.background(preview[0])
+	var share string
+	for _, w := range a.waiters {
+		if w.ticket.Area == gateway.Meeting {
+			share = w.ticket.ShareKey()
+		}
+	}
+	h.waitFor("the preview on the wire", func() bool { return h.q.Sharers(share) == 1 })
+	open := h.press("enter")
+	users := 0
+	for _, w := range a.waiters {
+		if w.ticket.Area == gateway.Meeting && w.ticket.Priority == queue.User {
+			users++
+		}
+	}
+	if h.m.focus != view.Object || users != 1 || open == nil {
+		t.Fatalf("focus %d, %d waiters of the person", h.m.focus, users)
+	}
+	openResult := h.background(open)
+	h.waitFor("the open joining the preview", func() bool { return h.q.Sharers(share) == 2 })
+	close(gate)
+	h.feed(h.receive(previewResult), h.receive(openResult))
+	if got := h.f.meetingShows(); len(got) != 1 || !strings.Contains(h.meetingText(), "Ergebnis") {
+		t.Fatalf("reads %v, text %q", got, h.meetingText())
+	}
+}
+
+// A meeting that failed is read again by R alone: a resize or the arrows
+// with the pane focused send nothing (review round 1 of #8, finding 2).
+func TestAFailedMeetingIsReadAgainOnlyByR(t *testing.T) {
+	t.Parallel()
+
+	h := newRESTHarness(t)
+	h.openMeetings(website)
+	h.f.setMeeting(func(string) transport.Answer { return restNotFound() })
+	h.drive(h.press("enter"))
+	if got := h.f.meetingShows(); len(got) != 1 {
+		t.Fatalf("reads %v", got)
+	}
+	for i := range 4 {
+		h.drive(h.feed(tea.WindowSizeMsg{Width: 120 + i, Height: 24})...)
+		h.drive(h.press("right"))
+	}
+	if got := h.f.meetingShows(); len(got) != 1 {
+		t.Fatalf("%d reads after resizes and arrows", len(got))
+	}
+	if !h.offers(Refresh) {
+		t.Fatal("no R on a failed meeting")
+	}
+	h.f.setMeeting(defaultMeeting)
+	h.drive(h.press("R"))
+	if got := h.f.meetingShows(); len(got) != 2 || !strings.Contains(h.meetingText(), "Ergebnis") {
+		t.Fatalf("reads %v, text %q", got, h.meetingText())
+	}
+}
+
+// R on the focused meeting reads it again and shows what changed, wrapped
+// anew; while the read is out R is not offered (review round 1 of #8,
+// findings 3 and 4).
+func TestRReadsTheFocusedMeetingAgain(t *testing.T) {
+	t.Parallel()
+
+	h := newRESTHarness(t)
+	h.openMeetings(website)
+	h.drive(h.press("enter"))
+	listReads := len(h.f.meetingReads())
+	h.f.setMeeting(func(id string) transport.Answer {
+		// The same sections, the summary changed: only the record tells
+		// the wrap apart.
+		return objectAnswer(fullMeeting(meetingRows(website)[0], "Neu: Start im April.", "Termin im März halten.", "Anna: Wir starten im März.\nErika: Gut."))
+	})
+	r := h.press("R")
+	if h.offers(Refresh) {
+		t.Fatal("R offered while the meeting is read")
+	}
+	h.drive(r)
+	if got := h.f.meetingShows(); len(got) != 2 || len(h.f.meetingReads()) != listReads {
+		t.Fatalf("meeting reads %v, list reads %d → %d", got, listReads, len(h.f.meetingReads()))
+	}
+	if text := h.meetingText(); !strings.Contains(text, "Neu: Start im April.") || strings.Contains(text, "Ergebnis") {
+		t.Fatalf("%q", text)
+	}
+}
+
+// The arrow into the pane raises a preview on the wire to the person's
+// read as Enter does, once however often it is pressed.
+func TestTheArrowJoinsAPreviewOnceAsThePersons(t *testing.T) {
+	t.Parallel()
+
+	h := newRESTHarness(t)
+	h.openMeetings(website)
+	a := h.m.app
+	gate := make(chan struct{})
+	h.f.gate, h.f.gateMeeting = gate, true
+	preview := h.feed(gateway.Due{Session: a.session, Token: a.previewToken})
+	if len(preview) != 1 {
+		t.Fatalf("%d preview commands", len(preview))
+	}
+	previewResult := h.background(preview[0])
+	var share string
+	for _, w := range a.waiters {
+		if w.ticket.Area == gateway.Meeting {
+			share = w.ticket.ShareKey()
+		}
+	}
+	h.waitFor("the preview on the wire", func() bool { return h.q.Sharers(share) == 1 })
+	var cmds []tea.Cmd
+	for range 3 {
+		if cmd := h.press("right"); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	users := 0
+	for _, w := range a.waiters {
+		if w.ticket.Area == gateway.Meeting && w.ticket.Priority == queue.User {
+			users++
+		}
+	}
+	if h.m.focus != view.Object || users != 1 {
+		t.Fatalf("focus %d, %d waiters of the person", h.m.focus, users)
+	}
+	var results []<-chan tea.Msg
+	for _, cmd := range cmds {
+		results = append(results, h.background(cmd))
+	}
+	close(gate)
+	h.feed(h.receive(previewResult))
+	for _, r := range results {
+		h.drive(h.feed(h.receive(r))...)
+	}
+	if got := h.f.meetingShows(); len(got) != 1 || !strings.Contains(h.meetingText(), "Ergebnis") {
+		t.Fatalf("reads %v, text %q", got, h.meetingText())
 	}
 }

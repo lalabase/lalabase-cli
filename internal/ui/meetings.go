@@ -219,8 +219,8 @@ func (m Model) meetingSearchKey(kind Action, text string) (Model, tea.Cmd) {
 // projects; not again while a read of it is out.
 func (m Model) refreshMeetings() tea.Cmd {
 	a := m.app
-	if d := a.meeting; d != nil && m.focus == view.Object && a.meetingInPane() {
-		// The meeting in the focused pane (K7b).
+	if d := a.meeting; d != nil && m.focus == view.Object && a.meetingSelected() {
+		// The meeting in the focused pane (K7b), a failed one too.
 		d.loading = true
 		if a.pending(d.key) {
 			return nil
@@ -241,7 +241,7 @@ func (m Model) refreshMeetings() tea.Cmd {
 // canRefreshMeetings mirrors refreshMeetings.
 func (m Model) canRefreshMeetings() bool {
 	a := m.app
-	if d := a.meeting; d != nil && m.focus == view.Object && a.meetingInPane() {
+	if d := a.meeting; d != nil && m.focus == view.Object && a.meetingSelected() {
 		return !a.pending(d.key)
 	}
 	if v := a.meetings; v != nil {
