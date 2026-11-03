@@ -26,6 +26,9 @@ const previewDelay = 300 * time.Millisecond
 
 // projectsView is the list of an organisation's projects.
 type projectsView struct {
+	// section is what the projects were opened for: the tickets, or the
+	// meetings (K7a); Enter on a project opens that list.
+	section   section
 	org, name string
 	key       cache.Key
 	rows      []api.Project
@@ -222,6 +225,7 @@ func (a *app) leaveInbox() {
 // of theirs canceled.
 func (a *app) leaveTickets() {
 	a.leaveList()
+	a.leaveMeetings()
 	if p := a.projects; p != nil {
 		a.rememberedProject[p.org] = p.selected
 		a.cancelArea(gateway.Projects)
@@ -269,21 +273,22 @@ func (a *app) cancelArea(area gateway.Area) {
 	}
 }
 
-// openProjects opens the tickets section of org: its projects, from the
-// cache at once when they are there, then one reload. On the section already
-// open it leads back to the projects from a ticket list; Esc in the chooser
-// is the way back to that list.
-func (m Model) openProjects(org string) (Model, tea.Cmd) {
+// openProjects opens the tickets or the meetings section of org: its
+// projects, from the cache at once when they are there, then one reload.
+// On the section already open it leads back to the projects from its list;
+// Esc in the chooser is the way back to that list.
+func (m Model) openProjects(org string, s section) (Model, tea.Cmd) {
 	a := m.app
-	if !a.canOpen(org, sectionTickets) {
+	if !a.canOpen(org, s) {
 		return m, nil
 	}
-	if a.projects != nil && a.projects.org == org {
+	if a.projects != nil && a.projects.org == org && a.projects.section == s {
 		a.leaveList()
+		a.leaveMeetings()
 		m.focus = view.List
 		return m, nil
 	}
-	cmd := a.enterProjects(org)
+	cmd := a.enterProjects(org, s)
 	m.focus = view.List
 	return m, cmd
 }
@@ -293,14 +298,14 @@ func (m Model) openProjects(org string) (Model, tea.Cmd) {
 // them. The selected project is the one selected when the person last
 // left them; openAgent selects the agent's project afterwards. The chooser
 // and an agent open the projects this one way.
-func (a *app) enterProjects(org string) tea.Cmd {
+func (a *app) enterProjects(org string, s section) tea.Cmd {
 	a.leaveInbox()
 	a.leaveTickets()
 	name := ""
 	if o := a.organisation(org); o != nil {
 		name = o.Name
 	}
-	a.projects = &projectsView{org: org, name: name, key: a.projectsKey(org), selected: a.rememberedProject[org]}
+	a.projects = &projectsView{section: s, org: org, name: name, key: a.projectsKey(org), selected: a.rememberedProject[org]}
 	return a.loadProjects()
 }
 
@@ -737,6 +742,7 @@ func (m Model) receiveProjects(r gateway.ProjectsResult) (Model, tea.Cmd) {
 		// goes, the ticket list, the ticket and the search line with it.
 		m = m.closeSearch()
 		a.leaveList()
+		a.leaveMeetings()
 		v.rows, v.selected = nil, ""
 		v.removed()
 		if m.focus != view.Agents {

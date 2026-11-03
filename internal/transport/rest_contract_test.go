@@ -152,6 +152,31 @@ var restCases = map[string]restExpected{
 	"GET /api/v1/projects/:project_id/knowledge/not_found":              {class: NotFound, code: "not_found", legacyClass: NotFound},
 	"GET /api/v1/projects/:project_id/knowledge/unauthorized":           {class: Unauthenticated, code: "unauthorized", legacyClass: Unauthenticated},
 
+	// Meetings over REST (core R8): the list a project's meetings section
+	// reads (K7a), one meeting the object pane reads (K7b). A reader without
+	// the meetings area gets an empty list; every failure of one meeting is
+	// the same 404.
+	"GET /api/v1/projects/:project_id/meetings/ok":                     {class: Object, legacyClass: Object},
+	"GET /api/v1/projects/:project_id/meetings/ok_search":              {class: Object, legacyClass: Object},
+	"GET /api/v1/projects/:project_id/meetings/ok_page":                {class: Object, legacyClass: Object},
+	"GET /api/v1/projects/:project_id/meetings/ok_creator_gone":        {class: Object, legacyClass: Object},
+	"GET /api/v1/projects/:project_id/meetings/empty":                  {class: Object, legacyClass: Object},
+	"GET /api/v1/projects/:project_id/meetings/empty_no_area":          {class: Object, legacyClass: Object},
+	"GET /api/v1/projects/:project_id/meetings/invalid_input_page":     {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"GET /api/v1/projects/:project_id/meetings/invalid_input_per_page": {class: InvalidInput, code: "invalid_input", legacyClass: InvalidInput},
+	"GET /api/v1/projects/:project_id/meetings/not_found":              {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"GET /api/v1/projects/:project_id/meetings/not_found_reach":        {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"GET /api/v1/projects/:project_id/meetings/unauthorized":           {class: Unauthenticated, code: "unauthorized", legacyClass: Unauthenticated},
+	"GET /api/v1/meetings/:id/ok":                                      {class: Object, legacyClass: Object},
+	"GET /api/v1/meetings/:id/ok_bare":                                 {class: Object, legacyClass: Object},
+	"GET /api/v1/meetings/:id/ok_creator_gone":                         {class: Object, legacyClass: Object},
+	"GET /api/v1/meetings/:id/not_found":                               {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"GET /api/v1/meetings/:id/not_found_malformed":                     {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"GET /api/v1/meetings/:id/not_found_no_area":                       {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"GET /api/v1/meetings/:id/not_found_reach":                         {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"GET /api/v1/meetings/:id/not_found_foreign":                       {class: NotFound, code: "not_found", legacyClass: NotFound},
+	"GET /api/v1/meetings/:id/unauthorized":                            {class: Unauthenticated, code: "unauthorized", legacyClass: Unauthenticated},
+
 	// A change of a ticket over REST (core R3b). Not sent by the client yet
 	// (K3). The project's state refuses with a reason, as the tool does.
 	"POST /api/v1/tickets/:id/changes/ok_status":                 {class: Object, legacyClass: Object},

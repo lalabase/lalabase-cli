@@ -54,6 +54,7 @@ var Specs = []Spec{
 	NotificationsSpec, MarkReadSpec, TicketsSpec, TicketSpec, UpdateTicketSpec, CommentSpec, KnowledgeSpec,
 	BookedTimeSpec, MeSpec, OrganisationsSpec, ProjectsSpec,
 	TicketsRESTSpec, TicketRESTSpec, TicketByNumberRESTSpec, PostRESTSpec, BookTimeSpec, PostCommentSpec,
+	MeetingsRESTSpec,
 }
 
 // Missing returns the required paths the payload lacks, with list positions

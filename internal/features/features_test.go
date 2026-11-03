@@ -30,7 +30,7 @@ func contractTools(t *testing.T) ([]transport.Tool, *contract.File) {
 
 var contractServer = transport.ServerInfo{Name: "lalabase", Version: "0.16.0"}
 
-// On the contract the client was built against (MCP 0.16.0, REST API 1.9.0,
+// On the contract the client was built against (MCP 0.16.0, REST API 1.10.0,
 // server slices S1, S2, S2b and S6 and the core's R6 included), every
 // feature is on.
 func TestOnTheContractEveryFeatureIsOn(t *testing.T) {
@@ -396,7 +396,7 @@ func TestOnTheServerBeforeS2TheWriteFeaturesAreOff(t *testing.T) {
 	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.9.0"}, tools, nil)
 	on := 0
 	for _, f := range All {
-		want := f.Since != "S2" && f.Since != "S2b" && f.Since != "S6" && f.Since != "R6"
+		want := f.Since != "S2" && f.Since != "S2b" && f.Since != "S6" && f.Since != "R6" && f.Since != "R8"
 		if report.Enabled[f.Name] != want {
 			t.Errorf("%s on %v on a 0.9.0 server (missing %v)", f.Name, report.Enabled[f.Name], report.Missing[f.Name])
 		}

@@ -145,7 +145,7 @@ func TestTheTicketViewTakesTheRESTWayWithTheCapabilitiesOfR1(t *testing.T) {
 		rest  map[string]Way // the features over REST; every other one is on over MCP
 		off   []string
 	}{
-		{"the contract's /me (API 1.9.0)", tools, caps, rest(ticketView...), nil},
+		{"the contract's /me (API 1.10.0)", tools, caps, rest(ticketView...), nil},
 		{"a /me of API 1.2.0, before R1", tools, meCapabilities(t, "testdata/me_1.2.0.json"), nil, nil},
 		{"no capabilities, before R0", tools, nil, nil, nil},
 		{"without tickets.paging", tools, without("tickets.paging"), nil, nil},
@@ -160,8 +160,8 @@ func TestTheTicketViewTakesTheRESTWayWithTheCapabilitiesOfR1(t *testing.T) {
 	for _, tc := range cases {
 		report := Detect(contractServer, tc.tools, tc.caps)
 		for _, f := range All {
-			if f.Name == bookFeature || f.Name == commentFeature {
-				continue // TestABookingTakesTheRESTWayAlone, TestACommentTakesRESTOrTheToolWithItsFormat
+			if f.Name == bookFeature || f.Name == commentFeature || f.Name == meetingsFeature {
+				continue // TestABookingTakesTheRESTWayAlone, TestACommentTakesRESTOrTheToolWithItsFormat, TestMeetingsTakeTheRESTWayAlone
 			}
 			off := slices.Contains(tc.off, f.Name)
 			if report.Enabled[f.Name] == off {
@@ -205,6 +205,41 @@ func TestABookingTakesTheRESTWayAlone(t *testing.T) {
 		if !slices.Equal(report.Missing[bookFeature], []string{"capability time_sessions.book"}) {
 			t.Errorf("%s: missing %v", name, report.Missing[bookFeature])
 		}
+	}
+}
+
+// meetingsFeature is the feature of a project's meetings (K7a).
+const meetingsFeature = "meetings"
+
+// K7a: a project's meetings have the REST way alone, as a booking: no tool
+// reads them. meetings.list turns them on (the search is part of the
+// list); a server without it, or before R0, has no meetings, and keeps
+// every other feature.
+func TestMeetingsTakeTheRESTWayAlone(t *testing.T) {
+	tools, _ := contractTools(t)
+	caps := contractCapabilities(t)
+	on := Detect(contractServer, tools, caps)
+	if !on.Enabled[meetingsFeature] || on.Via[meetingsFeature] != REST || len(on.Missing[meetingsFeature]) != 0 {
+		t.Fatalf("on %v via %v, missing %v", on.Enabled[meetingsFeature], on.Via[meetingsFeature], on.Missing[meetingsFeature])
+	}
+	without := slices.DeleteFunc(slices.Clone(caps), func(c string) bool { return c == "meetings.list" })
+	for name, listed := range map[string][]string{"without the capability": without, "no capabilities, before R0": nil} {
+		report := Detect(contractServer, tools, listed)
+		if _, way := report.Via[meetingsFeature]; report.Enabled[meetingsFeature] || way {
+			t.Errorf("%s: on %v via %v", name, report.Enabled[meetingsFeature], report.Via[meetingsFeature])
+		}
+		if !slices.Equal(report.Missing[meetingsFeature], []string{"capability meetings.list"}) {
+			t.Errorf("%s: missing %v", name, report.Missing[meetingsFeature])
+		}
+		for _, other := range []string{"inbox", "tickets", "ticket"} {
+			if !report.Enabled[other] {
+				t.Errorf("%s: %s is off", name, other)
+			}
+		}
+	}
+	// meetings.show alone turns nothing on: the list is what K7a reads.
+	if report := Detect(contractServer, tools, []string{"meetings.show"}); report.Enabled[meetingsFeature] {
+		t.Error("meetings.show alone turned the meetings on")
 	}
 }
 
@@ -252,14 +287,14 @@ func TestCapabilitiesChangeNothingForTheOtherFeatures(t *testing.T) {
 	a := Detect(contractServer, tools, contractCapabilities(t))
 	b := Detect(contractServer, tools, nil)
 	for _, f := range All {
-		if slices.Contains(ticketView, f.Name) || f.Name == bookFeature || f.Name == commentFeature {
+		if slices.Contains(ticketView, f.Name) || f.Name == bookFeature || f.Name == commentFeature || f.Name == meetingsFeature {
 			if len(f.Capabilities) == 0 {
 				t.Errorf("%s names no capability", f.Name)
 			}
 			continue
 		}
 		if len(f.Capabilities) > 0 {
-			t.Errorf("%s names capabilities %v; K1 switched the ticket view, K6 added the booking, K3a the comment, nothing else", f.Name, f.Capabilities)
+			t.Errorf("%s names capabilities %v; K1 switched the ticket view, K6 added the booking, K3a the comment, K7a the meetings, nothing else", f.Name, f.Capabilities)
 		}
 		if a.Enabled[f.Name] != b.Enabled[f.Name] || a.Via[f.Name] != b.Via[f.Name] || !slices.Equal(a.Missing[f.Name], b.Missing[f.Name]) {
 			t.Errorf("%s differs: %v/%v/%v and %v/%v/%v", f.Name, a.Enabled[f.Name], a.Via[f.Name], a.Missing[f.Name], b.Enabled[f.Name], b.Via[f.Name], b.Missing[f.Name])

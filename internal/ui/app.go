@@ -71,6 +71,8 @@ const (
 	forTime
 	// forGroup: a page of one status of the ticket list (C11).
 	forGroup
+	// forMeetings: a page of a project's meetings (K7a).
+	forMeetings
 )
 
 // waiter is one consumer of a read in flight: its ticket, how to cancel it,
@@ -89,6 +91,8 @@ type section uint8
 const (
 	sectionInbox section = iota
 	sectionTickets
+	// sectionMeetings: a project's meetings (K7a), read only.
+	sectionMeetings
 )
 
 // position is where the person was in an organisation's inbox: remembered
@@ -190,6 +194,11 @@ type app struct {
 	// rememberedTickets the page, row and search per project.
 	rememberedProject map[string]string
 	rememberedTickets map[string]ticketPosition
+	// meetings is the open meeting list (K7a), under the projects opened
+	// for the meetings section; rememberedMeetings the page, row and
+	// search per project.
+	meetings           *meetingsView
+	rememberedMeetings map[string]meetingPosition
 	// previewToken names the timer of the row the cursor rests on: only the
 	// wake-up with the current token reads a preview.
 	previewToken uint64
@@ -252,8 +261,9 @@ func (a *app) reset() {
 	a.directory, a.counters, a.global, a.countersSeq, a.snapshot = nil, map[string]count{}, count{}, 0, 0
 	a.waiters, a.filed = map[gateway.Waiter]*waiter{}, map[cache.Key]uint64{}
 	a.highlight, a.highlightSection, a.active, a.remembered = "", sectionInbox, nil, map[string]position{}
-	a.projects, a.tickets, a.detail = nil, nil, nil
+	a.projects, a.tickets, a.detail, a.meetings = nil, nil, nil, nil
 	a.rememberedProject, a.rememberedTickets, a.previewToken = map[string]string{}, map[string]ticketPosition{}, 0
+	a.rememberedMeetings = map[string]meetingPosition{}
 	a.titles = map[string]*title{}
 	a.marks, a.origin = map[string]*markOp{}, nil
 	a.bookings, a.bookNotices, a.groupNotice = map[string]*ticketOp{}, nil, bookNotice{}
@@ -298,6 +308,9 @@ func (a *app) canOpen(org string, s section) bool {
 	}
 	if s == sectionTickets {
 		return org != "" && a.ticketsOn()
+	}
+	if s == sectionMeetings {
+		return org != "" && a.meetingsOn()
 	}
 	return a.inboxOn() && (org == "" || a.byOrgOn())
 }

@@ -126,7 +126,8 @@ func TestPTYInboxFlow(t *testing.T) {
 				// Highlighting another organisation relabels nothing: the
 				// heading is the open inbox's, not the cursor's.
 				c.act(t, keyEsc, width, "esc inbox")
-				c.moveTo(t, keyDown, width, "Südwind AG", "Inbox", 2)
+				// Tickets and Meetings (K7a) lie between the two inboxes.
+				c.moveTo(t, keyDown, width, "Südwind AG", "Inbox", 3)
 				if !c.screenShows(width, "Nordlicht GmbH › Inbox · page 1 of 2") {
 					t.Fatalf("the heading followed the cursor:\n%s", strings.Join(c.screen(24, int(width)), "\n"))
 				}

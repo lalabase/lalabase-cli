@@ -32,6 +32,8 @@ const (
 	// leaving the ticket moves the area, so a late answer of another
 	// ticket's time cannot reach the pane.
 	Time
+	// Meetings are the meetings of one project (K7a): one page, one search.
+	Meetings
 	areas
 )
 

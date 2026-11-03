@@ -28,7 +28,8 @@ type Option func(*Fixture) error
 
 // r1Capabilities are what the core's R1 and the slices after it added to
 // /me: without them, /me is that of API 1.2.0.
-var r1Capabilities = []string{"tickets.paging", "tickets.by_number", "posts.show", "time_sessions.book", "posts.plain", "knowledge.search", "tickets.changes"}
+var r1Capabilities = []string{"tickets.paging", "tickets.by_number", "posts.show", "time_sessions.book", "posts.plain", "knowledge.search", "tickets.changes",
+	"meetings.create", "meetings.list", "meetings.show"}
 
 // BeforeR1 is a server whose REST API is older than the core's R1 (API
 // 1.2.0): its /me lists the capabilities of then. The client reads the
@@ -173,6 +174,9 @@ func (f *Fixture) rest(w http.ResponseWriter, r *http.Request, req Request) {
 	case len(parts) == 3 && parts[0] == "projects" && parts[2] == "tickets":
 		req.Route, req.Args = "tickets.list", restArgs(r, map[string]string{"project_id": parts[1]})
 		f.restTickets(w, r, req, parts[1])
+	case len(parts) == 3 && parts[0] == "projects" && parts[2] == "meetings" && f.r1:
+		req.Route, req.Args = "meetings.list", restArgs(r, map[string]string{"project_id": parts[1]})
+		f.restMeetings(w, r, req, parts[1])
 	case len(parts) == 2 && parts[0] == "tickets":
 		req.Route, req.Args = "tickets.show", restArgs(r, map[string]string{"ticket_id": parts[1]})
 		project, n := ticketByID(parts[1])

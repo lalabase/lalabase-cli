@@ -72,6 +72,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.receiveProjects(msg)
 	case gateway.TicketsResult:
 		return m.receiveTickets(msg)
+	case gateway.MeetingsResult:
+		return m.receiveMeetings(msg)
 	case gateway.TicketResult:
 		switch msg.Area {
 		case gateway.Expansion:
@@ -200,6 +202,9 @@ func (m Model) key(key tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m.shellKey(action.Kind), nil
 	}
 	if m.mode == TextEntry {
+		if m.app.meetings != nil {
+			return m.meetingSearchKey(action.Kind, action.Text)
+		}
 		return m.searchKey(action.Kind, action.Text)
 	}
 	return m.sessionKey(action.Kind)
@@ -282,11 +287,16 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 			return m.turnArea(delta)
 		case a.tickets != nil:
 			return m.turnTicketPage(delta)
+		case a.meetings != nil:
+			return m.turnMeetingPage(delta)
 		}
 		return m.turnPage(delta)
 	case Refresh:
 		return m.retryOrRefresh()
 	case Search:
+		if a.meetings != nil {
+			return m.startMeetingSearch(), nil
+		}
 		return m.startSearch(), nil
 	case NextArea:
 		return m.nextArea(), nil
@@ -350,6 +360,8 @@ func (m Model) move(delta int) (Model, tea.Cmd) {
 		case a.tickets != nil:
 			a.tickets.moveSelection(delta)
 			return m, m.selectionChanged()
+		case a.meetings != nil:
+			a.meetings.moveSelection(delta)
 		case a.projects != nil:
 			a.projects.moveSelection(delta)
 		}
@@ -371,6 +383,8 @@ func (m Model) movePage(delta int) (Model, tea.Cmd) {
 		case a.tickets != nil:
 			a.tickets.moveSelection(rows)
 			return m, m.selectionChanged()
+		case a.meetings != nil:
+			a.meetings.moveSelection(rows)
 		case a.projects != nil:
 			a.projects.moveSelection(rows)
 		}
@@ -443,8 +457,8 @@ func (m Model) open() (Model, tea.Cmd) {
 	a := m.app
 	switch m.focus {
 	case view.Navigation:
-		if a.highlightSection == sectionTickets {
-			return m.openProjects(a.highlight)
+		if a.highlightSection == sectionTickets || a.highlightSection == sectionMeetings {
+			return m.openProjects(a.highlight, a.highlightSection)
 		}
 		return m.activate(a.highlight)
 	case view.Agents:
@@ -465,7 +479,12 @@ func (m Model) open() (Model, tea.Cmd) {
 				return m.foldGroup()
 			}
 			return m.openTicket()
+		case a.meetings != nil:
+			// K7a: no meeting opens yet; the pane shows the row's facts.
 		case a.projects != nil:
+			if a.projects.section == sectionMeetings {
+				return m.openMeetings(a.projects.selected)
+			}
 			return m.openTickets(a.projects.selected)
 		}
 	case view.Object:
@@ -490,6 +509,10 @@ func (m Model) back() (Model, tea.Cmd) {
 	case view.List:
 		if a.tickets != nil {
 			a.leaveList()
+			return m, nil
+		}
+		if a.meetings != nil {
+			a.leaveMeetings()
 			return m, nil
 		}
 		m.focus = view.Navigation

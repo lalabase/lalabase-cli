@@ -59,13 +59,19 @@ func (a *app) entries() []entry {
 		if a.ticketsOn() {
 			out = append(out, entry{org: o.ID, section: sectionTickets, name: name})
 		}
+		if a.meetingsOn() {
+			out = append(out, entry{org: o.ID, section: sectionMeetings, name: name})
+		}
 	}
 	return out
 }
 
 func sectionName(s section) uitext.ID {
-	if s == sectionTickets {
+	switch s {
+	case sectionTickets:
 		return uitext.Tickets
+	case sectionMeetings:
+		return uitext.Meetings
 	}
 	return uitext.Inbox
 }
@@ -152,6 +158,9 @@ func (m Model) identity() present.Inline {
 // column: the section and the kind of object shown.
 func (m Model) crumbs() [3]present.Inline {
 	a := m.app
+	if a.meetingsSection() && !a.expired {
+		return [3]present.Inline{uitext.Inline(uitext.Organisations), uitext.Inline(uitext.Meetings), uitext.Inline(uitext.Meeting)}
+	}
 	if a.projects != nil && !a.expired {
 		return [3]present.Inline{uitext.Inline(uitext.Organisations), uitext.Inline(uitext.Tickets), uitext.Inline(uitext.Ticket)}
 	}
@@ -188,6 +197,19 @@ func (m Model) context() present.Inline {
 		text := a.orgName(v.org, v.name) + step + uitext.Inline(uitext.Inbox).String()
 		if v.known {
 			text += detail + uitext.Fill(uitext.PageOf, v.page, lastPage(v.total, v.perPage)).String()
+		}
+		return present.NewInline(text)
+	}
+	if p := a.projects; p != nil && p.section == sectionMeetings {
+		text := a.orgName(p.org, p.name) + step + uitext.Inline(uitext.Meetings).String()
+		if v := a.meetings; v != nil {
+			text += step + textOr(v.projectName, uitext.UnnamedProject)
+			if v.query != "" {
+				text += detail + uitext.Fill(uitext.SearchFor, v.query).String()
+			}
+			if v.known {
+				text += detail + uitext.Fill(uitext.PageOf, v.page, lastPage(v.total, v.perPage)).String()
+			}
 		}
 		return present.NewInline(text)
 	}
@@ -259,7 +281,7 @@ func (m Model) chooserColumn() present.Column {
 			}
 			row.Active = a.active != nil && a.active.org == e.org
 		} else {
-			row.Active = a.projects != nil && a.projects.org == e.org
+			row.Active = a.projects != nil && a.projects.org == e.org && a.projects.section == e.section
 		}
 		c.Rows = append(c.Rows, row)
 	}
@@ -311,6 +333,8 @@ func (m Model) listColumn() present.Column {
 		return m.inboxColumn()
 	case a.tickets != nil:
 		return m.ticketsColumn()
+	case a.meetings != nil:
+		return m.meetingsColumn()
 	case a.projects != nil:
 		return m.projectsColumn()
 	}
@@ -409,6 +433,9 @@ func (a *app) when(raw string) string { return timeOf(raw, a.now(), a.loc) }
 // previewed or opened.
 func (m Model) objectColumn() present.Column {
 	a := m.app
+	if a.meetingsSection() && !a.expired {
+		return m.meetingFactsColumn()
+	}
 	if (a.projects != nil || a.origin != nil) && !a.expired {
 		return m.detailColumn()
 	}

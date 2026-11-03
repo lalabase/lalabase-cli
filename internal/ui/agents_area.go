@@ -513,7 +513,8 @@ func (m Model) closeAgents() (Model, tea.Cmd) {
 		}
 		a.dropDetail()
 	}
-	if a := m.app; m.focus == view.Object && a.detail == nil && (a.active == nil || a.active.opened == "") {
+	if a := m.app; m.focus == view.Object && a.detail == nil && (a.active == nil || a.active.opened == "") &&
+		(a.meetings == nil || a.meetings.index(a.meetings.selected) < 0) {
 		m.focus = view.List
 	}
 	return m, m.selectionChanged()
@@ -556,8 +557,8 @@ func (m Model) openAgent() (Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	} else {
-		if p := a.projects; p == nil || p.org != ag.Organisation {
-			cmds = append(cmds, a.enterProjects(ag.Organisation))
+		if p := a.projects; p == nil || p.org != ag.Organisation || p.section != sectionTickets {
+			cmds = append(cmds, a.enterProjects(ag.Organisation, sectionTickets))
 		} else if a.tickets != nil {
 			a.leaveList()
 		}
