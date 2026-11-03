@@ -88,7 +88,7 @@ func (c *terminalProcess) closes(t *testing.T, input string, width uint16, title
 	if err := c.until("the box closing", readyLimit, func() bool {
 		return !c.screenShows(width, title) && c.screenShows(width, "SAFE_LIST")
 	}); err != nil {
-		t.Fatalf("%v:\n%s", err, strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+		t.Fatalf("%v:\n%s", err, strings.Join(c.screen(24, int(width)), "\n"))
 	}
 }
 
@@ -107,7 +107,7 @@ func TestPTYTheSmallDialog(t *testing.T) {
 			c.act(t, "\t", width, "Note")
 			c.act(t, pasteStart+"ok\x1b[31mred\x07\u202eend\r\nnext"+pasteEnd, width, "okred end next"+boxCaret)
 			if c.screenShows(width, "[31m") {
-				t.Fatalf("the sequence reached the screen:\n%s", strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+				t.Fatalf("the sequence reached the screen:\n%s", strings.Join(c.screen(24, int(width)), "\n"))
 			}
 			// q is text here, not the way out.
 			c.act(t, "q", width, "next"+"q"+boxCaret)
@@ -202,9 +202,9 @@ func TestPTYAResizeKeepsTheDialog(t *testing.T) {
 	shows := func(cols, rows uint16, markers ...string) {
 		t.Helper()
 		if err := c.until(fmt.Sprintf("%dx%d", cols, rows), readyLimit, func() bool {
-			return screenHas(renderScreen(c.bytes(), int(rows), int(cols)), markers...)
+			return screenHas(c.screen(int(rows), int(cols)), markers...)
 		}); err != nil {
-			t.Fatalf("%v:\n%s", err, strings.Join(renderScreen(c.bytes(), int(rows), int(cols)), "\n"))
+			t.Fatalf("%v:\n%s", err, strings.Join(c.screen(int(rows), int(cols)), "\n"))
 		}
 	}
 	for _, size := range [][2]uint16{{80, 24}, {59, 24}, {50, 12}, {30, 9}, {24, 8}} {

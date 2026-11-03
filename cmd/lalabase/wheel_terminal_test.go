@@ -39,7 +39,7 @@ func TestPTYTheWheelScrollsTheTicket(t *testing.T) {
 	if err := c.until("scroll down", caseLimit, func() bool {
 		return !c.screenShows(width, "Description of six") && c.screenShows(width, "esc back")
 	}); err != nil {
-		t.Fatalf("%v\n%s", err, renderScreen(c.bytes(), 24, width))
+		t.Fatalf("%v\n%s", err, c.screen(24, width))
 	}
 	c.act(t, up, width, "Description of six")
 	if err := c.send("q"); err != nil {

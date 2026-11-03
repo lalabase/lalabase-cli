@@ -151,12 +151,12 @@ func (c *terminalProcess) moveTo(t *testing.T, key string, width uint16, heading
 			t.Fatal(err)
 		}
 		if err := c.until("the cursor", readyLimit, func() bool {
-			return cursorUnder(renderScreen(c.bytes(), 24, int(width)), heading, section)
+			return cursorUnder(c.screen(24, int(width)), heading, section)
 		}); err == nil {
 			return
 		}
 	}
-	t.Fatalf("the cursor did not reach %s > %s:\n%s", heading, section, strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+	t.Fatalf("the cursor did not reach %s > %s:\n%s", heading, section, strings.Join(c.screen(24, int(width)), "\n"))
 }
 
 // openWebsite goes from the chooser to the tickets of Website-Relaunch.
@@ -278,7 +278,7 @@ func TestPTYTicketPreviewExpiresOn401(t *testing.T) {
 	c.expect(t, "the preview of #1", 80, "Nach dem Absenden")
 	c.act(t, keyDown, 80, "Session expired. Restart lalabase.")
 	if c.screenShows(80, "Export als CSV") || c.screenShows(80, "Login bricht ab") || c.screenShows(80, "Website") {
-		t.Fatalf("the expiry left data on screen:\n%s", strings.Join(renderScreen(c.bytes(), 24, 80), "\n"))
+		t.Fatalf("the expiry left data on screen:\n%s", strings.Join(c.screen(24, 80), "\n"))
 	}
 	for _, key := range []string{"R", keyEnter, "/", keyEsc, "]"} {
 		if err := c.send(key); err != nil {
@@ -287,7 +287,7 @@ func TestPTYTicketPreviewExpiresOn401(t *testing.T) {
 	}
 	time.Sleep(300 * time.Millisecond)
 	if c.screenShows(80, "Export als CSV") || !c.screenShows(80, "Session expired") {
-		t.Fatalf("the session came back:\n%s", strings.Join(renderScreen(c.bytes(), 24, 80), "\n"))
+		t.Fatalf("the session came back:\n%s", strings.Join(c.screen(24, 80), "\n"))
 	}
 	if err := c.send("q"); err != nil {
 		t.Fatal(err)

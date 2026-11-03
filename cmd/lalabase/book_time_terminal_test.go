@@ -68,7 +68,7 @@ func (c *terminalProcess) boxCloses(t *testing.T, width uint16, markers ...strin
 	if err := c.until("the box closing", readyLimit, func() bool {
 		return !c.screenShows(width, bookTitle) && c.screenShows(width, markers...)
 	}); err != nil {
-		t.Fatalf("%v, waiting for %q:\n%s", err, markers, strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+		t.Fatalf("%v, waiting for %q:\n%s", err, markers, strings.Join(c.screen(24, int(width)), "\n"))
 	}
 }
 
@@ -184,7 +184,7 @@ func TestPTYBookTimeLost(t *testing.T) {
 			c.act(t, "30"+keyEnter, width, "Not clear whether", "2:00", "30"+boxCaret)
 			c.expect(t, "the way out", width, "esc", "close")
 			if c.screenShows(width, "booked on") {
-				t.Fatalf("a booking claimed:\n%s", strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+				t.Fatalf("a booking claimed:\n%s", strings.Join(c.screen(24, int(width)), "\n"))
 			}
 			if err := c.send(keyEnter); err != nil {
 				t.Fatal(err)
@@ -246,14 +246,14 @@ func TestPTYNoBWithoutTheRightOrTheCapability(t *testing.T) {
 			c, f := startMark(t, tc.scenario, 120, tc.marker, tc.opts...)
 			openSix(t, c, 120)
 			if c.screenShows(120, offerBook) {
-				t.Fatalf("b offered:\n%s", strings.Join(renderScreen(c.bytes(), 24, 120), "\n"))
+				t.Fatalf("b offered:\n%s", strings.Join(c.screen(24, 120), "\n"))
 			}
 			if err := c.send("b"); err != nil {
 				t.Fatal(err)
 			}
 			time.Sleep(300 * time.Millisecond)
 			if c.screenShows(120, bookTitle) {
-				t.Fatalf("a box:\n%s", strings.Join(renderScreen(c.bytes(), 24, 120), "\n"))
+				t.Fatalf("a box:\n%s", strings.Join(c.screen(24, 120), "\n"))
 			}
 			c.quit(t)
 			if got := bookings(f); len(got) != 0 {
@@ -293,7 +293,7 @@ func TestPTYABookingLeftBehindIsToldElsewhere(t *testing.T) {
 	c.act(t, "30"+keyEnter, 120, "Sending", "esc", "close")
 	c.act(t, keyEsc, 120, "esc back")
 	if c.screenShows(120, offerBook) {
-		t.Fatalf("b offered while a booking runs:\n%s", strings.Join(renderScreen(c.bytes(), 24, 120), "\n"))
+		t.Fatalf("b offered while a booking runs:\n%s", strings.Join(c.screen(24, 120), "\n"))
 	}
 	c.act(t, keyEsc, 120, "esc projects")
 	c.act(t, keyDown, 120, ">    #7 Ticket 7")

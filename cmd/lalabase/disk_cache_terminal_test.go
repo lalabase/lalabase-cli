@@ -88,7 +88,7 @@ func (c *terminalProcess) noticeGone(t *testing.T, width uint16, notice string, 
 	if err := c.until("the reload after "+notice, readyLimit, func() bool {
 		return c.screenShows(width, markers...) && !c.screenShows(width, notice)
 	}); err != nil {
-		t.Fatalf("%v\n%s", err, strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+		t.Fatalf("%v\n%s", err, strings.Join(c.screen(24, int(width)), "\n"))
 	}
 }
 
@@ -276,7 +276,7 @@ func TestPTYDiskCache401ClearsTheDirectory(t *testing.T) {
 	// answered, and every frame before shows no cached rows.
 	if err := c.until("the page from the server", readyLimit, func() bool {
 		if c.screenShows(width, "Cached") {
-			t.Fatalf("a page came from disk after the 401:\n%s", strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+			t.Fatalf("a page came from disk after the 401:\n%s", strings.Join(c.screen(24, int(width)), "\n"))
 		}
 		return c.screenShows(width, "#1 Benachrichtigung", "page 1 of 2")
 	}); err != nil {
