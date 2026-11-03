@@ -110,7 +110,7 @@ func (c *terminalProcess) rowGone(t *testing.T, width uint16, marker string) {
 	if err := c.until("the row leaving", readyLimit, func() bool {
 		return !c.screenShows(width, marker) && !c.screenShows(width, "marking…")
 	}); err != nil {
-		t.Fatalf("%v: %q is still shown\n%s", err, marker, strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+		t.Fatalf("%v: %q is still shown\n%s", err, marker, strings.Join(c.screen(24, int(width)), "\n"))
 	}
 }
 
@@ -157,7 +157,7 @@ func TestPTYMarkReadFlow(t *testing.T) {
 			// The pane keeps the description in sight (the head may be
 			// scrolled away at 80 columns after the Tabs).
 			if !c.screenShows(width, "Description of six", "esc notification") {
-				t.Fatalf("the ticket went with the mark:\n%s", strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+				t.Fatalf("the ticket went with the mark:\n%s", strings.Join(c.screen(24, int(width)), "\n"))
 			}
 			c.resize(t, other)
 			c.expect(t, "the ticket after the resize", other, "Description of six", "Marked as read")
@@ -172,7 +172,7 @@ func TestPTYMarkReadFlow(t *testing.T) {
 				c.expect(t, "the counters after the write", width, "29", "32")
 			}
 			if c.screenShows(width, "#6 Benachrichtigung") || c.screenShows(width, "esc close") {
-				t.Fatalf("the marked row is still shown:\n%s", strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+				t.Fatalf("the marked row is still shown:\n%s", strings.Join(c.screen(24, int(width)), "\n"))
 			}
 			c.act(t, keyEsc, width, "up/down highlight")
 			if err := c.send("q"); err != nil {
@@ -276,7 +276,7 @@ func TestPTYMarkReadWithALostAnswer(t *testing.T) {
 	c.rowGone(t, 120, "#1 Benachrichtigun")
 	// Nothing claims a success.
 	if c.screenShows(120, "marked") {
-		t.Fatalf("the screen after the lost answer:\n%s", strings.Join(renderScreen(c.bytes(), 24, 120), "\n"))
+		t.Fatalf("the screen after the lost answer:\n%s", strings.Join(c.screen(24, 120), "\n"))
 	}
 	// R reads again, writes nothing.
 	c.act(t, "R", 120, "#2 Benachrichtigung")
@@ -342,7 +342,7 @@ func TestPTYRefusedMarksKeepTheTicket(t *testing.T) {
 		ticketReads := len(ticketReadsOf(f))
 		c.act(t, "r", 120, tc.text, "r mark read")
 		if !c.screenShows(120, fmt.Sprintf("#%d ", tc.row), "Description") {
-			t.Fatalf("row %d: the ticket went:\n%s", tc.row, strings.Join(renderScreen(c.bytes(), 24, 120), "\n"))
+			t.Fatalf("row %d: the ticket went:\n%s", tc.row, strings.Join(c.screen(24, 120), "\n"))
 		}
 		if len(ticketReadsOf(f)) != ticketReads {
 			t.Fatalf("row %d: the refusal reloaded the ticket", tc.row)
@@ -352,7 +352,7 @@ func TestPTYRefusedMarksKeepTheTicket(t *testing.T) {
 		// (an Esc followed at once by a key reads as alt+key).
 		c.act(t, keyEsc, 120, "esc organisations")
 		if !c.screenShows(120, "not marked") {
-			t.Fatalf("row %d: the row does not say so:\n%s", tc.row, strings.Join(renderScreen(c.bytes(), 24, 120), "\n"))
+			t.Fatalf("row %d: the row does not say so:\n%s", tc.row, strings.Join(c.screen(24, 120), "\n"))
 		}
 	}
 	if err := c.send("q"); err != nil {
@@ -370,7 +370,7 @@ func TestPTYRefusedMarksKeepTheTicket(t *testing.T) {
 	}
 	// The counters never moved: 30 and 33 still.
 	if !c.screenShows(120, "30", "33") {
-		t.Fatalf("counters:\n%s", strings.Join(renderScreen(c.bytes(), 24, 120), "\n"))
+		t.Fatalf("counters:\n%s", strings.Join(c.screen(24, 120), "\n"))
 	}
 }
 
@@ -418,7 +418,7 @@ func TestPTYMarkReadExpiresOn401(t *testing.T) {
 	openInboxA(t, c, 80)
 	c.act(t, "r", 80, "Session expired. Restart lalabase.")
 	if c.screenShows(80, "Benachrichtigung") || c.screenShows(80, "Anna Albers") {
-		t.Fatalf("the expiry left data on screen:\n%s", strings.Join(renderScreen(c.bytes(), 24, 80), "\n"))
+		t.Fatalf("the expiry left data on screen:\n%s", strings.Join(c.screen(24, 80), "\n"))
 	}
 	if err := c.send("q"); err != nil {
 		t.Fatal(err)
@@ -449,7 +449,7 @@ func TestPTYASlowAnswerMarksTheRowItWasFor(t *testing.T) {
 	// open and unmarked.
 	c.rowGone(t, 120, "#1 Benachrichtigun")
 	if c.screenShows(120, "Marked as read") || !c.screenShows(120, "State: unread") {
-		t.Fatalf("after the slow answer:\n%s", strings.Join(renderScreen(c.bytes(), 24, 120), "\n"))
+		t.Fatalf("after the slow answer:\n%s", strings.Join(c.screen(24, 120), "\n"))
 	}
 	// Back in the list the navigation shows the counters the reload
 	// brought.
@@ -512,7 +512,7 @@ func TestPTYMarkReadThenANetworkError(t *testing.T) {
 	}
 	if err := c.until(`after "]"`, readyLimit, func() bool { return c.screenShows(80, "Could not reach the server") }); err != nil {
 		t.Fatalf("%v: waiting for the failed page 2\n%s\nrequests:\n%s", err,
-			strings.Join(renderScreen(c.bytes(), 24, 80), "\n"), strings.Join(requestLines(f), "\n"))
+			strings.Join(c.screen(24, 80), "\n"), strings.Join(requestLines(f), "\n"))
 	}
 	c.act(t, "R", 80, "#27 Benachrichtigung", "page 2 of 2")
 	if err := c.send("q"); err != nil {

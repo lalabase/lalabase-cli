@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -48,6 +49,16 @@ type terminalProcess struct {
 	mu                 sync.Mutex
 	output             bytes.Buffer
 	readErr, errorExit error
+	// shown is the last screen played (screen), plays how many were.
+	shownMu sync.Mutex
+	shown   playedScreen
+	plays   int
+}
+
+// playedScreen is a screen with the output and the size it was played for.
+type playedScreen struct {
+	size, rows, cols int
+	lines            []string
 }
 
 // terminalOptions: the server the child's profile points at, the text that
@@ -223,6 +234,22 @@ func (c *terminalProcess) read(ctx context.Context) {
 
 func (c *terminalProcess) setReadError(err error) { c.mu.Lock(); defer c.mu.Unlock(); c.readErr = err }
 func (c *terminalProcess) bytes() string          { c.mu.Lock(); defer c.mu.Unlock(); return c.output.String() }
+
+// screen is renderScreen of the output so far. The output only grows, so
+// its length names it: a poll that finds no new bytes takes the screen
+// played last instead of playing the whole output again. A case polls
+// every 10 ms, and that replay (under -race, late in a long case) took
+// most of a core while the child waited for one (the CI of #5).
+func (c *terminalProcess) screen(rows, cols int) []string {
+	out := c.bytes()
+	c.shownMu.Lock()
+	defer c.shownMu.Unlock()
+	if s := c.shown; s.lines == nil || s.size != len(out) || s.rows != rows || s.cols != cols {
+		c.shown = playedScreen{size: len(out), rows: rows, cols: cols, lines: renderScreen(out, rows, cols)}
+		c.plays++
+	}
+	return slices.Clone(c.shown.lines)
+}
 
 func (c *terminalProcess) until(label string, limit time.Duration, condition func() bool) error {
 	deadline := time.Now().Add(limit)

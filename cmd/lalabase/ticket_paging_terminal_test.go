@@ -137,7 +137,7 @@ func TestPTYTicketPagingFlowOverREST(t *testing.T) {
 			// pane wraps it.
 			c.expect(t, "the whole description", width, "rest.")
 			if c.screenShows(width, "Text shortened") || c.screenShows(width, "e expand") {
-				t.Fatalf("a whole text offers e:\n%s", strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+				t.Fatalf("a whole text offers e:\n%s", strings.Join(c.screen(24, int(width)), "\n"))
 			}
 			c.act(t, keyTab, width, "» Comments · newest first", "begins and ends here.", "] next page")
 			c.act(t, "]", width, "page 2 of 2", "Six comment 5")

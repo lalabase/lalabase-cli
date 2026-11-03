@@ -111,3 +111,41 @@ func TestTerminalRestorationOracleRejectsCorruptedOutput(t *testing.T) {
 		}
 	}
 }
+
+// The screen of a case is played again only when the output grew or the
+// size changed, and is always the screen of the whole output: a case
+// polls it every 10 ms, and playing all of it each time (under -race,
+// late in a long case) took most of a core while the child waited for
+// one (the CI of #5).
+func TestTheScreenOfACaseIsPlayedOncePerOutput(t *testing.T) {
+	c := &terminalProcess{}
+	c.output.WriteString("\x1b[H\x1b[2Jfirst line\r\nsecond")
+	want := renderScreen(c.output.String(), 4, 12)
+	for range 3 {
+		if got := c.screen(4, 12); !reflect.DeepEqual(got, want) {
+			t.Fatalf("screen %q, want %q", got, want)
+		}
+	}
+	if c.plays != 1 {
+		t.Fatalf("played %d times for one output", c.plays)
+	}
+	// A caller that changes its copy changes nothing kept.
+	c.screen(4, 12)[0] = "changed"
+	if got := c.screen(4, 12); !reflect.DeepEqual(got, want) {
+		t.Fatalf("the kept screen changed: %q", got)
+	}
+	// New bytes, another size: played again, from the whole output.
+	c.output.WriteString("\x1b[2;1H>")
+	if got, want := c.screen(4, 12), renderScreen(c.output.String(), 4, 12); !reflect.DeepEqual(got, want) || got[1] != ">econd" {
+		t.Fatalf("after new output %q, want %q", got, want)
+	}
+	if got, want := c.screen(4, 8), renderScreen(c.output.String(), 4, 8); !reflect.DeepEqual(got, want) {
+		t.Fatalf("another width %q, want %q", got, want)
+	}
+	if got, want := c.screen(2, 8), renderScreen(c.output.String(), 2, 8); !reflect.DeepEqual(got, want) {
+		t.Fatalf("other rows %q, want %q", got, want)
+	}
+	if c.plays != 4 {
+		t.Fatalf("played %d times for four screens", c.plays)
+	}
+}

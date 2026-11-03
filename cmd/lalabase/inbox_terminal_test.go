@@ -62,15 +62,15 @@ func startInbox(t *testing.T, scenario inboxfixture.Scenario, width uint16, opts
 func (c *terminalProcess) expect(t *testing.T, label string, width uint16, markers ...string) {
 	t.Helper()
 	if err := c.until(label, readyLimit, func() bool {
-		return screenHas(renderScreen(c.bytes(), 24, int(width)), markers...)
+		return screenHas(c.screen(24, int(width)), markers...)
 	}); err != nil {
-		t.Fatalf("%v: waiting for %q\n%s", err, markers, strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+		t.Fatalf("%v: waiting for %q\n%s", err, markers, strings.Join(c.screen(24, int(width)), "\n"))
 	}
 }
 
 // screenShows reports whether the screen shows every marker right now.
 func (c *terminalProcess) screenShows(width uint16, markers ...string) bool {
-	return screenHas(renderScreen(c.bytes(), 24, int(width)), markers...)
+	return screenHas(c.screen(24, int(width)), markers...)
 }
 
 // act sends input and waits for the markers it should bring to the screen.
@@ -128,7 +128,7 @@ func TestPTYInboxFlow(t *testing.T) {
 				c.act(t, keyEsc, width, "esc inbox")
 				c.moveTo(t, keyDown, width, "Südwind AG", "Inbox", 2)
 				if !c.screenShows(width, "Nordlicht GmbH › Inbox · page 1 of 2") {
-					t.Fatalf("the heading followed the cursor:\n%s", strings.Join(renderScreen(c.bytes(), 24, int(width)), "\n"))
+					t.Fatalf("the heading followed the cursor:\n%s", strings.Join(c.screen(24, int(width)), "\n"))
 				}
 				c.act(t, keyEsc, width, "esc organisations")
 			}
@@ -188,7 +188,7 @@ func TestPTYInboxExpiresOn401(t *testing.T) {
 	c.act(t, keyEnter, 80, "#1 Benachrichtigung", "Nordlicht GmbH › Inbox")
 	c.act(t, "]", 80, "Session expired. Restart lalabase.")
 	if c.screenShows(80, "Benachrichtigung") || c.screenShows(80, "Nordlicht") || c.screenShows(80, "Anna Albers") {
-		t.Fatalf("the expiry left data on screen:\n%s", strings.Join(renderScreen(c.bytes(), 24, 80), "\n"))
+		t.Fatalf("the expiry left data on screen:\n%s", strings.Join(c.screen(24, 80), "\n"))
 	}
 	for _, key := range []string{"R", keyEnter, keyDown, keyEsc, "["} {
 		if err := c.send(key); err != nil {
@@ -197,7 +197,7 @@ func TestPTYInboxExpiresOn401(t *testing.T) {
 	}
 	time.Sleep(300 * time.Millisecond)
 	if c.screenShows(80, "Benachrichtigung") || c.screenShows(80, "Nordlicht") || !c.screenShows(80, "Session expired") {
-		t.Fatalf("the session came back:\n%s", strings.Join(renderScreen(c.bytes(), 24, 80), "\n"))
+		t.Fatalf("the session came back:\n%s", strings.Join(c.screen(24, 80), "\n"))
 	}
 	if err := c.send("q"); err != nil {
 		t.Fatal(err)
