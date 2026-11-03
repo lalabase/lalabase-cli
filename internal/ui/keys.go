@@ -305,7 +305,7 @@ func (m Model) bindings(small bool) []binding {
 			return out
 		}
 		out = append([]binding{{Submit, uitext.EnterKey, uitext.SearchHelp}}, out...)
-		if a := m.app; a != nil && a.tickets != nil && a.tickets.entry != "" {
+		if a := m.app; a != nil && ((a.tickets != nil && a.tickets.entry != "") || (a.meetings != nil && a.meetings.entry != "")) {
 			out = append(out[:2:2], binding{DeleteBack, uitext.BackspaceKey, uitext.DeleteHelp}, out[2])
 		}
 		return out
@@ -382,14 +382,20 @@ func (m Model) chooserBindings() []binding {
 	}
 	if a.canOpen(a.highlight, a.highlightSection) {
 		help := uitext.OpenHelp
-		if a.highlightSection == sectionTickets {
+		switch a.highlightSection {
+		case sectionTickets:
 			help = uitext.OpenTicketsHelp
+		case sectionMeetings:
+			help = uitext.OpenMeetingsHelp
 		}
 		out = append(out, binding{OpenList, uitext.EnterKey, help})
 	}
 	if a.shown() {
 		help := uitext.InboxHelp
-		if a.projects != nil {
+		switch {
+		case a.meetingsSection():
+			help = uitext.MeetingsHelp
+		case a.projects != nil:
 			help = uitext.TicketsHelp
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, help})
@@ -453,13 +459,33 @@ func (m Model) listBindings() []binding {
 			out = append(out, binding{Search, uitext.SearchKey, uitext.SearchHelp})
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.ProjectsHelp})
+	case a.meetings != nil:
+		// K7a: read only, no meeting opens yet; the page keys each only
+		// where its page exists.
+		v := a.meetings
+		if len(v.rows) > 1 {
+			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
+		}
+		if !v.loading {
+			if v.page > 1 {
+				out = append(out, binding{PrevPage, uitext.PrevPageKey, uitext.PrevPageHelp})
+			}
+			if v.known && v.page < lastPage(v.total, v.perPage) {
+				out = append(out, binding{NextPage, uitext.NextPageKey, uitext.NextPageHelp})
+			}
+		}
+		out = append(out, binding{Search, uitext.SearchKey, uitext.SearchHelp}, binding{Back, uitext.EscapeKey, uitext.ProjectsHelp})
 	case a.projects != nil:
 		v := a.projects
 		if len(v.rows) > 1 {
 			out = append(out, binding{Up, uitext.UpDownKey, uitext.SelectHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.MoveHelp})
 		}
 		if v.selected != "" {
-			out = append(out, binding{OpenList, uitext.EnterKey, uitext.OpenTicketsHelp})
+			help := uitext.OpenTicketsHelp
+			if v.section == sectionMeetings {
+				help = uitext.OpenMeetingsHelp
+			}
+			out = append(out, binding{OpenList, uitext.EnterKey, help})
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.OrganisationsHelp})
 	default:

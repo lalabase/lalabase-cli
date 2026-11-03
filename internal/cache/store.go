@@ -130,6 +130,9 @@ type Store struct {
 	// journal, when set, is told every change that is a decision about
 	// data (C1e): the disk cache replays it. An eviction is not one.
 	journal *Journal
+	// memoryOnly are the operations kept in memory alone (K7a): no change
+	// of theirs reaches the journal, no entry of theirs comes from the disk.
+	memoryOnly map[string]bool
 }
 
 // StoreOption changes a Store at construction.
@@ -137,6 +140,22 @@ type StoreOption func(*Store)
 
 // WithJournal makes the store tell j its changes.
 func WithJournal(j *Journal) StoreOption { return func(s *Store) { s.journal = j } }
+
+// WithMemoryOnly keeps the keys of these operations in memory alone: what
+// a session reads of them is read again in the next one (K7a, meetings:
+// what people said stays off the disk, and a copy there would outlive the
+// record deleted on the server). One rule for every decision, so a key
+// cannot reach the disk on a path forgotten here.
+func WithMemoryOnly(operations ...string) StoreOption {
+	return func(s *Store) {
+		if s.memoryOnly == nil {
+			s.memoryOnly = map[string]bool{}
+		}
+		for _, op := range operations {
+			s.memoryOnly[op] = true
+		}
+	}
+}
 
 func NewStore(opts ...StoreOption) *Store {
 	s := &Store{items: map[Key]*list.Element{}, order: list.New()}
@@ -146,9 +165,10 @@ func NewStore(opts ...StoreOption) *Store {
 	return s
 }
 
-// note tells the journal of a change.
+// note tells the journal of a change, unless its key is kept in memory
+// alone (a namespace's removal names no operation and is always told).
 func (s *Store) note(op Change) {
-	if s.journal != nil {
+	if s.journal != nil && !s.memoryOnly[op.Key.Operation] {
 		s.journal.Add(op)
 	}
 }
@@ -228,11 +248,12 @@ func (s *Store) copyOf(el *list.Element) Entry {
 // Promote files an entry the disk cache read (C1e), as it was: its load
 // time and its stale mark stay, so a disk hit extends no lifetime. It
 // files nothing over an entry already there (a network answer that landed
-// meanwhile wins), nothing under an invalid key and nothing above the
-// entry limit, and it is no change the journal is told of: the entry came
-// from the disk. It reports whether the entry was filed.
+// meanwhile wins), nothing under an invalid key or one kept in memory alone
+// (WithMemoryOnly), and nothing above the entry limit, and it is no
+// change the journal is told of: the entry came from the disk. It reports
+// whether the entry was filed.
 func (s *Store) Promote(k Key, e Entry) bool {
-	if !k.valid() || len(e.Payload) > MaxEntryBytes {
+	if !k.valid() || len(e.Payload) > MaxEntryBytes || s.memoryOnly[k.Operation] {
 		return false
 	}
 	if _, ok := s.items[k]; ok {

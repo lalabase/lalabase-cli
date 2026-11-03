@@ -556,8 +556,8 @@ func (m Model) openAgent() (Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	} else {
-		if p := a.projects; p == nil || p.org != ag.Organisation {
-			cmds = append(cmds, a.enterProjects(ag.Organisation))
+		if p := a.projects; p == nil || p.org != ag.Organisation || p.section != sectionTickets {
+			cmds = append(cmds, a.enterProjects(ag.Organisation, sectionTickets))
 		} else if a.tickets != nil {
 			a.leaveList()
 		}

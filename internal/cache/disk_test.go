@@ -384,3 +384,44 @@ func TestADroppedPutLeavesTheForgetItReplaced(t *testing.T) {
 		t.Fatalf("a plain put left a trace: %+v", ops[0].Kind)
 	}
 }
+
+// K7a: the operations a store keeps in memory alone (WithMemoryOnly) are
+// no change the journal is told of, whatever the decision, and no entry
+// the disk may bring back: what people said in a meeting stays off the
+// disk, and a copy there would outlive the meeting deleted in the core.
+// Every other key is journaled as before.
+func TestAMemoryOnlyOperationNeverReachesTheJournal(t *testing.T) {
+	ns := namespace(t, "work", "https://b.example", "tok")
+	j := NewJournal()
+	s := NewStore(WithJournal(j), WithMemoryOnly("meetings.list"))
+	meetings := ns.Key("meetings.list")
+	meetings.Project, meetings.Page, meetings.PerPage = "p-1", 1, 25
+	s.Apply(meetings, Replace, []byte(`{"data":[]}`), t0)
+	if _, ok := s.Get(meetings); !ok {
+		t.Fatal("the memory does not hold the meetings")
+	}
+	s.Apply(meetings, KeepStale, nil, t0)
+	s.Forget(meetings)
+	s.Apply(meetings, Replace, []byte(`{"data":[]}`), t0)
+	s.Apply(meetings, Remove, nil, t0)
+	if j.Len() != 0 {
+		t.Fatalf("the journal holds %d changes of a memory-only key: %+v", j.Len(), j.Take(MaxPending))
+	}
+	if s.Promote(meetings, Entry{Payload: []byte(`{"data":[]}`), LoadedAt: t0}) {
+		t.Fatal("an entry from the disk was filed under a memory-only key")
+	}
+	if _, ok := s.Get(meetings); ok {
+		t.Fatal("the memory holds an entry the disk brought")
+	}
+	// Another operation, and a namespace's removal, are journaled as ever.
+	tickets := ns.Key("list_tickets")
+	tickets.Project, tickets.Page, tickets.PerPage = "p-1", 1, 25
+	s.Apply(tickets, Replace, []byte(`{"data":[]}`), t0)
+	s.RemoveNamespace(ns)
+	if got := j.Take(MaxPending); len(got) != 1 || got[0].Kind != ChangeRemoveNamespace {
+		t.Fatalf("journal %+v", got)
+	}
+	if s.Promote(tickets, Entry{Payload: []byte(`{"data":[]}`), LoadedAt: t0}) == false {
+		t.Fatal("another operation is no longer promoted")
+	}
+}

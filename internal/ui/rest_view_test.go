@@ -111,9 +111,10 @@ func TestTheTicketViewShowsTheSameOnBothWays(t *testing.T) {
 		return screens, h.f.viewReads()
 	}
 	tools, rest := newHarness(t), newRESTHarness(t)
-	// b comes with its own capability, not with the view (K6): without it
-	// the help is the same as well.
-	rest.setToken(rest.d.me.Token.ReadOnly, "time_sessions.book")
+	// b comes with its own capability, not with the view (K6), and so do
+	// the meetings in the chooser (K7a): without them the help and the
+	// chooser are the same as well.
+	rest.setToken(rest.d.me.Token.ReadOnly, "time_sessions.book", "meetings.list")
 	mcpScreens, mcpReads := run(tools)
 	restScreens, restReads := run(rest)
 	// Each run took its own way, or the comparison says nothing (review

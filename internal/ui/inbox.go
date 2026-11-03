@@ -138,6 +138,9 @@ func (a *app) settleLoading() {
 	if v := a.projects; v != nil {
 		v.loading = a.pending(v.key)
 	}
+	if v := a.meetings; v != nil {
+		v.loading = a.pending(v.key)
+	}
 	if v := a.tickets; v != nil {
 		v.loading = a.pending(v.key)
 		for _, g := range v.groups {
@@ -416,7 +419,10 @@ func (m Model) refreshPlan() []refreshRead {
 	case m.focus != view.Navigation && a.active != nil:
 		shown = []refreshRead{{!a.pending(a.active.key), a.refreshActive}}
 	}
-	if m.focus != view.Navigation && a.projects != nil {
+	switch {
+	case m.focus != view.Navigation && a.meetingsSection():
+		shown = append(shown, refreshRead{m.canRefreshMeetings(), m.refreshMeetings})
+	case m.focus != view.Navigation && a.projects != nil:
 		shown = append(shown, refreshRead{m.canRefreshSection(), m.refreshSection})
 	}
 	if a.anyFailed() {

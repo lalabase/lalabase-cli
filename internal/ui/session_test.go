@@ -241,6 +241,11 @@ type fakes struct {
 	restTicket  func(id string, o api.TicketOptions) transport.Answer
 	restPost    func(id, post string) transport.Answer
 	restReads   []restRead
+	// K7a: a project's meetings (meetings_harness_test.go); the gate holds
+	// them when gateMeetings is set.
+	meetings       func(q api.MeetingQuery) transport.Answer
+	meetingQueries []api.MeetingQuery
+	gateMeetings   bool
 }
 
 func (f *fakes) Me(context.Context) (api.Me, transport.Answer) {
@@ -345,6 +350,7 @@ func defaultFakes(d recordedData) *fakes {
 	f.projects, f.tickets, f.ticket = d.defaultProjects, d.defaultTickets, d.defaultTicket
 	// The list has the tools' form over REST too.
 	f.restTickets, f.restTicket, f.restPost = d.defaultTickets, d.defaultRESTTicket, d.defaultRESTPost
+	f.meetings = defaultMeetings
 	return f
 }
 

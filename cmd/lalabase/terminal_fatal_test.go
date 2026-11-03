@@ -51,6 +51,10 @@ func (inboxOnly) TicketsRESTAnswer(context.Context, api.TicketQuery) transport.A
 	return transport.Answer{Class: transport.Refused, Message: "not in this test"}
 }
 
+func (inboxOnly) MeetingsRESTAnswer(context.Context, api.MeetingQuery) transport.Answer {
+	return transport.Answer{Class: transport.Refused, Message: "not in this test"}
+}
+
 func (inboxOnly) TicketRESTAnswer(context.Context, string, api.TicketOptions) transport.Answer {
 	return transport.Answer{Class: transport.Refused, Message: "not in this test"}
 }

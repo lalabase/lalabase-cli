@@ -374,6 +374,22 @@ const (
 	// Unlisted is the help of a key that acts but is not named in the
 	// help line (internal/ui drops it there).
 	Unlisted
+	// K7a: a project's meetings, the chooser's entry, the list and the
+	// facts of its row.
+	Meetings
+	Meeting
+	OpenMeetingsHelp
+	MeetingsHelp
+	NoMeetings
+	NoMeetingMatches
+	NoneOnMeetingPage
+	UntitledMeeting
+	UnknownCreator
+	LabelTitle
+	LabelDate
+	LabelDuration
+	LabelCreator
+	NoDuration
 	count
 )
 
@@ -574,4 +590,8 @@ var english = map[ID]string{
 	CommentUnclearNotice:  "Not clear whether it was posted on #%d; check the ticket",
 	SendKey:               "ctrl+s", SendHelp: "send", NextFieldHelp: "next field", NewLineHelp: "new line",
 	Unlisted: "(not listed)",
+	Meetings: "Meetings", Meeting: "Meeting", OpenMeetingsHelp: "open meetings", MeetingsHelp: "meetings",
+	NoMeetings: "No meetings.", NoMeetingMatches: "No meetings match the search.", NoneOnMeetingPage: "No meetings on this page.",
+	UntitledMeeting: "Untitled meeting", UnknownCreator: "Creator unknown",
+	LabelTitle: "Title", LabelDate: "Date", LabelDuration: "Duration", LabelCreator: "Created by", NoDuration: "No duration",
 }

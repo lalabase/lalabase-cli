@@ -396,7 +396,7 @@ func TestOnTheServerBeforeS2TheWriteFeaturesAreOff(t *testing.T) {
 	report := Detect(transport.ServerInfo{Name: "lalabase", Version: "0.9.0"}, tools, nil)
 	on := 0
 	for _, f := range All {
-		want := f.Since != "S2" && f.Since != "S2b" && f.Since != "S6" && f.Since != "R6"
+		want := f.Since != "S2" && f.Since != "S2b" && f.Since != "S6" && f.Since != "R6" && f.Since != "R8"
 		if report.Enabled[f.Name] != want {
 			t.Errorf("%s on %v on a 0.9.0 server (missing %v)", f.Name, report.Enabled[f.Name], report.Missing[f.Name])
 		}

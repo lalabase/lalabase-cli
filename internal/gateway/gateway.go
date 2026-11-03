@@ -49,6 +49,7 @@ type Source interface {
 	PostCommentREST(ctx context.Context, ticketID, body, key string) (api.Comment, transport.Answer)
 	BookTime(ctx context.Context, ticketID, duration, note, key string) (api.TimeBooking, transport.Answer)
 	BookedTimeAnswer(ctx context.Context, projectID, ticketID string) transport.Answer
+	MeetingsRESTAnswer(ctx context.Context, q api.MeetingQuery) transport.Answer
 }
 
 // Gateway turns tickets into commands.
@@ -148,6 +149,8 @@ func (g *Gateway) Read(ctx context.Context, t Ticket) tea.Cmd {
 		return g.Detail(ctx, t)
 	case api.BookedTimeSpec.Tool:
 		return g.BookedTime(ctx, t)
+	case api.MeetingsRESTSpec.Name:
+		return g.Meetings(ctx, t)
 	}
 	return func() tea.Msg {
 		err := fmt.Errorf("gateway: no read of %q", t.Key.Operation)
@@ -429,6 +432,8 @@ const (
 	InboxPageSize  = 25
 	TicketPageSize = 25
 	PostsPageSize  = 25
+	// MeetingPageSize is K7a's.
+	MeetingPageSize = 25
 )
 
 // CheckReadTicket says whether a ticket is one of the reads C1 sends, by
@@ -445,6 +450,8 @@ func CheckReadTicket(t Ticket) error {
 		return CheckDetailTicket(t)
 	case api.BookedTimeSpec.Tool:
 		return CheckBookedTimeTicket(t)
+	case api.MeetingsRESTSpec.Name:
+		return CheckMeetingsTicket(t)
 	}
 	return fmt.Errorf("gateway: no read of %q", t.Key.Operation)
 }

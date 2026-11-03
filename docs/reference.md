@@ -146,7 +146,8 @@ navigation again.
   the session for good ("Session expired. Restart lalabase.").
 * **Keys.** Nothing is loaded by moving the cursor: `↑`/`↓` highlight an
   entry of the chooser (per organisation its inbox, with the unread count,
-  and its tickets), `Enter` opens it. In the inbox (25 rows a page; on a
+  its tickets and, on a server that lists `meetings.list`, its meetings),
+  `Enter` opens it. In the inbox (25 rows a page; on a
   return the remembered page and row) `[`/`]` turn the server pages and
   `Enter` on a row shows its details from the row itself (no request). In
   the tickets `Enter` on a project opens its tickets (25 a page, `[`/`]`;
@@ -195,6 +196,25 @@ navigation again.
   every group have landed and none failed, a faint last line counts them, and `g` shows them. A project
   without statuses stays chronological with a short hint. The mode is not
   kept: every project opens chronological.
+* **Meetings (K7a).** On a server whose `/me` lists `meetings.list` (the
+  core's R8, REST API 1.10.0) every organisation has a Meetings entry under
+  its tickets; without it there is none, and nothing else changes. It opens
+  the organisation's projects, as the tickets do (the selected project is
+  shared with them), and `Enter` on a project shows its meetings over REST,
+  newest first, 25 a page: the date and time in your zone and the title,
+  the duration at the end (hours and minutes, none when the meeting has
+  none), the creator below ("Creator unknown" for one who is gone). `[`/`]`
+  turn the pages, `/` searches (the server searches title, notes,
+  transcript and summary), `R` reads the page again, `Esc` goes back to the
+  projects, and a return finds the remembered page, row and search. An
+  empty project, a search without a match and a reader without the
+  meetings area each say so in a line; a project out of reach says it is
+  gone. The object pane shows the selected row's facts (title, date,
+  duration, creator, project) from the row alone; no meeting opens yet,
+  and `x`, `b` and `k` do nothing here. Every text of a meeting is foreign
+  and cleaned where it is shown. Meetings stay in memory for the session
+  alone: no page of them reaches the disk cache, so every start reads them
+  from the server again.
 * **The mouse wheel** scrolls the object pane (a ticket, the details of a
   notification) by three lines when the pointer is over it, whether the
   pane has the focus or stands beside the list; like `PgUp`/`PgDn` it lets
@@ -811,7 +831,9 @@ navigation again.
   and the write permission comes from this run's `/me` alone. A page found
   on disk shows as "Cached" and is reloaded once like a page from memory; a
   hit, a restart or a failed reload extends no lifetime. The start makes
-  its five requests as before; the disk adds none and saves none.
+  its five requests as before; the disk adds none and saves none. Meetings
+  never reach it (K7a): the memory keeps their pages for the session, and
+  no change of theirs is written or read back.
   * **Bounds:** 64 MiB per profile directory, 24 hours since the last
     successful network read (an entry stamped in the future is expired),
     2 MiB per payload, 2 MiB plus 64 KiB per file with its metadata, 1,024

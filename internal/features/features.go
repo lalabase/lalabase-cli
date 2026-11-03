@@ -12,7 +12,8 @@
 // them for the ticket view (the core's R1), K3a for a comment in plain text
 // (the core's R3a). K6 adds a feature with the REST way alone, the booking
 // of time: it has no tool, so a server that does not list its capability has
-// no such feature. Every other feature has the MCP way alone.
+// no such feature; K7a a second, a project's meetings (the core's R8).
+// Every other feature has the MCP way alone.
 package features
 
 import (
@@ -103,6 +104,9 @@ var All = []Feature{
 	{Name: "booked_time", Spec: api.BookedTimeSpec, Since: "S6"},
 	// K6: booking time on a ticket, the first write over REST.
 	{Name: "time_book", Spec: api.BookTimeSpec, Since: "R6", Capabilities: []string{"time_sessions.book"}},
+	// K7a: a project's meetings, read only, the REST way alone; the search
+	// is part of the list.
+	{Name: "meetings", Spec: api.MeetingsRESTSpec, Since: "R8", Capabilities: []string{"meetings.list"}},
 }
 
 // Report is what one server supports.
