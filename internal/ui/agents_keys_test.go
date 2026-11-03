@@ -443,3 +443,29 @@ func TestROffersTheTitlesInTheChooserOnly(t *testing.T) {
 		}
 	}
 }
+
+// Closing Agents returns to the meeting facts that were focused before A.
+func TestClosingAgentsReturnsToMeetingFacts(t *testing.T) {
+	t.Parallel()
+
+	for _, width := range []int{60, 120} {
+		for _, back := range []string{"esc", "A"} {
+			h := newRESTHarness(t)
+			h.withWatcher(agentIn(1, orgA, 6, agents.Working, h.now))
+			h.openMeetings(website)
+			h.m.width = width
+			h.drive(h.press("right"))
+			if h.m.focus != view.Object || h.m.app.meetings.selected == "" {
+				t.Fatalf("width %d: meeting facts were not focused", width)
+			}
+			h.drive(h.press("A"))
+			if h.m.focus != view.Agents {
+				t.Fatalf("width %d: Agents did not open", width)
+			}
+			h.drive(h.press(back))
+			if h.m.focus != view.Object {
+				t.Errorf("width %d, %s: focus %d, want meeting object pane %d", width, back, h.m.focus, view.Object)
+			}
+		}
+	}
+}

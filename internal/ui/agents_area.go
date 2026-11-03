@@ -513,7 +513,8 @@ func (m Model) closeAgents() (Model, tea.Cmd) {
 		}
 		a.dropDetail()
 	}
-	if a := m.app; m.focus == view.Object && a.detail == nil && (a.active == nil || a.active.opened == "") {
+	if a := m.app; m.focus == view.Object && a.detail == nil && (a.active == nil || a.active.opened == "") &&
+		(a.meetings == nil || a.meetings.index(a.meetings.selected) < 0) {
 		m.focus = view.List
 	}
 	return m, m.selectionChanged()
