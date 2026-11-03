@@ -236,7 +236,10 @@ navigation again.
   (`**Name**`), or a bold name with a colon before the words (`**Name:**
   words`) when it is one of the meeting's participants; with participants
   known, a bold line alone must name one of them too, so `**Fazit**` stays a
-  bold line. In the summary and the notes a bold line is bold, nothing
+  bold line. A name matches as the core matches a speaker
+  (`Meetings::SpeakerMarkup`): case, spaces and umlauts do not count, a
+  note like `(Speaker 2)`, `(Sprecher 3)` or `(?)` is left out, and a
+  participant's first name is enough; the head shows the name as written. In the summary and the notes a bold line is bold, nothing
   more. Everywhere a heading is bold, a list item starts with a bullet, a
   line that starts bold keeps that part bold, and the markers of bold text
   are dropped where they pair up, but not in a line with an address or

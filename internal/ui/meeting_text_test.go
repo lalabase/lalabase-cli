@@ -268,3 +268,54 @@ func TestThePaneGivesSpeakersToTheTranscriptAlone(t *testing.T) {
 		t.Fatalf("a bold line naming no participant is a speaker: %+v", st)
 	}
 }
+
+// Review round 2 of #9: a speaker is matched as the core's SpeakerMarkup
+// matches one: normalised (case, spaces, umlauts), a diarisation suffix
+// ("(Speaker 2)", "(Sprecher 3)", "(?)") left out, a participant's first
+// name enough. The shape is the core's fixture 04 (finding 1); the
+// person's own tone takes the same match (finding 4).
+func TestSpeakersAreMatchedAsTheCoreMatchesThem(t *testing.T) {
+	t.Parallel()
+
+	raw := "**Karl:** Bevor wir.\n**Bert Bauer:** Das Angebot.\n**Anna Ananas:** Aus Vorstandssicht.\n**Karl Krause (Speaker 2):** Danke.\n**JÜRGEN   müller (?)**\nJa.\n**Juergen:** Gut."
+	got := laidOutAs(raw, meetingLayout{transcript: true, me: "Karl Krause", speakers: []string{"Bert Bauer", "Karl Krause", "Anna Ananas", "Jürgen Müller"}})
+	want := []string{
+		"Karl|lead Karl own",
+		"Bevor wir.|indent >>",
+		"",
+		"Bert Bauer|lead Bert Bauer author",
+		"Das Angebot.|indent >>",
+		"",
+		"Anna Ananas|lead Anna Ananas author",
+		"Aus Vorstandssicht.|indent >>",
+		"",
+		"Karl Krause (Speaker 2)|lead Karl Krause (Speaker 2) own",
+		"Danke.|indent >>",
+		"",
+		"JÜRGEN   müller (?)|lead JÜRGEN   müller (?) author",
+		"Ja.|indent >>",
+		"",
+		"Juergen|lead Juergen author",
+		"Gut.|indent >>",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// A list item is no speaker's head, and either an address or code alone
+// keeps a line's markers (findings 2 and 3).
+func TestAListItemAndAnAddressOrCodeAloneStayAsWritten(t *testing.T) {
+	t.Parallel()
+
+	raw := "- **Anna:** text\nSiehe https://x.example/**a**b.\nNutze `**c**` hier."
+	got := laidOutAs(raw, meetingLayout{transcript: true, speakers: []string{"Anna"}})
+	want := []string{
+		"\u2022 Anna: text|lead \u2022 Anna: strong",
+		"Siehe https://x.example/**a**b.",
+		"Nutze `**c**` hier.",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}

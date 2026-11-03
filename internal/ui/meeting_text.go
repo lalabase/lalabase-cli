@@ -50,7 +50,9 @@ type meetingLayout struct {
 
 // speaker says whether a name is a speaker's: a bold name alone on a line,
 // or one with their words after it (inline), which must name a
-// participant.
+// participant. A name is matched as the core's Meetings::SpeakerMarkup
+// matches a label (review round 2 of #9): normalised (nameKey), its
+// diarisation suffix left out, a participant's first name enough.
 func (l meetingLayout) speaker(name string, inline bool) bool {
 	if !l.transcript || name == "" || utf8.RuneCountInString(name) > maxSpeaker {
 		return false
@@ -58,12 +60,62 @@ func (l meetingLayout) speaker(name string, inline bool) bool {
 	if len(l.speakers) == 0 {
 		return !inline
 	}
+	key := nameKey(withoutSuffix(name))
+	if key == "" {
+		return false
+	}
 	for _, s := range l.speakers {
-		if strings.EqualFold(s, name) {
+		full := nameKey(s)
+		if first, _, _ := strings.Cut(full, " "); key == full || key == first {
 			return true
 		}
 	}
 	return false
+}
+
+// own says whether a speaker's name is the person's: the same name, matched
+// as a speaker is, the first name alone too.
+func (l meetingLayout) own(name string) bool {
+	me := nameKey(l.me)
+	if me == "" {
+		return false
+	}
+	key := nameKey(withoutSuffix(name))
+	first, _, _ := strings.Cut(me, " ")
+	return key == me || key == first
+}
+
+// nameKey is a name as the core normalises one (PersonName.normalize):
+// spaces collapsed, lower case, umlauts written out. The core composes the
+// name first (NFC); the client has no normaliser for that and compares as
+// written.
+func nameKey(name string) string {
+	s := strings.ToLower(strings.Join(strings.Fields(name), " "))
+	return strings.NewReplacer("\u00e4", "ae", "\u00f6", "oe", "\u00fc", "ue", "\u00df", "ss").Replace(s)
+}
+
+// withoutSuffix is a speaker's name without the note a transcript tool
+// adds: "(Speaker 2)", "(Sprecher 3)" or "(?)", as the core strips it.
+func withoutSuffix(name string) string {
+	s := strings.TrimSpace(name)
+	open := strings.LastIndex(s, "(")
+	if open < 0 || !strings.HasSuffix(s, ")") {
+		return s
+	}
+	note := strings.ToLower(strings.TrimSpace(s[open+1 : len(s)-1]))
+	for _, word := range []string{"speaker", "sprecher"} {
+		if digits, ok := strings.CutPrefix(note, word); ok {
+			note = strings.TrimSpace(digits)
+			if note == "" || strings.Trim(note, "0123456789") != "" {
+				return s
+			}
+			return strings.TrimSpace(s[:open])
+		}
+	}
+	if note == "?" {
+		return strings.TrimSpace(s[:open])
+	}
+	return s
 }
 
 // meetingBody lays out one section's raw text.
@@ -80,7 +132,7 @@ func meetingBody(raw string, l meetingLayout) ([]string, []present.LineStyle) {
 			add("", present.LineStyle{})
 		}
 		tone := present.Author
-		if l.me != "" && name == l.me {
+		if l.own(name) {
 			tone = present.Own
 		}
 		add(name, present.LineStyle{Lead: len(name), LeadStyle: tone, RestStyle: tone})
