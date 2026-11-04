@@ -216,6 +216,7 @@ func TestAWrappedTextDrawsAsTheTextItself(t *testing.T) {
 		"Supercalifragilisticexpialidocious-und-so-weiter ein langes Wort",
 		"日本語のテキストも折り返す 😀😀😀 und weiter",
 		"   eingerückt mit Leerzeichen   ",
+		"  Summary » Notes   Transcript ",
 		"",
 	}, "\n")
 	styles := []present.LineStyle{
@@ -226,6 +227,7 @@ func TestAWrappedTextDrawsAsTheTextItself(t *testing.T) {
 		{Indent: 2},
 		{Lead: 10, LeadStyle: present.Strong, RestStyle: present.Faint},
 		{Indent: 4, RestStyle: present.Faint},
+		tabsStyle(),
 	}
 	c := present.Column{Text: present.NewBody(text), Styles: styles, Cursor: -1}
 	for _, width := range []int{6, 14, 23, 40, 81, 120} {
@@ -255,5 +257,55 @@ func TestAWrappedTextDrawsAsTheTextItself(t *testing.T) {
 		if got, want := Extent(w, g, Object, ansi.WcWidth), Extent(c, g, Object, ansi.WcWidth); got != want || got != len(lines) {
 			t.Fatalf("meta %v: extent %d, want %d", meta != nil, got, want)
 		}
+	}
+}
+
+// tabsStyle is the style of the line "  Summary » Notes   Transcript ": the
+// first tab faint, the active one a tab (K7d).
+func tabsStyle() present.LineStyle {
+	first, active := len("  Summary "), len("» Notes ")
+	return present.LineStyle{Spans: []present.Span{
+		{From: 0, To: first, Style: present.Faint},
+		{From: first, To: first + active, Style: present.Tab},
+	}, Rule: true}
+}
+
+// K7d: a span of a line is drawn in its own style, the rest in the line's,
+// and it keeps its style where the line wraps; the line still ends in its
+// rule.
+func TestASpanKeepsItsStyleAcrossAWrap(t *testing.T) {
+	t.Parallel()
+
+	c := present.Column{Text: present.NewBody("  Summary » Notes   Transcript "), Styles: []present.LineStyle{tabsStyle()}, Cursor: -1}
+	lines := textLines(c, 60, ansi.WcWidth)
+	if len(lines) != 1 {
+		t.Fatalf("lines %q", lines)
+	}
+	got := lines[0].render(60, ansi.WcWidth)
+	if !strings.Contains(got, styled("» Notes ", present.Tab)) || !strings.HasPrefix(got, styled("  Summary ", present.Faint)) {
+		t.Fatalf("the spans: %q", got)
+	}
+	if !strings.Contains(got, "\x1b[m  Transcript ") && !strings.Contains(got, "\x1b[0m  Transcript ") {
+		t.Fatalf("the rest is not plain: %q", got)
+	}
+	if !strings.Contains(got, faint+"─") {
+		t.Fatalf("no rule: %q", got)
+	}
+	if styled("x", present.Tab) == "x" || styled("x", present.Tab) == styled("x", present.Strong) {
+		t.Fatal("a tab has no style of its own")
+	}
+
+	narrow := textLines(c, 12, ansi.WcWidth)
+	var tab []string
+	for _, l := range narrow {
+		for _, p := range l {
+			if p.style == present.Tab {
+				tab = append(tab, p.text)
+			}
+		}
+	}
+	// A narrow pane may break the tab at its space: both parts stay tabs.
+	if got := strings.TrimSpace(strings.Join(tab, " ")); got != "» Notes" {
+		t.Fatalf("the tab across the wrap: %q in %q", tab, narrow)
 	}
 }

@@ -121,6 +121,8 @@ func styleOf(s present.Style) lipgloss.Style {
 		return style.Faint(true).Foreground(cyanColor)
 	case present.AgentEnded:
 		return style.Faint(true).Foreground(greenColor)
+	case present.Tab:
+		return capStyle.Bold(true)
 	}
 	return style
 }
@@ -175,10 +177,7 @@ func wrapParts(line string, st present.LineStyle, width int, method ansi.Method)
 				skipped, _ := ansi.FirstGraphemeCluster(line[pos:], method)
 				pos += len(skipped)
 			}
-			style := st.RestStyle
-			if pos < st.Lead {
-				style = st.LeadStyle
-			}
+			style := st.StyleAt(pos)
 			pos += len(cluster)
 			if n := len(l); n > 0 && l[n-1].style == style && (indent == 0 || n > 1) {
 				l[n-1].text += cluster
@@ -219,7 +218,17 @@ func Wrap(c present.Column, width int, method ansi.Method) ([]string, []present.
 				l = l[1:] // the indent's part; the style brings it again
 			}
 			out := present.LineStyle{LeadStyle: st.LeadStyle, RestStyle: st.RestStyle, Indent: st.Indent, Rule: st.Rule && j == len(wrapped)-1}
-			if len(l) > 0 && st.Lead > 0 && st.LeadStyle != st.RestStyle && l[0].style == st.LeadStyle {
+			if len(st.Spans) > 0 {
+				// The spans of the screen line, from its parts: each part
+				// not in the rest's style is a span of its own.
+				pos := 0
+				for _, p := range l {
+					if p.style != st.RestStyle {
+						out.Spans = append(out.Spans, present.Span{From: pos, To: pos + len(p.text), Style: p.style})
+					}
+					pos += len(p.text)
+				}
+			} else if len(l) > 0 && st.Lead > 0 && st.LeadStyle != st.RestStyle && l[0].style == st.LeadStyle {
 				out.Lead = len(l[0].text)
 			}
 			lines = append(lines, l.plain())

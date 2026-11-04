@@ -225,10 +225,13 @@ navigation again.
   meeting and schedules its reload without waiting for the list's reload.
   The head has the title; the date, duration, project, creator and
   participants stand in the bar on the right where the pane is wide enough,
-  else in two faint lines under the title. Below them one section at a
-  time, its name marked, the others named faint after it: the summary, the
-  notes and the transcript, `Tab` to the next; a section with nothing in it
-  is left out, and a meeting with nothing written says so. The server sends
+  else in two faint lines under the title. Below them a line of tabs
+  names the three sections in their order, the summary, the notes and the
+  transcript (K7d): the one shown is a tab, its text reversed and marked
+  `»`, so it reads without colour too; one with nothing in it is faint.
+  One section is shown at a time, `Tab` to the next, round to the first;
+  `Tab` leaves the empty ones out, and a meeting with nothing written says
+  so. The server sends
   Markdown, and the pane lays a little of it out (K7c). In the transcript a
   speaker becomes a head, the name bold in an author's tone (your own name
   in yours, as on your comments), the words indented below it and an empty

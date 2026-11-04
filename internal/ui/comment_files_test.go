@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -139,7 +140,7 @@ func TestAFileStandsUnderItsTextWithFaintFacts(t *testing.T) {
 		t.Fatalf("around the file: %q, %q", tl.lines[at-1], tl.lines[at+1])
 	}
 	want := present.LineStyle{Indent: 2, Lead: len("seven-private.pdf"), LeadStyle: present.Plain, RestStyle: present.Faint}
-	if tl.styles[at] != want {
+	if !reflect.DeepEqual(tl.styles[at], want) {
 		t.Fatalf("style %+v", tl.styles[at])
 	}
 	// One line per file, in the server's order, then the blank line.
@@ -471,7 +472,7 @@ func TestACountWithoutAListIsSaidAndNothingIsSelected(t *testing.T) {
 	h.toComments()
 	tl := ticketText(h.m.app.detail, ticketContext{paged: true, when: h.m.app.when})
 	at := slices.Index(tl.lines, "2 files, not listed by this server")
-	if at < 0 || tl.lines[at-1] != "Seven comment 27" || tl.lines[at+1] != "" || tl.styles[at] != noteLine {
+	if at < 0 || tl.lines[at-1] != "Seven comment 27" || tl.lines[at+1] != "" || !reflect.DeepEqual(tl.styles[at], noteLine) {
 		t.Fatalf("the hint at %d:\n%s", at, strings.Join(tl.lines, "\n"))
 	}
 	for range 6 {

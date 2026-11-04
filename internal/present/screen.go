@@ -165,18 +165,44 @@ const (
 	AgentWorking
 	AgentStarting
 	AgentEnded
+	// Tab is the section a pane shows, among the names of its sections
+	// (K7d, the meeting's head): a filled cell run, the text reversed. A
+	// text mark in the run says the same without attributes.
+	Tab
 )
 
 // LineStyle is how one line of a column's text is drawn: its first Lead
 // bytes in LeadStyle, the rest in RestStyle, every screen line it wraps
 // into indented by Indent cells; a heading (Rule) ends in a faint rule to
-// the reading width.
+// the reading width. Spans draw parts of the line in styles of their own,
+// over the lead and the rest (K7d).
 type LineStyle struct {
 	Lead      int
 	LeadStyle Style
 	RestStyle Style
 	Indent    int
 	Rule      bool
+	Spans     []Span
+}
+
+// Span is the bytes From up to To of a line, drawn in Style.
+type Span struct {
+	From, To int
+	Style    Style
+}
+
+// StyleAt is the style of the byte at pos: a span's where one holds it,
+// the first one listed, else the lead's or the rest's.
+func (s LineStyle) StyleAt(pos int) Style {
+	for _, sp := range s.Spans {
+		if pos >= sp.From && pos < sp.To {
+			return sp.Style
+		}
+	}
+	if pos < s.Lead {
+		return s.LeadStyle
+	}
+	return s.RestStyle
 }
 
 // KeyHelp is one binding of the help line.
