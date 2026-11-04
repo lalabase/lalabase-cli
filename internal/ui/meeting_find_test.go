@@ -43,7 +43,7 @@ func findMeetings(id string) transport.Answer {
 	if id != r.ID {
 		return defaultMeeting(id)
 	}
-	m := fullMeeting(r, "**Ergebnis:** Start im März.", "Termin im März halten.", findTranscript())
+	m := fullMeeting(r, "**Ergebnis:** Start im März.", "Termin im März halten, im März starten.", findTranscript())
 	m["data"].(map[string]any)["participants"] = []map[string]any{{"display_name": "Anna Albers"}, {"display_name": "Erika Beispiel"}}
 	return objectAnswer(m)
 }
@@ -73,13 +73,34 @@ func (h *harness) find(query string) {
 	if h.m.mode != FindEntry {
 		h.t.Fatalf("no find line: mode %d", h.m.mode)
 	}
-	for h.m.app.meeting.find.entry != "" {
+	for i := 0; h.m.app.meeting.find.entry != ""; i++ {
+		if i == 200 {
+			h.t.Fatalf("Backspace does not empty the line: %q", h.m.app.meeting.find.entry)
+		}
 		h.feed(key(tea.KeyBackspace))
 	}
 	for _, r := range query {
 		h.press(string(r))
 	}
 	h.press("enter")
+}
+
+// scrollDown pages down until the top of the pane is below line past, or,
+// for past -1, until it stops at the end. A pane that will not move fails
+// the test rather than hold it.
+func (h *harness) scrollDown(past int) {
+	h.t.Helper()
+	for i, before := 0, -1; ; i++ {
+		top, _ := h.paneTop()
+		if past >= 0 && top > past || past < 0 && top == before {
+			return
+		}
+		if i == 100 {
+			h.t.Fatalf("the pane does not move on: top %d", top)
+		}
+		before = top
+		h.press("space")
+	}
 }
 
 // paneNotice is the notice line of the object pane.
@@ -204,24 +225,18 @@ func TestEnterMarksTheHitsAndJumpsToTheFirstInSight(t *testing.T) {
 	if h.paneNotice() != "Find: logo_" || h.press("esc") != nil || h.paneNotice() != "1 of 2" {
 		t.Fatalf("the line again: %q", h.paneNotice())
 	}
-	// Below the first hit, Enter finds the second.
+	// Below the first hit, Enter finds the second; again, it stays on it,
+	// the hit on the top line.
 	first, _ := h.paneTop()
-	for top := first; top <= first; top, _ = h.paneTop() {
-		h.press("space")
-	}
-	h.find("logo")
-	if current, _ := h.inSight(); h.paneNotice() != "2 of 2" || !slices.Equal(current, []string{"Logo"}) {
-		t.Fatalf("from further down: %q, %q", h.paneNotice(), current)
+	h.scrollDown(first)
+	for range 2 {
+		h.find("logo")
+		if current, _ := h.inSight(); h.paneNotice() != "2 of 2" || !slices.Equal(current, []string{"Logo"}) {
+			t.Fatalf("from further down: %q, %q", h.paneNotice(), current)
+		}
 	}
 	// Below every hit, Enter goes round to the first.
-	for before := -1; ; {
-		top, _ := h.paneTop()
-		if top == before {
-			break
-		}
-		before = top
-		h.press("space")
-	}
+	h.scrollDown(-1)
 	h.find("logo")
 	if current, _ := h.inSight(); h.paneNotice() != "1 of 2, from the top" || !slices.Equal(current, []string{"Logo"}) {
 		t.Fatalf("from the end: %q, %q", h.paneNotice(), current)
@@ -311,7 +326,7 @@ func TestEscEndsTheFindFirstAndThePaneStays(t *testing.T) {
 }
 
 // Tab keeps the query and finds it in the section it moves to, the first
-// hit there current and in sight.
+// hit there current and in sight, whichever was current before.
 func TestTabKeepsTheFindForTheNextSection(t *testing.T) {
 	t.Parallel()
 
@@ -319,7 +334,7 @@ func TestTabKeepsTheFindForTheNextSection(t *testing.T) {
 	h.find("märz")
 	for _, want := range []struct{ notice, line string }{
 		{"1 of 1", "Ergebnis: Start im März."},
-		{"1 of 1", "Termin im März halten."},
+		{"1 of 2", "Termin im März halten, im März starten."},
 		{"1 of 40", "Punkt 1: Wir starten im März"},
 		{"1 of 1", "Ergebnis: Start im März."},
 	} {
@@ -335,10 +350,12 @@ func TestTabKeepsTheFindForTheNextSection(t *testing.T) {
 	}
 }
 
-// A resize and a reload keep the current hit in sight, its line found
-// again; a scroll by hand lets it go, and a resize after it leaves the
-// pane where the person put it. A reload that leaves no hit says so.
-func TestAResizeOrAReloadKeepsTheCurrentHitInSight(t *testing.T) {
+// The current hit stays in sight, its line found again, through a resize,
+// a reload, a failed reload (its notice before the place) and the way to
+// the list and back; a scroll by hand lets it go, and a resize after it
+// leaves the pane where the person put it. A reload that leaves no hit
+// says so.
+func TestTheCurrentHitStaysInSightUntilThePersonScrolls(t *testing.T) {
 	t.Parallel()
 
 	h := newFindHarness(t, true)
@@ -353,6 +370,20 @@ func TestAResizeOrAReloadKeepsTheCurrentHitInSight(t *testing.T) {
 	h.drive(h.press("R"))
 	if current, _ := h.inSight(); !slices.Equal(current, []string{"Logo"}) || h.paneNotice() != "2 of 2" || len(h.f.meetingShows()) != 2 {
 		t.Fatalf("the reload: current in sight %q, %q", current, h.paneNotice())
+	}
+	h.f.setMeeting(func(string) transport.Answer {
+		return transport.Answer{Class: transport.Temporary, Message: "connection reset", Sent: true}
+	})
+	h.drive(h.press("R"))
+	if current, _ := h.inSight(); !slices.Equal(current, []string{"Logo"}) || h.paneNotice() != "Possibly stale · 2 of 2" {
+		t.Fatalf("a failed reload: current in sight %q, %q", current, h.paneNotice())
+	}
+	h.f.setMeeting(findMeetings)
+	h.drive(h.press("R"))
+	h.press("left")
+	h.drive(h.press("enter"))
+	if current, _ := h.inSight(); h.m.focus != view.Object || !slices.Equal(current, []string{"Logo"}) || h.paneNotice() != "2 of 2" {
+		t.Fatalf("back from the list: focus %d, current in sight %q, %q", h.m.focus, current, h.paneNotice())
 	}
 	top, _ := h.paneTop()
 	h.press("up")

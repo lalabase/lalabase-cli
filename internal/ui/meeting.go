@@ -227,7 +227,8 @@ func (m Model) openMeeting() (Model, tea.Cmd) {
 	}
 	m.focus = view.Object
 	d := a.ensureMeeting(v.project, v.selected)
-	d.offset, d.follow = 0, false
+	// From its top, unless a find keeps its current hit in sight (F1).
+	d.offset = 0
 	return m, a.readMeetingUnlessFresh(v.project, v.selected)
 }
 
