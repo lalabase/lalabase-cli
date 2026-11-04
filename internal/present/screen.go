@@ -169,6 +169,12 @@ const (
 	// (K7d, the meeting's head): a filled cell run, the text reversed. A
 	// text mark in the run says the same without attributes.
 	Tab
+	// Match is a hit of the find in a pane (F1), MatchCurrent the one the
+	// find stands on: bold, so a hit in a bold line stays bold, the current
+	// one reversed. The pane's notice says the place in words ("3 of 17"),
+	// so the find works without colour.
+	Match
+	MatchCurrent
 )
 
 // LineStyle is how one line of a column's text is drawn: its first Lead

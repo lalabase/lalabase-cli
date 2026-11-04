@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -119,6 +120,62 @@ func TestPTYMeetingPaneFlow(t *testing.T) {
 				if !slices.Contains(shown, fmt.Sprintf("%s %d", inboxfixture.MeetingID(inboxfixture.ProjectWebsite, n), map[int]int{1: 200, 4: 200, 5: 404}[n])) {
 					t.Fatalf("meeting %d was not read: %q", n, shown)
 				}
+			}
+		})
+	}
+}
+
+// F1: the find in the meeting's pane through a real terminal: / opens its
+// line, Enter finds a speaker in the transcript, n moves on, Esc ends it.
+// The current hit is reversed on the bytes and its place stands as text,
+// with colour and without it.
+func TestPTYMeetingFind(t *testing.T) {
+	t.Parallel()
+
+	const width = 120
+	for _, noColor := range []bool{false, true} {
+		t.Run(fmt.Sprintf("NO_COLOR=%v", noColor), func(t *testing.T) {
+			_, url := fixtureServer(t, inboxfixture.Normal)
+			opts := terminalOptions{url: url, marker: "Token can write: yes", limit: inboxLimit}
+			if noColor {
+				opts.env = []string{"NO_COLOR=1"}
+			}
+			c := startTerminalWith(t, "inbox-"+string(inboxfixture.Normal), width, opts)
+			if err := c.ready(); err != nil {
+				t.Fatalf("%v\n%s", err, c.bytes())
+			}
+			c.moveTo(t, keyDown, width, "Nordlicht GmbH", "Meetings", 3)
+			c.act(t, keyEnter, width, "Projects", "Nordlicht GmbH › Meetings")
+			c.act(t, keyDown, width, "> Handbuch")
+			c.act(t, keyDown, width, "> Intern")
+			c.act(t, keyDown, width, "> Website-Relaunch")
+			c.act(t, keyEnter, width, "Meeting 1", "page 1 of 2")
+			c.act(t, keyEnter, width, "» Summary   Notes   Transcript", "/ find")
+			c.act(t, "\t", width, "  Summary » Notes   Transcript")
+			c.act(t, "\t", width, "  Summary   Notes » Transcript", "│ Erika Beispiel")
+			c.act(t, "/", width, "Find: _", "enter find")
+			c.act(t, "erika", width, "Find: erika_")
+			c.act(t, keyEnter, width, "1 of 35", "n/N next/prev hit", "esc end find")
+			c.act(t, "n", width, "2 of 35")
+			c.act(t, keyEsc, width, "esc list")
+			if c.screenShows(width, " of 35") {
+				t.Fatal("the place stayed after the find ended")
+			}
+			if err := c.send("q"); err != nil {
+				t.Fatal(err)
+			}
+			c.finish(t, 0)
+			out := c.bytes()
+			if err := terminalOutputError(out); err != nil {
+				t.Fatalf("%v\n%q", err, out)
+			}
+			// The current hit: an attribute run with reverse (7) right
+			// before the name it found.
+			if !regexp.MustCompile(`\x1b\[(?:\d+;)*7(?:;\d+)*mErika`).MatchString(out) {
+				t.Fatalf("the current hit is not reversed:\n%q", out)
+			}
+			if seen := sgrParams(out); noColor && (seen[38] || seen[48]) {
+				t.Fatalf("a colour despite NO_COLOR: %v", seen)
 			}
 		})
 	}

@@ -54,14 +54,27 @@ type meetingDetail struct {
 	wrap      meetingWrap
 	// wraps counts the wraps of the text, for the tests of the cache.
 	wraps int
+	// find is the find in the section shown (F1): it stays with Tab and a
+	// reload; another meeting is another detail, without one.
+	find finder
+	// follow: the pane keeps the find's current hit in sight, its line
+	// found when the pane is built, until the person scrolls (as the
+	// ticket's anchor).
+	follow bool
 }
 
 // meetingWrap is the pane's text wrapped once: what it was wrapped from
-// and at, and the lines.
+// and at, and the lines. With a find (F1) every hit is marked in the
+// wrap, and hits holds each one's parts on the screen lines; the current
+// one is drawn so in a copy of the styles (marked, for the hit current),
+// so moving through the hits wraps nothing again.
 type meetingWrap struct {
-	key    meetingWrapKey
-	lines  []string
-	styles []present.LineStyle
+	key     meetingWrapKey
+	lines   []string
+	styles  []present.LineStyle
+	hits    [][]hit
+	marked  []present.LineStyle
+	current int
 }
 
 type meetingWrapKey struct {
@@ -70,6 +83,7 @@ type meetingWrapKey struct {
 	gen    uint64
 	area   meetingArea
 	head   string
+	query  string
 }
 
 func (a *app) meetingOn() bool { return a.on("meeting") }
@@ -213,7 +227,7 @@ func (m Model) openMeeting() (Model, tea.Cmd) {
 	}
 	m.focus = view.Object
 	d := a.ensureMeeting(v.project, v.selected)
-	d.offset = 0
+	d.offset, d.follow = 0, false
 	return m, a.readMeetingUnlessFresh(v.project, v.selected)
 }
 
@@ -279,7 +293,8 @@ func (a *app) dropMeeting() {
 }
 
 // nextMeetingArea is Tab on the meeting: the next section with something
-// in it, from its top.
+// in it, from its top. A find stays and finds in it (F1): its first hit
+// there is the current one.
 func (m Model) nextMeetingArea() Model {
 	d := m.app.meeting
 	areas := d.areas()
@@ -290,6 +305,8 @@ func (m Model) nextMeetingArea() Model {
 		}
 	}
 	d.offset = 0
+	d.find.current, d.find.round = 0, 0
+	d.follow = d.find.query != ""
 	return m
 }
 
@@ -347,7 +364,7 @@ func (m Model) meetingColumn() present.Column {
 		return c
 	}
 	d := a.meeting
-	c := present.Column{Title: uitext.Inline(uitext.Meeting), Cursor: -1, Notice: d.notice(uitext.NoItem, false)}
+	c := present.Column{Title: uitext.Inline(uitext.Meeting), Cursor: -1}
 	g := layoutWith(m.width, m.height, 1, m.focus)
 	meta := view.MetaFits(view.InnerWidth(g, view.Object))
 	if meta {
@@ -355,34 +372,132 @@ func (m Model) meetingColumn() present.Column {
 	}
 	c.Wrapped, c.Styles = a.meetingLines(d, c, view.TextWidth(c, g, view.Object), meta, m.widthMethod)
 	c.Offset = d.offset
+	if at := d.find.at(len(d.wrap.hits)); d.follow && at >= 0 && len(d.wrap.hits[at]) > 0 {
+		// The current hit is an anchor: its line is found as the pane is
+		// built, so a resize or a reload keeps it in sight.
+		c.Offset = d.wrap.hits[at][0].line
+	}
+	c.Notice = m.meetingNotice(d)
 	return c
 }
 
+// meetingNotice is the pane's notice: the find line while it is open, else
+// what the read says, the place of the find after it.
+func (m Model) meetingNotice(d *meetingDetail) present.Inline {
+	if m.mode == FindEntry {
+		return d.find.line()
+	}
+	notice := d.notice(uitext.NoItem, false)
+	if d.find.query == "" {
+		return notice
+	}
+	place := d.find.place(len(d.wrap.hits))
+	if notice.String() == "" {
+		return place
+	}
+	return present.NewInline(notice.String() + " · " + place.String())
+}
+
 // meetingLines is the pane's text wrapped at width: from the wrap before
-// when the width, the record, the section and the head are the same, else
-// wrapped once more. The head is small and built for every frame; the
-// section's text is laid out (meetingBody, which cleans it first) and
-// wrapped only here.
+// when the width, the record, the section, the head and the find's query
+// are the same, else wrapped once more. The head is small and built for
+// every frame; the section's text is laid out (meetingBody, which cleans
+// it first), its hits found and marked, and wrapped only here. The current
+// hit is drawn so in a copy of the wrap's styles, once per hit.
 func (a *app) meetingLines(d *meetingDetail, c present.Column, width int, meta bool, method ansi.Method) ([]string, []present.LineStyle) {
 	head, headStyles := a.meetingHead(d, meta)
-	key := meetingWrapKey{width: width, method: method, gen: d.gen, area: d.area, head: strings.Join(head, "\n")}
-	if d.wrap.lines != nil && d.wrap.key == key {
+	key := meetingWrapKey{width: width, method: method, gen: d.gen, area: d.area, head: strings.Join(head, "\n"), query: d.find.query}
+	if d.wrap.lines == nil || d.wrap.key != key {
+		lines, styles := head, headStyles
+		var found []hit
+		if text := d.texts()[d.area]; text != "" {
+			body, bodyStyles := meetingBody(text, meetingLayout{me: a.ownName(), speakers: namedParticipants(d.record), transcript: d.area == meetingTranscript})
+			// The find (F1) in the section's lines as shown; the head is not
+			// searched.
+			found = findHits(body, d.find.query)
+			for i := range found {
+				found[i].line += len(head)
+			}
+			lines, styles = append(lines, body...), append(styles, bodyStyles...)
+		} else {
+			lines, styles = append(lines, uitext.Inline(uitext.NothingWritten).String()), append(styles, plainLine)
+		}
+		// Cleaned again with the head, as the ticket's text is; the cleaning
+		// keeps clean text as it is, so the lines, the styles and the hits
+		// stay in step.
+		c.Text, c.Styles = present.NewBody(strings.Join(lines, "\n")), markHits(styles, found, present.Match)
+		wrapped, wrappedStyles, origins := view.Wrap(c, width, method)
+		d.wrap = meetingWrap{key: key, lines: wrapped, styles: wrappedStyles, hits: placeHits(found, wrapped, origins)}
+		d.wraps++
+	}
+	at := d.find.at(len(d.wrap.hits))
+	if at < 0 {
 		return d.wrap.lines, d.wrap.styles
 	}
-	lines, styles := head, headStyles
-	if text := d.texts()[d.area]; text != "" {
-		body, bodyStyles := meetingBody(text, meetingLayout{me: a.ownName(), speakers: namedParticipants(d.record), transcript: d.area == meetingTranscript})
-		lines, styles = append(lines, body...), append(styles, bodyStyles...)
-	} else {
-		lines, styles = append(lines, uitext.Inline(uitext.NothingWritten).String()), append(styles, plainLine)
+	if d.wrap.marked == nil || d.wrap.current != at {
+		d.wrap.marked, d.wrap.current = markHits(d.wrap.styles, d.wrap.hits[at], present.MatchCurrent), at
 	}
-	// Cleaned again with the head, as the ticket's text is; the cleaning
-	// keeps clean text as it is, so the lines and styles stay in step.
-	c.Text, c.Styles = present.NewBody(strings.Join(lines, "\n")), styles
-	d.wrap.key = key
-	d.wrap.lines, d.wrap.styles = view.Wrap(c, width, method)
-	d.wraps++
-	return d.wrap.lines, d.wrap.styles
+	return d.wrap.lines, d.wrap.marked
+}
+
+// --- the find (F1) ------------------------------------------------------------
+
+// meetingTop is the first line of the meeting's text in sight, as the view
+// clamps the pane's offset.
+func (m Model) meetingTop() int {
+	c := m.objectColumn()
+	g := m.geometry()
+	return max(0, min(c.Offset, view.Extent(c, g, view.Object, m.widthMethod)-max(1, view.Capacity(c, g))))
+}
+
+// meetingHits is the number of hits of the find in the meeting shown, its
+// wrap brought up to date first; none without a query.
+func (m Model) meetingHits() int {
+	a := m.app
+	if !a.meetingInPane() || a.meeting.find.query == "" {
+		return 0
+	}
+	_ = m.meetingColumn()
+	return len(a.meeting.wrap.hits)
+}
+
+// findInMeeting finds the query in the section shown, from the line top of
+// the pane: the first hit there or below it is the current one, else the
+// first, round the end. The pane follows it; without one it stays where it
+// is.
+func (m Model) findInMeeting(top int) {
+	d := m.app.meeting
+	d.offset, d.follow = top, false
+	if m.meetingHits() == 0 {
+		return
+	}
+	d.find.current, d.find.round = 0, 1
+	for i, parts := range d.wrap.hits {
+		if len(parts) > 0 && parts[0].line >= top {
+			d.find.current, d.find.round = i, 0
+			break
+		}
+	}
+	d.follow = true
+}
+
+// moveMeetingHit is n or N: the next or the previous hit, in sight.
+func (m Model) moveMeetingHit(delta int) Model {
+	if n := m.meetingHits(); n > 0 {
+		d := m.app.meeting
+		d.find.move(delta, n)
+		d.follow = true
+	}
+	return m
+}
+
+// endMeetingFind is Esc with a find: its marks go, the pane stays where it
+// is.
+func (m Model) endMeetingFind() Model {
+	d := m.app.meeting
+	d.offset = m.meetingTop()
+	d.find, d.follow = finder{}, false
+	return m
 }
 
 // ownName is the person's own name, cleaned, "" for none: a speaker of

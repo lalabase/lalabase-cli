@@ -28,6 +28,9 @@ var (
 	yellowColor     = lipgloss.Color("#dfc184")
 	greenColor      = lipgloss.Color("#9dcf92")
 	redColor        = lipgloss.Color("#df7376")
+	// matchColor is a hit of the find (F1), bold; the current one is
+	// reversed in it.
+	matchColor = lipgloss.Color("#f0a35e")
 )
 
 // focusGround is the focused pane's background, a little lighter than the

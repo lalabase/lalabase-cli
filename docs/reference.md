@@ -262,6 +262,26 @@ navigation again.
   bound of 8 MiB are a line in the pane, never a cut text; the list beside
   it stays as it is. Without `meetings.show` the pane keeps the row's
   facts.
+* **Finding in a meeting (F1).** With the meeting in focus `/` opens a find
+  line in the pane's notice ("Find: "), the last query in it; what is
+  typed is text there, `q` too, `Backspace` deletes, `Esc` discards it.
+  `Enter` finds what the line holds in the section shown alone, on the
+  client, with no request: in the lines as the pane shows them (a
+  speaker's name without its markers, a bullet as drawn), case not
+  counting, letter by letter (no umlaut written out: `ä` does not find
+  `ae`), never across a line, a hit after a hit (`aa` finds `aaa` once).
+  Every hit is bold in a tone of its own, the current one reversed in it,
+  and the notice says where the find stands ("3 of 17", "no match"), so it
+  reads without colour too. The current hit is the first at or below the
+  top of the pane, else the first ("from the top"); the pane keeps it in
+  sight, through a resize and a reload too, until you scroll. `n` and `N`
+  go to the next and the previous hit, round the end with a note ("from
+  the top", "from the bottom"); the help offers them while there are hits.
+  `Tab` keeps the query and finds it in the next section, its first hit
+  current. `Esc` ends the find first and the pane stays where it is; the
+  next `Esc` goes back to the list. A blank find line ends the find too.
+  Another meeting in the pane has no find, and the list's `/` stays the
+  server's search.
 * **The mouse wheel** scrolls the object pane (a ticket, the details of a
   notification) by three lines when the pointer is over it, whether the
   pane has the focus or stands beside the list; like `PgUp`/`PgDn` it lets

@@ -197,3 +197,29 @@ func TestSpaceAndUTurnThePage(t *testing.T) {
 		t.Fatalf("u in the search line: %v", got)
 	}
 }
+
+// F1: the find line takes keys as the search line does: every printable
+// key is text, Enter finds, Esc cancels, Backspace deletes, Ctrl-C
+// interrupts, and nothing else is read; n and N move through the hits only
+// in navigation.
+func TestTheFindLineTakesKeysAsTheSearchLine(t *testing.T) {
+	t.Parallel()
+
+	keys := []tea.KeyPressMsg{
+		press("q"), press("n"), press("N"), press("/"), press("b"), press("k"), press("x"), press("w"), press("d"), press("R"), press("A"),
+		press("enter"), press("esc"), press("tab"), press("left"), press("right"), press("up"), press("pgdown"), press("ctrl+c"), press("ctrl+s"),
+		{Code: tea.KeyBackspace}, {Code: tea.KeySpace, Text: " "}, {Code: 'e', Text: "e\u0301"}, {Code: 'Q', Mod: tea.ModShift},
+		{Code: 'x', Text: "x\u202ey"}, {Code: 0x202e, Text: "\u202e"}, {Code: 'q', Mod: tea.ModAlt},
+	}
+	for _, key := range keys {
+		if got, want := routeKey(FindEntry, key), routeKey(TextEntry, key); got != want {
+			t.Errorf("%+v: find line %+v, search line %+v", key, got, want)
+		}
+	}
+	if got := routeKey(FindEntry, press("n")); got.Kind != InsertText || got.Text != "n" {
+		t.Fatalf("n in the find line: %+v", got)
+	}
+	if routeKey(Navigate, press("n")).Kind != NextHit || routeKey(Navigate, press("N")).Kind != PrevHit {
+		t.Fatal("n and N do not move through the hits")
+	}
+}
