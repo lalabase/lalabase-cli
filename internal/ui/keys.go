@@ -539,8 +539,8 @@ func (m Model) objectBindings() []binding {
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, help})
 	case a.meetingsSection():
-		// The meeting (K7b): its sections and the scroll, no key that acts
-		// on it; Esc to the list.
+		// The meeting (K7b): its sections, the scroll and w, its page in
+		// the browser; Esc to the list.
 		if a.meetingInPane() {
 			if len(a.meeting.areas()) > 1 {
 				out = append(out, binding{NextArea, uitext.TabKey, uitext.NextAreaHelp})

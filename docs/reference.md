@@ -315,11 +315,14 @@ navigation again.
   server", with nothing to select.
 * **Opening the page.** `w` opens the ticket or the meeting the pane shows,
   with the pane in focus, in the default browser, on its page in the web app
-  (`/org/:org/projects/:project/tickets/:id`, or `/meetings/:id`). It stands
+  (`/org/:org/projects/:project/tickets/:id`, or
+  `/org/:org/projects/:project/meetings/:id`). It stands
   under Actions in the bar on the right and in the help. As for a file the
   client builds the address from the profile's server and the ids it checked,
   never from an answer (a meeting's answer carries a path; it is not read),
-  sends no request for it, and the browser uses its own login. It shares the
+  sends no request for it, and the browser uses its own login. Logged out,
+  the browser asks for the login and lands on the organisation's home, not
+  on the page: `w` again opens it. It shares the
   one launch at a time with `x` and the files: while one runs, `w` does
   nothing. The notices are a file's, with the ticket's number in place of
   the name ("Opening ticket #12 in the browser…", "Sent ticket #12 to the

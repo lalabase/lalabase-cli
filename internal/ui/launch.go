@@ -12,9 +12,10 @@ import (
 )
 
 // Launcher starts Claude Code beside a ticket (C7) and opens a file of a
-// ticket or of a comment (C10, C12): one command per launch, whose message
-// is a launch.Done with the same ref. The command gives the
-// session one (launch.New); tests give a fake.
+// ticket or of a comment (C10, C12) or the page of a ticket or a meeting
+// (w): one command per launch, whose message is a launch.Done with the
+// same ref. The command gives the session one (launch.New); tests give a
+// fake.
 type Launcher interface {
 	Launch(ref uint64, t launch.Ticket) tea.Cmd
 	// Jump selects the pane of an agent at t (C9c), Again starts an
@@ -32,11 +33,13 @@ type Launcher interface {
 	OpenPage(ref uint64, p launch.Page) tea.Cmd
 }
 
-// launchState is the one launch at a time, a file's opening among them: its number, whether it runs, and
-// the notice of the newest one with the ticket it was for. A plain notice
-// is a hint (L2): it is shown until its deadline, a problem or a launch
-// running has none. everywhere: x was pressed in the agents' list, where
-// no ticket is shown, so its notice shows wherever the person is (C9c).
+// launchState is the one launch at a time, the opening of a file or a
+// page among them: its number, whether it runs, and the notice of the
+// newest one with the id of the ticket it was for (of the meeting, for w
+// on a meeting). A plain notice is a hint (L2): it is shown until its
+// deadline, a problem or a launch running has none. everywhere: x was
+// pressed in the agents' list, where no ticket is shown, so its notice
+// shows wherever the person is (C9c).
 type launchState struct {
 	ref        uint64
 	busy       bool
@@ -212,9 +215,9 @@ func (a *app) launchHint() tea.Cmd {
 }
 
 // launchTone is the notice's tone by the outcome: plain when Claude Code
-// opened or ended, the jump went or had nowhere to go, or a file went to
-// the browser or had no way there, a problem for every outcome that opened
-// nothing or ended in an error.
+// opened or ended, the jump went or had nowhere to go, or a file or a
+// page went to the browser or had no way there, a problem for every
+// outcome that opened nothing or ended in an error.
 func launchTone(k launch.Kind) present.Style {
 	switch k {
 	case launch.Opened, launch.Ended, launch.Canceled, launch.Jumped, launch.NoPane, launch.FileOpened, launch.NoOpener:
@@ -223,11 +226,12 @@ func launchTone(k launch.Kind) present.Style {
 	return present.NoticeProblem
 }
 
-// launchShown: the notice's place is shown (the pane shows the ticket the
-// notice is about, or x was pressed in the agents' list and that is open:
-// inAgents), and a hint's deadline has not come by the model's clock. A
-// problem of the list stands there only (review round 1 of #43): it has
-// no deadline, and outside the list nothing would take it away.
+// launchShown: the notice's place is shown (the pane shows the ticket or
+// the meeting the notice is about, or x was pressed in the agents' list
+// and that is open: inAgents), and a hint's deadline has not come by the
+// model's clock. A problem of the list stands there only (review round 1
+// of #43): it has no deadline, and outside the list nothing would take it
+// away.
 func (a *app) launchShown(inAgents bool) bool {
 	if a.launch.tone == present.Plain && !a.launch.until.After(a.now()) {
 		return false

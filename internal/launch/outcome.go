@@ -12,7 +12,8 @@ const (
 	Ended
 	// EndedWithError: it ended with an error, or could not be run.
 	EndedWithError
-	// NotHandedOver: the ticket's address did not pass its check.
+	// NotHandedOver: the ticket, or the address of a file or a page, did
+	// not pass its check.
 	NotHandedOver
 	// NoFolder, NotADirectory, BadFolder: the folder Claude Code would
 	// start in is missing, no directory, or has a path no shell takes as
@@ -30,8 +31,8 @@ const (
 	NoPermission
 	// SessionGone: iTerm did not find the client's session.
 	SessionGone
-	// NoAnswer: iTerm, or the opener of a file, did not answer within the
-	// deadline.
+	// NoAnswer: iTerm, or the opener of a file or a page, did not answer
+	// within the deadline.
 	NoAnswer
 	// ITermFailed: iTerm refused for another reason.
 	ITermFailed

@@ -218,3 +218,64 @@ func TestWNeedsTheMeetingsOwnRecord(t *testing.T) {
 		t.Fatal("w on a record of another meeting")
 	}
 }
+
+// The page's notice belongs to its meeting, as a launch's belongs to its
+// ticket (TestTheNoticeStaysWithItsTicket): with another meeting in the
+// pane, neither the waiting notice nor the answer stands there.
+func TestThePageNoticeStaysWithItsMeeting(t *testing.T) {
+	t.Parallel()
+
+	h := newRESTHarness(t)
+	h.withLauncher()
+	h.openMeetings(website)
+	h.drive(h.press("enter"))
+	cmd := h.press("w")
+	h.press("esc")
+	h.m.app.meetings.selected = meetingID(website, 2)
+	h.drive(h.press("enter"))
+	if d := h.m.app.meeting; d == nil || d.id != meetingID(website, 2) || !d.known {
+		t.Fatal("meeting 2 is not open")
+	}
+	if got := h.status(); got != "" {
+		t.Fatalf("meeting 2 shows %q while the page opens", got)
+	}
+	h.drive(cmd)
+	if got := h.status(); got != "" {
+		t.Fatalf("meeting 2 shows %q", got)
+	}
+}
+
+// Every outcome of w says what came of it, in its tone: a hint goes after
+// its time, a problem stays, and w is free again. Beside a file's
+// (TestEveryOutcomeOfAFileHasItsNotice): what a page borrows of a file's
+// texts stays a page's.
+func TestEveryOutcomeOfAPageHasItsNotice(t *testing.T) {
+	t.Parallel()
+
+	for kind, want := range map[launch.Kind]struct {
+		text string
+		tone present.Style
+		goes bool
+	}{
+		launch.FileOpened:    {"Sent the meeting to the browser", present.Plain, true},
+		launch.NoOpener:      {"No browser can be opened here", present.Plain, true},
+		launch.OpenFailed:    {"The browser could not be opened", present.NoticeProblem, false},
+		launch.NotHandedOver: {"The page's address did not pass its check", present.NoticeProblem, false},
+		launch.NoAnswer:      {"The browser did not answer in time; it may still open", present.NoticeProblem, false},
+		launch.Canceled:      {"", present.Plain, false},
+	} {
+		h := newRESTHarness(t)
+		f := h.withLauncher()
+		f.openKind = kind
+		h.openMeetings(website)
+		h.drive(h.press("enter"))
+		h.drive(h.press("w"))
+		l := h.m.app.launch
+		if got := h.status(); got != want.text || l.tone != want.tone || l.until.IsZero() == want.goes {
+			t.Fatalf("kind %d: %q, tone %v, until %v", kind, got, l.tone, l.until)
+		}
+		if !h.offers(OpenPage) {
+			t.Fatalf("kind %d: w is not offered again", kind)
+		}
+	}
+}

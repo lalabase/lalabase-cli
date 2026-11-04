@@ -19,8 +19,9 @@ import (
 // arrow brings the focus to it, previewed after the pause otherwise. Its
 // summary, notes and transcript are sections, one shown at a time and
 // Tab to the next; a section with nothing in it is left out. Read only:
-// no key acts on a meeting. Like the list, it stays in memory alone
-// (api.MeetingRESTSpec is MemoryOnly), and the disk is never asked.
+// no key writes on a meeting, w opens its page in the browser. Like the
+// list, it stays in memory alone (api.MeetingRESTSpec is MemoryOnly), and
+// the disk is never asked.
 //
 // A transcript can be large (the core keeps up to 1 MB): the pane wraps
 // its text once per width and section, and hands the view the lines

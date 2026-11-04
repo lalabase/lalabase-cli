@@ -1,10 +1,13 @@
 package launch
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gboyke/lalabase-cli/internal/contract"
 )
 
 // w opens the ticket or the meeting the pane shows in the browser: its
@@ -59,6 +62,43 @@ func TestPageAddressRefuses(t *testing.T) {
 		if got, ok := pageAddress(server, good); ok {
 			t.Fatalf("server %q gave %q", server, got)
 		}
+	}
+}
+
+// The meeting's page is where the core says it is. Its recorded answer
+// carries the path (the client never reads it), and the address built
+// here from the recorded ids alone is the same: a route the core moves
+// turns this red at the next refresh of the contract copy. The answer
+// names no organisation; the path's own is the recorder's.
+func TestAMeetingsPageIsWhereTheCoreSaysItIs(t *testing.T) {
+	f, err := contract.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	for name, c := range f.Contract.REST["GET /api/v1/meetings/:id"] {
+		if c.Response.Status != 200 {
+			continue
+		}
+		var body struct {
+			Data struct {
+				ID        string `json:"id"`
+				ProjectID string `json:"project_id"`
+				Path      string `json:"path"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(c.Response.Body, &body); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		org, _, _ := strings.Cut(strings.TrimPrefix(body.Data.Path, "/org/"), "/")
+		p := Page{Kind: MeetingPage, Org: org, Project: body.Data.ProjectID, ID: body.Data.ID}
+		if got, ok := pageAddress("https://app.example.com", p); !ok || got != "https://app.example.com"+body.Data.Path {
+			t.Fatalf("%s: %q, %v; the core's path is %q", name, got, ok, body.Data.Path)
+		}
+		checked++
+	}
+	if checked == 0 {
+		t.Fatal("the contract copy records no meeting to compare with")
 	}
 }
 
