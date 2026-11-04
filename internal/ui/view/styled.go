@@ -123,6 +123,10 @@ func styleOf(s present.Style) lipgloss.Style {
 		return style.Faint(true).Foreground(greenColor)
 	case present.Tab:
 		return capStyle.Bold(true)
+	case present.Match:
+		return style.Bold(true).Foreground(matchColor)
+	case present.MatchCurrent:
+		return style.Bold(true).Reverse(true).Foreground(matchColor)
 	}
 	return style
 }
@@ -147,7 +151,7 @@ func textLines(c present.Column, width int, method ansi.Method) []screenLine {
 // wrapping keeps the text's graphemes in order and drops only spaces, so
 // each one shown is found again in the line.
 func wrapStyled(line string, st present.LineStyle, width int, method ansi.Method) []screenLine {
-	out := wrapParts(line, st, width, method)
+	out, _ := wrapParts(line, st, width, method)
 	reading := min(width, ReadingWidth)
 	if st.Rule && len(out) > 0 {
 		last := &out[len(out)-1]
@@ -158,24 +162,30 @@ func wrapStyled(line string, st present.LineStyle, width int, method ansi.Method
 	return out
 }
 
-// wrapParts is wrapStyled without a heading's rule.
-func wrapParts(line string, st present.LineStyle, width int, method ansi.Method) []screenLine {
+// wrapParts is wrapStyled without a heading's rule. It also says at which
+// byte of the line each screen line's text starts.
+func wrapParts(line string, st present.LineStyle, width int, method ansi.Method) ([]screenLine, []int) {
 	reading := min(width, ReadingWidth)
 	indent := indentOf(st, reading)
 	wrapped := wrapBody(line, max(1, reading-indent), method)
 	out := make([]screenLine, 0, len(wrapped))
+	starts := make([]int, 0, len(wrapped))
 	pos := 0
 	for _, w := range wrapped {
 		var l screenLine
 		if indent > 0 {
 			l = append(l, part{text: strings.Repeat(" ", indent)})
 		}
+		start := -1
 		for w != "" {
 			cluster, _ := ansi.FirstGraphemeCluster(w, method)
 			w = w[len(cluster):]
 			for pos < len(line) && !strings.HasPrefix(line[pos:], cluster) {
 				skipped, _ := ansi.FirstGraphemeCluster(line[pos:], method)
 				pos += len(skipped)
+			}
+			if start < 0 {
+				start = pos
 			}
 			style := st.StyleAt(pos)
 			pos += len(cluster)
@@ -185,9 +195,13 @@ func wrapParts(line string, st present.LineStyle, width int, method ansi.Method)
 			}
 			l = append(l, part{text: cluster, style: style})
 		}
+		if start < 0 {
+			start = pos
+		}
 		out = append(out, l)
+		starts = append(starts, start)
 	}
-	return out
+	return out, starts
 }
 
 // indentOf is the indent a line of this style takes at the reading width.
@@ -198,22 +212,33 @@ func indentOf(st present.LineStyle, reading int) int {
 	return 0
 }
 
+// Origin is where a screen line of Wrap starts in the text it was wrapped
+// from: the text's line (its tabs widened, as Wrap widens them) and the
+// byte of that line its text starts at. The text of the screen line is the
+// line's from there; between two screen lines the wrap drops nothing but
+// spaces.
+type Origin struct{ Line, From int }
+
 // Wrap is c's free text wrapped at width as the pane draws it: one line
 // per screen line, each with the style that draws it the same, so the view
 // wraps each into itself again. A model that holds a long text wraps it
-// once per width with it and hands the lines over as Column.Wrapped.
-func Wrap(c present.Column, width int, method ansi.Method) ([]string, []present.LineStyle) {
+// once per width with it and hands the lines over as Column.Wrapped. The
+// origins, one per screen line, let it find a part of a line on the screen
+// (a hit of a find, F1).
+func Wrap(c present.Column, width int, method ansi.Method) ([]string, []present.LineStyle, []Origin) {
 	var lines []string
 	var styles []present.LineStyle
+	var origins []Origin
 	text := strings.ReplaceAll(c.Text.String(), "\t", "    ")
 	for i, line := range strings.Split(text, "\n") {
 		var st present.LineStyle
 		if i < len(c.Styles) {
 			st = c.Styles[i]
 		}
-		wrapped := wrapParts(line, st, width, method)
+		wrapped, starts := wrapParts(line, st, width, method)
 		indent := indentOf(st, min(width, ReadingWidth))
 		for j, l := range wrapped {
+			origins = append(origins, Origin{Line: i, From: starts[j]})
 			if indent > 0 && len(l) > 0 {
 				l = l[1:] // the indent's part; the style brings it again
 			}
@@ -235,7 +260,7 @@ func Wrap(c present.Column, width int, method ansi.Method) ([]string, []present.
 			styles = append(styles, out)
 		}
 	}
-	return lines, styles
+	return lines, styles, origins
 }
 
 // wrappedLines are the screen lines from..to of a text wrapped already

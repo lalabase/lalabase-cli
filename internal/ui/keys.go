@@ -20,6 +20,10 @@ const (
 	// lines: Enter is a line break, Ctrl-S sends.
 	Dialog
 	DialogLines
+	// FindEntry is the find line of the object pane (F1), a mode of its
+	// own: TextEntry stays the list's search line wherever it is read.
+	// Its keys are routed as the search line's.
+	FindEntry
 )
 
 type Action uint8
@@ -70,6 +74,9 @@ const (
 	AddComment
 	// w: the ticket or the meeting in the pane, in the browser.
 	OpenPage
+	// F1: the next and the previous hit of the find in the pane.
+	NextHit
+	PrevHit
 )
 
 type keyAction struct {
@@ -78,10 +85,10 @@ type keyAction struct {
 }
 
 // routeKey names what a key does in a mode. In navigation every key is one
-// action or nothing; in text entry every printable key is text, Enter
-// sends, Esc cancels, Backspace deletes, and Ctrl-C interrupts as
-// everywhere; a dialog has the keys of its fields (routeDialog). A key never
-// does both.
+// action or nothing; in text entry (the list's search line, the pane's
+// find line) every printable key is text, Enter sends, Esc cancels,
+// Backspace deletes, and Ctrl-C interrupts as everywhere; a dialog has the
+// keys of its fields (routeDialog). A key never does both.
 func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 	name := key.String()
 	if name == "ctrl+c" {
@@ -90,7 +97,7 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 	if mode == Dialog || mode == DialogLines {
 		return routeDialog(mode, key)
 	}
-	if mode == TextEntry {
+	if mode == TextEntry || mode == FindEntry {
 		switch name {
 		case "enter":
 			return keyAction{Kind: Submit}
@@ -160,6 +167,10 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: AddComment}
 	case "w":
 		return keyAction{Kind: OpenPage}
+	case "n":
+		return keyAction{Kind: NextHit}
+	case "N":
+		return keyAction{Kind: PrevHit}
 	}
 	return keyAction{}
 }
@@ -236,7 +247,7 @@ type binding struct {
 // is somewhere to go in at least one direction; at an end, the other key
 // does nothing, which is what a cursor key means there (a decision, not a
 // gap: keys offered one by one would change the help on every move).
-var pairs = map[Action]Action{Up: Down, PageUp: PageDown, Left: Right}
+var pairs = map[Action]Action{Up: Down, PageUp: PageDown, Left: Right, NextHit: PrevHit}
 
 // tooSmall is the terminal below the size anything can be shown in.
 func (m Model) tooSmall() bool { return m.width < 24 || m.height < 8 }
@@ -310,6 +321,19 @@ func (m Model) bindings(small bool) []binding {
 		}
 		out = append([]binding{{Submit, uitext.EnterKey, uitext.SearchHelp}}, out...)
 		if a := m.app; a != nil && ((a.tickets != nil && a.tickets.entry != "") || (a.meetings != nil && a.meetings.entry != "")) {
+			out = append(out[:2:2], binding{DeleteBack, uitext.BackspaceKey, uitext.DeleteHelp}, out[2])
+		}
+		return out
+	}
+	if m.mode == FindEntry {
+		// The find line of the pane (F1), as the search line: q is text,
+		// Enter finds, deleting only while there is something to delete.
+		out := []binding{{Cancel, uitext.EscapeKey, uitext.CancelHelp}, {Interrupt, uitext.InterruptKey, uitext.InterruptHelp}}
+		if small {
+			return out
+		}
+		out = append([]binding{{Submit, uitext.EnterKey, uitext.FindHelp}}, out...)
+		if f := m.findTarget(); f != nil && f.entry != "" {
 			out = append(out[:2:2], binding{DeleteBack, uitext.BackspaceKey, uitext.DeleteHelp}, out[2])
 		}
 		return out
@@ -539,16 +563,25 @@ func (m Model) objectBindings() []binding {
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, help})
 	case a.meetingsSection():
-		// The meeting (K7b): its sections, the scroll and w, its page in
-		// the browser; Esc to the list.
+		// The meeting (K7b): its sections, its find (F1) and its hits while
+		// there are any, the scroll and w, its page in the browser; Esc ends
+		// the find, else goes to the list.
+		help := uitext.ListHelp
 		if a.meetingInPane() {
 			if len(a.meeting.areas()) > 1 {
 				out = append(out, binding{NextArea, uitext.TabKey, uitext.NextAreaHelp})
 			}
+			out = append(out, binding{Search, uitext.SearchKey, uitext.FindHelp})
+			if m.meetingHits() > 0 {
+				out = append(out, binding{NextHit, uitext.HitKey, uitext.HitHelp})
+			}
 			out = append(out, binding{Up, uitext.UpDownKey, uitext.ScrollHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.PageScrollHelp})
 			out = append(out, m.pageBinding()...)
+			if a.meeting.find.query != "" {
+				help = uitext.EndFindHelp
+			}
 		}
-		out = append(out, binding{Back, uitext.EscapeKey, uitext.ListHelp})
+		out = append(out, binding{Back, uitext.EscapeKey, help})
 	case a.agentTicket():
 		// The ticket an agent opened (C9b): its keys, Esc to the projects.
 		out = append(out, m.ticketBindings()...)
@@ -656,10 +689,10 @@ func (m Model) withoutIdleScroll(out []binding) []binding {
 	return without
 }
 
-// allowed is the set of actions the bindings cover. While the search line
-// or a dialog is open, and there is room for it, every printable key is text
-// (InsertText), which no binding names; a dialog sending, or held on what
-// became of a send, takes no text.
+// allowed is the set of actions the bindings cover. While the search line,
+// the find line or a dialog is open, and there is room for it, every
+// printable key is text (InsertText), which no binding names; a dialog
+// sending, or held on what became of a send, takes no text.
 func (m Model) allowed() map[Action]bool {
 	set := map[Action]bool{}
 	for _, b := range m.actions() {
@@ -668,7 +701,7 @@ func (m Model) allowed() map[Action]bool {
 			set[second] = true
 		}
 	}
-	if m.mode == TextEntry && !m.small() {
+	if (m.mode == TextEntry || m.mode == FindEntry) && !m.small() {
 		set[InsertText] = true
 	}
 	if m.dialog != nil && len(m.dialog.entries) > 0 && !m.dialog.locked() && !m.small() {

@@ -408,6 +408,17 @@ const (
 	BarParticipants
 	UnknownParticipant
 	MetaParticipants
+	// F1: the find in the meeting's pane: its line, its keys, where it
+	// stands.
+	FindLine
+	FindHelp
+	HitKey
+	HitHelp
+	EndFindHelp
+	FindPlace
+	FindFromTop
+	FindFromBottom
+	FindNoMatch
 	count
 )
 
@@ -620,4 +631,7 @@ var english = map[ID]string{
 	NothingWritten: "Nothing written down for this meeting.",
 	BarDate:        "Date", BarDuration: "Duration", BarParticipants: "Participants", UnknownParticipant: "Name unknown",
 	MetaParticipants: "with %s",
+	FindLine:         "Find: ", FindHelp: "find", HitKey: "n/N", HitHelp: "next/prev hit", EndFindHelp: "end find",
+	FindPlace: "%d of %d", FindFromTop: "%d of %d, from the top", FindFromBottom: "%d of %d, from the bottom",
+	FindNoMatch: "no match",
 }

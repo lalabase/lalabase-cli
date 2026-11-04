@@ -231,11 +231,21 @@ func TestAWrappedTextDrawsAsTheTextItself(t *testing.T) {
 	}
 	c := present.Column{Text: present.NewBody(text), Styles: styles, Cursor: -1}
 	for _, width := range []int{6, 14, 23, 40, 81, 120} {
-		lines, st := Wrap(c, textWidth(width), ansi.WcWidth)
+		lines, st, origins := Wrap(c, textWidth(width), ansi.WcWidth)
 		w := present.Column{Wrapped: lines, Styles: st, Cursor: -1}
 		total := len(textLines(c, textWidth(width), ansi.WcWidth))
-		if len(lines) != total {
-			t.Fatalf("width %d: %d lines wrapped, %d drawn", width, len(lines), total)
+		if len(lines) != total || len(origins) != total {
+			t.Fatalf("width %d: %d lines wrapped, %d origins, %d drawn", width, len(lines), len(origins), total)
+		}
+		// F1: each screen line says where its text starts in the line of
+		// the text it comes from, in order.
+		source := strings.Split(strings.ReplaceAll(c.Text.String(), "\t", "    "), "\n")
+		for j, l := range lines {
+			o := origins[j]
+			after := j > 0 && (o.Line > origins[j-1].Line || o.Line == origins[j-1].Line && o.From >= origins[j-1].From+len(lines[j-1]))
+			if !strings.HasPrefix(source[o.Line][o.From:], l) || j > 0 && !after {
+				t.Fatalf("width %d: screen line %d %q from %+v", width, j, l, o)
+			}
 		}
 		for offset := 0; offset <= total; offset++ {
 			c.Offset, w.Offset = offset, offset
@@ -252,7 +262,7 @@ func TestAWrappedTextDrawsAsTheTextItself(t *testing.T) {
 	for _, meta := range [][]present.MetaLine{nil, {{Text: present.NewInline("Status")}}} {
 		c.Meta = meta
 		g := Geometry{Width: 160, Height: 24, BodyHeight: 20, Columns: 2, ListWidth: 60, ObjectWidth: 100}
-		lines, st := Wrap(c, TextWidth(c, g, Object), ansi.WcWidth)
+		lines, st, _ := Wrap(c, TextWidth(c, g, Object), ansi.WcWidth)
 		w := present.Column{Wrapped: lines, Styles: st, Meta: meta, Cursor: -1}
 		if got, want := Extent(w, g, Object, ansi.WcWidth), Extent(c, g, Object, ansi.WcWidth); got != want || got != len(lines) {
 			t.Fatalf("meta %v: extent %d, want %d", meta != nil, got, want)
@@ -307,5 +317,30 @@ func TestASpanKeepsItsStyleAcrossAWrap(t *testing.T) {
 	// A narrow pane may break the tab at its space: both parts stay tabs.
 	if got := strings.TrimSpace(strings.Join(tab, " ")); got != "» Notes" {
 		t.Fatalf("the tab across the wrap: %q in %q", tab, narrow)
+	}
+}
+
+// F1: a hit of the find is bold in a tone of its own, the current one
+// reversed in it, so both keep the weight of a bold line; a hit in a
+// speaker's head is marked and bold, the rest of the name keeps its tone.
+func TestAHitIsMarkedAndKeepsItsWeight(t *testing.T) {
+	t.Parallel()
+
+	if got := styled("Logo", present.Match); got != "\x1b[1;38;2;240;163;94mLogo\x1b[m" {
+		t.Fatalf("a hit: %q", got)
+	}
+	if got := styled("Logo", present.MatchCurrent); got != "\x1b[1;7;38;2;240;163;94mLogo\x1b[m" {
+		t.Fatalf("the current hit: %q", got)
+	}
+	head := present.LineStyle{Lead: len("Anna Albers"), LeadStyle: present.Author, RestStyle: present.Author}
+	for _, style := range []present.Style{present.Match, present.MatchCurrent} {
+		st := head
+		st.Spans = []present.Span{{From: 5, To: 11, Style: style}}
+		c := present.Column{Text: present.NewBody("Anna Albers"), Styles: []present.LineStyle{st}, Cursor: -1}
+		lines, styles, _ := Wrap(c, 40, ansi.WcWidth)
+		got := wrappedLines(present.Column{Wrapped: lines, Styles: styles, Cursor: -1}, 0, 1, 40, ansi.WcWidth)[0].render(40, ansi.WcWidth)
+		if want := styled("Anna ", present.Author) + styled("Albers", style); got != want {
+			t.Fatalf("%v in the head: %q, want %q", style, got, want)
+		}
 	}
 }

@@ -251,9 +251,10 @@ navigation again.
   line that starts bold keeps that part bold, and the markers of bold text
   are dropped where they pair up, but not in a line with an address or
   code. The rest stands as written. The arrows, `u`/`space` and the wheel scroll,
-  `R` reads the meeting again, `Esc` goes back to the list and the pane
-  keeps the meeting. `R` retries a failed meeting too, without reading the
-  list; resizing the terminal does not retry a failed read.
+  `R` reads the meeting again, `Esc` goes back to the list (with a find, it
+  ends the find first; see below) and the pane keeps the meeting. `R`
+  retries a failed meeting too, without reading the list; resizing the
+  terminal does not retry a failed read.
   With the meeting in focus Actions ends its bar too, with `w` alone (see
   "Opening the page"); `x`, `b` and `k` do nothing on a meeting and stand
   nowhere in the help. The pane wraps its text once per width and
@@ -262,14 +263,35 @@ navigation again.
   bound of 8 MiB are a line in the pane, never a cut text; the list beside
   it stays as it is. Without `meetings.show` the pane keeps the row's
   facts.
-* **The mouse wheel** scrolls the object pane (a ticket, the details of a
-  notification) by three lines when the pointer is over it, whether the
-  pane has the focus or stands beside the list; like `PgUp`/`PgDn` it lets
-  go of the place the pane kept in sight. Anywhere else the wheel does
-  nothing. The interface asks the terminal for button and wheel reports
-  (modes 1002 and 1006, never every motion) and switches them off when it
-  leaves, so selecting text needs the terminal's modifier while it runs
-  (Option in iTerm2, Fn in Terminal.app).
+* **Finding in a meeting (F1).** With the meeting in focus `/` opens a find
+  line in the pane's notice ("Find: "), the last query in it; what is
+  typed is text there, `q` too, `Backspace` deletes, `Esc` discards it.
+  `Enter` finds what the line holds in the section shown alone, on the
+  client, with no request: in the lines as the pane shows them (a
+  speaker's name without its markers, a bullet as drawn), case not
+  counting, letter by letter (no umlaut written out: `ä` does not find
+  `ae`), never across a line, a hit after a hit (`aa` finds `aaa` once).
+  Every hit is bold in a tone of its own, the current one reversed in it,
+  and the notice says where the find stands ("3 of 17", "no match"), so it
+  reads without colour too. The current hit is the first at or below the
+  top of the pane, else the first ("from the top"); the pane keeps it in
+  sight through a resize, a reload and the way to the list and back to the
+  meeting, until you scroll. `n` and `N` go to the next and the previous
+  hit, round the end with a note ("from the top", "from the bottom"); the
+  help offers them while there are hits.
+  `Tab` keeps the query and finds it in the next section, its first hit
+  current. `Esc` ends the find first and the pane stays where it is; the
+  next `Esc` goes back to the list. A blank find line ends the find too.
+  Another meeting in the pane has no find, and the list's `/` stays the
+  server's search.
+* **The mouse wheel** scrolls the object pane (a ticket, a meeting, the
+  details of a notification) by three lines when the pointer is over it,
+  whether the pane has the focus or stands beside the list; like
+  `PgUp`/`PgDn` it lets go of the place the pane kept in sight. Anywhere
+  else the wheel does nothing. The interface asks the terminal for button
+  and wheel reports (modes 1002 and 1006, never every motion) and switches
+  them off when it leaves, so selecting text needs the terminal's modifier
+  while it runs (Option in iTerm2, Fn in Terminal.app).
 * **The ticket pane.** When the cursor rests on a ticket row for 300 ms and
   the object pane is on the screen (three columns and two columns always,
   one column with the pane focused), the ticket is read as a preview: background work

@@ -138,7 +138,8 @@ The help line at the bottom always names the keys that work right now.
 |---|---|
 | `↑` `↓` / `Enter` / `Esc` | move / open / go back |
 | `←` `→` | move between panes |
-| `/` | search the ticket or meeting list |
+| `/` | search the ticket or meeting list; in a meeting, find in the section shown |
+| `n` `N` | next and previous hit of the find |
 | `g` | group the list by status |
 | `[` `]` | previous and next page |
 | `Tab` | description, comments, attachments of a ticket; summary, notes, transcript of a meeting |

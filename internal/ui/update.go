@@ -20,6 +20,7 @@ import (
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	next, cmd := m.update(msg)
 	next.fitDialog()
+	next.settleFind()
 	if a := next.app; a != nil {
 		if flush := a.flushDisk(); flush != nil {
 			cmd = tea.Batch(cmd, flush)
@@ -203,6 +204,9 @@ func (m Model) key(key tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.app == nil {
 		return m.shellKey(action.Kind), nil
 	}
+	if m.mode == FindEntry {
+		return m.findKey(action.Kind, action.Text)
+	}
 	if m.mode == TextEntry {
 		if m.app.meetings != nil {
 			return m.meetingSearchKey(action.Kind, action.Text)
@@ -296,6 +300,10 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 	case Refresh:
 		return m.retryOrRefresh()
 	case Search:
+		if m.focus == view.Object {
+			// The pane's find (F1); the list keeps its search line.
+			return m.startFind(), nil
+		}
 		if a.meetings != nil {
 			return m.startMeetingSearch(), nil
 		}
@@ -339,6 +347,12 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		if p, ok := m.pageTarget(); ok {
 			return m, m.openPage(p)
 		}
+	case NextHit, PrevHit:
+		delta := 1
+		if kind == PrevHit {
+			delta = -1
+		}
+		return m.moveMeetingHit(delta), nil
 	}
 	return m, nil
 }
@@ -453,7 +467,10 @@ func (m Model) scrollObject(g view.Geometry, lines int) {
 	switch {
 	case a.meetingsSection():
 		if d := a.meeting; d != nil {
+			// As the ticket's: the scroll is the person's, the current hit
+			// of the find (F1) is let go.
 			d.offset = max(0, min(top, min(top, c.Offset)+lines))
+			d.follow = false
 		}
 	case a.detail != nil:
 		// From where the pane is now, the anchor's place included; the
@@ -532,6 +549,11 @@ func (m Model) back() (Model, tea.Cmd) {
 		}
 		m.focus = view.Navigation
 	case view.Object:
+		if a.meetingsSection() && a.meetingInPane() && a.meeting.find.query != "" {
+			// The find ends first (F1): its marks go, the pane stays where
+			// it is.
+			return m.endMeetingFind(), nil
+		}
 		if m.intoTicket {
 			// Back to the agents' list it came from; the
 			// expansion closes first.
