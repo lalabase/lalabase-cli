@@ -391,8 +391,8 @@ func (a *app) ownName() string {
 }
 
 // meetingHead is the head of the pane, cleaned: the title, the facts when
-// the bar has no room for them, then the line of the sections, the one
-// shown first, the others faint after it.
+// the bar has no room for them, then the line of the sections
+// (meetingTabs).
 func (a *app) meetingHead(d *meetingDetail, meta bool) ([]string, []present.LineStyle) {
 	r := d.record
 	t := ticketLines{}
@@ -409,23 +409,38 @@ func (a *app) meetingHead(d *meetingDetail, meta bool) ([]string, []present.Line
 		}
 	}
 	t.add(plainLine, "")
-	names := [meetingAreas]uitext.ID{uitext.MeetingSummary, uitext.MeetingNotes, uitext.MeetingTranscript}
-	if areas := d.areas(); len(areas) > 0 {
-		lead := uitext.Inline(uitext.ActiveArea).String() + uitext.Inline(names[d.area]).String()
-		var others []string
-		for _, area := range areas {
-			if area != d.area {
-				others = append(others, uitext.Inline(names[area]).String())
-			}
-		}
-		rest := ""
-		if len(others) > 0 {
-			rest = "  " + strings.Join(others, " · ")
-		}
-		t.lines = append(t.lines, lead+rest)
-		t.styles = append(t.styles, present.LineStyle{Lead: len(lead), LeadStyle: present.Strong, RestStyle: present.Faint, Rule: true})
+	if len(d.areas()) > 0 {
+		line, style := meetingTabs(d)
+		t.add(style, line)
 	}
 	return t.lines, t.styles
+}
+
+// meetingTabs is the line of the sections (K7d): all three in their order,
+// each in a run of the same width, so Tab moves the mark and not the
+// names. The one shown is a tab, marked in text too; one with nothing in
+// it is faint, and Tab leaves it out.
+func meetingTabs(d *meetingDetail) (string, present.LineStyle) {
+	names := [meetingAreas]uitext.ID{uitext.MeetingSummary, uitext.MeetingNotes, uitext.MeetingTranscript}
+	texts := d.texts()
+	mark := uitext.Inline(uitext.ActiveArea).String()
+	var b strings.Builder
+	st := present.LineStyle{Rule: true}
+	for i, id := range names {
+		run, style := strings.Repeat(" ", len([]rune(mark))), present.Plain
+		switch {
+		case meetingArea(i) == d.area:
+			run, style = mark, present.Tab
+		case texts[i] == "":
+			style = present.Faint
+		}
+		run += uitext.Inline(id).String() + " "
+		if style != present.Plain {
+			st.Spans = append(st.Spans, present.Span{From: b.Len(), To: b.Len() + len(run), Style: style})
+		}
+		b.WriteString(run)
+	}
+	return b.String(), st
 }
 
 // meetingBar is the meeting's facts for the bar on the pane's right: its

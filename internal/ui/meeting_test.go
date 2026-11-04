@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
+	"github.com/gboyke/lalabase-cli/internal/present"
 	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
@@ -229,7 +230,7 @@ func TestEnterAndTheArrowShowTheMeetingAtOnce(t *testing.T) {
 	text := h.meetingText()
 	// The summary's Markdown is laid out (K7c): its bold lead without the
 	// markers.
-	for _, want := range []string{"Meeting 1", "» Summary  Notes · Transcript", "Ergebnis: Start im März."} {
+	for _, want := range []string{"Meeting 1", "» Summary   Notes   Transcript", "Ergebnis: Start im März."} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("no %q in %q", want, text)
 		}
@@ -295,25 +296,56 @@ func TestAMeetingWithoutTheFocusLoadsAfterThePause(t *testing.T) {
 	}
 }
 
-// Tab walks the sections that have something in them; the empty ones are
-// left out, and with one section there is no Tab.
+// meetingTabs is the line of the meeting's sections (K7d) and what each of
+// its spans covers, by style.
+func (h *harness) meetingTabs() (string, map[present.Style][]string) {
+	c := h.m.objectColumn()
+	for i, l := range c.Wrapped {
+		if !strings.Contains(l, "Summary") || !strings.Contains(l, "Transcript") || i >= len(c.Styles) {
+			continue
+		}
+		spans := map[present.Style][]string{}
+		for _, sp := range c.Styles[i].Spans {
+			spans[sp.Style] = append(spans[sp.Style], l[sp.From:min(sp.To, len(l))])
+		}
+		return l, spans
+	}
+	return "", nil
+}
+
+// Tab walks the sections that have something in them. The head names all
+// three in their order, the one shown as a tab (K7d), the empty ones faint
+// and left out by Tab; with one section there is no Tab.
 func TestTabWalksTheSectionsAndLeavesEmptyOnesOut(t *testing.T) {
 	t.Parallel()
 
 	h := newRESTHarness(t)
 	h.openMeetings(website)
 	h.drive(h.press("enter"))
-	for _, want := range []string{"» Notes  Summary · Transcript\nTermin im März halten.", "» Transcript  Summary · Notes\nAnna: Wir starten im März.\nErika: Gut.", "» Summary  Notes · Transcript"} {
+	if line, spans := h.meetingTabs(); !strings.HasPrefix(line, "» Summary   Notes   Transcript") || !slices.Equal(spans[present.Tab], []string{"» Summary "}) || len(spans[present.Faint]) != 0 {
+		t.Fatalf("the tabs: %q %q", line, spans)
+	}
+	for _, want := range []struct{ tabs, active, text string }{
+		{"  Summary » Notes   Transcript", "» Notes ", "Termin im März halten."},
+		{"  Summary   Notes » Transcript", "» Transcript", "Anna: Wir starten im März.\nErika: Gut."},
+		{"» Summary   Notes   Transcript", "» Summary ", "Ergebnis"},
+	} {
 		h.press("tab")
-		if !strings.Contains(h.meetingText(), want) {
-			t.Fatalf("no %q in %q", want, h.meetingText())
+		line, spans := h.meetingTabs()
+		if !strings.HasPrefix(line, want.tabs) || len(spans[present.Tab]) != 1 || strings.TrimSpace(spans[present.Tab][0]) != strings.TrimSpace(want.active) || !strings.Contains(h.meetingText(), want.text) {
+			t.Fatalf("want %q (%q): %q %q in %q", want.tabs, want.active, line, spans, h.meetingText())
 		}
 	}
 	h.press("esc")
 	h.drive(h.press("down"))
 	h.drive(h.press("enter"))
-	if text := h.meetingText(); !strings.Contains(text, "» Notes\nNur Notizen.") || strings.Contains(text, "Summary") || h.offers(NextArea) {
-		t.Fatalf("one section: %q, tab %v", text, h.offers(NextArea))
+	line, spans := h.meetingTabs()
+	if !strings.HasPrefix(line, "  Summary » Notes   Transcript") || !slices.Equal(spans[present.Faint], []string{"  Summary ", "  Transcript"}) && !slices.Equal(spans[present.Faint], []string{"  Summary ", "  Transcript "}) || !strings.Contains(h.meetingText(), "Nur Notizen.") || h.offers(NextArea) {
+		t.Fatalf("one section: %q %q in %q, tab %v", line, spans, h.meetingText(), h.offers(NextArea))
+	}
+	h.press("tab")
+	if line2, _ := h.meetingTabs(); line2 != line {
+		t.Fatalf("tab left the one section: %q", line2)
 	}
 	for _, k := range []Action{Launch, BookTime, AddComment, MarkRead} {
 		if h.offers(k) {
