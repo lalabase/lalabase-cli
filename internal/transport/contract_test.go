@@ -173,6 +173,22 @@ var toolCases = map[string]expected{
 	"create_meeting/read_only":        {class: ReadOnly, legacyClass: ReadOnly},
 	"create_meeting/invalid_input":    {class: InvalidInput, legacyClass: Refused},
 	"create_meeting/not_found":        {class: NotFound, legacyClass: Refused},
+
+	// 0.17.0: get_meeting, which Claude Code calls beside a meeting (K8).
+	"get_meeting/ok":                 {class: Object, legacyClass: Object},
+	"get_meeting/ok_bare":            {class: Object, legacyClass: Object},
+	"get_meeting/ok_part":            {class: Object, legacyClass: Object},
+	"get_meeting/ok_notes":           {class: Object, legacyClass: Object},
+	"get_meeting/ok_page":            {class: Object, legacyClass: Object},
+	"get_meeting/ok_last_page":       {class: Object, legacyClass: Object},
+	"get_meeting/ok_past_end":        {class: Object, legacyClass: Object},
+	"get_meeting/empty":              {class: NotFound, legacyClass: Refused},
+	"get_meeting/empty_foreign":      {class: NotFound, legacyClass: Refused},
+	"get_meeting/empty_malformed":    {class: NotFound, legacyClass: Refused},
+	"get_meeting/empty_no_area":      {class: NotFound, legacyClass: Refused},
+	"get_meeting/empty_reach":        {class: NotFound, legacyClass: Refused},
+	"get_meeting/invalid_input":      {class: InvalidInput, legacyClass: Refused},
+	"get_meeting/invalid_input_part": {class: InvalidInput, legacyClass: Refused},
 }
 
 // The tools that address one record, and the argument naming it. Their empty
@@ -185,6 +201,7 @@ var oneRecord = map[string]string{
 	// The booked time is asked of one ticket: no ticket is not found.
 	"summarize_time_sessions": "ticket",
 	"get_person":              "id",
+	"get_meeting":             "meeting_id",
 }
 
 // replay answers every request with one recorded response.
@@ -316,13 +333,13 @@ func TestTheRecordedServerAnswersInitializeAndToolsList(t *testing.T) {
 	}
 	srv := replay(t, 200, file.Contract.MCP.Initialize.Response.Body)
 	info, ans := newClient(t, srv.URL).Initialize(context.Background())
-	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.16.0" {
+	if ans.Class != Object || info.Name != "lalabase" || info.Version != "0.17.0" {
 		t.Fatalf("initialize: %v %+v", ans.Class, info)
 	}
 
 	srv = replay(t, 200, file.Contract.MCP.ToolsList.Response.Body)
 	tools, ans := newClient(t, srv.URL).ListTools(context.Background())
-	if ans.Class != Object || len(tools) != 20 || tools[0].Name != "search_code_symbols" {
+	if ans.Class != Object || len(tools) != 21 || tools[0].Name != "search_code_symbols" {
 		t.Fatalf("tools/list: %v, %d tools", ans.Class, len(tools))
 	}
 	if _, ok := tools[6].Properties()["ticket_id"]; !ok || tools[6].Name != "get_ticket" {
