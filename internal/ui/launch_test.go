@@ -40,6 +40,8 @@ type fakeLauncher struct {
 	// is held back (the opener still runs).
 	opens    []openCall
 	openKind launch.Kind
+	// w: the pages asked for; they answer openKind as a file does.
+	pageCalls []launch.Page
 }
 
 type openCall struct {
@@ -99,6 +101,22 @@ func (f *fakeLauncher) OpenFile(ref uint64, t launch.Ticket, file launch.File) t
 	return func() tea.Msg {
 		return launch.Done{Ref: ref, Ticket: t, Kind: kind, Action: launch.OpenFileAction, Detail: file.Name}
 	}
+}
+
+func (f *fakeLauncher) OpenPage(ref uint64, p launch.Page) tea.Cmd {
+	f.mu.Lock()
+	f.pageCalls = append(f.pageCalls, p)
+	kind := f.openKind
+	f.mu.Unlock()
+	return func() tea.Msg {
+		return launch.Done{Ref: ref, Ticket: launch.Ticket{Org: p.Org, Project: p.Project, ID: p.ID, Number: p.Number}, Kind: kind, Action: launch.OpenPageAction}
+	}
+}
+
+func (f *fakeLauncher) pages() []launch.Page {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]launch.Page(nil), f.pageCalls...)
 }
 
 func (f *fakeLauncher) opened() []openCall {

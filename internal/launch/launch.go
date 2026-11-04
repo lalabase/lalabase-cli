@@ -159,6 +159,22 @@ func (l *Launcher) OpenFile(ref uint64, t Ticket, f File) tea.Cmd {
 	return l.command(ref, t, OpenFileAction, func() tea.Msg { return l.openFile(ref, t, f) })
 }
 
+// OpenPage is the command that opens the page of a ticket or a meeting in
+// the browser (w); its message is a Done with the action OpenPageAction and
+// the page's ids as its Ticket, under the supervisor like Launch.
+func (l *Launcher) OpenPage(ref uint64, p Page) tea.Cmd {
+	t := Ticket{Org: p.Org, Project: p.Project, ID: p.ID, Number: p.Number}
+	return l.command(ref, t, OpenPageAction, func() tea.Msg {
+		d := Done{Ref: ref, Ticket: t, Action: OpenPageAction}
+		address, ok := pageAddress(l.cfg.Server, p)
+		if !ok {
+			d.Kind = NotHandedOver
+			return d
+		}
+		return l.handOver(d, address)
+	})
+}
+
 // Jumps says whether a jump can find a pane: the client runs in iTerm.
 func (l *Launcher) Jumps() bool { return l.session != "" }
 
@@ -208,6 +224,12 @@ func (l *Launcher) openFile(ref uint64, t Ticket, f File) Done {
 		d.Kind = NotHandedOver
 		return d
 	}
+	return l.handOver(d, address)
+}
+
+// handOver gives an address to the system's opener, for a file or a page:
+// one argument, no shell, a deadline.
+func (l *Launcher) handOver(d Done, address string) Done {
 	path, ok := l.opener()
 	if !ok || l.cfg.Remote {
 		d.Kind = NoOpener

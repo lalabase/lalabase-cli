@@ -235,13 +235,14 @@ func TestEnterAndTheArrowShowTheMeetingAtOnce(t *testing.T) {
 			t.Fatalf("no %q in %q", want, text)
 		}
 	}
-	// The facts stand in the bar, with the participants; no key that acts.
+	// The facts stand in the bar, with the participants; without a
+	// launcher no key that acts (w, open_page_test.go).
 	var bar []string
 	for _, l := range h.m.objectColumn().Meta {
 		bar = append(bar, l.Text.String())
 	}
 	if got := strings.Join(bar, "|"); !strings.Contains(got, "Date|30 Jan 09:00||Duration|0:31||Project|Website") ||
-		!strings.Contains(got, "Participants|Anna Albers|Name unknown") || strings.Contains(got, "Keys") {
+		!strings.Contains(got, "Participants|Anna Albers|Name unknown") || strings.Contains(got, "Actions") {
 		t.Fatalf("bar %q", got)
 	}
 	// Esc back to the list; the pane keeps the meeting.

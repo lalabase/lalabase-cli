@@ -335,6 +335,10 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		return m.pressB(), nil
 	case AddComment:
 		return m.pressK(), nil
+	case OpenPage:
+		if p, ok := m.pageTarget(); ok {
+			return m, m.openPage(p)
+		}
 	}
 	return m, nil
 }

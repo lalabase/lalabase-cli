@@ -9,6 +9,7 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/api"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
+	"github.com/gboyke/lalabase-cli/internal/launch"
 	"github.com/gboyke/lalabase-cli/internal/queue"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
@@ -154,6 +155,10 @@ func TestEnterOpensTheAgentsTicketInItsOrganisation(t *testing.T) {
 	}
 	if tk, ok := h.m.launchTarget(); !ok || tk.Org != orgA {
 		t.Fatalf("x target %+v %v", tk, ok)
+	}
+	// w too: the page of the agent's ticket, in its organisation.
+	if p, ok := h.m.pageTarget(); !ok || p != (launch.Page{Kind: launch.TicketPage, Org: orgA, Project: working.Project, ID: working.Ticket, Number: working.Number}) {
+		t.Fatalf("w target %+v %v", p, ok)
 	}
 	// Back: the agents' list, the ticket stays in the pane.
 	h.press("esc")

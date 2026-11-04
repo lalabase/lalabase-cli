@@ -95,7 +95,7 @@ navigation again.
   `booked_time`), Booked by you: the time you booked on the ticket, in
   hours and minutes ("2:30"), the labels faint, a long name cut with "…".
   With the ticket in focus Actions ends the bar: the keys that act on it
-  now (`x`, `b`, `k`, `R`), each as the help names it, `x` here only while
+  now (`x`, `w`, `b`, `k`, `R`), each as the help names it, `x` here only while
   the ticket has no agent, whose lines name it already. The
   head then drops its line of facts and its agent's line. In a
   narrower pane they stay in one faint line under the title, the time last
@@ -254,8 +254,9 @@ navigation again.
   `R` reads the meeting again, `Esc` goes back to the list and the pane
   keeps the meeting. `R` retries a failed meeting too, without reading the
   list; resizing the terminal does not retry a failed read.
-  No key acts on a meeting: `x`, `b` and `k` do nothing
-  and stand nowhere in the help. The pane wraps its text once per width and
+  With the meeting in focus Actions ends its bar too, with `w` alone (see
+  "Opening the page"); `x`, `b` and `k` do nothing on a meeting and stand
+  nowhere in the help. The pane wraps its text once per width and
   section, not per frame, so a long transcript scrolls without delay. A
   meeting gone or out of reach, a refusal and an answer above the client's
   bound of 8 MiB are a line in the pane, never a cut text; the list beside
@@ -312,6 +313,18 @@ navigation again.
   before REST API 1.8.0 sends a comment's count without its files, and a page
   kept from one has no more: the comment says "2 files, not listed by this
   server", with nothing to select.
+* **Opening the page.** `w` opens the ticket or the meeting the pane shows,
+  with the pane in focus, in the default browser, on its page in the web app
+  (`/org/:org/projects/:project/tickets/:id`, or `/meetings/:id`). It stands
+  under Actions in the bar on the right and in the help. As for a file the
+  client builds the address from the profile's server and the ids it checked,
+  never from an answer (a meeting's answer carries a path; it is not read),
+  sends no request for it, and the browser uses its own login. It shares the
+  one launch at a time with `x` and the files: while one runs, `w` does
+  nothing. The notices are a file's, with the ticket's number in place of
+  the name ("Opening ticket #12 in the browser…", "Sent ticket #12 to the
+  browser"; for a meeting "the meeting"), and over SSH or without a program
+  for the browser a notice that nothing started.
 * **Paging the ticket (C1d).** `Tab` moves between the description, the
   comments and the attachments and brings the section's heading into
   sight; `[`/`]` turn the page of that section, `o` switches the comments

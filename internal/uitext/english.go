@@ -267,6 +267,14 @@ const (
 	FileNotHandedOver
 	FileOpenFailed
 	FileNoAnswer
+	// w: the page of the ticket or the meeting shown, in the browser.
+	OpenPageKey
+	OpenPageHelp
+	OpeningTicketPage
+	OpeningMeetingPage
+	TicketPageOpened
+	MeetingPageOpened
+	PageNotHandedOver
 	// C9a: the agent's line in the ticket's head, its states' words and
 	// the age of a state.
 	AgentLine
@@ -536,8 +544,12 @@ var english = map[ID]string{
 	FileNotHandedOver:   "The file's address did not pass its check",
 	FileOpenFailed:      "The browser could not be opened",
 	FileNoAnswer:        "The browser did not answer in time; it may still open",
-	AgentLine:           "Agent %s · for %s",
-	AgentApproval:       "waiting for approval", AgentWaiting: "waiting for you", AgentLost: "lost",
+	OpenPageKey:         "w", OpenPageHelp: "open in browser",
+	OpeningTicketPage: "Opening ticket #%d in the browser\u2026", OpeningMeetingPage: "Opening the meeting in the browser\u2026",
+	TicketPageOpened: "Sent ticket #%d to the browser", MeetingPageOpened: "Sent the meeting to the browser",
+	PageNotHandedOver: "The page's address did not pass its check",
+	AgentLine:         "Agent %s · for %s",
+	AgentApproval:     "waiting for approval", AgentWaiting: "waiting for you", AgentLost: "lost",
 	AgentWorking: "working", AgentStarting: "starting", AgentEnded: "ended",
 	AgeSeconds: "%d s", AgeMinutes: "%d min", AgeHours: "%d h", AgeDays: "%d d",
 	LaunchFailed:     "iTerm could not open a pane",

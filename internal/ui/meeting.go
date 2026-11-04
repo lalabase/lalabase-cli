@@ -350,7 +350,7 @@ func (m Model) meetingColumn() present.Column {
 	g := layoutWith(m.width, m.height, 1, m.focus)
 	meta := view.MetaFits(view.InnerWidth(g, view.Object))
 	if meta {
-		c.Meta = a.meetingBar(d)
+		c.Meta = append(a.meetingBar(d), m.actionsMeta(m.pageBinding())...)
 	}
 	c.Wrapped, c.Styles = a.meetingLines(d, c, view.TextWidth(c, g, view.Object), meta, m.widthMethod)
 	c.Offset = d.offset
@@ -444,8 +444,8 @@ func meetingTabs(d *meetingDetail) (string, present.LineStyle) {
 }
 
 // meetingBar is the meeting's facts for the bar on the pane's right: its
-// date, duration, project, creator and participants. No keys: nothing
-// acts on a meeting.
+// date, duration, project, creator and participants. Its keys follow
+// (meetingColumn): w alone acts on a meeting.
 func (a *app) meetingBar(d *meetingDetail) []present.MetaLine {
 	r := d.record
 	label := func(id uitext.ID) present.MetaLine {

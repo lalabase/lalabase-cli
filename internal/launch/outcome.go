@@ -47,7 +47,8 @@ const (
 	// NoPane: there is no pane to jump to: the client runs without iTerm
 	// (or in a multiplexer), or the agent's pane is not known.
 	NoPane
-	// FileOpened: the system took a file's address to the browser (C10).
+	// FileOpened: the system took a file's address to the browser (C10),
+	// or a page's (w).
 	FileOpened
 	// NoOpener: this machine cannot show a browser to the person: no
 	// program for it, or the client runs over SSH.
@@ -58,7 +59,7 @@ const (
 
 // Action is what was asked for: of x (C9c) a first start, the jump to a
 // running agent's pane, or a start again of one whose session is over; of
-// Enter on a file (C10) its opening.
+// Enter on a file (C10) its opening; of w the opening of the page shown.
 type Action uint8
 
 const (
@@ -66,6 +67,7 @@ const (
 	JumpAction
 	AgainAction
 	OpenFileAction
+	OpenPageAction
 )
 
 // Done is the message of one launch: the caller's reference, the ticket it
