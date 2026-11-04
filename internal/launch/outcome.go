@@ -12,7 +12,8 @@ const (
 	Ended
 	// EndedWithError: it ended with an error, or could not be run.
 	EndedWithError
-	// NotHandedOver: the ticket's address did not pass its check.
+	// NotHandedOver: the ticket, or the address of a file or a page, did
+	// not pass its check.
 	NotHandedOver
 	// NoFolder, NotADirectory, BadFolder: the folder Claude Code would
 	// start in is missing, no directory, or has a path no shell takes as
@@ -30,8 +31,8 @@ const (
 	NoPermission
 	// SessionGone: iTerm did not find the client's session.
 	SessionGone
-	// NoAnswer: iTerm, or the opener of a file, did not answer within the
-	// deadline.
+	// NoAnswer: iTerm, or the opener of a file or a page, did not answer
+	// within the deadline.
 	NoAnswer
 	// ITermFailed: iTerm refused for another reason.
 	ITermFailed
@@ -47,7 +48,8 @@ const (
 	// NoPane: there is no pane to jump to: the client runs without iTerm
 	// (or in a multiplexer), or the agent's pane is not known.
 	NoPane
-	// FileOpened: the system took a file's address to the browser (C10).
+	// FileOpened: the system took a file's address to the browser (C10),
+	// or a page's (w).
 	FileOpened
 	// NoOpener: this machine cannot show a browser to the person: no
 	// program for it, or the client runs over SSH.
@@ -58,7 +60,7 @@ const (
 
 // Action is what was asked for: of x (C9c) a first start, the jump to a
 // running agent's pane, or a start again of one whose session is over; of
-// Enter on a file (C10) its opening.
+// Enter on a file (C10) its opening; of w the opening of the page shown.
 type Action uint8
 
 const (
@@ -66,6 +68,7 @@ const (
 	JumpAction
 	AgainAction
 	OpenFileAction
+	OpenPageAction
 )
 
 // Done is the message of one launch: the caller's reference, the ticket it

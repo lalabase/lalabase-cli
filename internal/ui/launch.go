@@ -12,9 +12,10 @@ import (
 )
 
 // Launcher starts Claude Code beside a ticket (C7) and opens a file of a
-// ticket or of a comment (C10, C12): one command per launch, whose message
-// is a launch.Done with the same ref. The command gives the
-// session one (launch.New); tests give a fake.
+// ticket or of a comment (C10, C12) or the page of a ticket or a meeting
+// (w): one command per launch, whose message is a launch.Done with the
+// same ref. The command gives the session one (launch.New); tests give a
+// fake.
 type Launcher interface {
 	Launch(ref uint64, t launch.Ticket) tea.Cmd
 	// Jump selects the pane of an agent at t (C9c), Again starts an
@@ -27,13 +28,18 @@ type Launcher interface {
 	// OpenFile opens a file of t or of one of its comments in the browser
 	// (C10, C12); its message is a launch.Done with the same ref.
 	OpenFile(ref uint64, t launch.Ticket, f launch.File) tea.Cmd
+	// OpenPage opens the page of a ticket or a meeting in the browser (w);
+	// its message is a launch.Done with the same ref and the page's ids.
+	OpenPage(ref uint64, p launch.Page) tea.Cmd
 }
 
-// launchState is the one launch at a time, a file's opening among them: its number, whether it runs, and
-// the notice of the newest one with the ticket it was for. A plain notice
-// is a hint (L2): it is shown until its deadline, a problem or a launch
-// running has none. everywhere: x was pressed in the agents' list, where
-// no ticket is shown, so its notice shows wherever the person is (C9c).
+// launchState is the one launch at a time, the opening of a file or a
+// page among them: its number, whether it runs, and the notice of the
+// newest one with the id of the ticket it was for (of the meeting, for w
+// on a meeting). A plain notice is a hint (L2): it is shown until its
+// deadline, a problem or a launch running has none. everywhere: x was
+// pressed in the agents' list, where no ticket is shown, so its notice
+// shows wherever the person is (C9c).
 type launchState struct {
 	ref        uint64
 	busy       bool
@@ -90,6 +96,44 @@ func (m Model) openFile(t launch.Ticket, f launch.File) tea.Cmd {
 	a.clearAgentsNotice()
 	a.launch.until = time.Time{}
 	return a.deps.Launcher.OpenFile(a.launch.ref, t, f)
+}
+
+// pageTarget is what w opens: the ticket the pane shows, when x's
+// conditions hold and its organisation is known, or the meeting the pane
+// shows, read whole, with the pane in focus and no launch running. The ids
+// are the pane's record's, never the list's cursor's.
+func (m Model) pageTarget() (launch.Page, bool) {
+	a := m.app
+	if m.focus != view.Object || a.deps.Launcher == nil || a.launch.busy {
+		return launch.Page{}, false
+	}
+	if a.meetingsSection() {
+		d := a.meeting
+		if !a.meetingInPane() || d.record.ID != d.id || a.meetings.org == "" {
+			return launch.Page{}, false
+		}
+		return launch.Page{Kind: launch.MeetingPage, Org: a.meetings.org, Project: d.project, ID: d.id}, true
+	}
+	t, ok := m.launchTarget()
+	if !ok || t.Org == "" {
+		return launch.Page{}, false
+	}
+	return launch.Page{Kind: launch.TicketPage, Org: t.Org, Project: t.Project, ID: t.ID, Number: t.Number}, true
+}
+
+// openPage is w: one child at a time, shared with x and the files, and its
+// notice in the same place.
+func (m Model) openPage(p launch.Page) tea.Cmd {
+	a := m.app
+	a.launch.ref++
+	a.launch.busy, a.launch.ticket, a.launch.everywhere = true, p.ID, false
+	a.launch.notice, a.launch.tone = uitext.Inline(uitext.OpeningMeetingPage), present.NoticeWaiting
+	if p.Kind == launch.TicketPage {
+		a.launch.notice = uitext.Fill(uitext.OpeningTicketPage, p.Number)
+	}
+	a.clearAgentsNotice()
+	a.launch.until = time.Time{}
+	return a.deps.Launcher.OpenPage(a.launch.ref, p)
 }
 
 // detailOrg is the organisation of the ticket in the pane: the one of the
@@ -171,9 +215,9 @@ func (a *app) launchHint() tea.Cmd {
 }
 
 // launchTone is the notice's tone by the outcome: plain when Claude Code
-// opened or ended, the jump went or had nowhere to go, or a file went to
-// the browser or had no way there, a problem for every outcome that opened
-// nothing or ended in an error.
+// opened or ended, the jump went or had nowhere to go, or a file or a
+// page went to the browser or had no way there, a problem for every
+// outcome that opened nothing or ended in an error.
 func launchTone(k launch.Kind) present.Style {
 	switch k {
 	case launch.Opened, launch.Ended, launch.Canceled, launch.Jumped, launch.NoPane, launch.FileOpened, launch.NoOpener:
@@ -182,17 +226,27 @@ func launchTone(k launch.Kind) present.Style {
 	return present.NoticeProblem
 }
 
-// launchShown: the notice's place is shown (the pane shows the ticket the
-// notice is about, or x was pressed in the agents' list and that is open:
-// inAgents), and a hint's deadline has not come by the model's clock. A
-// problem of the list stands there only (review round 1 of #43): it has
-// no deadline, and outside the list nothing would take it away.
+// launchShown: the notice's place is shown (the pane shows the ticket or
+// the meeting the notice is about, or x was pressed in the agents' list
+// and that is open: inAgents), and a hint's deadline has not come by the
+// model's clock. A problem of the list stands there only (review round 1
+// of #43): it has no deadline, and outside the list nothing would take it
+// away.
 func (a *app) launchShown(inAgents bool) bool {
 	if a.launch.tone == present.Plain && !a.launch.until.After(a.now()) {
 		return false
 	}
-	shown := a.launch.everywhere && inAgents || !a.launch.everywhere && a.detail != nil && a.detail.id == a.launch.ticket
+	shown := a.launch.everywhere && inAgents || !a.launch.everywhere && a.paneShows(a.launch.ticket)
 	return a.launch.notice.String() != "" && shown
+}
+
+// paneShows: the pane holds the ticket or, in the meetings, the meeting of
+// this id.
+func (a *app) paneShows(id string) bool {
+	if a.meetingsSection() {
+		return a.meeting != nil && a.meeting.id == id
+	}
+	return a.detail != nil && a.detail.id == id
 }
 
 // launchTexts names the status text of each outcome: the texts of Opened
@@ -247,12 +301,29 @@ func fileNotice(d launch.Done) present.Inline {
 	return uitext.Inline(uitext.FileOpenFailed)
 }
 
+// pageNotice is the status text of opening a page (w): a file's, the
+// ticket's number in place of the name; a meeting has none (Number 0).
+func pageNotice(d launch.Done) present.Inline {
+	switch {
+	case d.Kind == launch.FileOpened && d.Ticket.Number > 0:
+		return uitext.Fill(uitext.TicketPageOpened, d.Ticket.Number)
+	case d.Kind == launch.FileOpened:
+		return uitext.Inline(uitext.MeetingPageOpened)
+	case d.Kind == launch.NotHandedOver:
+		return uitext.Inline(uitext.PageNotHandedOver)
+	}
+	return fileNotice(d)
+}
+
 // launchNotice is the status text of an outcome; nothing for a launch the
 // session's end canceled. The detail passes the cleaning of Fill: it may
 // name a path of the person's config.
 func launchNotice(d launch.Done) present.Inline {
 	if d.Action == launch.OpenFileAction {
 		return fileNotice(d)
+	}
+	if d.Action == launch.OpenPageAction {
+		return pageNotice(d)
 	}
 	if d.Action == launch.JumpAction {
 		id, ok := jumpTexts[d.Kind]

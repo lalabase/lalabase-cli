@@ -29,3 +29,26 @@ type File struct {
 	Kind     FileKind
 	ID, Name string
 }
+
+// PageKind says what a page in the core shows, and so which word its
+// address holds (pageAddress). Like FileKind it is the client's own, set
+// where w is pressed, never read from an answer; the zero value opens
+// nothing.
+type PageKind uint8
+
+const (
+	// TicketPage is a ticket's page, MeetingPage a meeting's.
+	TicketPage PageKind = iota + 1
+	MeetingPage
+)
+
+// Page is the ticket or the meeting the pane shows, for w: its kind, its
+// organisation, its project and its id as the server sent them. They are
+// checked before they become an address (pageAddress). Number is a
+// ticket's, for the notice alone, 0 for a meeting; it is no part of the
+// address.
+type Page struct {
+	Kind             PageKind
+	Org, Project, ID string
+	Number           int
+}

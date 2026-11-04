@@ -68,6 +68,8 @@ const (
 	ToggleGroups
 	// K3a: a comment on the ticket in the pane.
 	AddComment
+	// w: the ticket or the meeting in the pane, in the browser.
+	OpenPage
 )
 
 type keyAction struct {
@@ -156,6 +158,8 @@ func routeKey(mode Mode, key tea.KeyPressMsg) keyAction {
 		return keyAction{Kind: BookTime}
 	case "k":
 		return keyAction{Kind: AddComment}
+	case "w":
+		return keyAction{Kind: OpenPage}
 	}
 	return keyAction{}
 }
@@ -535,13 +539,14 @@ func (m Model) objectBindings() []binding {
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, help})
 	case a.meetingsSection():
-		// The meeting (K7b): its sections and the scroll, no key that acts
-		// on it; Esc to the list.
+		// The meeting (K7b): its sections, the scroll and w, its page in
+		// the browser; Esc to the list.
 		if a.meetingInPane() {
 			if len(a.meeting.areas()) > 1 {
 				out = append(out, binding{NextArea, uitext.TabKey, uitext.NextAreaHelp})
 			}
 			out = append(out, binding{Up, uitext.UpDownKey, uitext.ScrollHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.PageScrollHelp})
+			out = append(out, m.pageBinding()...)
 		}
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.ListHelp})
 	case a.agentTicket():
@@ -599,9 +604,19 @@ func (m Model) ticketBindings() []binding {
 		out = append(out, binding{Expand, uitext.ExpandKey, uitext.ExpandHelp})
 	}
 	out = append(out, m.xBinding()...)
+	out = append(out, m.pageBinding()...)
 	out = append(out, m.writeBindings()...)
 	out = append(out, m.dBinding()...)
 	return append(out, binding{PageUp, uitext.PageUpDownKey, uitext.PageScrollHelp})
+}
+
+// pageBinding is w where it acts: the pane shows a ticket or a meeting
+// whose page can be opened (pageTarget).
+func (m Model) pageBinding() []binding {
+	if _, ok := m.pageTarget(); !ok {
+		return nil
+	}
+	return []binding{{OpenPage, uitext.OpenPageKey, uitext.OpenPageHelp}}
 }
 
 // writeBindings are the keys that write on the ticket in the pane, each

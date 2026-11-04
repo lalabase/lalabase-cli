@@ -147,6 +147,7 @@ The help line at the bottom always names the keys that work right now.
 | `r` | mark a notification as read |
 | `k` | write a comment |
 | `b` | book time |
+| `w` | open the ticket or meeting in the browser |
 | `x` | start Claude Code on the ticket, or jump back to its agent |
 | `A` | show the agents |
 | `d` | remove an agent |

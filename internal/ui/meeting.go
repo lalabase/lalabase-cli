@@ -19,8 +19,9 @@ import (
 // arrow brings the focus to it, previewed after the pause otherwise. Its
 // summary, notes and transcript are sections, one shown at a time and
 // Tab to the next; a section with nothing in it is left out. Read only:
-// no key acts on a meeting. Like the list, it stays in memory alone
-// (api.MeetingRESTSpec is MemoryOnly), and the disk is never asked.
+// no key writes on a meeting, w opens its page in the browser. Like the
+// list, it stays in memory alone (api.MeetingRESTSpec is MemoryOnly), and
+// the disk is never asked.
 //
 // A transcript can be large (the core keeps up to 1 MB): the pane wraps
 // its text once per width and section, and hands the view the lines
@@ -350,7 +351,7 @@ func (m Model) meetingColumn() present.Column {
 	g := layoutWith(m.width, m.height, 1, m.focus)
 	meta := view.MetaFits(view.InnerWidth(g, view.Object))
 	if meta {
-		c.Meta = a.meetingBar(d)
+		c.Meta = append(a.meetingBar(d), m.actionsMeta(m.pageBinding())...)
 	}
 	c.Wrapped, c.Styles = a.meetingLines(d, c, view.TextWidth(c, g, view.Object), meta, m.widthMethod)
 	c.Offset = d.offset
@@ -444,8 +445,8 @@ func meetingTabs(d *meetingDetail) (string, present.LineStyle) {
 }
 
 // meetingBar is the meeting's facts for the bar on the pane's right: its
-// date, duration, project, creator and participants. No keys: nothing
-// acts on a meeting.
+// date, duration, project, creator and participants. Its keys follow
+// (meetingColumn): w alone acts on a meeting.
 func (a *app) meetingBar(d *meetingDetail) []present.MetaLine {
 	r := d.record
 	label := func(id uitext.ID) present.MetaLine {

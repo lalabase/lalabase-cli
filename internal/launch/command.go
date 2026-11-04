@@ -31,16 +31,40 @@ var fileWords = map[FileKind]string{TicketFile: "ticket_document", CommentFile: 
 // it to the browser, never to a file or another program. A token has no
 // place in it: the browser has its own login.
 func fileAddress(server, org string, kind FileKind, document string) (string, bool) {
+	base, ok := serverBase(server)
+	word, known := fileWords[kind]
+	if !ok || !known || !agents.ForeignID(org) || !agents.ForeignID(document) {
+		return "", false
+	}
+	return base + "/org/" + org + "/files/" + word + "/" + document, true
+}
+
+// pageWords are the core's words for the kinds of page.
+var pageWords = map[PageKind]string{TicketPage: "tickets", MeetingPage: "meetings"}
+
+// pageAddress is where the core shows a ticket or a meeting, built as a
+// file's address is (fileAddress): the profile's server, the client's own
+// word for the kind and three ids of the form the launch trusts. The
+// meeting's answer carries a path of its own; it is not read, so no string
+// of an answer becomes an address.
+func pageAddress(server string, p Page) (string, bool) {
+	base, ok := serverBase(server)
+	word, known := pageWords[p.Kind]
+	if !ok || !known || !agents.ForeignID(p.Org) || !agents.ForeignID(p.Project) || !agents.ForeignID(p.ID) {
+		return "", false
+	}
+	return base + "/org/" + p.Org + "/projects/" + p.Project + "/" + word + "/" + p.ID, true
+}
+
+// serverBase is the profile's server without a trailing slash, when it is
+// an address of https or http with a host.
+func serverBase(server string) (string, bool) {
 	base := strings.TrimRight(server, "/")
 	host, https := strings.CutPrefix(base, "https://")
 	if !https {
 		host, _ = strings.CutPrefix(base, "http://")
 	}
-	word, known := fileWords[kind]
-	if host == base || host == "" || !known || !agents.ForeignID(org) || !agents.ForeignID(document) {
-		return "", false
-	}
-	return base + "/org/" + org + "/files/" + word + "/" + document, true
+	return base, host != base && host != ""
 }
 
 // sessionID is ITERM_SESSION_ID: the window, tab and pane, then the

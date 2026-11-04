@@ -7,7 +7,8 @@
 // whose session is over again (Again: a new agent that resumes its latest
 // session). Since C10 it also hands the address of a ticket's file, and
 // since C12 of a comment's, to the system's opener, for the browser
-// (OpenFile).
+// (OpenFile), and since w the address of the ticket's or the meeting's
+// page (OpenPage).
 //
 // Threat model. Foreign: everything the server sent (the ids and the number
 // are checked against a pattern before use, nothing else of the ticket is

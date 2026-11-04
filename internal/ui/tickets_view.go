@@ -264,8 +264,15 @@ func (m Model) keysMeta() []present.MetaLine {
 	if x, ok := m.xNow(); ok && x.kind == xStart {
 		keys = m.xBinding()
 	}
-	keys = append(append(keys, m.writeBindings()...), m.refreshBinding()...)
-	if len(keys) == 0 {
+	keys = append(append(append(keys, m.pageBinding()...), m.writeBindings()...), m.refreshBinding()...)
+	return m.actionsMeta(keys)
+}
+
+// actionsMeta are keys for the meta bar: after an empty line the faint
+// label Actions, then each key as the help names it; nothing without keys
+// or beside the list (the keys act with the pane in focus).
+func (m Model) actionsMeta(keys []binding) []present.MetaLine {
+	if len(keys) == 0 || m.focus != view.Object {
 		return nil
 	}
 	out := []present.MetaLine{{}, {Text: uitext.Inline(uitext.BarKeys), Style: present.Faint}}
