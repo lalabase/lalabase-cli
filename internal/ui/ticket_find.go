@@ -139,7 +139,7 @@ func placesIn(t ticketLines, d *detailView, hits []hit) ([]findPlace, map[findPl
 
 // findRuns are the find's hits in order: the description, the comments
 // page by page (the page drawn as drawn; a comment on two pages, one of
-// them older, once), the files.
+// them older, once, on the page drawn when it is one of them), the files.
 func (d *detailView) findRuns(count map[findPlace]int) []findRun {
 	f := &d.found
 	runs := []findRun{{area: areaDescription, hits: count[findPlace{area: areaDescription}]}}
@@ -147,9 +147,14 @@ func (d *detailView) findRuns(count map[findPlace]int) []findRun {
 	if !d.commentsLoading() && (f.pages == nil || d.shown.Newest == f.key.Newest) {
 		live = max(1, d.shown.PostsPage)
 	}
-	seen := map[string]bool{}
+	seen, drawn := map[string]bool{}, map[string]bool{}
+	if live > 0 {
+		for _, p := range d.record.Posts {
+			drawn[p.ID] = true
+		}
+	}
 	add := func(id string, page, hits int) {
-		if !seen[id] {
+		if !seen[id] && (page == 0 || !drawn[id]) {
 			seen[id] = true
 			runs = append(runs, findRun{area: areaComments, post: id, page: page, hits: hits})
 		}
@@ -328,12 +333,7 @@ func (m Model) findInTicket(top int) tea.Cmd {
 	if d.find.query == "" {
 		return nil
 	}
-	if n := min(d.record.PostsPages, maxFindPages); a.pagedOn() && pagedKey(d.key) && n > 1 {
-		d.found.key, d.found.pages = d.key, make([]foundPage, n)
-		if !d.commentsLoading() {
-			a.takePage(d, d.shown, d.record, d.uncut)
-		}
-	}
+	a.startFindPages(d)
 	_ = m.detailColumn()
 	if f := &d.found; len(f.shown) > 0 {
 		f.at, f.set, d.find.round = f.shown[0].place, true, 1
@@ -344,8 +344,50 @@ func (m Model) findInTicket(top int) tea.Cmd {
 			}
 		}
 		d.follow = anchorMatch
+		d.selectHit(f.at)
 	}
 	return a.readFindPages()
+}
+
+// startFindPages lays out the pages of comments the find reads, with the
+// pane's key, the page shown taken at once.
+func (a *app) startFindPages(d *detailView) {
+	if n := min(d.record.PostsPages, maxFindPages); a.pagedOn() && pagedKey(d.key) && n > 1 {
+		d.found.key, d.found.pages = d.key, make([]foundPage, n)
+		if !d.commentsLoading() {
+			a.takePage(d, d.shown, d.record, d.uncut)
+		}
+	}
+}
+
+// refindTicket starts the find on d again over the pages of its key, with
+// no current hit: a posted comment moved every page and may have turned
+// their order (afterComment). The pane keeps its own anchor, the new
+// comment; n goes to the first hit. The page out is canceled here as on
+// every new find, though the post's dropResources canceled it already.
+func (a *app) refindTicket(d *detailView) tea.Cmd {
+	if d.find.query == "" {
+		return nil
+	}
+	a.cancelArea(gateway.FindPages)
+	d.found = ticketFind{}
+	a.startFindPages(d)
+	return a.readFindPages()
+}
+
+// selectHit makes the section of the hit at the active one, and its
+// comment the selected one, so the keys of the section act where the hit
+// stands.
+func (d *detailView) selectHit(at findPlace) {
+	switch at.area {
+	case areaDescription, areaAttachments:
+		d.area = at.area
+	case areaComments:
+		if d.post != at.post {
+			d.post, d.postFile = at.post, ""
+		}
+		d.area = areaComments
+	}
 }
 
 // moveTicketHit is n or N: the next or the previous hit round the end, in
@@ -369,6 +411,7 @@ func (m Model) moveTicketHit(delta int) (Model, tea.Cmd) {
 	}
 	at, page := placeAt(f.runs, d.find.current)
 	f.at, f.set, d.follow = at, true, anchorMatch
+	d.selectHit(at)
 	if page == 0 {
 		return m, nil
 	}

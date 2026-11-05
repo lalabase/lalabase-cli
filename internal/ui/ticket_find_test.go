@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -367,7 +368,7 @@ func TestANewCommentShiftsThePagesAndTheHitsFollowTheirComments(t *testing.T) {
 	if h.drive(h.press("R")); h.paneNotice() != "1 of 1" {
 		t.Fatalf("after the new comment: %q", h.paneNotice())
 	}
-	h.press("tab")
+	// The hit made the comments the active section.
 	h.drive(h.press("]"))
 	if cur, _ := h.inSight(); h.paneNotice() != "1 of 2" || !slices.Equal(cur, []string{"Kiwi"}) {
 		t.Fatalf("on page 2: %q, in sight %q", h.paneNotice(), cur)
@@ -524,5 +525,102 @@ func TestTheFindWhereverATicketStands(t *testing.T) {
 	h.find("kiwi")
 	if got := h.paneNotice(); !h.m.app.agentTicket() || got != "1 of 1" {
 		t.Fatalf("the agent's ticket: notice %q", got)
+	}
+}
+
+// A comment posted turns the pane to the first page, newest first, the
+// comment in sight: a find made oldest first finds again over the pages of
+// the pane's order, no hit taken from the comment, and n lands on each hit,
+// the one on page 3 too.
+func TestAPostedCommentFindsAgainInThePanesOrder(t *testing.T) {
+	t.Parallel()
+
+	h := newRESTHarness(t)
+	var comments atomic.Int32
+	comments.Store(60)
+	h.f.setRESTTicket(func(id string, o api.TicketOptions) transport.Answer {
+		if id != ticketID(website, 6) {
+			return h.d.defaultRESTTicket(id, o)
+		}
+		d := h.d
+		d.sixComments = int(comments.Load())
+		o.PostsPage = max(1, o.PostsPage)
+		record := d.wholeTicket(website, 6, o)
+		for i := range record.Posts {
+			if p := record.Posts[i].ID; p == sixPostID(5) || p == sixPostID(55) {
+				record.Posts[i].BodyText = "Kiwi"
+			}
+		}
+		var body map[string]any
+		_ = json.Unmarshal(ticketAnswer(record).Payload, &body)
+		return restData(body, true)
+	})
+	h.openSix()
+	h.press("tab")
+	h.drive(h.press("o"))
+	h.find("kiwi")
+	if got := h.paneNotice(); got != "1 of 2" {
+		t.Fatalf("oldest first: %q", got)
+	}
+	comments.Store(61)
+	h.drive(h.sendComment("Erledigt"))
+	d := h.m.app.detail
+	if !d.key.Newest || !d.found.key.Newest || d.follow != anchorPost || h.paneNotice() != "2 found" {
+		t.Fatalf("after the comment: key %+v, find's key %+v, anchor %d, notice %q", d.key, d.found.key, d.follow, h.paneNotice())
+	}
+	for _, want := range []struct {
+		notice string
+		page   int
+	}{{"1 of 2", 1}, {"2 of 2", 3}, {"1 of 2, from the top", 1}} {
+		h.drive(h.press("n"))
+		if cur, _ := h.inSight(); h.paneNotice() != want.notice || d.shown.PostsPage != want.page || !d.shown.Newest || !slices.Equal(cur, []string{"Kiwi"}) {
+			t.Fatalf("n: notice %q, page %d newest %v, in sight %q; want %q on page %d", h.paneNotice(), d.shown.PostsPage, d.shown.Newest, cur, want.notice, want.page)
+		}
+	}
+}
+
+// A comment on the page shown counts there, never on an older copy of
+// another page that still holds it: n stays on the page shown.
+func TestTheShownPageWinsOverAnOlderCopy(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	texts := map[int]string{36: "Kiwi am Ende von Seite eins"}
+	h.findSix(60, texts)
+	h.openSix()
+	h.find("kiwi")
+	// A new comment pushes 36 to page 2; page 1 held still has it. The
+	// hit made the comments the active section.
+	h.findSix(61, texts)
+	h.drive(h.press("]"))
+	d := h.m.app.detail
+	if d.shown.PostsPage != 2 || h.paneNotice() != "1 of 1" {
+		t.Fatalf("on page 2: page %d, notice %q", d.shown.PostsPage, h.paneNotice())
+	}
+	h.drive(h.press("n"))
+	if cur, _ := h.inSight(); d.shown.PostsPage != 2 || !slices.Equal(cur, []string{"Kiwi"}) {
+		t.Fatalf("n: page %d, in sight %q", d.shown.PostsPage, cur)
+	}
+}
+
+// n and N make the hit's section the active one, its comment the selected
+// one, so [, ], e and the arrows act where the hit stands.
+func TestAHitTakesItsSectionAndItsComment(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.findSix(30, map[int]string{findDescription: "Kiwi", 28: "Kiwi"})
+	h.openSix()
+	h.find("kiwi")
+	d := h.m.app.detail
+	if h.paneNotice() != "1 of 2" || d.area != areaDescription {
+		t.Fatalf("enter: %q, area %d", h.paneNotice(), d.area)
+	}
+	h.press("n")
+	if cur, _ := h.inSight(); h.paneNotice() != "2 of 2" || d.area != areaComments || d.post != sixPostID(28) || !slices.Equal(cur, []string{"Kiwi"}) {
+		t.Fatalf("n: %q, area %d, post %q, in sight %q", h.paneNotice(), d.area, d.post, cur)
+	}
+	if h.press("N"); d.area != areaDescription {
+		t.Fatalf("N: area %d", d.area)
 	}
 }

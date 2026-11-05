@@ -401,13 +401,18 @@ navigation again.
   of the pane, else the first; with none on the page shown the notice says
   how many there are ("3 found") and `n` goes to the first. `n` and `N`
   turn the pane to a hit on another page, from memory and without a request
-  when this run read it. The pane keeps the current hit in sight, inside a
+  when this run read it. The current hit's section is the active one and
+  its comment the selected one, so `[`, `]`, `e` and the arrows act where
+  it stands. The pane keeps the current hit in sight, inside a
   long comment too, until you scroll. `[`/`]` keep the find, `o` finds
   again over the other order's pages, `e` keeps the current hit in its text
   and then finds in the whole of it. A hit is known by its comment: when a
   new comment moves the pages, one whose comment left the pages the client
   holds drops out of the count, and is found again when its page is read
-  again. `Esc` ends the find first, then closes an expansion, then goes
+  again; a comment on the page shown counts there, never on an older copy
+  of another page. A comment you post turns the pane to the newest first
+  page, and the find starts again over the pages in that order, with no
+  current hit: `n` goes to the first. `Esc` ends the find first, then closes an expansion, then goes
   back. Leaving the ticket, a new find or `Esc` cancels the page still out;
   its answer changes nothing. A server without pages: its one answer is
   searched. The details of a notification have no find.

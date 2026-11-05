@@ -133,5 +133,10 @@ func (a *app) afterComment(op *ticketOp, comment string) tea.Cmd {
 		return tea.Batch(cmds...)
 	})
 	op.clarifiers = issued
+	if d := a.detail; d != nil && d.id == op.ticket && d.project == op.project {
+		// A find starts again over the pages as they are now, in the
+		// pane's order (F2); its reads are not the post's clarifiers.
+		return tea.Batch(read, a.refindTicket(d))
+	}
 	return read
 }
