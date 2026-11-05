@@ -22,6 +22,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	next.fitDialog()
 	next.settleFind()
 	if a := next.app; a != nil {
+		// The find's page out goes on before the flush sends what it asks
+		// of the disk (F2).
+		if pages := a.settleFindPages(); pages != nil {
+			cmd = tea.Batch(cmd, pages)
+		}
 		if flush := a.flushDisk(); flush != nil {
 			cmd = tea.Batch(cmd, flush)
 		}

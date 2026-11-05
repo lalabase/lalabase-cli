@@ -156,9 +156,8 @@ func (m Model) receiveDiskOpened(msg diskOpened) (Model, tea.Cmd) {
 // diskRead asks the disk for key, for a view that found the memory empty.
 // The read is sent with the next batch; its result is accepted only when
 // the scope still accepts the ticket and no network answer was filed for
-// the key meanwhile. More than maxDiskReads waiting drop the oldest, but
-// a page of the find (F2), which waits for its answer to go on. It says
-// whether the disk was asked.
+// the key meanwhile. More than maxDiskReads waiting drop the oldest. It
+// says whether the disk was asked.
 func (a *app) diskRead(area gateway.Area, key cache.Key, p purpose) bool {
 	d := a.disk
 	if a.expired || a.scope == nil || !d.usable() {
@@ -177,7 +176,7 @@ func (a *app) diskRead(area gateway.Area, key cache.Key, p purpose) bool {
 		if waiting <= maxDiskReads {
 			break
 		}
-		if r := d.reads[w]; r != nil && !r.sent && !r.canceled && r.purpose != forFindPage {
+		if r := d.reads[w]; r != nil && !r.sent && !r.canceled {
 			a.cancelDiskRead(w)
 			waiting--
 		}
@@ -375,15 +374,11 @@ func (m Model) receiveDiskDone(msg diskDone) (Model, tea.Cmd) {
 		return m, nil
 	}
 	var cmd tea.Cmd
-	var pages []cache.Key
 	for _, r := range msg.reads {
 		read := d.reads[r.waiter]
 		a.dropDiskRead(r.waiter)
 		if read == nil || a.expired || a.scope == nil {
 			continue
-		}
-		if read.purpose == forFindPage {
-			pages = append(pages, read.ticket.Key)
 		}
 		if read.canceled || !r.hit || a.filed[read.ticket.Key] != read.filed {
 			a.scope.Leave(r.waiter)
@@ -400,11 +395,6 @@ func (m Model) receiveDiskDone(msg diskDone) (Model, tea.Cmd) {
 		if a.showFromDisk(read.purpose, read.ticket.Key) && (read.purpose == forTickets || read.purpose == forGroup) {
 			cmd = m.selectionChanged()
 		}
-	}
-	for _, k := range pages {
-		// The find's page (F2): from memory if the disk had it, else from
-		// the server.
-		cmd = tea.Batch(cmd, a.diskPageDone(k))
 	}
 	return m, cmd
 }

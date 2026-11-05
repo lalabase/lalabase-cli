@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -9,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/gboyke/lalabase-cli/internal/agents"
 	"github.com/gboyke/lalabase-cli/internal/api"
+	"github.com/gboyke/lalabase-cli/internal/diskcache"
 	"github.com/gboyke/lalabase-cli/internal/gateway"
 	"github.com/gboyke/lalabase-cli/internal/transport"
 	"github.com/gboyke/lalabase-cli/internal/ui/view"
@@ -142,9 +144,10 @@ func TestAHitDeepInALongCommentIsInSight(t *testing.T) {
 }
 
 // From page 1 the hits of page 3 are found and counted, the other pages
-// read one after the other with the pane's key, the pane left on page 1
-// (scrolled to its end: no hit below, the first is the current one); n
-// turns it to page 3 from memory, the hit in sight, without a read.
+// read one after the other with the pane's key (R while one is out starts
+// no second), the pane left on page 1 (scrolled to its end: no hit below,
+// the first is the current one); n turns it to page 3 from memory, the hit
+// in sight, without a read.
 func TestTheFindReadsTheOtherPagesOneByOne(t *testing.T) {
 	t.Parallel()
 
@@ -154,7 +157,7 @@ func TestTheFindReadsTheOtherPagesOneByOne(t *testing.T) {
 	h.scrollDown(-1)
 	before := len(h.f.detailReads())
 	h.typeFind("kiwi")
-	for cmds := []tea.Cmd{h.press("enter")}; len(cmds) > 0; {
+	for cmds := []tea.Cmd{h.press("enter"), h.press("R")}; len(cmds) > 0; {
 		if n := h.findReads(); n > 1 {
 			t.Fatalf("%d pages out at once", n)
 		}
@@ -164,7 +167,8 @@ func TestTheFindReadsTheOtherPagesOneByOne(t *testing.T) {
 		}
 		cmds = next
 	}
-	if got := h.readsSince(before); !slices.Equal(got, []api.TicketOptions{paged(2, true, 1), paged(3, true, 1)}) {
+	// R read the page shown again, beside the find's pages.
+	if got := slices.DeleteFunc(h.readsSince(before), func(o api.TicketOptions) bool { return o == first }); !slices.Equal(got, []api.TicketOptions{paged(2, true, 1), paged(3, true, 1)}) {
 		t.Fatalf("reads %+v", got)
 	}
 	d := h.m.app.detail
@@ -180,8 +184,23 @@ func TestTheFindReadsTheOtherPagesOneByOne(t *testing.T) {
 	if h.press("n"); h.paneNotice() != "1 of 3, from the top" || d.shown.PostsPage != 1 {
 		t.Fatalf("round the end: %q, page %d", h.paneNotice(), d.shown.PostsPage)
 	}
-	if n := len(h.f.detailReads()) - before; n != 2 {
-		t.Fatalf("n read %d pages", n-2)
+	if n := len(h.f.detailReads()) - before; n != 3 {
+		t.Fatalf("n read %d pages", n-3)
+	}
+}
+
+// openSixOnDisk opens ticket #6 in a session on the disk cache, and with
+// fill its other two pages of comments first, so the disk holds them.
+func (h *harness) openSixOnDisk(fill bool) {
+	h.t.Helper()
+	h.openTickets(website)
+	h.m.app.tickets.selected = ticketID(website, 6)
+	h.drive(h.press("enter"))
+	if fill {
+		h.press("tab")
+		for _, k := range []string{"]", "]", "[", "["} {
+			h.drive(h.press(k))
+		}
 	}
 }
 
@@ -192,16 +211,7 @@ func TestTheFindTakesPagesFromMemoryAndDisk(t *testing.T) {
 	root := t.TempDir()
 	h := newDiskHarness(t, root, nil)
 	h.findSix(60, map[int]string{5: "Kiwi"})
-	open := func(h *harness) {
-		h.openTickets(website)
-		h.m.app.tickets.selected = ticketID(website, 6)
-		h.drive(h.press("enter"))
-	}
-	open(h)
-	h.press("tab")
-	for _, k := range []string{"]", "]", "[", "["} {
-		h.drive(h.press(k))
-	}
+	h.openSixOnDisk(true)
 	find := func(name string, h *harness) {
 		before := len(h.f.detailReads())
 		h.find("kiwi")
@@ -211,8 +221,35 @@ func TestTheFindTakesPagesFromMemoryAndDisk(t *testing.T) {
 	}
 	find("memory", h)
 	h = h.restart(root)
-	open(h)
+	h.openSixOnDisk(false)
 	find("disk", h)
+}
+
+// A disk that fails while it reads a page of the find leaves no page
+// waiting: the find goes on over the server.
+func TestAFailingDiskLeavesNoPageOfTheFindWaiting(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	var fail atomic.Bool
+	o := &diskcache.Opener{Root: root, Faults: func(step, _ string) error {
+		if fail.Load() && step == "open" {
+			return errors.New("injected read failure")
+		}
+		return nil
+	}}
+	h := buildHarness(t, nil, o)
+	h.findSix(60, map[int]string{50: "Kiwi", 5: "Kiwi"})
+	h.openSixOnDisk(true)
+	h.press("q")
+	h = buildHarness(t, h.f, o)
+	h.findSix(60, map[int]string{50: "Kiwi", 5: "Kiwi"})
+	h.openSixOnDisk(false)
+	fail.Store(true)
+	h.find("kiwi")
+	if got := h.paneNotice(); got != "1 of 2" || !h.m.app.disk.off {
+		t.Fatalf("notice %q, the disk off: %v", got, h.m.app.disk.off)
+	}
 }
 
 // Leaving the ticket, a new find and Esc cancel the page out; its late
@@ -300,8 +337,8 @@ func TestOFindsAgainInTheOtherOrderAndTheBracketsKeepTheFind(t *testing.T) {
 	h.openSix()
 	h.press("tab")
 	h.find("kiwi")
-	if h.drive(h.press("]")); h.paneNotice() != "1 of 2" || h.m.app.detail.shown.PostsPage != 2 {
-		t.Fatalf("]: %q", h.paneNotice())
+	if h.drive(h.press("]")); h.paneNotice() != "1 of 2" || h.m.app.detail.shown.PostsPage != 2 || h.m.app.detail.follow != anchorArea {
+		t.Fatalf("]: %q, anchor %d", h.paneNotice(), h.m.app.detail.follow)
 	}
 	before := len(h.f.detailReads())
 	h.drive(h.press("o"))
@@ -359,8 +396,8 @@ func TestEKeepsTheHitInItsTextAndEscEndsTheFindFirst(t *testing.T) {
 	}
 	h.drive(h.press("e"))
 	d := h.m.app.detail
-	if d.expansion == nil || !d.expansion.known || h.paneNotice() != "1 of 3" || d.found.at.area != areaDescription {
-		t.Fatalf("after e: %q, at %+v", h.paneNotice(), d.found.at)
+	if d.expansion == nil || !d.expansion.known || h.paneNotice() != "1 of 3" || d.found.at.area != areaDescription || !strings.Contains(h.helpText(), "esc end find") {
+		t.Fatalf("after e: %q, at %+v, help %q", h.paneNotice(), d.found.at, h.helpText())
 	}
 	if h.press("n"); h.paneNotice() != "2 of 3" || d.found.at != (findPlace{area: areaDescription, k: 1}) {
 		t.Fatalf("n in the whole text: %q, at %+v", h.paneNotice(), d.found.at)
@@ -375,6 +412,40 @@ func TestEKeepsTheHitInItsTextAndEscEndsTheFindFirst(t *testing.T) {
 	}
 	if h.press("esc"); h.m.focus != view.List {
 		t.Fatalf("the third esc: focus %d", h.m.focus)
+	}
+}
+
+// The ticket's head and the headings are not searched.
+func TestTheHeadAndTheHeadingsAreNotSearched(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.findSix(30, map[int]string{findDescription: "Kiwi"})
+	h.openSix()
+	for _, word := range []string{"ticket 6", "description", "readable", "in all"} {
+		if h.find(word); h.paneNotice() != "no match" {
+			t.Fatalf("%q: %q", word, h.paneNotice())
+		}
+	}
+}
+
+// A page that says the ticket is gone ends the find with the ticket.
+func TestAPageOfAGoneTicketEndsTheFind(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.findSix(60, map[int]string{5: "Kiwi"})
+	answer := h.f.ticket
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		if o.PostsPage == 2 {
+			return transport.Answer{Class: transport.NotFound, Message: "No ticket found for " + id + ".", Status: 200, Sent: true}
+		}
+		return answer(project, id, o)
+	})
+	h.openSix()
+	h.find("kiwi")
+	if d := h.m.app.detail; d.find.query != "" || d.found.pages != nil || d.known {
+		t.Fatalf("the find outlived its ticket: query %q, known %v", d.find.query, d.known)
 	}
 }
 

@@ -194,10 +194,10 @@ func placeAt(runs []findRun, i int) (findPlace, int) {
 	return findPlace{area: ticketAreas}, 0
 }
 
-// findInPane marks the hits in the pane's text, the current one apart, and
-// wraps it once so they are found on the screen: the current one is kept
-// in sight while it is the anchor.
-func (m Model) findInPane(c *present.Column, d *detailView, t ticketLines, g view.Geometry) {
+// countFind finds the query in the pane's lines t: the hits, where each
+// stands, the runs over every page, and the index of the current hit, -1
+// for none.
+func (d *detailView) countFind(t ticketLines) ([]hit, []findPlace, int) {
 	f := &d.found
 	hits := findHits(t.lines, d.find.query)
 	places, count := placesIn(t, d, hits)
@@ -211,6 +211,15 @@ func (m Model) findInPane(c *present.Column, d *detailView, t ticketLines, g vie
 		}
 		d.find.current = max(0, at)
 	}
+	return hits, places, at
+}
+
+// findInPane marks the hits in the pane's text, the current one apart, and
+// wraps it once so they are found on the screen: the current one is kept
+// in sight while it is the anchor.
+func (m Model) findInPane(c *present.Column, d *detailView, t ticketLines, g view.Geometry) {
+	f := &d.found
+	hits, places, at := d.countFind(t)
 	now, _ := placeAt(f.runs, at)
 	var drawn []hit
 	var drawnAt []findPlace
@@ -287,14 +296,18 @@ func (m Model) ticketNotice(d *detailView, notice present.Inline) present.Inline
 	return present.NewInline(text)
 }
 
-// ticketHits is the number of hits of the find in the ticket, the pane
-// built first; none without a query.
+// ticketHits is the number of hits of the find in the ticket, counted as
+// the pane counts them but not drawn: the help asks on every frame. None
+// without a query.
 func (m Model) ticketHits() int {
-	d := m.app.detail
-	if d == nil || d.find.query == "" {
+	a := m.app
+	d := a.detail
+	if d == nil || !d.known || d.find.query == "" {
 		return 0
 	}
-	_ = m.detailColumn()
+	// The head is not searched: the facts, the agent and the notification
+	// it would hold change no hit's place.
+	d.countFind(ticketText(d, ticketContext{paged: a.pagedOn(), when: a.when, me: a.ownID()}))
 	return d.found.total()
 }
 
@@ -463,12 +476,28 @@ func (f *ticketFind) out(k cache.Key) bool {
 	return f.reading > 0 && k == want
 }
 
-// diskPageDone follows the disk's answer to the find's page out: what it
-// brought is in memory now; without it the server is asked.
-func (a *app) diskPageDone(k cache.Key) tea.Cmd {
+// settleFindPages follows the find's page out once nothing reads it any
+// more: the disk answered (a hit is in memory now), failed, or dropped the
+// read. The page comes from memory if it is there, else from the server;
+// no page waits for an answer that will not come. Every step ends with it.
+func (a *app) settleFindPages() tea.Cmd {
 	d := a.detail
-	if d == nil || !d.found.out(k) {
+	if d == nil || d.found.reading == 0 {
 		return nil
+	}
+	k := d.found.key
+	k.PostsPage = d.found.reading
+	for _, w := range a.waiters {
+		if !w.canceled && w.purpose == forFindPage && w.ticket.Key == k {
+			return nil
+		}
+	}
+	if disk := a.disk; disk != nil {
+		for _, r := range disk.reads {
+			if !r.canceled && r.purpose == forFindPage && r.ticket.Key == k {
+				return nil
+			}
+		}
 	}
 	if a.findFromMemory(d, k) {
 		d.found.reading = 0
@@ -489,18 +518,21 @@ func (m Model) receiveFindPage(r gateway.TicketResult) (Model, tea.Cmd) {
 		a.learnTitle(r.Record.ID, r.Record.Title, uint64(r.Flight))
 	}
 	d := a.detail
-	switch {
-	case d == nil || d.key.Resource() != r.Key.Resource():
-		return m, nil
-	case dec == cache.Remove:
-		return m.detailRemoved(), nil
-	case !d.found.out(r.Key):
+	if d == nil || d.key.Resource() != r.Key.Resource() {
 		return m, nil
 	}
-	d.found.reading = 0
-	if dec == cache.Replace {
+	out := d.found.out(r.Key)
+	if out {
+		d.found.reading = 0
+	}
+	switch {
+	case dec == cache.Remove:
+		return m.detailRemoved(), nil
+	case !out:
+		return m, nil
+	case dec == cache.Replace:
 		a.takePage(d, r.Key, r.Record, r.Way == features.REST)
-	} else {
+	default:
 		d.found.pages[r.Key.PostsPage-1].state = foundFailed
 	}
 	return m, a.readFindPages()

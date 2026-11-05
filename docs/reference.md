@@ -387,7 +387,8 @@ navigation again.
   line of a meeting (F1), with its keys, marks and notice. `Enter` finds in
   the description as shown (cut at 8,000 characters until `e`), in the
   comments of every page in the pane's order, then in the file names of the
-  attachments page shown; the head and the headings are not searched. The
+  attachments page shown. A comment's author and time are searched with it;
+  the ticket's head (its title and facts) and the headings are not. The
   page shown is searched as drawn. The other pages of comments are read
   with the pane's own options, as `[` and `]` read them, so each is the
   cache entry they show: one after the other, as the person's read, memory
