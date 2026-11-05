@@ -449,6 +449,35 @@ func TestAPageOfAGoneTicketEndsTheFind(t *testing.T) {
 	}
 }
 
+// The help counts the find itself, as the pane does, also before the
+// pane is drawn again: here the mark of the person's own comments, on the
+// page shown and on page 3, read after Enter.
+func TestTheHelpCountsTheFindBeforeThePaneIsDrawn(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	me := h.d.me.User
+	h.f.setTicket(func(project, id string, o api.TicketOptions) transport.Answer {
+		if id != ticketID(website, 6) || o.PostID != "" {
+			return h.d.defaultTicket(project, id, o)
+		}
+		d := h.d
+		d.sixComments = 60
+		t := d.ticketRecord(project, 6, o)
+		for i := range t.Posts {
+			if t.Posts[i].ID == sixPostID(50) || t.Posts[i].ID == sixPostID(5) {
+				t.Posts[i].Author = &api.Ref{ID: me.ID, Name: me.DisplayName}
+			}
+		}
+		return ticketAnswer(t)
+	})
+	h.openSix()
+	h.find("(you)")
+	if n := h.m.ticketHits(); n != 2 || !h.offers(NextHit) {
+		t.Fatalf("the help counts %d, offers n: %v", n, h.offers(NextHit))
+	}
+}
+
 // A server without pages: the one answer is searched, nothing more read.
 func TestAServerWithoutPagesFindsInItsOneAnswer(t *testing.T) {
 	t.Parallel()

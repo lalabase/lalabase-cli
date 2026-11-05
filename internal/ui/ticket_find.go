@@ -479,7 +479,9 @@ func (f *ticketFind) out(k cache.Key) bool {
 // settleFindPages follows the find's page out once nothing reads it any
 // more: the disk answered (a hit is in memory now), failed, or dropped the
 // read. The page comes from memory if it is there, else from the server;
-// no page waits for an answer that will not come. Every step ends with it.
+// no page waits for an answer that will not come. Every step ends with it,
+// so whoever sets reading clears it with the answer (receiveFindPage), or
+// this asks again on every step.
 func (a *app) settleFindPages() tea.Cmd {
 	d := a.detail
 	if d == nil || d.found.reading == 0 {
