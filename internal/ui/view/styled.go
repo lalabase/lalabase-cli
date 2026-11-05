@@ -170,6 +170,30 @@ func wrapParts(line string, st present.LineStyle, width int, method ansi.Method)
 	wrapped := wrapBody(line, max(1, reading-indent), method)
 	out := make([]screenLine, 0, len(wrapped))
 	starts := make([]int, 0, len(wrapped))
+	styleAt := st.StyleAt
+	if len(st.Spans) > 8 {
+		// Many spans (the hits of a find in a long comment, F2): the line
+		// is painted once, the first span on top, as StyleAt takes it;
+		// asked span by span, every grapheme would cost all of them.
+		painted := make([]present.Style, len(line))
+		for i := range painted {
+			painted[i] = st.RestStyle
+			if i < st.Lead {
+				painted[i] = st.LeadStyle
+			}
+		}
+		for k := len(st.Spans) - 1; k >= 0; k-- {
+			for i := max(0, st.Spans[k].From); i < min(len(line), st.Spans[k].To); i++ {
+				painted[i] = st.Spans[k].Style
+			}
+		}
+		styleAt = func(pos int) present.Style {
+			if pos < len(painted) {
+				return painted[pos]
+			}
+			return st.StyleAt(pos)
+		}
+	}
 	pos := 0
 	for _, w := range wrapped {
 		var l screenLine
@@ -187,7 +211,7 @@ func wrapParts(line string, st present.LineStyle, width int, method ansi.Method)
 			if start < 0 {
 				start = pos
 			}
-			style := st.StyleAt(pos)
+			style := styleAt(pos)
 			pos += len(cluster)
 			if n := len(l); n > 0 && l[n-1].style == style && (indent == 0 || n > 1) {
 				l[n-1].text += cluster

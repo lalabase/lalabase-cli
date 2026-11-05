@@ -37,6 +37,11 @@ const (
 	// Meeting is the meeting in the object pane (K7b), previewed or
 	// opened, as Detail is for a ticket.
 	Meeting
+	// FindPages are the other pages of comments the find in the ticket
+	// reads (F2), one after the other, under the pane's own keys: a new
+	// find, its end or another ticket moves the area, so a late page
+	// changes nothing.
+	FindPages
 	areas
 )
 

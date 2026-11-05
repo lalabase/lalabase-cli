@@ -586,8 +586,9 @@ func TestRowsAndDetailsFallBackForMissingValues(t *testing.T) {
 func TestHelpNamesExactlyTheKeysThatAct(t *testing.T) {
 	t.Parallel()
 
-	// C1f adds o (the ticket a notification names) and r (mark as read).
-	keys := map[string]Action{"up": Up, "down": Down, "pgup": PageUp, "pgdown": PageDown, "[": PrevPage, "]": NextPage, "R": Refresh, "enter": OpenList, "esc": Back, "left": Left, "right": Right, "o": Order, "r": MarkRead, "tab": NextArea, "e": Expand, "k": AddComment}
+	// C1f adds o (the ticket a notification names) and r (mark as read);
+	// F2 the find in the ticket and its hits.
+	keys := map[string]Action{"up": Up, "down": Down, "pgup": PageUp, "pgdown": PageDown, "[": PrevPage, "]": NextPage, "R": Refresh, "enter": OpenList, "esc": Back, "left": Left, "right": Right, "o": Order, "r": MarkRead, "tab": NextArea, "e": Expand, "k": AddComment, "/": Search, "n": NextHit}
 	acted := func(h *harness, key string) bool {
 		before := ansi.Strip(h.m.View().Content)
 		focus := h.m.focus

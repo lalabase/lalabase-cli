@@ -75,6 +75,8 @@ const (
 	forMeetings
 	// forMeeting: the meeting in the object pane (K7b).
 	forMeeting
+	// forFindPage: a page of comments the find in the ticket reads (F2).
+	forFindPage
 )
 
 // waiter is one consumer of a read in flight: its ticket, how to cancel it,

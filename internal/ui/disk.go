@@ -156,11 +156,12 @@ func (m Model) receiveDiskOpened(msg diskOpened) (Model, tea.Cmd) {
 // diskRead asks the disk for key, for a view that found the memory empty.
 // The read is sent with the next batch; its result is accepted only when
 // the scope still accepts the ticket and no network answer was filed for
-// the key meanwhile. More than maxDiskReads waiting drop the oldest.
-func (a *app) diskRead(area gateway.Area, key cache.Key, p purpose) {
+// the key meanwhile. More than maxDiskReads waiting drop the oldest. It
+// says whether the disk was asked.
+func (a *app) diskRead(area gateway.Area, key cache.Key, p purpose) bool {
 	d := a.disk
 	if a.expired || a.scope == nil || !d.usable() {
-		return
+		return false
 	}
 	t := a.scope.Begin(area, key, 0)
 	d.reads[t.Waiter] = &diskRead{ticket: t, purpose: p, filed: a.filed[key], mark: d.journal.Mark()}
@@ -180,6 +181,7 @@ func (a *app) diskRead(area gateway.Area, key cache.Key, p purpose) {
 			waiting--
 		}
 	}
+	return true
 }
 
 // diskRoom is how many more reads may wait for the disk without one of

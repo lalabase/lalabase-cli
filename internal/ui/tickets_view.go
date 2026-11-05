@@ -183,7 +183,8 @@ func (m Model) detailColumn() present.Column {
 	}
 	// The facts stand in the bar where the pane has room for it, else in
 	// the head; the width alone decides, as for wrappedLines.
-	meta := view.MetaFits(view.InnerWidth(layoutWith(m.width, m.height, 1, m.focus), view.Object))
+	g := layoutWith(m.width, m.height, 1, m.focus)
+	meta := view.MetaFits(view.InnerWidth(g, view.Object))
 	tc := ticketContext{paged: a.pagedOn(), origin: m.originLine(), when: a.when, me: a.ownID(), meta: meta}
 	if !meta {
 		// The agent's line stands in the head, or in the bar (C9b).
@@ -217,6 +218,11 @@ func (m Model) detailColumn() present.Column {
 	if line >= 0 {
 		c.Offset = m.wrappedLines(t, line, c.Meta)
 	}
+	if d.find.query != "" {
+		// The find (F2): its marks, and its current hit as the anchor.
+		m.findInPane(&c, d, t, g)
+	}
+	c.Notice = m.ticketNotice(d, c.Notice)
 	return c
 }
 

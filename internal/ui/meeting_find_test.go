@@ -66,23 +66,31 @@ func newFindHarness(t *testing.T, transcript bool) *harness {
 	return h
 }
 
-// find opens the find line, empties it, types query and presses Enter.
+// find opens the find line, empties it, types query and presses Enter;
+// what Enter reads (the ticket's other pages, F2) is read.
 func (h *harness) find(query string) {
+	h.t.Helper()
+	h.typeFind(query)
+	h.drive(h.press("enter"))
+}
+
+// typeFind opens the find line of the pane in focus, empties it and types
+// query.
+func (h *harness) typeFind(query string) {
 	h.t.Helper()
 	h.press("/")
 	if h.m.mode != FindEntry {
 		h.t.Fatalf("no find line: mode %d", h.m.mode)
 	}
-	for i := 0; h.m.app.meeting.find.entry != ""; i++ {
+	for i := 0; h.m.findTarget().entry != ""; i++ {
 		if i == 200 {
-			h.t.Fatalf("Backspace does not empty the line: %q", h.m.app.meeting.find.entry)
+			h.t.Fatalf("Backspace does not empty the line: %q", h.m.findTarget().entry)
 		}
 		h.feed(key(tea.KeyBackspace))
 	}
 	for _, r := range query {
 		h.press(string(r))
 	}
-	h.press("enter")
 }
 
 // scrollDown pages down until the top of the pane is below line past, or,

@@ -320,6 +320,31 @@ func TestASpanKeepsItsStyleAcrossAWrap(t *testing.T) {
 	}
 }
 
+// F2: a line with many spans (the hits of a find in a long comment) is
+// drawn as one with few: every byte in the first span that holds it, the
+// lead and the rest around them, across the wrap.
+func TestALineWithManySpansDrawsAsItsFirstSpans(t *testing.T) {
+	t.Parallel()
+
+	line := strings.Repeat("ab cd ", 20)
+	st := present.LineStyle{Lead: 4, LeadStyle: present.Strong, RestStyle: present.Faint}
+	st.Spans = append(st.Spans, present.Span{From: 6, To: 14, Style: present.MatchCurrent})
+	for i := 0; i < len(line); i += 6 {
+		st.Spans = append(st.Spans, present.Span{From: i + 1, To: i + 4, Style: present.Match})
+	}
+	lines, styles, origins := Wrap(present.Column{Text: present.NewBody(line), Styles: []present.LineStyle{st}}, 40, ansi.WcWidth)
+	if len(lines) < 2 {
+		t.Fatalf("no wrap: %q", lines)
+	}
+	for s := range lines {
+		for i := range len(lines[s]) {
+			if got, want := styles[s].StyleAt(i), st.StyleAt(origins[s].From+i); got != want {
+				t.Fatalf("line %d byte %d: %v, want %v", s, i, got, want)
+			}
+		}
+	}
+}
+
 // F1: a hit of the find is bold in a tone of its own, the current one
 // reversed in it, so both keep the weight of a bold line; a hit in a
 // speaker's head is marked and bold, the rest of the name keeps its tone.

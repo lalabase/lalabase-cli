@@ -33,9 +33,9 @@ const (
 )
 
 // anchor is what the pane keeps in sight: nothing (the person scrolled),
-// the heading of the active section, the selected comment or the selected
-// file. The line is found when the pane is built, so a resize keeps the
-// place.
+// the heading of the active section, the selected comment, the selected
+// file or the find's current hit (F2). The line is found when the pane is
+// built, so a resize keeps the place.
 type anchor uint8
 
 const (
@@ -43,6 +43,7 @@ const (
 	anchorArea
 	anchorPost
 	anchorFile
+	anchorMatch
 )
 
 // expansion is the one text of the ticket read whole: the description
@@ -318,6 +319,10 @@ func (m Model) turnArea(delta int) (Model, tea.Cmd) {
 	} else {
 		k.AttachmentsPage += delta
 	}
+	if d.follow == anchorMatch {
+		// The find stays (F2); its current hit is on the page left.
+		d.follow = anchorArea
+	}
 	return m, m.app.showPage(k)
 }
 
@@ -336,7 +341,12 @@ func (m Model) switchOrder() (Model, tea.Cmd) {
 	}
 	k := m.app.detail.key
 	k.Newest, k.PostsPage = !k.Newest, 1
-	return m, m.app.showPage(k)
+	show := m.app.showPage(k)
+	if m.app.detail.find.query == "" {
+		return m, show
+	}
+	// A find runs again over the pages of the other order (F2).
+	return m, tea.Batch(show, m.findInTicket(m.paneTop()))
 }
 
 // showPage asks for another page of the ticket: shown from the cache at
@@ -578,6 +588,7 @@ func (m Model) detailRemoved() Model {
 	a := m.app
 	d := a.detail
 	a.closeExpansion()
+	a.endFindPages(d)
 	d.record, d.shown, d.flight = api.Ticket{}, cache.Key{}, 0
 	d.removed()
 	if t := a.tickets; t != nil && t.opened == d.id {

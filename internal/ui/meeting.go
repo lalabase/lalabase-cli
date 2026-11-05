@@ -443,14 +443,6 @@ func (a *app) meetingLines(d *meetingDetail, c present.Column, width int, meta b
 
 // --- the find (F1) ------------------------------------------------------------
 
-// meetingTop is the first line of the meeting's text in sight, as the view
-// clamps the pane's offset.
-func (m Model) meetingTop() int {
-	c := m.objectColumn()
-	g := m.geometry()
-	return max(0, min(c.Offset, view.Extent(c, g, view.Object, m.widthMethod)-max(1, view.Capacity(c, g))))
-}
-
 // meetingHits is the number of hits of the find in the meeting shown, its
 // wrap brought up to date first; none without a query.
 func (m Model) meetingHits() int {
@@ -496,7 +488,7 @@ func (m Model) moveMeetingHit(delta int) Model {
 // is.
 func (m Model) endMeetingFind() Model {
 	d := m.app.meeting
-	d.offset = m.meetingTop()
+	d.offset = m.paneTop()
 	d.find, d.follow = finder{}, false
 	return m
 }
