@@ -419,6 +419,11 @@ const (
 	FindFromTop
 	FindFromBottom
 	FindNoMatch
+	FindFound
+	FindReading
+	FindPageFailed
+	FindPagesFailed
+	FindSearched
 	count
 )
 
@@ -634,4 +639,7 @@ var english = map[ID]string{
 	FindLine:         "Find: ", FindHelp: "find", HitKey: "n/N", HitHelp: "next/prev hit", EndFindHelp: "end find",
 	FindPlace: "%d of %d", FindFromTop: "%d of %d, from the top", FindFromBottom: "%d of %d, from the bottom",
 	FindNoMatch: "no match",
+	FindFound:   "%d found", FindReading: "reading page %d of %d",
+	FindPageFailed: "page %d did not load", FindPagesFailed: "%d pages did not load",
+	FindSearched: "%d of %d comments searched",
 }

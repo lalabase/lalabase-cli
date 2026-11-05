@@ -359,9 +359,10 @@ navigation again.
   ends with "Text shortened by server"; `e` reads it whole: the description (`full_text`, with the
   options of the page asked) or the selected comment (`post_id`). One
   expansion at a time; it is a read of its own and replaces no page; `Esc`
-  closes it first, without a request, and a late answer does not open it
-  again. A whole text can still be shortened by the server (100,000
-  characters). Over REST (K1) every text comes whole, and the pane shows
+  closes it before the way back (a find ends before it, F2), without a
+  request, and a late answer does not open it again. A whole text can
+  still be shortened by the server (100,000 characters). Over REST (K1)
+  every text comes whole, and the pane shows
   what the tools showed: 8,000 characters of a text on the page, a longer
   one ending with "Text shortened for this view", and `e` reads it whole
   as above, the description as the page again (REST has no `full_text`),
@@ -381,6 +382,33 @@ navigation again.
   sections in one request, a second shrink stops and offers `R`, an empty
   section goes to page 1 without a request. `R` reloads the page shown; an
   open expansion stays as it is.
+* **Finding in a ticket (F2).** With the ticket in focus (in the tickets
+  section, opened from a notification or as an agent's) `/` opens the find
+  line of a meeting (F1), with its keys, marks and notice. `Enter` finds in
+  the description as shown (cut at 8,000 characters until `e`), in the
+  comments of every page in the pane's order, then in the file names of the
+  attachments page shown; the head and the headings are not searched. The
+  page shown is searched as drawn. The other pages of comments are read
+  with the pane's own options, as `[` and `]` read them, so each is the
+  cache entry they show: one after the other, as the person's read, memory
+  and disk first, at most 40 pages (beyond, the notice says how many
+  comments were searched: "1000 of 1030 comments searched"). While pages
+  come the notice says so ("3 of 17, reading page 4 of 9"); a page that
+  does not load is named ("page 5 did not load"), the others are searched,
+  and `R` reads it again. The current hit is the first at or below the top
+  of the pane, else the first; with none on the page shown the notice says
+  how many there are ("3 found") and `n` goes to the first. `n` and `N`
+  turn the pane to a hit on another page, from memory and without a request
+  when this run read it. The pane keeps the current hit in sight, inside a
+  long comment too, until you scroll. `[`/`]` keep the find, `o` finds
+  again over the other order's pages, `e` keeps the current hit in its text
+  and then finds in the whole of it. A hit is known by its comment: when a
+  new comment moves the pages, one whose comment left the pages the client
+  holds drops out of the count, and is found again when its page is read
+  again. `Esc` ends the find first, then closes an expansion, then goes
+  back. Leaving the ticket, a new find or `Esc` cancels the page still out;
+  its answer changes nothing. A server without pages: its one answer is
+  searched. The details of a notification have no find.
 * **The ticket a notification names (C1f).** In the details of a
   notification `o` opens the ticket it names (its project and ticket id;
   nothing is guessed from a title or a message) in the object pane, with

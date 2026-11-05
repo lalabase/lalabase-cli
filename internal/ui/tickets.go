@@ -177,6 +177,10 @@ type detailView struct {
 	// page turn free it again.
 	corrected bool
 	expansion *expansion
+	// find is the find in the ticket (F2): its line, query and current
+	// hit; found what it holds beyond the page shown (ticket_find.go).
+	find  finder
+	found ticketFind
 }
 
 // The keys of the section's reads: every option of a request is part of
@@ -249,6 +253,7 @@ func (a *app) dropDetail() {
 	a.cancelArea(gateway.Detail)
 	a.cancelArea(gateway.Expansion)
 	a.cancelArea(gateway.Time)
+	a.cancelArea(gateway.FindPages)
 	a.detail = nil
 }
 
@@ -590,7 +595,10 @@ func (m Model) openTicket() (Model, tea.Cmd) {
 	v.opened = v.selected
 	m.focus = view.Object
 	d := a.ensureDetail(v.project, v.selected)
-	d.offset, d.follow = 0, anchorNone
+	if d.follow != anchorMatch {
+		// From its top, unless a find keeps its current hit in sight (F2).
+		d.offset, d.follow = 0, anchorNone
+	}
 	return m, a.readUnlessFresh(d)
 }
 
@@ -641,19 +649,29 @@ func (a *app) showCachedDetail(project, id string) bool {
 // if there is one that still reads: the record and the page shown, the
 // selection settled.
 func (a *app) cachedPage(d *detailView, k cache.Key) (cache.Entry, bool) {
-	e, ok := a.store.Get(k)
+	record, e, ok := a.cachedRecord(k)
 	if !ok {
-		return cache.Entry{}, false
-	}
-	record, ans := api.DecodeTicket(transport.Answer{Class: transport.Object, Payload: e.Payload, Status: 200, Sent: true}, gateway.DetailOptions(k))
-	if !ans.OK() || gateway.CheckDetail(k, record) != nil {
-		a.forget(k)
 		return cache.Entry{}, false
 	}
 	d.record, d.shown, d.uncut = record, k, false
 	d.flight = a.filed[k]
 	a.settle(d)
 	return e, true
+}
+
+// cachedRecord is the memory entry of a page of the ticket, decoded and
+// checked; one that does not read goes.
+func (a *app) cachedRecord(k cache.Key) (api.Ticket, cache.Entry, bool) {
+	e, ok := a.store.Get(k)
+	if !ok {
+		return api.Ticket{}, cache.Entry{}, false
+	}
+	record, ans := api.DecodeTicket(transport.Answer{Class: transport.Object, Payload: e.Payload, Status: 200, Sent: true}, gateway.DetailOptions(k))
+	if !ans.OK() || gateway.CheckDetail(k, record) != nil {
+		a.forget(k)
+		return api.Ticket{}, cache.Entry{}, false
+	}
+	return record, e, true
 }
 
 // closeTicket is Esc on the opened ticket: back to the list; the pane
@@ -677,7 +695,9 @@ func (m Model) refreshSection() tea.Cmd {
 	if m.focus == view.Object && a.detail != nil {
 		d := a.detail
 		d.loading, d.corrected = true, false
-		booked := a.readTime(d, false) // R reads the time again too (S6)
+		// R reads the time again too (S6), and the find's pages that did
+		// not load (F2).
+		booked := tea.Batch(a.readTime(d, false), a.retryFindPages(d))
 		if a.pending(d.key) {
 			return booked
 		}
@@ -892,6 +912,8 @@ func (m Model) receiveDetail(r gateway.TicketResult) (Model, tea.Cmd) {
 		v.flight = uint64(r.Flight)
 		v.fresh(a.now())
 		a.settle(v)
+		// The find's page as it is now (F2).
+		a.takePage(v, r.Key, r.Record, v.uncut)
 		return m.correctDetailPage()
 	case cache.Remove:
 		// The ticket is gone: the pane says so, an open closes.

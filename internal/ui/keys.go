@@ -536,11 +536,7 @@ func (m Model) objectBindings() []binding {
 		if _, ok := m.markTarget(); ok {
 			out = append(out, binding{MarkRead, uitext.MarkReadKey, uitext.MarkReadHelp})
 		}
-		help := uitext.NotificationHelp
-		if a.detail != nil && a.detail.expansion != nil {
-			help = uitext.CollapseHelp
-		}
-		out = append(out, binding{Back, uitext.EscapeKey, help})
+		out = append(out, binding{Back, uitext.EscapeKey, a.ticketBack(uitext.NotificationHelp)})
 	case a.active != nil:
 		if a.active.opened != "" {
 			out = append(out, binding{Up, uitext.UpDownKey, uitext.ScrollHelp}, binding{PageUp, uitext.PageUpDownKey, uitext.PageScrollHelp})
@@ -555,13 +551,10 @@ func (m Model) objectBindings() []binding {
 	case a.tickets != nil:
 		out = append(out, m.ticketBindings()...)
 		help := uitext.ListHelp
-		switch {
-		case a.detail != nil && a.detail.expansion != nil:
-			help = uitext.CollapseHelp
-		case a.tickets.opened != "":
+		if a.tickets.opened != "" {
 			help = uitext.BackHelp
 		}
-		out = append(out, binding{Back, uitext.EscapeKey, help})
+		out = append(out, binding{Back, uitext.EscapeKey, a.ticketBack(help)})
 	case a.meetingsSection():
 		// The meeting (K7b): its sections, its find (F1) and its hits while
 		// there are any, the scroll and w, its page in the browser; Esc ends
@@ -585,26 +578,39 @@ func (m Model) objectBindings() []binding {
 	case a.agentTicket():
 		// The ticket an agent opened (C9b): its keys, Esc to the projects.
 		out = append(out, m.ticketBindings()...)
-		help := uitext.ListHelp
-		if a.detail.expansion != nil {
-			help = uitext.CollapseHelp
-		}
-		out = append(out, binding{Back, uitext.EscapeKey, help})
+		out = append(out, binding{Back, uitext.EscapeKey, a.ticketBack(uitext.ListHelp)})
 	default:
 		out = append(out, binding{Back, uitext.EscapeKey, uitext.ListHelp})
 	}
 	return out
 }
 
+// ticketBack is what Esc does on the ticket, first things first: the find
+// ends (F2), the expansion closes, else otherwise.
+func (a *app) ticketBack(otherwise uitext.ID) uitext.ID {
+	switch d := a.detail; {
+	case d == nil:
+	case d.find.query != "":
+		return uitext.EndFindHelp
+	case d.expansion != nil:
+		return uitext.CollapseHelp
+	}
+	return otherwise
+}
+
 // ticketBindings are the keys of the ticket in the pane (C1d): the
-// sections, the comment selection, the pages and the order of the active
-// section, the expansion, the scroll. Each is offered only where it acts.
+// sections, the find and its hits while there are any (F2), the comment
+// selection, the pages and the order of the active section, the
+// expansion, the scroll. Each is offered only where it acts.
 func (m Model) ticketBindings() []binding {
 	d := m.app.detail
 	if d == nil || !d.known {
 		return nil
 	}
-	out := []binding{{NextArea, uitext.TabKey, uitext.NextAreaHelp}}
+	out := []binding{{NextArea, uitext.TabKey, uitext.NextAreaHelp}, {Search, uitext.SearchKey, uitext.FindHelp}}
+	if m.ticketHits() > 0 {
+		out = append(out, binding{NextHit, uitext.HitKey, uitext.HitHelp})
+	}
 	switch stops := len(d.stops()); {
 	case !d.arrowsSelect():
 		out = append(out, binding{Up, uitext.UpDownKey, uitext.ScrollHelp})

@@ -10,13 +10,14 @@ import (
 	"github.com/gboyke/lalabase-cli/internal/uitext"
 )
 
-// The find in a pane (F1, the meeting; F2 brings the ticket): / opens a
+// The find in a pane (F1 the meeting, F2 the ticket): / opens a
 // line, Enter finds what it holds in the lines the pane shows, n and N
-// move through the hits, Esc ends it. Local: no request, no cache, nothing
-// written. The hits are found in the lines as laid out, cleaned already
-// where they are shown (rule 1), so the person finds what they read: a
-// speaker's name without its markers, a bullet as drawn. Nothing here
-// cleans again.
+// move through the hits, Esc ends it. Nothing is written; the meeting's
+// find reads nothing, the ticket's reads its other pages of comments as [
+// and ] would (ticket_find.go). The hits are found in the lines as laid
+// out, cleaned already where they are shown (rule 1), so the person finds
+// what they read: a speaker's name without its markers, a bullet as
+// drawn. Nothing here cleans again.
 //
 // A hit is folded rune by rune (strings.EqualFold on a window of the
 // query's length in runes), never by lowering the line: lowering can change
@@ -33,13 +34,47 @@ import (
 // --- the mode -----------------------------------------------------------------
 
 // findTarget is the find of the pane in focus, nil where the pane has none:
-// the meeting shown (F1).
+// the meeting shown (F1), the ticket where it has its keys (F2).
 func (m Model) findTarget() *finder {
 	a := m.app
-	if a == nil || a.expired || m.focus != view.Object || !a.meetingsSection() || !a.meetingInPane() {
-		return nil
+	switch {
+	case a == nil || a.expired || m.focus != view.Object:
+	case a.meetingsSection():
+		if a.meetingInPane() {
+			return &a.meeting.find
+		}
+	case a.ticketInPane():
+		return &a.detail.find
 	}
-	return &a.meeting.find
+	return nil
+}
+
+// ticketInPane: the pane shows a ticket with its keys (ticketBindings): in
+// the tickets section, opened from a notification or an agent's; not the
+// details of a notification. The order is objectBindings'.
+func (a *app) ticketInPane() bool {
+	if d := a.detail; d == nil || !d.known {
+		return false
+	}
+	switch {
+	case a.origin != nil:
+		return true
+	case a.active != nil:
+		return false
+	case a.tickets != nil:
+		return true
+	case a.meetingsSection():
+		return false
+	}
+	return a.agentTicket()
+}
+
+// paneTop is the first line of the pane's text in sight, as the view
+// clamps the pane's offset.
+func (m Model) paneTop() int {
+	c := m.objectColumn()
+	g := m.geometry()
+	return max(0, min(c.Offset, view.Extent(c, g, view.Object, m.widthMethod)-max(1, view.Capacity(c, g))))
 }
 
 // settleFind closes the find line when its pane has no find any more: the
@@ -70,15 +105,36 @@ func (m Model) findKey(kind Action, text string) (Model, tea.Cmd) {
 	}
 	top := 0
 	if kind == Submit {
-		top = m.meetingTop()
+		top = m.paneTop()
 	}
-	if f.edit(kind, text) {
-		m.mode = Navigate
-		if kind == Submit {
-			m.findInMeeting(top)
-		}
+	if !f.edit(kind, text) {
+		return m, nil
+	}
+	m.mode = Navigate
+	switch {
+	case kind != Submit:
+	case m.app.meetingsSection():
+		m.findInMeeting(top)
+	default:
+		return m, m.findInTicket(top)
 	}
 	return m, nil
+}
+
+// endFind is Esc with a find: its marks go, the pane stays where it is.
+func (m Model) endFind() Model {
+	if m.app.meetingsSection() {
+		return m.endMeetingFind()
+	}
+	return m.endTicketFind()
+}
+
+// moveHit is n or N in the pane in focus.
+func (m Model) moveHit(delta int) (Model, tea.Cmd) {
+	if m.app.meetingsSection() {
+		return m.moveMeetingHit(delta), nil
+	}
+	return m.moveTicketHit(delta)
 }
 
 // --- the matcher and the marks ------------------------------------------------

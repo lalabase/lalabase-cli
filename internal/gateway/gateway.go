@@ -543,7 +543,8 @@ func plainStatus(status string) bool {
 // CheckDetailTicket: one ticket of one project, in one of the forms C1
 // sends. In the Detail area a page: the plain read of an older server, or
 // a page of comments (PostsPageSize, either order) with a page of
-// attachments. In the Expansion area one text whole: the description, with
+// attachments; the find's pages (F2) and an agent's title the same. In the
+// Expansion area one text whole: the description, with
 // the options of a page (or plain), or one comment alone. Anything else is
 // refused before a request is made.
 func CheckDetailTicket(t Ticket) error {
@@ -561,7 +562,7 @@ func CheckDetailTicket(t Ticket) error {
 		return errors.New("ticket: a page that is neither plain nor a whole page")
 	}
 	switch t.Area {
-	case Detail, Titles:
+	case Detail, Titles, FindPages:
 		if k.FullText || k.Post != "" {
 			return errors.New("ticket: an expansion in the area of the pages")
 		}

@@ -83,6 +83,9 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			return m.receiveExpansion(msg)
 		case gateway.Titles:
 			return m.receiveTitle(msg)
+		case gateway.FindPages:
+			// A page of the find (F2): never the pane's page.
+			return m.receiveFindPage(msg)
 		}
 		return m.receiveDetail(msg)
 	case gateway.TimeResult:
@@ -352,7 +355,7 @@ func (m Model) sessionKey(kind Action) (Model, tea.Cmd) {
 		if kind == PrevHit {
 			delta = -1
 		}
-		return m.moveMeetingHit(delta), nil
+		return m.moveHit(delta)
 	}
 	return m, nil
 }
@@ -549,10 +552,10 @@ func (m Model) back() (Model, tea.Cmd) {
 		}
 		m.focus = view.Navigation
 	case view.Object:
-		if a.meetingsSection() && a.meetingInPane() && a.meeting.find.query != "" {
-			// The find ends first (F1): its marks go, the pane stays where
-			// it is.
-			return m.endMeetingFind(), nil
+		if f := m.findTarget(); f != nil && f.query != "" {
+			// The find ends first (F1, F2): its marks go, the pane stays
+			// where it is.
+			return m.endFind(), nil
 		}
 		if m.intoTicket {
 			// Back to the agents' list it came from; the

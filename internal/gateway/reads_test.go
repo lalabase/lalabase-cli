@@ -269,6 +269,8 @@ func TestTheChecksOfTheTicketsC1cSends(t *testing.T) {
 		// C9b: the title of an agent's ticket, read on its own.
 		s.Begin(Titles, detailKey(ns, website, login, true), queue.Background),
 		s.Begin(Titles, detailKey(ns, website, login, false), queue.Background),
+		// F2: a page of comments the find in the ticket reads.
+		s.Begin(FindPages, detailKey(ns, website, login, true), queue.User),
 	}
 	for _, g := range good {
 		if err := CheckReadTicket(g); err != nil {
@@ -293,6 +295,8 @@ func TestTheChecksOfTheTicketsC1cSends(t *testing.T) {
 		"a ticket in another area":         s.Begin(Tickets, detailKey(ns, website, login, true), queue.User),
 		"a title with full text":           s.Begin(Titles, func() cache.Key { k := detailKey(ns, website, login, true); k.FullText = true; return k }(), queue.User),
 		"a title with one comment":         s.Begin(Titles, func() cache.Key { k := detailKey(ns, website, login, false); k.Post = "c-1"; return k }(), queue.User),
+		"a found page of another size":     s.Begin(FindPages, func() cache.Key { k := detailKey(ns, website, login, true); k.PostsPerPage = 10; return k }(), queue.User),
+		"a found page with one comment":    s.Begin(FindPages, func() cache.Key { k := detailKey(ns, website, login, true); k.Post = "c-1"; return k }(), queue.User),
 		"an inbox read":                    s.Begin(Inbox, func() cache.Key { k := unreadPage(ns, "org-a", 1); k.PerPage = 10; return k }(), queue.User),
 	}
 	for name, b := range bad {
